@@ -1,0 +1,9 @@
+# Build
+target
+dist
+
+# Dependencies
+# Ignore Cargo.lock for libs
+# https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
+crates/Cargo.lock
+!crates/cli/Cargo.lock
