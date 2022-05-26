@@ -65,11 +65,11 @@ pub enum Expr {
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
-            SyntaxKind::IntLiteral => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::InfixExpr => Self::BinaryExpr(BinaryExpr(node)),
             SyntaxKind::ParenExpr => Self::ParenExpr(ParenExpr(node)),
             SyntaxKind::PrefixExpr => Self::UnaryExpr(UnaryExpr(node)),
-            SyntaxKind::Block => Self::Block(Block(node)),
+            SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::VariableRef => Self::VariableRef(VariableRef(node)),
             _ => return None,
         };
@@ -104,7 +104,7 @@ pub struct IntLiteral(SyntaxNode);
 
 impl IntLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        if node.kind() == SyntaxKind::IntLiteral {
+        if node.kind() == SyntaxKind::IntExpr {
             Some(Self(node))
         } else {
             None

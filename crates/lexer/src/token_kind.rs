@@ -33,6 +33,9 @@ pub enum TokenKind {
     #[token("let")]
     Let,
 
+    #[token("loop")]
+    Loop,
+
     #[token("module")]
     Module,
 
@@ -180,6 +183,7 @@ impl fmt::Display for TokenKind {
             Self::For => "‘for’",
             Self::If => "‘if’",
             Self::Let => "‘let’",
+            Self::Loop => "‘loop’",
             Self::Module => "‘module’",
             Self::Mutable => "‘mutable’",
             Self::Not => "‘not’",

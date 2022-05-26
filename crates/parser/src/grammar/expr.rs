@@ -20,6 +20,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             BinaryOp::Mul
         } else if p.at(TokenKind::Slash) {
             BinaryOp::Div
+        } else if p.at(TokenKind::Percent) {
+            BinaryOp::Rem
         } else if p.at(TokenKind::Caret) {
             BinaryOp::Exp
         } else {
@@ -61,6 +63,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_paren_expr(p)
     } else if p.at(TokenKind::LBrace) {
         parse_block(p)
+    } else if p.at(TokenKind::Loop) {
+        parse_loop(p)
     } else {
         p.error();
         return None;
@@ -74,7 +78,7 @@ fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::IntLiteral)
+    m.complete(p, SyntaxKind::IntExpr)
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
@@ -82,7 +86,7 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::StringLiteral)
+    m.complete(p, SyntaxKind::StringExpr)
 }
 
 fn parse_variable_ref(p: &mut Parser) -> CompletedMarker {
@@ -120,7 +124,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
-fn parse_block(p: &mut Parser) -> CompletedMarker {
+pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::LBrace));
     let m = p.start();
     p.bump();
@@ -131,7 +135,17 @@ fn parse_block(p: &mut Parser) -> CompletedMarker {
 
     p.expect(TokenKind::RBrace);
 
-    m.complete(p, SyntaxKind::Block)
+    m.complete(p, SyntaxKind::BlockExpr)
+}
+
+fn parse_loop(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::Loop));
+    let m = p.start();
+    p.bump();
+
+    parse_block(p);
+
+    m.complete(p, SyntaxKind::LoopExpr)
 }
 
 enum BinaryOp {
@@ -139,7 +153,7 @@ enum BinaryOp {
     Sub,
     Mul,
     Div,
-    // Mod / Rem,
+    Rem,
     Exp,
 }
 
@@ -148,7 +162,7 @@ impl BinaryOp {
     fn binding_power(&self) -> (u8, u8) {
         match self {
             Self::Add | Self::Sub => (1, 2),
-            Self::Mul | Self::Div => (3, 4),
+            Self::Mul | Self::Div | Self::Rem => (3, 4),
             Self::Exp => (8, 7),
         }
     }
@@ -178,8 +192,8 @@ mod tests {
             "123",
             expect![[r#"
 Root@0..3
-  IntLiteral@0..3
-    IntLiteral@0..3 "123""#]],
+  IntExpr@0..3
+    Int@0..3 "123""#]],
         );
     }
 
@@ -190,8 +204,8 @@ Root@0..3
             expect![[r#"
 Root@0..7
   Emptyspace@0..3 "   "
-  IntLiteral@3..7
-    IntLiteral@3..7 "9876""#]],
+  IntExpr@3..7
+    Int@3..7 "9876""#]],
         );
     }
 
@@ -201,8 +215,8 @@ Root@0..7
             "999   ",
             expect![[r#"
 Root@0..6
-  IntLiteral@0..6
-    IntLiteral@0..3 "999"
+  IntExpr@0..6
+    Int@0..3 "999"
     Emptyspace@3..6 "   ""#]],
         );
     }
@@ -214,8 +228,8 @@ Root@0..6
             expect![[r#"
 Root@0..9
   Emptyspace@0..1 " "
-  IntLiteral@1..9
-    IntLiteral@1..4 "123"
+  IntExpr@1..9
+    Int@1..4 "123"
     Emptyspace@4..9 "     ""#]],
         );
     }
@@ -226,8 +240,8 @@ Root@0..9
             r#""hello""#,
             expect![[r#"
 Root@0..7
-  StringLiteral@0..7
-    StringLiteral@0..7 "\"hello\"""#]],
+  StringExpr@0..7
+    StringExpr@0..7 "\"hello\"""#]],
         )
     }
 
@@ -249,11 +263,11 @@ Root@0..7
             expect![[r#"
 Root@0..3
   InfixExpr@0..3
-    IntLiteral@0..1
-      IntLiteral@0..1 "1"
+    IntExpr@0..1
+      Int@0..1 "1"
     Plus@1..2 "+"
-    IntLiteral@2..3
-      IntLiteral@2..3 "2""#]],
+    IntExpr@2..3
+      Int@2..3 "2""#]],
         );
     }
 
@@ -266,17 +280,17 @@ Root@0..7
   InfixExpr@0..7
     InfixExpr@0..5
       InfixExpr@0..3
-        IntLiteral@0..1
-          IntLiteral@0..1 "1"
+        IntExpr@0..1
+          Int@0..1 "1"
         Plus@1..2 "+"
-        IntLiteral@2..3
-          IntLiteral@2..3 "2"
+        IntExpr@2..3
+          Int@2..3 "2"
       Plus@3..4 "+"
-      IntLiteral@4..5
-        IntLiteral@4..5 "3"
+      IntExpr@4..5
+        Int@4..5 "3"
     Plus@5..6 "+"
-    IntLiteral@6..7
-      IntLiteral@6..7 "4""#]],
+    IntExpr@6..7
+      Int@6..7 "4""#]],
         );
     }
 
@@ -287,19 +301,19 @@ Root@0..7
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
-    IntLiteral@0..1
-      IntLiteral@0..1 "1"
+    IntExpr@0..1
+      Int@0..1 "1"
     Caret@1..2 "^"
     InfixExpr@2..7
-      IntLiteral@2..3
-        IntLiteral@2..3 "2"
+      IntExpr@2..3
+        Int@2..3 "2"
       Caret@3..4 "^"
       InfixExpr@4..7
-        IntLiteral@4..5
-          IntLiteral@4..5 "3"
+        IntExpr@4..5
+          Int@4..5 "3"
         Caret@5..6 "^"
-        IntLiteral@6..7
-          IntLiteral@6..7 "4""#]],
+        IntExpr@6..7
+          Int@6..7 "4""#]],
         );
     }
 
@@ -311,19 +325,38 @@ Root@0..7
 Root@0..7
   InfixExpr@0..7
     InfixExpr@0..5
-      IntLiteral@0..1
-        IntLiteral@0..1 "1"
+      IntExpr@0..1
+        Int@0..1 "1"
       Plus@1..2 "+"
       InfixExpr@2..5
-        IntLiteral@2..3
-          IntLiteral@2..3 "2"
+        IntExpr@2..3
+          Int@2..3 "2"
         Star@3..4 "*"
-        IntLiteral@4..5
-          IntLiteral@4..5 "3"
+        IntExpr@4..5
+          Int@4..5 "3"
     Dash@5..6 "-"
-    IntLiteral@6..7
-      IntLiteral@6..7 "4""#]],
+    IntExpr@6..7
+      Int@6..7 "4""#]],
         );
+    }
+
+    #[test]
+    fn remainder_same_as_multiply() {
+        check(
+            "2*8%3",
+            expect![[r#"
+Root@0..5
+  InfixExpr@0..5
+    InfixExpr@0..3
+      IntExpr@0..1
+        Int@0..1 "2"
+      Star@1..2 "*"
+      IntExpr@2..3
+        Int@2..3 "8"
+    Percent@3..4 "%"
+    IntExpr@4..5
+      Int@4..5 "3""#]],
+        )
     }
 
     #[test]
@@ -334,18 +367,18 @@ Root@0..7
 Root@0..12
   Emptyspace@0..1 " "
   InfixExpr@1..12
-    IntLiteral@1..3
-      IntLiteral@1..2 "1"
+    IntExpr@1..3
+      Int@1..2 "1"
       Emptyspace@2..3 " "
     Plus@3..4 "+"
     Emptyspace@4..7 "   "
     InfixExpr@7..12
-      IntLiteral@7..8
-        IntLiteral@7..8 "2"
+      IntExpr@7..8
+        Int@7..8 "2"
       Star@8..9 "*"
       Emptyspace@9..10 " "
-      IntLiteral@10..12
-        IntLiteral@10..11 "3"
+      IntExpr@10..12
+        Int@10..11 "3"
         Emptyspace@11..12 " ""#]],
         );
     }
@@ -359,10 +392,10 @@ Root@0..12
                   ParenExpr@0..3
                     LParen@0..1 "("
                     InfixExpr@1..3
-                      IntLiteral@1..2
-                        IntLiteral@1..2 "1"
+                      IntExpr@1..2
+                        Int@1..2 "1"
                       Plus@2..3 "+"
-                error at 2..3: expected int, string, identifier, ‘-’, ‘(’ or ‘{’
+                error at 2..3: expected int, string, identifier, ‘-’, ‘(’, ‘{’ or ‘loop’
                 error at 2..3: expected ‘)’"#]],
         );
     }
@@ -375,8 +408,8 @@ Root@0..12
 Root@0..2
   PrefixExpr@0..2
     Dash@0..1 "-"
-    IntLiteral@1..2
-      IntLiteral@1..2 "1""#]],
+    IntExpr@1..2
+      Int@1..2 "1""#]],
         );
     }
 
@@ -389,11 +422,11 @@ Root@0..4
   InfixExpr@0..4
     PrefixExpr@0..2
       Dash@0..1 "-"
-      IntLiteral@1..2
-        IntLiteral@1..2 "1"
+      IntExpr@1..2
+        Int@1..2 "1"
     Plus@2..3 "+"
-    IntLiteral@3..4
-      IntLiteral@3..4 "1""#]],
+    IntExpr@3..4
+      Int@3..4 "1""#]],
         );
     }
 
@@ -406,13 +439,13 @@ Root@0..5
   InfixExpr@0..5
     PrefixExpr@0..2
       Dash@0..1 "-"
-      IntLiteral@1..2
-        IntLiteral@1..2 "1"
+      IntExpr@1..2
+        Int@1..2 "1"
     Plus@2..3 "+"
     PrefixExpr@3..5
       Dash@3..4 "-"
-      IntLiteral@4..5
-        IntLiteral@4..5 "1""#]],
+      IntExpr@4..5
+        Int@4..5 "1""#]],
         )
     }
 
@@ -434,8 +467,8 @@ Root@0..13
             LParen@4..5 "("
             ParenExpr@5..8
               LParen@5..6 "("
-              IntLiteral@6..7
-                IntLiteral@6..7 "1"
+              IntExpr@6..7
+                Int@6..7 "1"
               RParen@7..8 ")"
             RParen@8..9 ")"
           RParen@9..10 ")"
@@ -452,17 +485,17 @@ Root@0..13
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
-    IntLiteral@0..1
-      IntLiteral@0..1 "3"
+    IntExpr@0..1
+      Int@0..1 "3"
     Star@1..2 "*"
     ParenExpr@2..7
       LParen@2..3 "("
       InfixExpr@3..6
-        IntLiteral@3..4
-          IntLiteral@3..4 "2"
+        IntExpr@3..4
+          Int@3..4 "2"
         Plus@4..5 "+"
-        IntLiteral@5..6
-          IntLiteral@5..6 "1"
+        IntExpr@5..6
+          Int@5..6 "1"
       RParen@6..7 ")""#]],
         );
     }
@@ -477,7 +510,7 @@ Root@0..6
     LParen@0..1 "("
     VariableRef@1..6
       Ident@1..6 "hello"
-error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘^’ or ‘)’"#]],
+error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’ or ‘)’"#]],
         );
     }
 
@@ -487,10 +520,10 @@ error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘^’ or ‘)’"#
             "{1}",
             expect![[r#"
 Root@0..3
-  Block@0..3
+  BlockExpr@0..3
     LBrace@0..1 "{"
-    IntLiteral@1..2
-      IntLiteral@1..2 "1"
+    IntExpr@1..2
+      Int@1..2 "1"
     RBrace@2..3 "}""#]],
         )
     }
@@ -505,7 +538,7 @@ Root@0..3
 }"#,
             expect![[r#"
 Root@0..35
-  Block@0..35
+  BlockExpr@0..35
     LBrace@0..1 "{"
     Newline@1..2 "\n"
     Emptyspace@2..4 "  "
@@ -516,8 +549,8 @@ Root@0..35
       Emptyspace@9..10 " "
       Equals@10..11 "="
       Emptyspace@11..12 " "
-      IntLiteral@12..13
-        IntLiteral@12..13 "1"
+      IntExpr@12..13
+        Int@12..13 "1"
     Newline@13..14 "\n"
     Emptyspace@14..16 "  "
     VariableDef@16..25
@@ -527,8 +560,8 @@ Root@0..35
       Emptyspace@21..22 " "
       Equals@22..23 "="
       Emptyspace@23..24 " "
-      IntLiteral@24..25
-        IntLiteral@24..25 "2"
+      IntExpr@24..25
+        Int@24..25 "2"
     Newline@25..26 "\n"
     Emptyspace@26..28 "  "
     InfixExpr@28..33
@@ -541,6 +574,21 @@ Root@0..35
         Ident@32..33 "y"
     Newline@33..34 "\n"
     RBrace@34..35 "}""#]],
+        )
+    }
+
+    #[test]
+    fn parse_empty_loop() {
+        check(
+            "loop {}",
+            expect![[r#"
+Root@0..7
+  LoopExpr@0..7
+    Loop@0..4 "loop"
+    Emptyspace@4..5 " "
+    BlockExpr@5..7
+      LBrace@5..6 "{"
+      RBrace@6..7 "}""#]],
         )
     }
 }

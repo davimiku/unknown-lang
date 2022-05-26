@@ -1,6 +1,6 @@
 use lexer::TokenKind;
 
-use crate::grammar::expr::parse_expr;
+use crate::grammar::expr::{parse_block, parse_expr};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
@@ -19,8 +19,7 @@ pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
     }
 
     if p.at(TokenKind::Module) {
-        // parse_module_def
-        unimplemented!();
+        return Some(parse_module_def(p));
     }
 
     // causes infinite loop?
@@ -58,6 +57,19 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::VariableDef)
 }
 
+fn parse_module_def(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::Module));
+    let m = p.start();
+    p.bump();
+
+    p.expect(TokenKind::Ident);
+    p.expect(TokenKind::Equals);
+
+    parse_block(p);
+
+    m.complete(p, SyntaxKind::ModuleDef)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::check;
@@ -92,6 +104,26 @@ Root@0..3
     ExprStmt@0..3
         
             "#]],
+        )
+    }
+
+    #[test]
+    fn parse_module_definition() {
+        check(
+            "module turn_manager = { }",
+            expect![[r#"
+Root@0..25
+  ModuleDef@0..25
+    Module@0..6 "module"
+    Emptyspace@6..7 " "
+    Ident@7..19 "turn_manager"
+    Emptyspace@19..20 " "
+    Equals@20..21 "="
+    Emptyspace@21..22 " "
+    BlockExpr@22..25
+      LBrace@22..23 "{"
+      Emptyspace@23..24 " "
+      RBrace@24..25 "}""#]],
         )
     }
 

@@ -18,6 +18,7 @@ pub enum SyntaxKind {
     For,
     If,
     Let,
+    Loop,
     Module,
     Mutable,
     Not,
@@ -32,8 +33,8 @@ pub enum SyntaxKind {
     // Literals
     False,
     True,
-    IntLiteral,
-    StringLiteral,
+    Int,
+    String,
 
     // Delimiters
     LBrace,
@@ -65,15 +66,19 @@ pub enum SyntaxKind {
     SemiColon,
 
     // Stmt
+    ModuleDef,
     VariableDef,
     ExprStmt,
 
     // Expr
-    VariableRef,
+    BlockExpr,
     InfixExpr,
+    IntExpr,
+    LoopExpr,
     PrefixExpr,
     ParenExpr,
-    Block,
+    StringExpr,
+    VariableRef,
 
     Root,
     Comment,
@@ -97,6 +102,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::For => Self::For,
             TokenKind::If => Self::If,
             TokenKind::Let => Self::Let,
+            TokenKind::Loop => Self::Loop,
             TokenKind::Module => Self::Module,
             TokenKind::Mutable => Self::Mutable,
             TokenKind::Not => Self::Not,
@@ -112,8 +118,8 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Ident => Self::Ident,
             TokenKind::False => Self::False,
             TokenKind::True => Self::True,
-            TokenKind::Int => Self::IntLiteral,
-            TokenKind::String => Self::StringLiteral,
+            TokenKind::Int => Self::Int,
+            TokenKind::String => Self::StringExpr,
 
             // Delimiters
             TokenKind::LBrace => Self::LBrace,
@@ -154,7 +160,7 @@ impl fmt::Display for SyntaxKind {
         f.write_str(match self {
             // Keywords
             // Literals
-            SyntaxKind::IntLiteral => "number",
+            SyntaxKind::IntExpr => "number",
 
             // Delimiters
             SyntaxKind::LParen => "‘(’",
