@@ -24,6 +24,10 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             BinaryOp::Rem
         } else if p.at(TokenKind::Caret) {
             BinaryOp::Exp
+        } else if p.at(TokenKind::And) {
+            BinaryOp::And
+        } else if p.at(TokenKind::Or) {
+            BinaryOp::Or
         } else {
             // Not at an operator, let the caller decide what to do next
             break;
@@ -55,10 +59,14 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_int_literal(p)
     } else if p.at(TokenKind::String) {
         parse_string_literal(p)
+    } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
+        parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
         parse_variable_ref(p)
     } else if p.at(TokenKind::Dash) {
-        parse_prefix_expr(p)
+        parse_negation_expr(p)
+    } else if p.at(TokenKind::Not) {
+        parse_not_expr(p)
     } else if p.at(TokenKind::LParen) {
         parse_paren_expr(p)
     } else if p.at(TokenKind::LBrace) {
@@ -89,6 +97,14 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::StringExpr)
 }
 
+fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::False) || p.at(TokenKind::True));
+
+    let m = p.start();
+    p.bump();
+    m.complete(p, SyntaxKind::BoolExpr)
+}
+
 fn parse_variable_ref(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Ident));
 
@@ -97,7 +113,7 @@ fn parse_variable_ref(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::VariableRef)
 }
 
-fn parse_prefix_expr(p: &mut Parser) -> CompletedMarker {
+fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Dash));
 
     let m = p.start();
@@ -110,7 +126,23 @@ fn parse_prefix_expr(p: &mut Parser) -> CompletedMarker {
 
     expr_binding_power(p, right_binding_power);
 
-    m.complete(p, SyntaxKind::PrefixExpr)
+    m.complete(p, SyntaxKind::NegationExpr)
+}
+
+fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::Not));
+
+    let m = p.start();
+
+    let op = UnaryOp::Not;
+    let ((), right_binding_power) = op.binding_power();
+
+    // Eat the operator's token.
+    p.bump();
+
+    expr_binding_power(p, right_binding_power);
+
+    m.complete(p, SyntaxKind::NotExpr)
 }
 
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
@@ -155,28 +187,34 @@ enum BinaryOp {
     Div,
     Rem,
     Exp,
+
+    And,
+    Or,
 }
 
 impl BinaryOp {
     /// Binding power tuple of (left, right)
     fn binding_power(&self) -> (u8, u8) {
         match self {
-            Self::Add | Self::Sub => (1, 2),
-            Self::Mul | Self::Div | Self::Rem => (3, 4),
-            Self::Exp => (8, 7),
+            Self::Or => (1, 2),
+            Self::And => (3, 4),
+            Self::Add | Self::Sub => (5, 6),
+            Self::Mul | Self::Div | Self::Rem => (7, 8),
+            Self::Exp => (10, 9),
         }
     }
 }
 
 enum UnaryOp {
     Neg,
-    // Not?
+    Not,
 }
 
 impl UnaryOp {
     fn binding_power(&self) -> ((), u8) {
         match self {
-            Self::Neg => ((), 5),
+            Self::Neg => ((), 11),
+            Self::Not => ((), 5),
         }
     }
 }
@@ -388,15 +426,15 @@ Root@0..12
         check(
             "(1+",
             expect![[r#"
-                Root@0..3
-                  ParenExpr@0..3
-                    LParen@0..1 "("
-                    InfixExpr@1..3
-                      IntExpr@1..2
-                        Int@1..2 "1"
-                      Plus@2..3 "+"
-                error at 2..3: expected int, string, identifier, ‘-’, ‘(’, ‘{’ or ‘loop’
-                error at 2..3: expected ‘)’"#]],
+Root@0..3
+  ParenExpr@0..3
+    LParen@0..1 "("
+    InfixExpr@1..3
+      IntExpr@1..2
+        Int@1..2 "1"
+      Plus@2..3 "+"
+error at 2..3: expected int, string, ‘false’, ‘true’, identifier, ‘-’, ‘not’, ‘(’, ‘{’ or ‘loop’
+error at 2..3: expected ‘)’"#]],
         );
     }
 
@@ -406,7 +444,7 @@ Root@0..12
             "-1",
             expect![[r#"
 Root@0..2
-  PrefixExpr@0..2
+  NegationExpr@0..2
     Dash@0..1 "-"
     IntExpr@1..2
       Int@1..2 "1""#]],
@@ -420,7 +458,7 @@ Root@0..2
             expect![[r#"
 Root@0..4
   InfixExpr@0..4
-    PrefixExpr@0..2
+    NegationExpr@0..2
       Dash@0..1 "-"
       IntExpr@1..2
         Int@1..2 "1"
@@ -437,15 +475,63 @@ Root@0..4
             expect![[r#"
 Root@0..5
   InfixExpr@0..5
-    PrefixExpr@0..2
+    NegationExpr@0..2
       Dash@0..1 "-"
       IntExpr@1..2
         Int@1..2 "1"
     Plus@2..3 "+"
-    PrefixExpr@3..5
+    NegationExpr@3..5
       Dash@3..4 "-"
       IntExpr@4..5
         Int@4..5 "1""#]],
+        )
+    }
+
+    #[test]
+    fn logical_and() {
+        check(
+            "true and false",
+            expect![[r#"
+Root@0..14
+  InfixExpr@0..14
+    BoolExpr@0..5
+      True@0..4 "true"
+      Emptyspace@4..5 " "
+    And@5..8 "and"
+    Emptyspace@8..9 " "
+    BoolExpr@9..14
+      False@9..14 "false""#]],
+        )
+    }
+
+    #[test]
+    fn logical_or() {
+        check(
+            "true or false",
+            expect![[r#"
+Root@0..13
+  InfixExpr@0..13
+    BoolExpr@0..5
+      True@0..4 "true"
+      Emptyspace@4..5 " "
+    Or@5..7 "or"
+    Emptyspace@7..8 " "
+    BoolExpr@8..13
+      False@8..13 "false""#]],
+        )
+    }
+
+    #[test]
+    fn logical_not() {
+        check(
+            "not true",
+            expect![[r#"
+Root@0..8
+  NotExpr@0..8
+    Not@0..3 "not"
+    Emptyspace@3..4 " "
+    BoolExpr@4..8
+      True@4..8 "true""#]],
         )
     }
 
@@ -510,7 +596,7 @@ Root@0..6
     LParen@0..1 "("
     VariableRef@1..6
       Ident@1..6 "hello"
-error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’ or ‘)’"#]],
+error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’, ‘and’, ‘or’ or ‘)’"#]],
         );
     }
 

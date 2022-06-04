@@ -72,10 +72,12 @@ pub enum SyntaxKind {
 
     // Expr
     BlockExpr,
+    BoolExpr,
     InfixExpr,
     IntExpr,
     LoopExpr,
-    PrefixExpr,
+    NegationExpr,
+    NotExpr,
     ParenExpr,
     StringExpr,
     VariableRef,
