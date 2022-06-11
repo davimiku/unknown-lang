@@ -27,6 +27,9 @@ pub enum TokenKind {
     #[token("for")]
     For,
 
+    #[token("fun")]
+    Fun,
+
     #[token("if")]
     If,
 
@@ -97,6 +100,18 @@ pub enum TokenKind {
     RBracket,
 
     // ==========
+    // Separators
+    // ==========
+    #[token(":")]
+    Colon,
+
+    #[token(";")]
+    Semicolon,
+
+    #[token(",")]
+    Comma,
+
+    // ==========
     // Operators
     // ==========
     #[token("+")]
@@ -144,6 +159,9 @@ pub enum TokenKind {
     #[token(".")]
     Dot,
 
+    #[token("->")]
+    Arrow,
+
     // ==========
     // Trivia (Emptyspace, comments)
     // ==========
@@ -181,6 +199,7 @@ impl fmt::Display for TokenKind {
             Self::And => "‘and’",
             Self::Else => "‘else’",
             Self::For => "‘for’",
+            Self::Fun => "‘fun’",
             Self::If => "‘if’",
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
@@ -209,6 +228,11 @@ impl fmt::Display for TokenKind {
             Self::LParen => "‘(’",
             Self::RParen => "‘)’",
 
+            // Separators
+            Self::Colon => "‘:’",
+            Self::Semicolon => "‘;’",
+            Self::Comma => "‘,’",
+
             // Operators
             Self::Plus => "‘+’",
             Self::Dash => "‘-’",
@@ -226,6 +250,8 @@ impl fmt::Display for TokenKind {
             Self::Equals => "‘=’",
             Self::DotDot => "‘..’",
             Self::Dot => "‘.’",
+
+            Self::Arrow => "‘->’",
 
             Self::Emptyspace => "emptyspace",
             Self::Newline => "newline",

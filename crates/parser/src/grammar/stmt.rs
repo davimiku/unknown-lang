@@ -22,11 +22,6 @@ pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
         return Some(parse_module_def(p));
     }
 
-    // causes infinite loop?
-    // if p.at(TokenKind::Newline) {
-    //     return None;
-    // }
-
     let cm = parse_expr(p)?;
 
     while p.at(TokenKind::Newline) {

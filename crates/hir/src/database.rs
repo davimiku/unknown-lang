@@ -25,11 +25,13 @@ impl Context {
         dbg!(&ast);
         if let Some(ast) = ast {
             match ast {
-                ast::Expr::IntLiteral(ast) => self.lower_int_literal(ast),
-                ast::Expr::BinaryExpr(ast) => self.lower_binary(ast),
-                ast::Expr::ParenExpr(ast) => self.lower_expr(ast.expr()),
-                ast::Expr::UnaryExpr(ast) => self.lower_unary(ast),
+                ast::Expr::Binary(ast) => self.lower_binary(ast),
                 ast::Expr::Block(ast) => self.lower_block(ast),
+                ast::Expr::Function(ast) => todo!(),
+                ast::Expr::Loop(ast) => self.lower_loop(ast),
+                ast::Expr::IntLiteral(ast) => self.lower_int_literal(ast),
+                ast::Expr::Paren(ast) => self.lower_expr(ast.expr()),
+                ast::Expr::Unary(ast) => self.lower_unary(ast),
                 ast::Expr::VariableRef(ast) => self.lower_variable_ref(ast),
             }
         } else {
@@ -47,7 +49,7 @@ impl Context {
         }
     }
 
-    fn lower_binary(&mut self, ast: ast::BinaryExpr) -> Expr {
+    fn lower_binary(&mut self, ast: ast::Binary) -> Expr {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Plus => BinaryOp::Add,
             SyntaxKind::Dash => BinaryOp::Sub,
@@ -66,7 +68,7 @@ impl Context {
         }
     }
 
-    fn lower_unary(&mut self, ast: ast::UnaryExpr) -> Expr {
+    fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Dash => UnaryOp::Neg,
             _ => unreachable!(),
@@ -84,17 +86,28 @@ impl Context {
         dbg!(&ast);
         // create a new scope
 
+        // temp: dummy value
         let stmts = Vec::new();
 
         Expr::Block {
             stmts,
-            last_expr: None,
+            // TODO: should we just use the last index of stmts?
+            // last_expr: None,
         }
+    }
+
+    fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
+        dbg!(&ast);
+
+        // create a new scope
+        // identify break expressions
+        // lower statements/expressions
+        todo!()
     }
 
     fn lower_variable_ref(&mut self, ast: ast::VariableRef) -> Expr {
         Expr::VariableRef {
-            var: ast.name().unwrap().text().into(),
+            name: ast.name().unwrap().text().into(),
         }
     }
 }
@@ -137,7 +150,7 @@ mod tests {
             "let foo = bar",
             Stmt::VariableDef {
                 name: "foo".into(),
-                value: Expr::VariableRef { var: "bar".into() },
+                value: Expr::VariableRef { name: "bar".into() },
             },
         )
     }
@@ -208,7 +221,7 @@ mod tests {
     fn lower_paren_expr() {
         check_expr(
             "((((((abc))))))",
-            Expr::VariableRef { var: "abc".into() },
+            Expr::VariableRef { name: "abc".into() },
             Context::default(),
         )
     }
@@ -232,7 +245,7 @@ mod tests {
     fn lower_variable_ref() {
         check_expr(
             "foo",
-            Expr::VariableRef { var: "foo".into() },
+            Expr::VariableRef { name: "foo".into() },
             Context::default(),
         )
     }
@@ -243,7 +256,7 @@ mod tests {
             "{}",
             Expr::Block {
                 stmts: vec![],
-                last_expr: None,
+                // last_expr: None,
             },
             Context::default(),
         )
@@ -251,13 +264,18 @@ mod tests {
 
     #[test]
     fn lower_block_with_one_statement() {
+        let mut stmts = Arena::new();
+        let a_4 = stmts.alloc(Stmt::VariableDef {
+            name: "a".into(),
+            value: Expr::IntLiteral(4),
+        });
         check_expr(
             r#"{ 
     let a = 4 
 }"#,
             Expr::Block {
-                stmts: vec![],
-                last_expr: None,
+                stmts: vec![a_4],
+                // last_expr: None,
             },
             Context::default(),
         )

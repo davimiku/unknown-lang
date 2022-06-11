@@ -24,10 +24,15 @@ pub enum Expr {
     },
     Block {
         stmts: Vec<Idx<Stmt>>,
-        last_expr: Option<Idx<Expr>>,
+        // TODO: should we just use the last index of stmts?
+        // last_expr: Idx<Expr>,
     },
     VariableRef {
-        var: String,
+        name: String,
+    },
+    Function {
+        // TODO:
+        body: Box<Expr>, // Expr::Block
     },
 }
 

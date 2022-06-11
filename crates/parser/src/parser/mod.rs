@@ -54,8 +54,7 @@ impl<'t, 'input> Parser<'t, 'input> {
         let (found, range) = if let Some(Token { kind, range, .. }) = current_token {
             (Some(*kind), *range)
         } else {
-            // If we’re at the end of the input we use the range of the very last token in the
-            // input.
+            // If we’re at the end of the input we use the range of the very last token in the input.
             (None, self.source.last_token_range().unwrap())
         };
 

@@ -54,22 +54,25 @@ impl VariableDef {
 
 #[derive(Debug)]
 pub enum Expr {
-    IntLiteral(IntLiteral),
-    BinaryExpr(BinaryExpr),
-    ParenExpr(ParenExpr),
-    UnaryExpr(UnaryExpr),
     Block(Block),
+    Binary(Binary),
+    Function(Function),
+    IntLiteral(IntLiteral),
+    Loop(Loop),
+    Paren(ParenExpr),
+    Unary(Unary),
     VariableRef(VariableRef),
 }
 
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
-            SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
-            SyntaxKind::InfixExpr => Self::BinaryExpr(BinaryExpr(node)),
-            SyntaxKind::ParenExpr => Self::ParenExpr(ParenExpr(node)),
-            SyntaxKind::PrefixExpr => Self::UnaryExpr(UnaryExpr(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
+            SyntaxKind::FunExpr => Self::Function(Function(node)),
+            SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
+            SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
+            SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::VariableRef => Self::VariableRef(VariableRef(node)),
             _ => return None,
         };
@@ -79,9 +82,27 @@ impl Expr {
 }
 
 #[derive(Debug)]
-pub struct BinaryExpr(SyntaxNode);
+pub struct Block(SyntaxNode);
 
-impl BinaryExpr {
+impl Block {
+    // TODO: Iterator ?
+    pub fn stmts(&self) -> Vec<Stmt> {
+        todo!()
+    }
+
+    pub fn last_expr(&self) -> Option<Expr> {
+        let children = self.0.children();
+
+        children.inspect(|c| println!("{c}"));
+
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct Binary(SyntaxNode);
+
+impl Binary {
     pub fn lhs(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
@@ -96,6 +117,24 @@ impl BinaryExpr {
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash))
+    }
+}
+
+#[derive(Debug)]
+pub struct Function(SyntaxNode);
+
+impl Function {
+    // TODO: what of these need to be Option ?
+    pub fn param_list(&self) -> Option<ParamList> {
+        self.0.children().find_map(ParamList::cast)
+    }
+
+    pub fn return_ty(&self) -> ReturnType {
+        todo!()
+    }
+
+    pub fn body(&self) -> Expr {
+        todo!()
     }
 }
 
@@ -117,6 +156,15 @@ impl IntLiteral {
 }
 
 #[derive(Debug)]
+pub struct Loop(SyntaxNode);
+
+impl Loop {
+    pub fn block(&self) -> Block {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
 pub struct ParenExpr(SyntaxNode);
 
 impl ParenExpr {
@@ -126,9 +174,9 @@ impl ParenExpr {
 }
 
 #[derive(Debug)]
-pub struct UnaryExpr(SyntaxNode);
+pub struct Unary(SyntaxNode);
 
-impl UnaryExpr {
+impl Unary {
     pub fn expr(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
@@ -142,19 +190,6 @@ impl UnaryExpr {
 }
 
 #[derive(Debug)]
-pub struct Block(SyntaxNode);
-
-impl Block {
-    pub fn last_expr(&self) -> Option<Expr> {
-        let children = self.0.children();
-
-        children.inspect(|c| println!("{c}"));
-
-        None
-    }
-}
-
-#[derive(Debug)]
 pub struct VariableRef(SyntaxNode);
 
 impl VariableRef {
@@ -162,3 +197,44 @@ impl VariableRef {
         self.0.first_token()
     }
 }
+
+#[derive(Debug)]
+pub struct ParamList(SyntaxNode);
+
+impl ParamList {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::IntExpr {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    // Iterator ?
+    pub fn params(&self) -> Vec<Param> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct Param(SyntaxNode);
+
+impl Param {
+    // Option<Ident> ?
+    pub fn name(&self) -> Ident {
+        todo!()
+    }
+
+    pub fn r#type(&self) -> Type {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct Ident(SyntaxNode);
+
+#[derive(Debug)]
+pub struct ReturnType(SyntaxNode);
+
+#[derive(Debug)]
+pub struct Type(SyntaxNode);

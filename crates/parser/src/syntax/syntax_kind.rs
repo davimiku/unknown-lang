@@ -16,6 +16,7 @@ pub enum SyntaxKind {
     And,
     Else,
     For,
+    Fun,
     If,
     Let,
     Loop,
@@ -44,6 +45,11 @@ pub enum SyntaxKind {
     LParen,
     RParen,
 
+    // Separators
+    Colon,
+    SemiColon,
+    Comma,
+
     // Operators
     Plus,
     Dash,
@@ -62,8 +68,6 @@ pub enum SyntaxKind {
     DotDot,
     Dot,
     Question,
-    Colon,
-    SemiColon,
 
     // Stmt
     ModuleDef,
@@ -73,6 +77,7 @@ pub enum SyntaxKind {
     // Expr
     BlockExpr,
     BoolExpr,
+    FunExpr,
     InfixExpr,
     IntExpr,
     LoopExpr,
@@ -81,6 +86,12 @@ pub enum SyntaxKind {
     ParenExpr,
     StringExpr,
     VariableRef,
+
+    // Function components
+    Param,
+    ParamList,
+    Arrow,
+    ReturnType,
 
     Root,
     Comment,
@@ -102,6 +113,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::And => Self::And,
             TokenKind::Else => Self::Else,
             TokenKind::For => Self::For,
+            TokenKind::Fun => Self::Fun,
             TokenKind::If => Self::If,
             TokenKind::Let => Self::Let,
             TokenKind::Loop => Self::Loop,
@@ -131,6 +143,11 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::LParen => Self::LParen,
             TokenKind::RParen => Self::RParen,
 
+            // Separators
+            TokenKind::Colon => Self::Colon,
+            TokenKind::Semicolon => Self::SemiColon,
+            TokenKind::Comma => Self::Comma,
+
             // Operators
             TokenKind::Plus => Self::Plus,
             TokenKind::Dash => Self::Dash,
@@ -149,6 +166,8 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::BangEquals => Self::BangEquals,
             TokenKind::DotDot => Self::DotDot,
             TokenKind::Dot => Self::Dot,
+
+            TokenKind::Arrow => Self::Arrow,
 
             TokenKind::Root => Self::Root,
             TokenKind::Emptyspace => Self::Emptyspace,

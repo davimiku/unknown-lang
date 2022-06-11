@@ -30,8 +30,8 @@ impl fmt::Display for ValidationErrorKind {
         match self {
             Self::NumberLiteralTooLarge => write!(
                 f,
-                "number literal is larger than maximum value, {}",
-                u64::MAX
+                "integer literal is larger than maximum value, {}",
+                i64::MAX
             ),
         }
     }

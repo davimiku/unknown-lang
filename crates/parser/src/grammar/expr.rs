@@ -1,8 +1,14 @@
+mod function;
+mod r#type;
+
 use lexer::TokenKind;
 
 use crate::grammar::stmt::parse_stmt;
-use crate::parser::{marker::CompletedMarker, Parser};
+use crate::parser::marker::CompletedMarker;
+use crate::parser::Parser;
 use crate::SyntaxKind;
+
+use self::function::parse_fun_expr;
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
@@ -68,7 +74,20 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::Not) {
         parse_not_expr(p)
     } else if p.at(TokenKind::LParen) {
+        // TODO: this could be the start of function arguments
+        // ex.
+        // let add = (a: int, b: int) -> a + b
+        //           ^
+        // ex.
+        // let print_hello = () -> print "hello"
+        //                   ^
+        // For now, change the grammar so a "fun" keyword
+        // is required before the arg list until I get better
+        // at parsing. Without "fun" the parsing is ambiguous I think,
+        // requires lookahead until the first colon or RParen
         parse_paren_expr(p)
+    } else if p.at(TokenKind::Fun) {
+        parse_fun_expr(p)
     } else if p.at(TokenKind::LBrace) {
         parse_block(p)
     } else if p.at(TokenKind::Loop) {
@@ -105,12 +124,35 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BoolExpr)
 }
 
+// TODO: will need to "wrap" this in a Path parser, i.e.
+// let a = my_struct.my_field
+//         ^^^^^^^^^^^^^^^^^^
+//  The 'dot' is a left-to-right binary operator with very high precedence
+//  (higher than everything but parentheses)
+// TODO: how does this mesh with function calls?
 fn parse_variable_ref(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Ident));
 
     let m = p.start();
     p.bump();
     m.complete(p, SyntaxKind::VariableRef)
+}
+
+// TODO: Need to "wrap" in a Path parser, i.e.
+// let _ = fun () -> config.Options { ... }
+//                   ^^^^^^^^^^^^^^
+//
+// TODO: or use a "type expression" parser for stuff like
+// let _ = fun () -> config.Options["port"] { ... }
+//                   ^^^^^^^^^^^^^^^^^^^^^^
+// what about        config.Options.port
+//                   ^^^^^^^^^^^^^^^^^^^
+fn parse_type(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::Ident));
+
+    let m = p.start();
+
+    todo!()
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
@@ -121,7 +163,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     let op = UnaryOp::Neg;
     let ((), right_binding_power) = op.binding_power();
 
-    // Eat the operator’s token.
+    // Consume the operator’s token.
     p.bump();
 
     expr_binding_power(p, right_binding_power);
@@ -137,7 +179,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     let op = UnaryOp::Not;
     let ((), right_binding_power) = op.binding_power();
 
-    // Eat the operator's token.
+    // Consume the operator's token.
     p.bump();
 
     expr_binding_power(p, right_binding_power);
