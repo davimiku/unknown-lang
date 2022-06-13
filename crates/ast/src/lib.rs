@@ -17,6 +17,12 @@ impl Root {
     pub fn stmts(&self) -> impl Iterator<Item = Stmt> {
         self.0.children().filter_map(Stmt::cast)
     }
+
+    // This function is only for testing, but #[cfg(test)]
+    // causes rust-analyzer to think this function does not exist
+    pub fn expr(&self) -> Option<Expr> {
+        self.0.children().find_map(Expr::cast)
+    }
 }
 
 #[derive(Debug)]
@@ -56,26 +62,30 @@ impl VariableDef {
 pub enum Expr {
     Block(Block),
     Binary(Binary),
+    BoolLiteral(BoolLiteral),
     Function(Function),
     IntLiteral(IntLiteral),
     // FloatLiteral
     Loop(Loop),
     Paren(ParenExpr),
-    // StringLiteral
+    StringLiteral(StringLiteral),
     Unary(Unary),
-    Path(Path),
+    Ident(Ident),
 }
 
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
+            SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::FunExpr => Self::Function(Function(node)),
+            SyntaxKind::IdentExpr => Self::Ident(Ident(node)),
             SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
+            SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
-            SyntaxKind::PathItem => Self::Path(Path(node)),
+            SyntaxKind::StringExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
         };
 
@@ -95,7 +105,9 @@ impl Block {
     pub fn last_expr(&self) -> Option<Expr> {
         let children = self.0.children();
 
-        children.inspect(|c| println!("{c}"));
+        for child in children {
+            println!("{child}")
+        }
 
         None
     }
@@ -113,12 +125,14 @@ impl Binary {
         self.0.children().filter_map(Expr::cast).nth(1)
     }
 
+    // todo: return a BinarySyntaxToken enum or something like that
+    // to make working with this function easier/exhaustive
     pub fn op(&self) -> Option<SyntaxToken> {
         use SyntaxKind::*;
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash | Dot))
+            .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash | Dot | Caret))
     }
 }
 
@@ -158,6 +172,23 @@ impl IntLiteral {
 }
 
 #[derive(Debug)]
+pub struct BoolLiteral(SyntaxNode);
+
+impl BoolLiteral {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::BoolExpr {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    pub fn value(&self) -> Option<parser::SyntaxToken> {
+        self.0.first_token()
+    }
+}
+
+#[derive(Debug)]
 pub struct Loop(SyntaxNode);
 
 impl Loop {
@@ -176,6 +207,23 @@ impl ParenExpr {
 }
 
 #[derive(Debug)]
+pub struct StringLiteral(SyntaxNode);
+
+impl StringLiteral {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::StringExpr {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    pub fn value(&self) -> Option<parser::SyntaxToken> {
+        self.0.first_token()
+    }
+}
+
+#[derive(Debug)]
 pub struct Unary(SyntaxNode);
 
 impl Unary {
@@ -184,17 +232,18 @@ impl Unary {
     }
 
     pub fn op(&self) -> Option<SyntaxToken> {
+        use SyntaxKind::*;
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Dash)
+            .find(|token| matches!(token.kind(), Dash | Not))
     }
 }
 
 #[derive(Debug)]
-pub struct Path(SyntaxNode);
+pub struct Ident(SyntaxNode);
 
-impl Path {
+impl Ident {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0.first_token()
     }
@@ -231,9 +280,6 @@ impl Param {
         todo!()
     }
 }
-
-#[derive(Debug)]
-pub struct Ident(SyntaxNode);
 
 #[derive(Debug)]
 pub struct ReturnType(SyntaxNode);

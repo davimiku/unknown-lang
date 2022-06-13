@@ -22,18 +22,29 @@ impl Context {
     }
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Expr {
-        dbg!(&ast);
         if let Some(ast) = ast {
             match ast {
                 ast::Expr::Binary(ast) => self.lower_binary(ast),
                 ast::Expr::Block(ast) => self.lower_block(ast),
-                ast::Expr::Function(ast) => todo!(),
+                ast::Expr::BoolLiteral(ast) => self.lower_bool_literal(ast),
+                ast::Expr::Function(_ast) => todo!(),
                 ast::Expr::Loop(ast) => self.lower_loop(ast),
                 ast::Expr::IntLiteral(ast) => self.lower_int_literal(ast),
                 ast::Expr::Paren(ast) => self.lower_expr(ast.expr()),
+                ast::Expr::StringLiteral(ast) => self.lower_string_literal(ast),
                 ast::Expr::Unary(ast) => self.lower_unary(ast),
-                ast::Expr::Path(ast) => self.lower_variable_ref(ast),
+                ast::Expr::Ident(ast) => self.lower_variable_ref(ast),
             }
+        } else {
+            Expr::Missing
+        }
+    }
+
+    fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {
+        let value: Option<bool> = ast.value().and_then(|token| token.text().parse().ok());
+
+        if let Some(value) = value {
+            Expr::BoolLiteral(value)
         } else {
             Expr::Missing
         }
@@ -49,12 +60,26 @@ impl Context {
         }
     }
 
+    fn lower_string_literal(&mut self, ast: ast::StringLiteral) -> Expr {
+        let value: Option<String> = ast.value().map(|token| token.text().to_owned());
+
+        if let Some(s) = value {
+            let s = &s[1..s.len() - 1]; // remove leading and trailing quotes
+            Expr::StringLiteral(s.to_string())
+        } else {
+            Expr::Missing
+        }
+    }
+
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Plus => BinaryOp::Add,
             SyntaxKind::Dash => BinaryOp::Sub,
             SyntaxKind::Star => BinaryOp::Mul,
             SyntaxKind::Slash => BinaryOp::Div,
+            SyntaxKind::Dot => BinaryOp::Path,
+            SyntaxKind::Caret => BinaryOp::Exp,
+            SyntaxKind::Percent => BinaryOp::Rem,
             _ => unreachable!(),
         };
 
@@ -71,6 +96,7 @@ impl Context {
     fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Dash => UnaryOp::Neg,
+            SyntaxKind::Not => UnaryOp::Not,
             _ => unreachable!(),
         };
 
@@ -105,7 +131,7 @@ impl Context {
         todo!()
     }
 
-    fn lower_variable_ref(&mut self, ast: ast::Path) -> Expr {
+    fn lower_variable_ref(&mut self, ast: ast::Ident) -> Expr {
         Expr::VariableRef {
             name: ast.name().unwrap().text().into(),
         }
@@ -130,13 +156,15 @@ mod tests {
 
     fn check_expr(input: &str, expected_hir: Expr, expected_database: Context) {
         let root = parse(input);
-        // TODO: why is root.stmts() empty in failing tests
-        let first_stmt = root.stmts().next().unwrap();
-        dbg!(&first_stmt);
-        let ast = match first_stmt {
-            ast::Stmt::Expr(ast) => ast,
-            _ => unreachable!(),
+
+        let ast = root.expr();
+
+        if ast.is_none() {
+            dbg!(root);
+            panic!("expected a top-level expression")
         };
+        let ast = ast.unwrap();
+
         let mut database = Context::default();
         let hir = database.lower_expr(Some(ast));
 
@@ -213,8 +241,17 @@ mod tests {
     }
 
     #[test]
-    fn lower_literal() {
+    fn lower_int_literal() {
         check_expr("999", Expr::IntLiteral(999), Context::default());
+    }
+
+    #[test]
+    fn lower_string_literal() {
+        check_expr(
+            r#""hello""#,
+            Expr::StringLiteral("hello".to_string()),
+            Context::default(),
+        )
     }
 
     #[test]
@@ -227,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn lower_unary_expr() {
+    fn lower_negation_expr() {
         let mut exprs = Arena::new();
         let ten = exprs.alloc(Expr::IntLiteral(10));
 
@@ -251,6 +288,11 @@ mod tests {
     }
 
     #[test]
+    fn lower_bool_expr() {
+        check_expr("true", Expr::BoolLiteral(true), Context::default())
+    }
+
+    #[test]
     fn lower_empty_block() {
         check_expr(
             "{}",
@@ -259,6 +301,22 @@ mod tests {
                 // last_expr: None,
             },
             Context::default(),
+        )
+    }
+
+    // TODO: need to implement
+    #[test]
+    fn lower_not_expr() {
+        let mut exprs = Arena::new();
+        let expr = exprs.alloc(Expr::BoolLiteral(true));
+
+        check_expr(
+            "not true",
+            Expr::Unary {
+                op: UnaryOp::Not,
+                expr,
+            },
+            Context { exprs },
         )
     }
 

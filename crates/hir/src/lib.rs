@@ -12,7 +12,9 @@ pub enum Stmt {
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Missing,
+    BoolLiteral(bool),
     IntLiteral(i64),
+    StringLiteral(String),
     Binary {
         op: BinaryOp,
         lhs: Idx<Expr>,
@@ -42,11 +44,15 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Rem,
+    Exp,
+    Path,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum UnaryOp {
     Neg,
+    Not,
 }
 
 pub fn lower(ast: ast::Root) -> (Context, Vec<Stmt>) {

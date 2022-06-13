@@ -91,10 +91,10 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::LParen) {
         // TODO: this could be the start of function arguments
         // ex.
-        // let add = (a: int, b: int) -> a + b
+        // let add = (a: int, b: int) -> { a + b }
         //           ^
         // ex.
-        // let print_hello = () -> print "hello"
+        // let print_hello = () -> { print "hello" }
         //                   ^
         // For now, change the grammar so a "fun" keyword
         // is required before the arg list until I get better

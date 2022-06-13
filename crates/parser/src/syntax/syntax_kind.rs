@@ -5,8 +5,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, ToPrimitive, Hash, PartialOrd, Ord)]
 pub enum SyntaxKind {
-    VariableIdent,
-
     Hash,
     At,
 
@@ -197,7 +195,6 @@ impl fmt::Display for SyntaxKind {
 
             SyntaxKind::Emptyspace => "emptyspace",
             SyntaxKind::Newline => "newline",
-            SyntaxKind::VariableIdent => "identifier",
 
             // Operators
             SyntaxKind::Plus => "‘+’",
