@@ -58,10 +58,12 @@ pub enum Expr {
     Binary(Binary),
     Function(Function),
     IntLiteral(IntLiteral),
+    // FloatLiteral
     Loop(Loop),
     Paren(ParenExpr),
+    // StringLiteral
     Unary(Unary),
-    VariableRef(VariableRef),
+    Path(Path),
 }
 
 impl Expr {
@@ -73,7 +75,7 @@ impl Expr {
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
-            SyntaxKind::VariableRef => Self::VariableRef(VariableRef(node)),
+            SyntaxKind::PathItem => Self::Path(Path(node)),
             _ => return None,
         };
 
@@ -116,7 +118,7 @@ impl Binary {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash))
+            .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash | Dot))
     }
 }
 
@@ -190,9 +192,9 @@ impl Unary {
 }
 
 #[derive(Debug)]
-pub struct VariableRef(SyntaxNode);
+pub struct Path(SyntaxNode);
 
-impl VariableRef {
+impl Path {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0.first_token()
     }

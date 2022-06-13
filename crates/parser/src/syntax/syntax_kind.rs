@@ -84,14 +84,18 @@ pub enum SyntaxKind {
     NegationExpr,
     NotExpr,
     ParenExpr,
+    IdentExpr,
+    PathItem,
     StringExpr,
-    VariableRef,
+
+    TypeExpr, // ???
 
     // Function components
-    Param,
-    ParamList,
+    FunBody,
+    FunParam,
+    FunParamList,
     Arrow,
-    ReturnType,
+    FunReturnType,
 
     Root,
     Comment,

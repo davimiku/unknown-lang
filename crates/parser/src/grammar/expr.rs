@@ -1,5 +1,4 @@
 mod function;
-mod r#type;
 
 use lexer::TokenKind;
 
@@ -12,6 +11,20 @@ use self::function::parse_fun_expr;
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
+}
+
+pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::LBrace));
+    let m = p.start();
+    p.bump();
+
+    while !p.at(TokenKind::RBrace) && !p.at_end() {
+        parse_stmt(p);
+    }
+
+    p.expect(TokenKind::RBrace);
+
+    m.complete(p, SyntaxKind::BlockExpr)
 }
 
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
@@ -34,6 +47,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             BinaryOp::And
         } else if p.at(TokenKind::Or) {
             BinaryOp::Or
+        } else if p.at(TokenKind::Dot) {
+            BinaryOp::Path
         } else {
             // Not at an operator, let the caller decide what to do next
             break;
@@ -68,7 +83,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
-        parse_variable_ref(p)
+        parse_ident_expr(p)
     } else if p.at(TokenKind::Dash) {
         parse_negation_expr(p)
     } else if p.at(TokenKind::Not) {
@@ -124,35 +139,26 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BoolExpr)
 }
 
-// TODO: will need to "wrap" this in a Path parser, i.e.
-// let a = my_struct.my_field
-//         ^^^^^^^^^^^^^^^^^^
-//  The 'dot' is a left-to-right binary operator with very high precedence
-//  (higher than everything but parentheses)
-// TODO: how does this mesh with function calls?
-fn parse_variable_ref(p: &mut Parser) -> CompletedMarker {
+// TODO: better word for this?
+//
+// Parses an identifier, which could be:
+// 1. A variable reference
+// 2. A type variable reference
+// 3. A function call (?)
+fn parse_ident_expr(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Ident));
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::VariableRef)
+    m.complete(p, SyntaxKind::IdentExpr)
 }
 
-// TODO: Need to "wrap" in a Path parser, i.e.
-// let _ = fun () -> config.Options { ... }
-//                   ^^^^^^^^^^^^^^
-//
-// TODO: or use a "type expression" parser for stuff like
-// let _ = fun () -> config.Options["port"] { ... }
-//                   ^^^^^^^^^^^^^^^^^^^^^^
-// what about        config.Options.port
-//                   ^^^^^^^^^^^^^^^^^^^
 fn parse_type(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Ident));
 
     let m = p.start();
-
-    todo!()
+    parse_expr(p);
+    m.complete(p, SyntaxKind::TypeExpr)
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
@@ -198,20 +204,6 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
-pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::LBrace));
-    let m = p.start();
-    p.bump();
-
-    while !p.at(TokenKind::RBrace) && !p.at_end() {
-        parse_stmt(p);
-    }
-
-    p.expect(TokenKind::RBrace);
-
-    m.complete(p, SyntaxKind::BlockExpr)
-}
-
 fn parse_loop(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(TokenKind::Loop));
     let m = p.start();
@@ -232,6 +224,8 @@ enum BinaryOp {
 
     And,
     Or,
+
+    Path,
 }
 
 impl BinaryOp {
@@ -243,6 +237,7 @@ impl BinaryOp {
             Self::Add | Self::Sub => (5, 6),
             Self::Mul | Self::Div | Self::Rem => (7, 8),
             Self::Exp => (10, 9),
+            Self::Path => (11, 12),
         }
     }
 }
@@ -640,6 +635,72 @@ Root@0..6
       Ident@1..6 "hello"
 error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’, ‘and’, ‘or’ or ‘)’"#]],
         );
+    }
+
+    #[test]
+    fn parse_single_ident() {
+        check(
+            "a",
+            expect![[r#"
+Root@0..1
+  IdentExpr@0..1
+    Ident@0..1 "a""#]],
+        )
+    }
+
+    #[test]
+    fn parse_one_path() {
+        check(
+            "a.b",
+            expect![[r#"
+Root@0..3
+  InfixExpr@0..3
+    IdentExpr@0..1
+      Ident@0..1 "a"
+    Dot@1..2 "."
+    IdentExpr@2..3
+      Ident@2..3 "b""#]],
+        )
+    }
+
+    #[test]
+    fn parse_two_nested_path() {
+        check(
+            "a.b.c",
+            expect![[r#"
+Root@0..5
+  InfixExpr@0..5
+    InfixExpr@0..3
+      IdentExpr@0..1
+        Ident@0..1 "a"
+      Dot@1..2 "."
+      IdentExpr@2..3
+        Ident@2..3 "b"
+    Dot@3..4 "."
+    IdentExpr@4..5
+      Ident@4..5 "c""#]],
+        )
+    }
+
+    #[test]
+    fn path_higher_precedence_than_arithmetic() {
+        check(
+            "a.b * c",
+            expect![[r#"
+Root@0..7
+  InfixExpr@0..7
+    InfixExpr@0..4
+      IdentExpr@0..1
+        Ident@0..1 "a"
+      Dot@1..2 "."
+      IdentExpr@2..4
+        Ident@2..3 "b"
+        Emptyspace@3..4 " "
+    Star@4..5 "*"
+    Emptyspace@5..6 " "
+    IdentExpr@6..7
+      Ident@6..7 "c""#]],
+        )
     }
 
     #[test]

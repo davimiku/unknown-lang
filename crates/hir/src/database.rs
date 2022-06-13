@@ -32,7 +32,7 @@ impl Context {
                 ast::Expr::IntLiteral(ast) => self.lower_int_literal(ast),
                 ast::Expr::Paren(ast) => self.lower_expr(ast.expr()),
                 ast::Expr::Unary(ast) => self.lower_unary(ast),
-                ast::Expr::VariableRef(ast) => self.lower_variable_ref(ast),
+                ast::Expr::Path(ast) => self.lower_variable_ref(ast),
             }
         } else {
             Expr::Missing
@@ -105,7 +105,7 @@ impl Context {
         todo!()
     }
 
-    fn lower_variable_ref(&mut self, ast: ast::VariableRef) -> Expr {
+    fn lower_variable_ref(&mut self, ast: ast::Path) -> Expr {
         Expr::VariableRef {
             name: ast.name().unwrap().text().into(),
         }
@@ -262,6 +262,7 @@ mod tests {
         )
     }
 
+    #[ignore = "not implemented!"]
     #[test]
     fn lower_block_with_one_statement() {
         let mut stmts = Arena::new();
