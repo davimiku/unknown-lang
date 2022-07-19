@@ -1,4 +1,5 @@
 mod function;
+mod type_expr;
 
 use lexer::TokenKind;
 
@@ -8,9 +9,18 @@ use crate::parser::Parser;
 use crate::SyntaxKind;
 
 use self::function::parse_fun_expr;
+use self::type_expr::parse_type_expr;
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
+}
+
+pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::Ident));
+
+    let m = p.start();
+    parse_type_expr(p);
+    m.complete(p, SyntaxKind::TypeExpr)
 }
 
 pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
@@ -50,7 +60,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         } else if p.at(TokenKind::Dot) {
             BinaryOp::Path
         } else {
-            // Not at an operator, let the caller decide what to do next
+            // Not at an operator, so is not a binary expression, so break having
+            // just parsed the "lhs"
             break;
         };
 
@@ -76,14 +87,16 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
-    let cm = if p.at(TokenKind::Int) {
+    let cm = if p.at(TokenKind::IntLiteral) {
         parse_int_literal(p)
+    } else if p.at(TokenKind::FloatLiteral) {
+        parse_float_literal(p)
     } else if p.at(TokenKind::String) {
         parse_string_literal(p)
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
-        parse_ident_expr(p)
+        parse_name_ref(p)
     } else if p.at(TokenKind::Dash) {
         parse_negation_expr(p)
     } else if p.at(TokenKind::Not) {
@@ -100,6 +113,11 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // is required before the arg list until I get better
         // at parsing. Without "fun" the parsing is ambiguous I think,
         // requires lookahead until the first colon or RParen
+        //
+        // TODO: this might also be the start of a tuple?
+        // ex.
+        // let point = (1, 2)
+        //             ^
         parse_paren_expr(p)
     } else if p.at(TokenKind::Fun) {
         parse_fun_expr(p)
@@ -116,11 +134,19 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Int));
+    assert!(p.at(TokenKind::IntLiteral));
 
     let m = p.start();
     p.bump();
     m.complete(p, SyntaxKind::IntExpr)
+}
+
+fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(TokenKind::FloatLiteral));
+
+    let m = p.start();
+    p.bump();
+    m.complete(p, SyntaxKind::FloatExpr)
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
@@ -139,26 +165,14 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BoolExpr)
 }
 
-// TODO: better word for this?
-//
-// Parses an identifier, which could be:
-// 1. A variable reference
-// 2. A type variable reference
-// 3. A function call (?)
-fn parse_ident_expr(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Ident));
-
+fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
+    // if p.at(TokenKind::Ident) {
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::IdentExpr)
-}
-
-fn parse_type(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Ident));
-
-    let m = p.start();
-    parse_expr(p);
-    m.complete(p, SyntaxKind::TypeExpr)
+    m.complete(p, SyntaxKind::NameRef)
+    // } else {
+    //     p.error_and_bump("expected identifier");
+    // }
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
@@ -258,60 +272,71 @@ impl UnaryOp {
 
 #[cfg(test)]
 mod tests {
-    use crate::check;
+    use crate::check_expr;
     use expect_test::expect;
 
     #[test]
     fn parse_int() {
-        check(
+        check_expr(
             "123",
             expect![[r#"
 Root@0..3
   IntExpr@0..3
-    Int@0..3 "123""#]],
+    IntLiteral@0..3 "123""#]],
         );
     }
 
     #[test]
+    fn parse_int_with_separators() {
+        check_expr(
+            "123_456_789",
+            expect![[r#"
+Root@0..11
+  IntExpr@0..11
+    IntLiteral@0..11 "123_456_789""#]],
+        )
+    }
+
+    #[test]
     fn parse_int_preceded_by_emptyspace() {
-        check(
+        check_expr(
             "   9876",
             expect![[r#"
 Root@0..7
   Emptyspace@0..3 "   "
   IntExpr@3..7
-    Int@3..7 "9876""#]],
+    IntLiteral@3..7 "9876""#]],
         );
     }
 
     #[test]
     fn parse_int_followed_by_emptyspace() {
-        check(
+        check_expr(
             "999   ",
             expect![[r#"
 Root@0..6
   IntExpr@0..6
-    Int@0..3 "999"
+    IntLiteral@0..3 "999"
     Emptyspace@3..6 "   ""#]],
         );
     }
 
     #[test]
     fn parse_int_surrounded_by_emptyspace() {
-        check(
+        check_expr(
             " 123     ",
             expect![[r#"
 Root@0..9
   Emptyspace@0..1 " "
   IntExpr@1..9
-    Int@1..4 "123"
+    IntLiteral@1..4 "123"
     Emptyspace@4..9 "     ""#]],
         );
     }
 
     #[test]
     fn parse_string_literal() {
-        check(
+        check_expr(
             r#""hello""#,
             expect![[r#"
 Root@0..7
@@ -322,33 +347,33 @@ Root@0..7
 
     #[test]
     fn parse_variable_ref() {
-        check(
+        check_expr(
             "counter",
             expect![[r#"
 Root@0..7
-  VariableRef@0..7
+  NameRef@0..7
     Ident@0..7 "counter""#]],
         );
     }
 
     #[test]
     fn parse_simple_infix_expression() {
-        check(
+        check_expr(
             "1+2",
             expect![[r#"
 Root@0..3
   InfixExpr@0..3
     IntExpr@0..1
-      Int@0..1 "1"
+      IntLiteral@0..1 "1"
     Plus@1..2 "+"
     IntExpr@2..3
-      Int@2..3 "2""#]],
+      IntLiteral@2..3 "2""#]],
         );
     }
 
     #[test]
     fn parse_left_associative_infix_expression() {
-        check(
+        check_expr(
             "1+2+3+4",
             expect![[r#"
 Root@0..7
@@ -356,111 +381,111 @@ Root@0..7
     InfixExpr@0..5
       InfixExpr@0..3
         IntExpr@0..1
-          Int@0..1 "1"
+          IntLiteral@0..1 "1"
         Plus@1..2 "+"
         IntExpr@2..3
-          Int@2..3 "2"
+          IntLiteral@2..3 "2"
       Plus@3..4 "+"
       IntExpr@4..5
-        Int@4..5 "3"
+        IntLiteral@4..5 "3"
     Plus@5..6 "+"
     IntExpr@6..7
-      Int@6..7 "4""#]],
+      IntLiteral@6..7 "4""#]],
         );
     }
 
     #[test]
     fn parse_right_associative_infix_expression() {
-        check(
+        check_expr(
             "1^2^3^4",
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
     IntExpr@0..1
-      Int@0..1 "1"
+      IntLiteral@0..1 "1"
     Caret@1..2 "^"
     InfixExpr@2..7
       IntExpr@2..3
-        Int@2..3 "2"
+        IntLiteral@2..3 "2"
       Caret@3..4 "^"
       InfixExpr@4..7
         IntExpr@4..5
-          Int@4..5 "3"
+          IntLiteral@4..5 "3"
         Caret@5..6 "^"
         IntExpr@6..7
-          Int@6..7 "4""#]],
+          IntLiteral@6..7 "4""#]],
         );
     }
 
     #[test]
     fn parse_infix_expression_with_mixed_binding_power() {
-        check(
+        check_expr(
             "1+2*3-4",
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
     InfixExpr@0..5
       IntExpr@0..1
-        Int@0..1 "1"
+        IntLiteral@0..1 "1"
       Plus@1..2 "+"
       InfixExpr@2..5
         IntExpr@2..3
-          Int@2..3 "2"
+          IntLiteral@2..3 "2"
         Star@3..4 "*"
         IntExpr@4..5
-          Int@4..5 "3"
+          IntLiteral@4..5 "3"
     Dash@5..6 "-"
     IntExpr@6..7
-      Int@6..7 "4""#]],
+      IntLiteral@6..7 "4""#]],
         );
     }
 
     #[test]
     fn remainder_same_as_multiply() {
-        check(
+        check_expr(
             "2*8%3",
             expect![[r#"
 Root@0..5
   InfixExpr@0..5
     InfixExpr@0..3
       IntExpr@0..1
-        Int@0..1 "2"
+        IntLiteral@0..1 "2"
       Star@1..2 "*"
       IntExpr@2..3
-        Int@2..3 "8"
+        IntLiteral@2..3 "8"
     Percent@3..4 "%"
     IntExpr@4..5
-      Int@4..5 "3""#]],
+      IntLiteral@4..5 "3""#]],
         )
     }
 
     #[test]
     fn parse_infix_expression_with_emptyspace() {
-        check(
+        check_expr(
             " 1 +   2* 3 ",
             expect![[r#"
 Root@0..12
   Emptyspace@0..1 " "
   InfixExpr@1..12
     IntExpr@1..3
-      Int@1..2 "1"
+      IntLiteral@1..2 "1"
       Emptyspace@2..3 " "
     Plus@3..4 "+"
     Emptyspace@4..7 "   "
     InfixExpr@7..12
       IntExpr@7..8
-        Int@7..8 "2"
+        IntLiteral@7..8 "2"
       Star@8..9 "*"
       Emptyspace@9..10 " "
       IntExpr@10..12
-        Int@10..11 "3"
+        IntLiteral@10..11 "3"
         Emptyspace@11..12 " ""#]],
         );
     }
 
     #[test]
     fn do_not_parse_operator_if_gettting_rhs_failed() {
-        check(
+        check_expr(
             "(1+",
             expect![[r#"
 Root@0..3
@@ -468,29 +493,29 @@ Root@0..3
     LParen@0..1 "("
     InfixExpr@1..3
       IntExpr@1..2
-        Int@1..2 "1"
+        IntLiteral@1..2 "1"
       Plus@2..3 "+"
-error at 2..3: expected int, string, ‘false’, ‘true’, identifier, ‘-’, ‘not’, ‘(’, ‘{’ or ‘loop’
+error at 2..3: expected int, float, string, ‘false’, ‘true’, identifier, ‘-’, ‘not’, ‘(’, ‘fun’, ‘{’ or ‘loop’
 error at 2..3: expected ‘)’"#]],
         );
     }
 
     #[test]
     fn parse_negation() {
-        check(
+        check_expr(
             "-1",
             expect![[r#"
 Root@0..2
   NegationExpr@0..2
     Dash@0..1 "-"
     IntExpr@1..2
-      Int@1..2 "1""#]],
+      IntLiteral@1..2 "1""#]],
         );
     }
 
     #[test]
     fn negation_has_higher_binding_power_than_binary_operators() {
-        check(
+        check_expr(
             "-1+1",
             expect![[r#"
 Root@0..4
@@ -498,16 +523,16 @@ Root@0..4
     NegationExpr@0..2
       Dash@0..1 "-"
       IntExpr@1..2
-        Int@1..2 "1"
+        IntLiteral@1..2 "1"
     Plus@2..3 "+"
     IntExpr@3..4
-      Int@3..4 "1""#]],
+      IntLiteral@3..4 "1""#]],
         );
     }
 
     #[test]
     fn negation_following_binary_operator() {
-        check(
+        check_expr(
             "-1+-1",
             expect![[r#"
 Root@0..5
@@ -515,52 +540,52 @@ Root@0..5
     NegationExpr@0..2
       Dash@0..1 "-"
       IntExpr@1..2
-        Int@1..2 "1"
+        IntLiteral@1..2 "1"
     Plus@2..3 "+"
     NegationExpr@3..5
       Dash@3..4 "-"
       IntExpr@4..5
-        Int@4..5 "1""#]],
+        IntLiteral@4..5 "1""#]],
         )
     }
 
     #[test]
     fn logical_and() {
-        check(
+        check_expr(
             "true and false",
             expect![[r#"
 Root@0..14
   InfixExpr@0..14
     BoolExpr@0..5
-      True@0..4 "true"
+      TrueLiteral@0..4 "true"
       Emptyspace@4..5 " "
     And@5..8 "and"
     Emptyspace@8..9 " "
     BoolExpr@9..14
-      False@9..14 "false""#]],
+      FalseLiteral@9..14 "false""#]],
         )
     }
 
     #[test]
     fn logical_or() {
-        check(
+        check_expr(
             "true or false",
             expect![[r#"
 Root@0..13
   InfixExpr@0..13
     BoolExpr@0..5
-      True@0..4 "true"
+      TrueLiteral@0..4 "true"
       Emptyspace@4..5 " "
     Or@5..7 "or"
     Emptyspace@7..8 " "
     BoolExpr@8..13
-      False@8..13 "false""#]],
+      FalseLiteral@8..13 "false""#]],
         )
     }
 
     #[test]
     fn logical_not() {
-        check(
+        check_expr(
             "not true",
             expect![[r#"
 Root@0..8
@@ -568,13 +593,13 @@ Root@0..8
     Not@0..3 "not"
     Emptyspace@3..4 " "
     BoolExpr@4..8
-      True@4..8 "true""#]],
+      TrueLiteral@4..8 "true""#]],
         )
     }
 
     #[test]
     fn parse_nested_parentheses() {
-        check(
+        check_expr(
             "((((((1))))))",
             expect![[r#"
 Root@0..13
@@ -591,7 +616,7 @@ Root@0..13
             ParenExpr@5..8
               LParen@5..6 "("
               IntExpr@6..7
-                Int@6..7 "1"
+                IntLiteral@6..7 "1"
               RParen@7..8 ")"
             RParen@8..9 ")"
           RParen@9..10 ")"
@@ -603,123 +628,123 @@ Root@0..13
 
     #[test]
     fn parentheses_affect_precedence() {
-        check(
+        check_expr(
             "3*(2+1)",
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
     IntExpr@0..1
-      Int@0..1 "3"
+      IntLiteral@0..1 "3"
     Star@1..2 "*"
     ParenExpr@2..7
       LParen@2..3 "("
       InfixExpr@3..6
         IntExpr@3..4
-          Int@3..4 "2"
+          IntLiteral@3..4 "2"
         Plus@4..5 "+"
         IntExpr@5..6
-          Int@5..6 "1"
+          IntLiteral@5..6 "1"
       RParen@6..7 ")""#]],
         );
     }
 
     #[test]
     fn parse_unclosed_parentheses() {
-        check(
+        check_expr(
             "(hello",
             expect![[r#"
 Root@0..6
   ParenExpr@0..6
     LParen@0..1 "("
-    VariableRef@1..6
+    NameRef@1..6
       Ident@1..6 "hello"
-error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’, ‘and’, ‘or’ or ‘)’"#]],
+error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’, ‘and’, ‘or’, ‘.’ or ‘)’"#]],
         );
     }
 
     #[test]
     fn parse_single_ident() {
-        check(
+        check_expr(
             "a",
             expect![[r#"
 Root@0..1
-  IdentExpr@0..1
+  NameRef@0..1
     Ident@0..1 "a""#]],
         )
     }
 
     #[test]
     fn parse_one_path() {
-        check(
+        check_expr(
             "a.b",
             expect![[r#"
 Root@0..3
   InfixExpr@0..3
-    IdentExpr@0..1
+    NameRef@0..1
       Ident@0..1 "a"
     Dot@1..2 "."
-    IdentExpr@2..3
+    NameRef@2..3
       Ident@2..3 "b""#]],
         )
     }
 
     #[test]
     fn parse_two_nested_path() {
-        check(
+        check_expr(
             "a.b.c",
             expect![[r#"
 Root@0..5
   InfixExpr@0..5
     InfixExpr@0..3
-      IdentExpr@0..1
+      NameRef@0..1
         Ident@0..1 "a"
       Dot@1..2 "."
-      IdentExpr@2..3
+      NameRef@2..3
         Ident@2..3 "b"
     Dot@3..4 "."
-    IdentExpr@4..5
+    NameRef@4..5
       Ident@4..5 "c""#]],
         )
     }
 
     #[test]
     fn path_higher_precedence_than_arithmetic() {
-        check(
+        check_expr(
             "a.b * c",
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
     InfixExpr@0..4
-      IdentExpr@0..1
+      NameRef@0..1
         Ident@0..1 "a"
       Dot@1..2 "."
-      IdentExpr@2..4
+      NameRef@2..4
         Ident@2..3 "b"
         Emptyspace@3..4 " "
     Star@4..5 "*"
     Emptyspace@5..6 " "
-    IdentExpr@6..7
+    NameRef@6..7
       Ident@6..7 "c""#]],
         )
     }
 
     #[test]
     fn parse_block_with_one_expr() {
-        check(
+        check_expr(
             "{1}",
             expect![[r#"
 Root@0..3
   BlockExpr@0..3
     LBrace@0..1 "{"
     IntExpr@1..2
-      Int@1..2 "1"
+      IntLiteral@1..2 "1"
     RBrace@2..3 "}""#]],
         )
     }
 
     #[test]
     fn parse_block_with_statements() {
-        check(
+        check_expr(
             r#"{
   let x = 1
   let y = 2
@@ -739,7 +764,7 @@ Root@0..35
       Equals@10..11 "="
       Emptyspace@11..12 " "
       IntExpr@12..13
-        Int@12..13 "1"
+        IntLiteral@12..13 "1"
     Newline@13..14 "\n"
     Emptyspace@14..16 "  "
     VariableDef@16..25
@@ -750,16 +775,16 @@ Root@0..35
       Equals@22..23 "="
       Emptyspace@23..24 " "
       IntExpr@24..25
-        Int@24..25 "2"
+        IntLiteral@24..25 "2"
     Newline@25..26 "\n"
     Emptyspace@26..28 "  "
     InfixExpr@28..33
-      VariableRef@28..30
+      NameRef@28..30
         Ident@28..29 "x"
         Emptyspace@29..30 " "
       Plus@30..31 "+"
       Emptyspace@31..32 " "
-      VariableRef@32..33
+      NameRef@32..33
         Ident@32..33 "y"
     Newline@33..34 "\n"
     RBrace@34..35 "}""#]],
@@ -768,7 +793,7 @@ Root@0..35
 
     #[test]
     fn parse_empty_loop() {
-        check(
+        check_expr(
             "loop {}",
             expect![[r#"
 Root@0..7
