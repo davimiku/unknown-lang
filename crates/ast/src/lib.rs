@@ -1,6 +1,7 @@
 mod validation;
 
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
+use text_size::TextRange;
 
 #[derive(Debug)]
 pub struct Root(SyntaxNode);
@@ -23,6 +24,10 @@ impl Root {
     pub fn expr(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -35,7 +40,10 @@ impl Stmt {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
             SyntaxKind::VariableDef => Self::VariableDef(VariableDef(node)),
-            _ => Self::Expr(Expr::cast(node)?),
+            _ => {
+                let expr = node.children().find_map(Expr::cast)?;
+                Self::Expr(expr)
+            }
         };
 
         Some(result)
@@ -56,6 +64,10 @@ impl VariableDef {
     pub fn value(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -65,7 +77,7 @@ pub enum Expr {
     BoolLiteral(BoolLiteral),
     Function(Function),
     IntLiteral(IntLiteral),
-    // FloatLiteral
+    FloatLiteral(FloatLiteral),
     Loop(Loop),
     Paren(ParenExpr),
     StringLiteral(StringLiteral),
@@ -79,9 +91,10 @@ impl Expr {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::FunExpr => Self::Function(Function(node)),
-            SyntaxKind::IdentExpr => Self::Ident(Ident(node)),
+            SyntaxKind::NameRef => Self::Ident(Ident(node)),
             SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::FloatExpr => Self::FloatLiteral(FloatLiteral(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
@@ -111,6 +124,10 @@ impl Block {
 
         None
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -134,6 +151,10 @@ impl Binary {
             .filter_map(SyntaxElement::into_token)
             .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash | Dot | Caret))
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -152,6 +173,10 @@ impl Function {
     pub fn body(&self) -> Expr {
         todo!()
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -159,15 +184,32 @@ pub struct IntLiteral(SyntaxNode);
 
 impl IntLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        if node.kind() == SyntaxKind::IntExpr {
-            Some(Self(node))
-        } else {
-            None
-        }
+        (node.kind() == SyntaxKind::IntExpr).then_some(Self(node))
     }
 
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug)]
+pub struct FloatLiteral(SyntaxNode);
+
+impl FloatLiteral {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::FloatExpr).then_some(Self(node))
+    }
+
+    pub fn value(&self) -> Option<parser::SyntaxToken> {
+        self.0.first_token()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
@@ -186,6 +228,10 @@ impl BoolLiteral {
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -195,6 +241,10 @@ impl Loop {
     pub fn block(&self) -> Block {
         todo!()
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -203,6 +253,10 @@ pub struct ParenExpr(SyntaxNode);
 impl ParenExpr {
     pub fn expr(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
@@ -221,6 +275,10 @@ impl StringLiteral {
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -238,6 +296,10 @@ impl Unary {
             .filter_map(SyntaxElement::into_token)
             .find(|token| matches!(token.kind(), Dash | Not))
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -246,6 +308,10 @@ pub struct Ident(SyntaxNode);
 impl Ident {
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
@@ -265,6 +331,10 @@ impl ParamList {
     pub fn params(&self) -> Vec<Param> {
         todo!()
     }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
 }
 
 #[derive(Debug)]
@@ -276,13 +346,29 @@ impl Param {
         todo!()
     }
 
-    pub fn r#type(&self) -> Type {
+    pub fn typ(&self) -> TypeDef {
         todo!()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
 #[derive(Debug)]
 pub struct ReturnType(SyntaxNode);
 
+impl ReturnType {
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
 #[derive(Debug)]
-pub struct Type(SyntaxNode);
+pub struct TypeDef(SyntaxNode);
+
+impl TypeDef {
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
