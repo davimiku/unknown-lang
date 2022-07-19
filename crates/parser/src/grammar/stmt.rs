@@ -1,10 +1,14 @@
 use lexer::TokenKind;
 
-use crate::grammar::expr::{parse_block, parse_expr};
+use crate::grammar::expr::{parse_block, parse_expr, parse_type};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
 pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
+    if p.at_end() {
+        return None;
+    }
+
     while p.at(TokenKind::Newline) {
         p.bump();
     }
@@ -15,7 +19,7 @@ pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
 
     if p.at(TokenKind::Type) {
         // parse_type_def
-        unimplemented!();
+        todo!();
     }
 
     if p.at(TokenKind::Module) {
@@ -28,14 +32,13 @@ pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
         p.bump();
     }
 
-    if p.at(TokenKind::RBrace) || p.at_end() {
+    if p.at(TokenKind::RBrace) {
         return Some(cm);
     }
 
     let m = cm.precede(p);
     // expect something
 
-    dbg!("about to complete ExprStmt");
     Some(m.complete(p, SyntaxKind::ExprStmt))
 }
 
@@ -45,6 +48,12 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
     p.bump();
 
     p.expect(TokenKind::Ident);
+
+    if p.at(TokenKind::Colon) {
+        p.bump();
+        parse_type(p);
+    }
+
     p.expect(TokenKind::Equals);
 
     parse_expr(p);
@@ -71,6 +80,11 @@ mod tests {
     use expect_test::expect;
 
     #[test]
+    fn parse_empty() {
+        check("", expect![[r#"Root@0..0"#]])
+    }
+
+    #[test]
     fn parse_variable_definition() {
         check(
             "let foo = bar",
@@ -83,22 +97,43 @@ Root@0..13
     Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
-    VariableRef@10..13
+    NameRef@10..13
       Ident@10..13 "bar""#]],
         );
     }
 
     #[test]
-    #[ignore = "Newline parsing not implemented yet to separate statements"]
+    fn parse_variable_with_type_annotation() {
+        check(
+            "let x: int = 1",
+            expect![[r#"
+Root@0..14
+  VariableDef@0..14
+    Let@0..3 "let"
+    Emptyspace@3..4 " "
+    Ident@4..5 "x"
+    Colon@5..6 ":"
+    Emptyspace@6..7 " "
+    TypeExpr@7..11
+      NameRef@7..11
+        Ident@7..10 "int"
+        Emptyspace@10..11 " "
+    Equals@11..12 "="
+    Emptyspace@12..13 " "
+    IntExpr@13..14
+      IntLiteral@13..14 "1""#]],
+        )
+    }
+
+    #[test]
     fn parse_expr_statement() {
-        12;
         check(
             "123",
             expect![[r#"
 Root@0..3
-    ExprStmt@0..3
-        
-            "#]],
+  ExprStmt@0..3
+    IntExpr@0..3
+      IntLiteral@0..3 "123""#]],
         )
     }
 
@@ -144,7 +179,7 @@ Root@0..17
     Emptyspace@13..14 " "
     Equals@14..15 "="
     Emptyspace@15..16 " "
-    VariableRef@16..17
+    NameRef@16..17
       Ident@16..17 "a"
 error at 8..11: expected int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
         );
