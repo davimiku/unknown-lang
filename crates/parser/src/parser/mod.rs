@@ -17,14 +17,16 @@ pub(crate) struct Parser<'t, 'input> {
     source: Source<'t, 'input>,
     events: Vec<Event>,
     expected_kinds: Vec<TokenKind>,
+    pub(crate) entry_point: ParseEntryPoint,
 }
 
 impl<'t, 'input> Parser<'t, 'input> {
-    pub(crate) fn new(source: Source<'t, 'input>) -> Self {
+    pub(crate) fn new(source: Source<'t, 'input>, entry_point: ParseEntryPoint) -> Self {
         Self {
             source,
             events: Vec::new(),
             expected_kinds: Vec::new(),
+            entry_point,
         }
     }
 
@@ -77,6 +79,37 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events.push(Event::AddToken);
     }
 
+    pub(crate) fn error_and_bump(&mut self, message: &str) {
+        self.error_recover(message, &[]);
+    }
+
+    // TODO: use a similar TokenSet from RA
+    pub(crate) fn error_recover(&mut self, message: &str, recovery: &[TokenKind]) {
+        match self.peek() {
+            Some(t) => match t {
+                TokenKind::LBrace | TokenKind::RBrace => {
+                    self.error();
+                    return;
+                }
+
+                _ => (),
+            },
+            None => todo!(),
+        }
+
+        for kind in recovery {
+            if self.at(*kind) {
+                self.error();
+                return;
+            }
+        }
+
+        let m = self.start();
+        self.error();
+        self.bump();
+        m.complete(self, SyntaxKind::Error);
+    }
+
     pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
         self.expected_kinds.push(kind);
         self.peek() == Some(kind)
@@ -93,4 +126,12 @@ impl<'t, 'input> Parser<'t, 'input> {
     fn peek(&mut self) -> Option<TokenKind> {
         self.source.peek_kind()
     }
+}
+
+pub(super) enum ParseEntryPoint {
+    Root, // should produce a Vec of Stmt
+
+    Expr, // useful for testing parsing single expressions
+
+          // possibly others in the future for metaprogramming (RA has separate entry for macro expansion)
 }
