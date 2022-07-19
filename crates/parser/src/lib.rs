@@ -5,7 +5,7 @@ mod sink;
 mod source;
 mod syntax;
 
-use crate::parser::{ParseError, Parser};
+use self::parser::{ParseEntryPoint, ParseError, Parser};
 use lexer::Lexer;
 use rowan::GreenNode;
 use sink::Sink;
@@ -15,7 +15,18 @@ pub use syntax::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 pub fn parse(input: &str) -> Parse {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let source = Source::new(&tokens);
-    let parser = Parser::new(source);
+    let parser = Parser::new(source, ParseEntryPoint::Root);
+    let events = parser.parse();
+    let sink = Sink::new(&tokens, events);
+
+    sink.finish()
+}
+
+/// parsing entry point for expressions directly for easier testing
+pub fn parse_expr(input: &str) -> Parse {
+    let tokens: Vec<_> = Lexer::new(input).collect();
+    let source = Source::new(&tokens);
+    let parser = Parser::new(source, ParseEntryPoint::Expr);
     let events = parser.parse();
     let sink = Sink::new(&tokens, events);
 
@@ -51,5 +62,13 @@ impl Parse {
 #[cfg(test)]
 fn check(input: &str, expected_tree: expect_test::Expect) {
     let parse = parse(input);
+    expected_tree.assert_eq(&parse.debug_tree());
+}
+
+// Convenience function to test expression parsing directly, since _most_
+// language constructs are expressions.
+#[cfg(test)]
+fn check_expr(input: &str, expected_tree: expect_test::Expect) {
+    let parse = parse_expr(input);
     expected_tree.assert_eq(&parse.debug_tree());
 }
