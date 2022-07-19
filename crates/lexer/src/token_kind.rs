@@ -3,14 +3,19 @@ use std::fmt;
 use logos::Logos;
 
 #[derive(Logos, PartialEq, Debug, Clone, Copy)]
+#[logos(subpattern decimal = r"[0-9][_0-9]*")]
 pub enum TokenKind {
     #[regex("[A-Za-z][A-Za-z0-9_]*")]
     Ident,
 
     // TODO: implement better numbers
     // https://github.com/maciejhirsz/logos/issues/133#issuecomment-687281059
-    #[regex("[0-9]+")]
-    Int,
+    #[regex("(?&decimal)")]
+    IntLiteral,
+
+    // Allowed to omit digit before decimal (i.e. zero)
+    #[regex(r#"((?&decimal)\.(?&decimal)?|\.(?&decimal))"#)]
+    FloatLiteral,
 
     #[regex("\"[^\"\n]*\"")]
     String,
@@ -41,9 +46,6 @@ pub enum TokenKind {
 
     #[token("module")]
     Module,
-
-    #[token("mutable")]
-    Mutable,
 
     #[token("not")]
     Not,
@@ -204,7 +206,6 @@ impl fmt::Display for TokenKind {
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
             Self::Module => "‘module’",
-            Self::Mutable => "‘mutable’",
             Self::Not => "‘not’",
             Self::Or => "‘or’",
             Self::Return => "‘return’",
@@ -217,7 +218,8 @@ impl fmt::Display for TokenKind {
             // Literals
             Self::False => "‘false’",
             Self::True => "‘true’",
-            Self::Int => "int",
+            Self::IntLiteral => "int",
+            Self::FloatLiteral => "float",
             Self::String => "string",
 
             // Delimiters
@@ -306,8 +308,28 @@ mod tests {
     }
 
     #[test]
-    fn lex_number() {
-        check("123456", TokenKind::Int);
+    fn lex_integer() {
+        check("123456", TokenKind::IntLiteral);
+    }
+
+    #[test]
+    fn lex_integer_with_separators() {
+        check("123_456_789", TokenKind::IntLiteral);
+    }
+
+    #[test]
+    fn lex_float() {
+        check("1.23", TokenKind::FloatLiteral);
+    }
+
+    #[test]
+    fn lex_float_no_leading_digit() {
+        check(".123", TokenKind::FloatLiteral);
+    }
+
+    #[test]
+    fn lex_float_with_separators() {
+        check("123_456.789", TokenKind::FloatLiteral);
     }
 
     #[test]
@@ -338,11 +360,6 @@ mod tests {
     #[test]
     fn lex_let_keyword() {
         check("let", TokenKind::Let);
-    }
-
-    #[test]
-    fn lex_mutable_keyword() {
-        check("mutable", TokenKind::Mutable);
     }
 
     #[test]
