@@ -3,6 +3,11 @@ mod validation;
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
+// TODO: investigate macros to reduce boilerplate
+//
+// Each node probably has a "cast" function
+// Each node should have a "range" function for reporting diagnostics
+
 #[derive(Debug)]
 pub struct Root(SyntaxNode);
 
@@ -19,8 +24,6 @@ impl Root {
         self.0.children().filter_map(Stmt::cast)
     }
 
-    // This function is only for testing, but #[cfg(test)]
-    // causes rust-analyzer to think this function does not exist
     pub fn expr(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
@@ -50,7 +53,7 @@ impl Stmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct VariableDef(SyntaxNode);
 
 impl VariableDef {
@@ -70,7 +73,7 @@ impl VariableDef {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Block(Block),
     Binary(Binary),
@@ -104,9 +107,25 @@ impl Expr {
 
         Some(result)
     }
+
+    pub fn range(self) -> TextRange {
+        match self {
+            Expr::Block(e) => e.range(),
+            Expr::Binary(e) => e.range(),
+            Expr::BoolLiteral(e) => e.range(),
+            Expr::Function(e) => e.range(),
+            Expr::IntLiteral(e) => e.range(),
+            Expr::FloatLiteral(e) => e.range(),
+            Expr::Loop(e) => e.range(),
+            Expr::Paren(e) => e.range(),
+            Expr::StringLiteral(e) => e.range(),
+            Expr::Unary(e) => e.range(),
+            Expr::Ident(e) => e.range(),
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block(SyntaxNode);
 
 impl Block {
@@ -130,7 +149,7 @@ impl Block {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Binary(SyntaxNode);
 
 impl Binary {
@@ -157,7 +176,7 @@ impl Binary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function(SyntaxNode);
 
 impl Function {
@@ -179,7 +198,7 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntLiteral(SyntaxNode);
 
 impl IntLiteral {
@@ -196,7 +215,7 @@ impl IntLiteral {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FloatLiteral(SyntaxNode);
 
 impl FloatLiteral {
@@ -213,7 +232,7 @@ impl FloatLiteral {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoolLiteral(SyntaxNode);
 
 impl BoolLiteral {
@@ -234,7 +253,7 @@ impl BoolLiteral {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Loop(SyntaxNode);
 
 impl Loop {
@@ -247,7 +266,7 @@ impl Loop {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParenExpr(SyntaxNode);
 
 impl ParenExpr {
@@ -260,7 +279,7 @@ impl ParenExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StringLiteral(SyntaxNode);
 
 impl StringLiteral {
@@ -281,7 +300,7 @@ impl StringLiteral {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Unary(SyntaxNode);
 
 impl Unary {
@@ -302,7 +321,7 @@ impl Unary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ident(SyntaxNode);
 
 impl Ident {
@@ -315,7 +334,7 @@ impl Ident {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParamList(SyntaxNode);
 
 impl ParamList {
@@ -337,7 +356,7 @@ impl ParamList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Param(SyntaxNode);
 
 impl Param {
@@ -355,7 +374,7 @@ impl Param {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnType(SyntaxNode);
 
 impl ReturnType {
@@ -364,7 +383,7 @@ impl ReturnType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeDef(SyntaxNode);
 
 impl TypeDef {
