@@ -4,5 +4,5 @@
   },
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
-  "workbench.editor.labelFormat": "short"
+  "workbench.editor.labelFormat": "default"
 }
