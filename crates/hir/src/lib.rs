@@ -30,8 +30,14 @@ pub struct Fqn {
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
-    VariableDef { name: String, value: Expr },
+    VariableDef(Idx<VariableDef>),
     Expr(Idx<Expr>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VariableDef {
+    value: Idx<Expr>,
+    ast: ast::VariableDef,
 }
 
 #[derive(Debug, PartialEq)]
