@@ -13,6 +13,7 @@ use std::mem;
 
 const RECOVERY_SET: [TokenKind; 1] = [TokenKind::Let];
 
+#[derive(Debug)]
 pub(crate) struct Parser<'t, 'input> {
     source: Source<'t, 'input>,
     events: Vec<Event>,
@@ -35,6 +36,10 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events
     }
 
+    /// Creates a new `Marker` at the parser's current position
+    ///
+    /// Inserts a `Placeholder` event which is later replaced with
+    /// a `StartNode` event when the `Marker` is completed.
     pub(crate) fn start(&mut self) -> Marker {
         let pos = self.events.len();
         self.events.push(Event::Placeholder);
@@ -115,7 +120,7 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.peek() == Some(kind)
     }
 
-    fn at_set(&mut self, set: &[TokenKind]) -> bool {
+    pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {
         self.peek().map_or(false, |k| set.contains(&k))
     }
 
@@ -128,6 +133,7 @@ impl<'t, 'input> Parser<'t, 'input> {
     }
 }
 
+#[derive(Debug)]
 pub(super) enum ParseEntryPoint {
     Root, // should produce a Vec of Stmt
 

@@ -151,16 +151,17 @@ Root@0..77
             IntLiteral@50..51 "2"
         Newline@51..52 "\n"
         Emptyspace@52..62 "          "
-        InfixExpr@62..67
-          NameRef@62..64
-            Ident@62..63 "a"
-            Emptyspace@63..64 " "
-          Plus@64..65 "+"
-          Emptyspace@65..66 " "
-          NameRef@66..67
-            Ident@66..67 "b"
-        Newline@67..68 "\n"
-        Emptyspace@68..76 "        "
+        ExprStmt@62..76
+          InfixExpr@62..67
+            NameRef@62..64
+              Ident@62..63 "a"
+              Emptyspace@63..64 " "
+            Plus@64..65 "+"
+            Emptyspace@65..66 " "
+            NameRef@66..67
+              Ident@66..67 "b"
+          Newline@67..68 "\n"
+          Emptyspace@68..76 "        "
         RBrace@76..77 "}""#]],
         )
     }
@@ -188,9 +189,10 @@ Root@0..19
       BlockExpr@14..19
         LBrace@14..15 "{"
         Emptyspace@15..16 " "
-        IntExpr@16..18
-          IntLiteral@16..17 "1"
-          Emptyspace@17..18 " "
+        ExprStmt@16..18
+          IntExpr@16..18
+            IntLiteral@16..17 "1"
+            Emptyspace@17..18 " "
         RBrace@18..19 "}""#]],
         )
     }
@@ -225,15 +227,16 @@ Root@0..29
       BlockExpr@20..29
         LBrace@20..21 "{"
         Emptyspace@21..22 " "
-        InfixExpr@22..28
-          NameRef@22..24
-            Ident@22..23 "a"
-            Emptyspace@23..24 " "
-          Plus@24..25 "+"
-          Emptyspace@25..26 " "
-          IntExpr@26..28
-            IntLiteral@26..27 "1"
-            Emptyspace@27..28 " "
+        ExprStmt@22..28
+          InfixExpr@22..28
+            NameRef@22..24
+              Ident@22..23 "a"
+              Emptyspace@23..24 " "
+            Plus@24..25 "+"
+            Emptyspace@25..26 " "
+            IntExpr@26..28
+              IntLiteral@26..27 "1"
+              Emptyspace@27..28 " "
         RBrace@28..29 "}""#]],
         )
     }
@@ -277,15 +280,16 @@ Root@0..37
       BlockExpr@28..37
         LBrace@28..29 "{"
         Emptyspace@29..30 " "
-        InfixExpr@30..36
-          NameRef@30..32
-            Ident@30..31 "a"
-            Emptyspace@31..32 " "
-          Plus@32..33 "+"
-          Emptyspace@33..34 " "
-          NameRef@34..36
-            Ident@34..35 "b"
-            Emptyspace@35..36 " "
+        ExprStmt@30..36
+          InfixExpr@30..36
+            NameRef@30..32
+              Ident@30..31 "a"
+              Emptyspace@31..32 " "
+            Plus@32..33 "+"
+            Emptyspace@33..34 " "
+            NameRef@34..36
+              Ident@34..35 "b"
+              Emptyspace@35..36 " "
         RBrace@36..37 "}""#]],
         )
     }

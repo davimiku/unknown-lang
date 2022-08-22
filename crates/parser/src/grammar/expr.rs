@@ -109,10 +109,9 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // ex.
         // let print_hello = () -> { print "hello" }
         //                   ^
-        // For now, change the grammar so a "fun" keyword
-        // is required before the arg list until I get better
-        // at parsing. Without "fun" the parsing is ambiguous I think,
-        // requires lookahead until the first colon or RParen
+        // For now, require a "fun" keyword before the arg list.
+        // Without "fun" the parsing requires lookahead until
+        // the arrow. It may be implemented this way in the future.
         //
         // TODO: this might also be the start of a tuple?
         // ex.
@@ -736,8 +735,9 @@ Root@0..7
 Root@0..3
   BlockExpr@0..3
     LBrace@0..1 "{"
-    IntExpr@1..2
-      IntLiteral@1..2 "1"
+    ExprStmt@1..2
+      IntExpr@1..2
+        IntLiteral@1..2 "1"
     RBrace@2..3 "}""#]],
         )
     }
@@ -778,15 +778,16 @@ Root@0..35
         IntLiteral@24..25 "2"
     Newline@25..26 "\n"
     Emptyspace@26..28 "  "
-    InfixExpr@28..33
-      NameRef@28..30
-        Ident@28..29 "x"
-        Emptyspace@29..30 " "
-      Plus@30..31 "+"
-      Emptyspace@31..32 " "
-      NameRef@32..33
-        Ident@32..33 "y"
-    Newline@33..34 "\n"
+    ExprStmt@28..34
+      InfixExpr@28..33
+        NameRef@28..30
+          Ident@28..29 "x"
+          Emptyspace@29..30 " "
+        Plus@30..31 "+"
+        Emptyspace@31..32 " "
+        NameRef@32..33
+          Ident@32..33 "y"
+      Newline@33..34 "\n"
     RBrace@34..35 "}""#]],
         )
     }

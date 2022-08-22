@@ -16,6 +16,8 @@ impl Marker {
         }
     }
 
+    /// Completes the current `Marker` by replacing the `Placeholder`
+    /// event with a `StartNode` with the appropriate `SyntaxKind`.
     pub(crate) fn complete(mut self, p: &mut Parser, kind: SyntaxKind) -> CompletedMarker {
         self.bomb.defuse();
 
@@ -33,22 +35,27 @@ impl Marker {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct CompletedMarker {
     pos: usize,
 }
 
 impl CompletedMarker {
+    /// Allows "wrapping" a parsed node by a "preceding" node
+    /// after the fact.
+    ///
+    /// Returns a `Marker` representing the wrapping node
+    /// that can be completed with a different syntax kind.
     pub(crate) fn precede(self, p: &mut Parser) -> Marker {
         let new_m = p.start();
 
-        if let Event::StartNode {
-            ref mut forward_parent,
-            ..
-        } = p.events[self.pos]
-        {
-            *forward_parent = Some(new_m.pos - self.pos);
-        } else {
-            unreachable!();
+        match p.events[self.pos] {
+            Event::StartNode {
+                ref mut forward_parent,
+                ..
+            } => *forward_parent = Some(new_m.pos - self.pos),
+
+            _ => unreachable!(),
         }
 
         new_m

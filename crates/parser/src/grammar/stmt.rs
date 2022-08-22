@@ -5,41 +5,42 @@ use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
 pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
+    use TokenKind as T;
     if p.at_end() {
         return None;
     }
 
-    while p.at(TokenKind::Newline) {
+    while p.at(T::Newline) {
         p.bump();
     }
 
-    if p.at(TokenKind::Let) {
+    if p.at(T::Let) {
         return Some(parse_variable_def(p));
-    }
-
-    if p.at(TokenKind::Type) {
+    } else if p.at(T::Type) {
         // parse_type_def
         todo!();
-    }
-
-    if p.at(TokenKind::Module) {
+    } else if p.at(T::Module) {
         return Some(parse_module_def(p));
     }
 
-    let cm = parse_expr(p)?;
+    // start ExprStmt
+    let m = p.start();
 
-    while p.at(TokenKind::Newline) {
+    loop {
+        if p.at_set(&[T::Newline, T::RBrace]) || p.at_end() {
+            break;
+        }
+
+        parse_expr(p)?;
+    }
+
+    while p.at(T::Newline) {
         p.bump();
     }
 
-    if p.at(TokenKind::RBrace) {
-        return Some(cm);
-    }
+    let cm = m.complete(p, SyntaxKind::ExprStmt);
 
-    let m = cm.precede(p);
-    // expect something
-
-    Some(m.complete(p, SyntaxKind::ExprStmt))
+    Some(cm)
 }
 
 fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
@@ -134,6 +135,22 @@ Root@0..3
   ExprStmt@0..3
     IntExpr@0..3
       IntLiteral@0..3 "123""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call() {
+        let input = "print a";
+        check(
+            input,
+            expect![[r#"
+Root@0..7
+  ExprStmt@0..7
+    NameRef@0..6
+      Ident@0..5 "print"
+      Emptyspace@5..6 " "
+    NameRef@6..7
+      Ident@6..7 "a""#]],
         )
     }
 

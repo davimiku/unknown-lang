@@ -10,6 +10,7 @@ use lexer::Lexer;
 use rowan::GreenNode;
 use sink::Sink;
 use source::Source;
+use std::fmt::Write;
 pub use syntax::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 
 pub fn parse(input: &str) -> Parse {
@@ -48,7 +49,7 @@ impl Parse {
         s.push_str(&tree[0..tree.len() - 1]);
 
         for error in &self.errors {
-            s.push_str(&format!("\n{}", error));
+            write!(s, "\n{error}").expect("write! shouldn't fail on strings");
         }
 
         s

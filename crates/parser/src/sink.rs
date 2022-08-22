@@ -29,7 +29,8 @@ impl<'t, 'input> Sink<'t, 'input> {
 
     pub(super) fn finish(mut self) -> Parse {
         for i in 0..self.events.len() {
-            match mem::replace(&mut self.events[i], Event::Placeholder) {
+            let prev = mem::replace(&mut self.events[i], Event::Placeholder);
+            match prev {
                 Event::StartNode {
                     kind,
                     forward_parent,
@@ -45,17 +46,19 @@ impl<'t, 'input> Sink<'t, 'input> {
                     while let Some(fp) = forward_parent {
                         idx += fp;
 
-                        forward_parent = if let Event::StartNode {
-                            kind,
-                            forward_parent,
-                        } =
-                            mem::replace(&mut self.events[idx], Event::Placeholder)
-                        {
-                            kinds.push(kind);
-                            forward_parent
-                        } else {
-                            unreachable!()
-                        };
+                        let prev = mem::replace(&mut self.events[idx], Event::Placeholder);
+
+                        forward_parent = match prev {
+                            Event::StartNode {
+                                kind,
+                                forward_parent,
+                            } => {
+                                kinds.push(kind);
+                                forward_parent
+                            }
+
+                            _ => unreachable!(),
+                        }
                     }
 
                     for kind in kinds.into_iter().rev() {
