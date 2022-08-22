@@ -140,20 +140,20 @@ Root@0..3
     #[test]
     fn parse_module_definition() {
         check(
-            "module turn_manager = { }",
+            "module a = { }",
             expect![[r#"
-Root@0..25
-  ModuleDef@0..25
+Root@0..14
+  ModuleDef@0..14
     Module@0..6 "module"
     Emptyspace@6..7 " "
-    Ident@7..19 "turn_manager"
-    Emptyspace@19..20 " "
-    Equals@20..21 "="
-    Emptyspace@21..22 " "
-    BlockExpr@22..25
-      LBrace@22..23 "{"
-      Emptyspace@23..24 " "
-      RBrace@24..25 "}""#]],
+    Ident@7..8 "a"
+    Emptyspace@8..9 " "
+    Equals@9..10 "="
+    Emptyspace@10..11 " "
+    BlockExpr@11..14
+      LBrace@11..12 "{"
+      Emptyspace@12..13 " "
+      RBrace@13..14 "}""#]],
         )
     }
 
