@@ -48,14 +48,21 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.bump();
 
-    p.expect(TokenKind::Ident);
+    if !p.at(TokenKind::Equals) {
+        // TODO: Pattern rather than Ident for destructuring
+        p.expect(TokenKind::Ident);
 
-    if p.at(TokenKind::Colon) {
+        if p.at(TokenKind::Colon) {
+            p.bump();
+            parse_type(p);
+        }
+
+        p.expect(TokenKind::Equals);
+    } else {
+        // invalid syntax, but parse gracefully anyways
+        // lowering will report an error
         p.bump();
-        parse_type(p);
     }
-
-    p.expect(TokenKind::Equals);
 
     parse_expr(p);
 
@@ -123,6 +130,22 @@ Root@0..14
     Emptyspace@12..13 " "
     IntExpr@13..14
       IntLiteral@13..14 "1""#]],
+        )
+    }
+
+    #[test]
+    fn parse_variable_without_identifier() {
+        check(
+            "let = 1",
+            expect![[r#"
+Root@0..7
+  VariableDef@0..7
+    Let@0..3 "let"
+    Emptyspace@3..4 " "
+    Equals@4..5 "="
+    Emptyspace@5..6 " "
+    IntExpr@6..7
+      IntLiteral@6..7 "1""#]],
         )
     }
 
