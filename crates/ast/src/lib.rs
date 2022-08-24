@@ -53,7 +53,7 @@ impl Stmt {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VariableDef(SyntaxNode);
 
 impl VariableDef {

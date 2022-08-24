@@ -2,7 +2,7 @@ use std::fmt;
 
 use logos::Logos;
 
-#[derive(Logos, PartialEq, Debug, Clone, Copy)]
+#[derive(Logos, PartialEq, Eq, Debug, Clone, Copy)]
 #[logos(subpattern decimal = r"[0-9][_0-9]*")]
 pub enum TokenKind {
     #[regex("[A-Za-z][A-Za-z0-9_]*")]

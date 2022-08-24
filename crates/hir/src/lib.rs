@@ -18,7 +18,7 @@ enum TypeDiagnosticVariant {
     Undefined { name: String },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Name(String);
 
 /// Fully-Qualified name of a identifier
@@ -28,13 +28,13 @@ pub struct Fqn {
     pub name: Name,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
     VariableDef(Idx<VariableDef>),
     Expr(Idx<Expr>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VariableDef {
     value: Idx<Expr>,
     ast: ast::VariableDef,
@@ -77,7 +77,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -88,7 +88,8 @@ pub enum BinaryOp {
     Path,
 }
 
-#[derive(Debug, PartialEq)]
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
     Not,
