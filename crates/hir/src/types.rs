@@ -5,7 +5,6 @@ use la_arena::{Arena, Idx};
 
 #[derive(Debug, PartialEq)]
 pub enum Type {
-    // #[default]  // TODO: Rust 1.63.0
     Undetermined,
 
     Bool,
@@ -18,4 +17,10 @@ pub enum Type {
     StringLiteral(String),
     Named(Name),
     // Fun -- (Vec<Type>, Type) ? for params type and return type
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Undetermined
+    }
 }
