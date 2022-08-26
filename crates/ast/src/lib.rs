@@ -35,7 +35,10 @@ impl Root {
 
 #[derive(Debug)]
 pub enum Stmt {
+    /// A local (let) binding
     VariableDef(VariableDef),
+
+    /// Expression
     Expr(Expr),
 }
 
@@ -57,6 +60,7 @@ impl Stmt {
 pub struct VariableDef(SyntaxNode);
 
 impl VariableDef {
+    // TODO: Pattern rather than name (Ident)
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0
             .children_with_tokens()
