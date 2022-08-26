@@ -41,31 +41,23 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
     let mut lhs = parse_lhs(p)?;
 
     loop {
-        let op = if p.at(Plus) {
-            BinaryOp::Add
-        } else if p.at(Dash) {
-            BinaryOp::Sub
-        } else if p.at(Star) {
-            BinaryOp::Mul
-        } else if p.at(Slash) {
-            BinaryOp::Div
-        } else if p.at(Percent) {
-            BinaryOp::Rem
-        } else if p.at(Caret) {
-            BinaryOp::Exp
-        } else if p.at(And) {
-            BinaryOp::And
-        } else if p.at(Or) {
-            BinaryOp::Or
-        } else if p.at(Dot) {
-            BinaryOp::Path
-        // TODO: can function expressions be parsed as a Binary expression?
-        // } else if p.at(Arrow) {
-        // BinaryOp::Fun
-        } else {
+        let curr = p.peek()?;
+        let op = match curr {
+            Plus => BinaryOp::Add,
+            Dash => BinaryOp::Sub,
+            Star => BinaryOp::Mul,
+            Slash => BinaryOp::Div,
+            Percent => BinaryOp::Rem,
+            Caret => BinaryOp::Exp,
+            And => BinaryOp::And,
+            Or => BinaryOp::Or,
+            Dot => BinaryOp::Path,
+            // TODO: can function expressions be parsed as a Binary expression?
+            // Arrow => BinaryOp::Fun
+
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
-            break;
+            _ => break,
         };
 
         let (left_binding_power, right_binding_power) = op.binding_power();
@@ -77,7 +69,9 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         // Consume the operator token
         p.bump();
 
+        // Starts a new marker that "wraps" the already parsed LHS
         let m = lhs.precede(p);
+
         let parsed_rhs = expr_binding_power(p, right_binding_power).is_some();
         lhs = m.complete(p, SyntaxKind::InfixExpr);
 
@@ -90,21 +84,22 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
-    let cm = if p.at(IntLiteral) {
-        parse_int_literal(p)
-    } else if p.at(FloatLiteral) {
-        parse_float_literal(p)
-    } else if p.at(String) {
-        parse_string_literal(p)
-    } else if p.at(False) || p.at(True) {
-        parse_bool_literal(p)
-    } else if p.at(Ident) {
-        parse_name_ref(p)
-    } else if p.at(Dash) {
-        parse_negation_expr(p)
-    } else if p.at(Not) {
-        parse_not_expr(p)
-    } else if p.at(LParen) {
+    let curr = p.peek();
+    if curr.is_none() {
+        p.error();
+        return None;
+    }
+    let curr = curr.unwrap();
+
+    let cm = match curr {
+        IntLiteral => parse_int_literal(p),
+        FloatLiteral => parse_float_literal(p),
+        String => parse_string_literal(p),
+        False => parse_bool_literal(p),
+        True => parse_bool_literal(p),
+        Ident => parse_name_ref(p),
+        Dash => parse_negation_expr(p),
+        Not => parse_not_expr(p),
         // TODO: this could be the start of function arguments
         // ex.
         // let add = (a: int, b: int) -> { a + b }
@@ -120,16 +115,16 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // ex.
         // let point = (1, 2)
         //             ^
-        parse_paren_expr(p)
-    } else if p.at(Fun) {
-        parse_fun_expr(p)
-    } else if p.at(LBrace) {
-        parse_block(p)
-    } else if p.at(Loop) {
-        parse_loop(p)
-    } else {
-        p.error();
-        return None;
+        // parentheses are already overloaded as a grouping expression & parameters,
+        // probably can't overload again as tuples
+        LParen => parse_paren_expr(p),
+        Fun => parse_fun_expr(p),
+        LBrace => parse_block(p),
+        Loop => parse_loop(p),
+        _ => {
+            p.error();
+            return None;
+        }
     };
 
     Some(cm)
@@ -677,7 +672,7 @@ Root@0..6
     LParen@0..1 "("
     NameRef@1..6
       Ident@1..6 "hello"
-error at 1..6: expected ‘+’, ‘-’, ‘*’, ‘/’, ‘%’, ‘^’, ‘and’, ‘or’, ‘.’ or ‘)’"#]],
+error at 1..6: expected ‘)’"#]],
         );
     }
 
