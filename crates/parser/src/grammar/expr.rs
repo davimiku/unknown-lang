@@ -1,7 +1,7 @@
 mod function;
 mod type_expr;
 
-use lexer::TokenKind;
+use lexer::TokenKind::*;
 
 use crate::grammar::stmt::parse_stmt;
 use crate::parser::marker::CompletedMarker;
@@ -16,7 +16,7 @@ pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Ident));
+    assert!(p.at(Ident));
 
     let m = p.start();
     parse_type_expr(p);
@@ -24,15 +24,15 @@ pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
 }
 
 pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::LBrace));
+    assert!(p.at(LBrace));
     let m = p.start();
     p.bump();
 
-    while !p.at(TokenKind::RBrace) && !p.at_end() {
+    while !p.at(RBrace) && !p.at_end() {
         parse_stmt(p);
     }
 
-    p.expect(TokenKind::RBrace);
+    p.expect(RBrace);
 
     m.complete(p, SyntaxKind::BlockExpr)
 }
@@ -41,24 +41,27 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
     let mut lhs = parse_lhs(p)?;
 
     loop {
-        let op = if p.at(TokenKind::Plus) {
+        let op = if p.at(Plus) {
             BinaryOp::Add
-        } else if p.at(TokenKind::Dash) {
+        } else if p.at(Dash) {
             BinaryOp::Sub
-        } else if p.at(TokenKind::Star) {
+        } else if p.at(Star) {
             BinaryOp::Mul
-        } else if p.at(TokenKind::Slash) {
+        } else if p.at(Slash) {
             BinaryOp::Div
-        } else if p.at(TokenKind::Percent) {
+        } else if p.at(Percent) {
             BinaryOp::Rem
-        } else if p.at(TokenKind::Caret) {
+        } else if p.at(Caret) {
             BinaryOp::Exp
-        } else if p.at(TokenKind::And) {
+        } else if p.at(And) {
             BinaryOp::And
-        } else if p.at(TokenKind::Or) {
+        } else if p.at(Or) {
             BinaryOp::Or
-        } else if p.at(TokenKind::Dot) {
+        } else if p.at(Dot) {
             BinaryOp::Path
+        // TODO: can function expressions be parsed as a Binary expression?
+        // } else if p.at(Arrow) {
+        // BinaryOp::Fun
         } else {
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
@@ -87,21 +90,21 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
-    let cm = if p.at(TokenKind::IntLiteral) {
+    let cm = if p.at(IntLiteral) {
         parse_int_literal(p)
-    } else if p.at(TokenKind::FloatLiteral) {
+    } else if p.at(FloatLiteral) {
         parse_float_literal(p)
-    } else if p.at(TokenKind::String) {
+    } else if p.at(String) {
         parse_string_literal(p)
-    } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
+    } else if p.at(False) || p.at(True) {
         parse_bool_literal(p)
-    } else if p.at(TokenKind::Ident) {
+    } else if p.at(Ident) {
         parse_name_ref(p)
-    } else if p.at(TokenKind::Dash) {
+    } else if p.at(Dash) {
         parse_negation_expr(p)
-    } else if p.at(TokenKind::Not) {
+    } else if p.at(Not) {
         parse_not_expr(p)
-    } else if p.at(TokenKind::LParen) {
+    } else if p.at(LParen) {
         // TODO: this could be the start of function arguments
         // ex.
         // let add = (a: int, b: int) -> { a + b }
@@ -118,11 +121,11 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // let point = (1, 2)
         //             ^
         parse_paren_expr(p)
-    } else if p.at(TokenKind::Fun) {
+    } else if p.at(Fun) {
         parse_fun_expr(p)
-    } else if p.at(TokenKind::LBrace) {
+    } else if p.at(LBrace) {
         parse_block(p)
-    } else if p.at(TokenKind::Loop) {
+    } else if p.at(Loop) {
         parse_loop(p)
     } else {
         p.error();
@@ -133,7 +136,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::IntLiteral));
+    assert!(p.at(IntLiteral));
 
     let m = p.start();
     p.bump();
@@ -141,7 +144,7 @@ fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::FloatLiteral));
+    assert!(p.at(FloatLiteral));
 
     let m = p.start();
     p.bump();
@@ -149,7 +152,7 @@ fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::String));
+    assert!(p.at(String));
 
     let m = p.start();
     p.bump();
@@ -157,7 +160,7 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::False) || p.at(TokenKind::True));
+    assert!(p.at(False) || p.at(True));
 
     let m = p.start();
     p.bump();
@@ -165,7 +168,7 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
-    // if p.at(TokenKind::Ident) {
+    // if p.at(Ident) {
     let m = p.start();
     p.bump();
     m.complete(p, SyntaxKind::NameRef)
@@ -175,7 +178,7 @@ fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Dash));
+    assert!(p.at(Dash));
 
     let m = p.start();
 
@@ -191,7 +194,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Not));
+    assert!(p.at(Not));
 
     let m = p.start();
 
@@ -207,18 +210,18 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::LParen));
+    assert!(p.at(LParen));
 
     let m = p.start();
     p.bump();
     expr_binding_power(p, 0);
-    p.expect(TokenKind::RParen);
+    p.expect(RParen);
 
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
 fn parse_loop(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Loop));
+    assert!(p.at(Loop));
     let m = p.start();
     p.bump();
 
@@ -228,17 +231,34 @@ fn parse_loop(p: &mut Parser) -> CompletedMarker {
 }
 
 enum BinaryOp {
+    /// `+`
     Add,
+
+    /// `-`
     Sub,
+
+    /// `*`
     Mul,
+
+    /// `/`
     Div,
+
+    /// `%`
     Rem,
+
+    /// `**`
     Exp,
 
+    /// `and`
     And,
+
+    /// `or`
     Or,
 
+    /// `.`
     Path,
+    // `->`
+    // Fun,
 }
 
 impl BinaryOp {
