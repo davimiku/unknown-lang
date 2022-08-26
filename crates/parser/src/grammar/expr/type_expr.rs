@@ -53,7 +53,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     let cm = if p.at(TokenKind::IntLiteral) {
         parse_int_literal(p)
-    } else if p.at(TokenKind::String) {
+    } else if p.at(TokenKind::StringLiteral) {
         parse_string_literal(p)
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)

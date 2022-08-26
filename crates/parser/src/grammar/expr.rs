@@ -1,7 +1,7 @@
 mod function;
 mod type_expr;
 
-use lexer::TokenKind::*;
+use lexer::TokenKind::{self, *};
 
 use crate::grammar::stmt::parse_stmt;
 use crate::parser::marker::CompletedMarker;
@@ -10,6 +10,17 @@ use crate::SyntaxKind;
 
 use self::function::parse_fun_expr;
 use self::type_expr::parse_type_expr;
+
+/// Tokens that may start an expression
+const EXPR_START: [TokenKind; 7] = [
+    LBrace,
+    LParen,
+    Ident,
+    IntLiteral,
+    StringLiteral,
+    False,
+    True,
+];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
@@ -76,6 +87,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         lhs = m.complete(p, SyntaxKind::InfixExpr);
 
         if !parsed_rhs {
+            // TODO: add error like "expected expression on RHS"
             break;
         }
     }
@@ -94,7 +106,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     let cm = match curr {
         IntLiteral => parse_int_literal(p),
         FloatLiteral => parse_float_literal(p),
-        String => parse_string_literal(p),
+        StringLiteral => parse_string_literal(p),
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
         Ident => parse_name_ref(p),
@@ -147,7 +159,7 @@ fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(String));
+    assert!(p.at(StringLiteral));
 
     let m = p.start();
     p.bump();
@@ -162,14 +174,75 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BoolExpr)
 }
 
+/// Parses starting with an identifier from an expression context.
+///
+/// This could take a few forms:
+///
+/// ```txt
+/// let a = b
+/// //      ^   simple identifier
+///
+/// let a = b.c
+/// //      ^^^ path
+///
+/// let a = f ()
+/// //      ^^^^ function call no arguments
+///
+/// let a = f b
+/// //      ^^^  function call one argument
+///
+/// let a = f (b, c)
+///         ^^^^^^^^ function call multiple arguments
+/// ```
 fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
-    // if p.at(Ident) {
+    assert!(p.at(Ident));
+
     let m = p.start();
-    p.bump();
-    m.complete(p, SyntaxKind::NameRef)
-    // } else {
-    //     p.error_and_bump("expected identifier");
-    // }
+    parse_path(p);
+
+    if p.at_set(&EXPR_START) {
+        parse_function_arguments(p);
+    }
+
+    m.complete(p, SyntaxKind::Call)
+}
+
+fn parse_path(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    p.expect(Ident);
+
+    while p.at(Dot) {
+        p.bump(); // eat Dot
+
+        // TODO: would be better with recovery here, at least to the next newline or '}'
+        // or potentially recover right away and continue to parse the next thing
+        p.expect(Ident);
+    }
+
+    m.complete(p, SyntaxKind::Path)
+}
+
+fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at_set(&EXPR_START));
+    let m = p.start();
+
+    // single arg may omit the parentheses
+    if !p.at(LParen) {
+        parse_expr(p);
+    } else {
+        p.bump();
+
+        while p.at_set(&EXPR_START) {
+            parse_expr(p);
+
+            if p.at(Comma) {
+                p.bump();
+            }
+        }
+        p.expect(RParen);
+    }
+
+    m.complete(p, SyntaxKind::CallArgs)
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
@@ -362,11 +435,12 @@ Root@0..7
     #[test]
     fn parse_variable_ref() {
         check_expr(
-            "counter",
+            "a",
             expect![[r#"
-Root@0..7
-  NameRef@0..7
-    Ident@0..7 "counter""#]],
+Root@0..1
+  Call@0..1
+    Path@0..1
+      Ident@0..1 "a""#]],
         );
     }
 
@@ -498,7 +572,7 @@ Root@0..12
     }
 
     #[test]
-    fn do_not_parse_operator_if_gettting_rhs_failed() {
+    fn do_not_parse_operator_if_getting_rhs_failed() {
         check_expr(
             "(1+",
             expect![[r#"
@@ -509,7 +583,7 @@ Root@0..3
       IntExpr@1..2
         IntLiteral@1..2 "1"
       Plus@2..3 "+"
-error at 2..3: expected int, float, string, ‘false’, ‘true’, identifier, ‘-’, ‘not’, ‘(’, ‘fun’, ‘{’ or ‘loop’
+error at 2..3: expected 
 error at 2..3: expected ‘)’"#]],
         );
     }
@@ -670,9 +744,10 @@ Root@0..7
 Root@0..6
   ParenExpr@0..6
     LParen@0..1 "("
-    NameRef@1..6
-      Ident@1..6 "hello"
-error at 1..6: expected ‘)’"#]],
+    Call@1..6
+      Path@1..6
+        Ident@1..6 "hello"
+error at 1..6: expected ‘.’ or ‘)’"#]],
         );
     }
 
@@ -682,8 +757,9 @@ error at 1..6: expected ‘)’"#]],
             "a",
             expect![[r#"
 Root@0..1
-  NameRef@0..1
-    Ident@0..1 "a""#]],
+  Call@0..1
+    Path@0..1
+      Ident@0..1 "a""#]],
         )
     }
 
@@ -693,11 +769,10 @@ Root@0..1
             "a.b",
             expect![[r#"
 Root@0..3
-  InfixExpr@0..3
-    NameRef@0..1
+  Call@0..3
+    Path@0..3
       Ident@0..1 "a"
-    Dot@1..2 "."
-    NameRef@2..3
+      Dot@1..2 "."
       Ident@2..3 "b""#]],
         )
     }
@@ -708,37 +783,126 @@ Root@0..3
             "a.b.c",
             expect![[r#"
 Root@0..5
-  InfixExpr@0..5
-    InfixExpr@0..3
-      NameRef@0..1
-        Ident@0..1 "a"
+  Call@0..5
+    Path@0..5
+      Ident@0..1 "a"
       Dot@1..2 "."
-      NameRef@2..3
-        Ident@2..3 "b"
-    Dot@3..4 "."
-    NameRef@4..5
+      Ident@2..3 "b"
+      Dot@3..4 "."
       Ident@4..5 "c""#]],
         )
     }
 
     #[test]
-    fn path_higher_precedence_than_arithmetic() {
+    fn parse_path_higher_precedence_than_arithmetic() {
         check_expr(
             "a.b * c",
             expect![[r#"
 Root@0..7
   InfixExpr@0..7
-    InfixExpr@0..4
-      NameRef@0..1
+    Call@0..4
+      Path@0..4
         Ident@0..1 "a"
-      Dot@1..2 "."
-      NameRef@2..4
+        Dot@1..2 "."
         Ident@2..3 "b"
         Emptyspace@3..4 " "
     Star@4..5 "*"
     Emptyspace@5..6 " "
-    NameRef@6..7
-      Ident@6..7 "c""#]],
+    Call@6..7
+      Path@6..7
+        Ident@6..7 "c""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call_no_args() {
+        check_expr(
+            "func ()",
+            expect![[r#"
+Root@0..7
+  Call@0..7
+    Path@0..5
+      Ident@0..4 "func"
+      Emptyspace@4..5 " "
+    CallArgs@5..7
+      LParen@5..6 "("
+      RParen@6..7 ")""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call_one_int() {
+        check_expr(
+            "print 1",
+            expect![[r#"
+Root@0..7
+  Call@0..7
+    Path@0..6
+      Ident@0..5 "print"
+      Emptyspace@5..6 " "
+    CallArgs@6..7
+      IntExpr@6..7
+        IntLiteral@6..7 "1""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call_one_path() {
+        check_expr(
+            "print a",
+            expect![[r#"
+Root@0..7
+  Call@0..7
+    Path@0..6
+      Ident@0..5 "print"
+      Emptyspace@5..6 " "
+    CallArgs@6..7
+      Call@6..7
+        Path@6..7
+          Ident@6..7 "a""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call_nested_path() {
+        check_expr(
+            "print a.b.c",
+            expect![[r#"
+Root@0..11
+  Call@0..11
+    Path@0..6
+      Ident@0..5 "print"
+      Emptyspace@5..6 " "
+    CallArgs@6..11
+      Call@6..11
+        Path@6..11
+          Ident@6..7 "a"
+          Dot@7..8 "."
+          Ident@8..9 "b"
+          Dot@9..10 "."
+          Ident@10..11 "c""#]],
+        )
+    }
+
+    #[test]
+    fn parse_function_call_two_args() {
+        check_expr(
+            "add (1, 2)",
+            expect![[r#"
+Root@0..10
+  Call@0..10
+    Path@0..4
+      Ident@0..3 "add"
+      Emptyspace@3..4 " "
+    CallArgs@4..10
+      LParen@4..5 "("
+      IntExpr@5..6
+        IntLiteral@5..6 "1"
+      Comma@6..7 ","
+      Emptyspace@7..8 " "
+      IntExpr@8..9
+        IntLiteral@8..9 "2"
+      RParen@9..10 ")""#]],
         )
     }
 
@@ -795,13 +959,15 @@ Root@0..35
     Emptyspace@26..28 "  "
     ExprStmt@28..34
       InfixExpr@28..33
-        NameRef@28..30
-          Ident@28..29 "x"
-          Emptyspace@29..30 " "
+        Call@28..30
+          Path@28..30
+            Ident@28..29 "x"
+            Emptyspace@29..30 " "
         Plus@30..31 "+"
         Emptyspace@31..32 " "
-        NameRef@32..33
-          Ident@32..33 "y"
+        Call@32..33
+          Path@32..33
+            Ident@32..33 "y"
       Newline@33..34 "\n"
     RBrace@34..35 "}""#]],
         )

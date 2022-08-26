@@ -108,7 +108,7 @@ Root@0..13
     Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
-    NameRef@10..13
+    Path@10..13
       Ident@10..13 "bar""#]],
         );
     }
@@ -126,7 +126,7 @@ Root@0..14
     Colon@5..6 ":"
     Emptyspace@6..7 " "
     TypeExpr@7..11
-      NameRef@7..11
+      Path@7..11
         Ident@7..10 "int"
         Emptyspace@10..11 " "
     Equals@11..12 "="
@@ -172,10 +172,10 @@ Root@0..3
             expect![[r#"
 Root@0..7
   ExprStmt@0..7
-    NameRef@0..6
+    Path@0..6
       Ident@0..5 "print"
       Emptyspace@5..6 " "
-    NameRef@6..7
+    Path@6..7
       Ident@6..7 "a""#]],
         )
     }
@@ -222,7 +222,7 @@ Root@0..17
     Emptyspace@13..14 " "
     Equals@14..15 "="
     Emptyspace@15..16 " "
-    NameRef@16..17
+    Path@16..17
       Ident@16..17 "a"
 error at 8..11: expected int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
         );

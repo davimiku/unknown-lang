@@ -1,6 +1,8 @@
 use lexer::{Token, TokenKind};
 use rowan::TextRange;
 
+/// Represents the source of the tokens into the parser,
+/// typically borrowed from the lexer
 #[derive(Debug)]
 pub(super) struct Source<'t, 'input> {
     tokens: &'t [Token<'input>],

@@ -7,17 +7,28 @@ use crate::event::Event;
 use crate::grammar;
 use crate::source::Source;
 use crate::syntax::SyntaxKind;
-use lexer::{Token, TokenKind};
+use lexer::TokenKind;
 use marker::Marker;
 use std::mem;
 
 const RECOVERY_SET: [TokenKind; 1] = [TokenKind::Let];
 
+/// Struct that maintains state while parsing the tokens
+/// into a Concrete Syntax Tree.
 #[derive(Debug)]
 pub(crate) struct Parser<'t, 'input> {
+    /// Token source
     source: Source<'t, 'input>,
+
+    errors: Vec<()>,
+
+    /// Parsing events that have occurred
     events: Vec<Event>,
+
+    /// Temporary list of expected tokens for error reporting
     expected_kinds: Vec<TokenKind>,
+
+    /// Entry point of parsing to control how the events are used
     pub(crate) entry_point: ParseEntryPoint,
 }
 
@@ -27,6 +38,7 @@ impl<'t, 'input> Parser<'t, 'input> {
             source,
             events: Vec::new(),
             expected_kinds: Vec::new(),
+            errors: Vec::new(),
             entry_point,
         }
     }
@@ -47,6 +59,7 @@ impl<'t, 'input> Parser<'t, 'input> {
         Marker::new(pos)
     }
 
+    /// Bumps if the expected matches actual, errors otherwise
     pub(crate) fn expect(&mut self, kind: TokenKind) {
         if self.at(kind) {
             self.bump();
@@ -55,21 +68,33 @@ impl<'t, 'input> Parser<'t, 'input> {
         }
     }
 
+    pub(crate) fn expect_no_skip(&mut self, kind: TokenKind) {
+        if self.at(kind) {
+            self.bump();
+        } else {
+            self.error_no_skip();
+        }
+    }
+
     pub(crate) fn error(&mut self) {
         let current_token = self.source.peek_token();
 
-        let (found, range) = if let Some(Token { kind, range, .. }) = current_token {
-            (Some(*kind), *range)
+        let (found, range) = if let Some(token) = current_token {
+            (Some(token.kind), token.range)
         } else {
-            // If we’re at the end of the input we use the range of the very last token in the input.
-            (None, self.source.last_token_range().unwrap())
+            // If already at the end, best thing is the range of the last token
+            let range = self.source.last_token_range().unwrap();
+
+            (None, range)
         };
 
-        self.events.push(Event::Error(ParseError {
-            expected: mem::take(&mut self.expected_kinds),
+        let expected = mem::take(&mut self.expected_kinds);
+        let parse_error = ParseError {
+            expected,
             found,
             range,
-        }));
+        };
+        self.events.push(Event::Error(parse_error));
 
         if !self.at_set(&RECOVERY_SET) && !self.at_end() {
             let m = self.start();
@@ -78,6 +103,13 @@ impl<'t, 'input> Parser<'t, 'input> {
         }
     }
 
+    pub(crate) fn error_no_skip(&mut self) {
+        //
+    }
+
+    /// Consumes the next token and clears all expected tokens
+    ///
+    /// Panic: if the input is already at the end
     pub(crate) fn bump(&mut self) {
         self.expected_kinds.clear();
         self.source.next_token().unwrap();
@@ -115,6 +147,10 @@ impl<'t, 'input> Parser<'t, 'input> {
         m.complete(self, SyntaxKind::Error);
     }
 
+    /// Checks if the parser is at a certain kind of valid token
+    ///
+    /// Side effect: adds this token to the current list of expected tokens
+    /// in case of a future parse error
     pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
         self.expected_kinds.push(kind);
         self.peek() == Some(kind)
@@ -135,7 +171,7 @@ impl<'t, 'input> Parser<'t, 'input> {
 
 #[derive(Debug)]
 pub(super) enum ParseEntryPoint {
-    Root, // should produce a Vec of Stmt
+    Root, // should produce a Vec<Stmt>
 
     Expr, // useful for testing parsing single expressions
 

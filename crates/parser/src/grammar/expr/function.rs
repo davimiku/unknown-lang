@@ -169,12 +169,12 @@ Root@0..77
         Emptyspace@52..62 "          "
         ExprStmt@62..76
           InfixExpr@62..67
-            NameRef@62..64
+            Path@62..64
               Ident@62..63 "a"
               Emptyspace@63..64 " "
             Plus@64..65 "+"
             Emptyspace@65..66 " "
-            NameRef@66..67
+            Path@66..67
               Ident@66..67 "b"
           Newline@67..68 "\n"
           Emptyspace@68..76 "        "
@@ -198,7 +198,7 @@ Root@0..19
     Arrow@7..9 "->"
     Emptyspace@9..10 " "
     TypeExpr@10..14
-      NameRef@10..14
+      Path@10..14
         Ident@10..13 "Int"
         Emptyspace@13..14 " "
     FunBody@14..19
@@ -229,14 +229,14 @@ Root@0..29
         Colon@6..7 ":"
         Emptyspace@7..8 " "
         TypeExpr@8..11
-          NameRef@8..11
+          Path@8..11
             Ident@8..11 "Int"
     RParen@11..12 ")"
     Emptyspace@12..13 " "
     Arrow@13..15 "->"
     Emptyspace@15..16 " "
     TypeExpr@16..20
-      NameRef@16..20
+      Path@16..20
         Ident@16..19 "Int"
         Emptyspace@19..20 " "
     FunBody@20..29
@@ -245,7 +245,7 @@ Root@0..29
         Emptyspace@21..22 " "
         ExprStmt@22..28
           InfixExpr@22..28
-            NameRef@22..24
+            Path@22..24
               Ident@22..23 "a"
               Emptyspace@23..24 " "
             Plus@24..25 "+"
@@ -273,7 +273,7 @@ Root@0..37
         Colon@6..7 ":"
         Emptyspace@7..8 " "
         TypeExpr@8..11
-          NameRef@8..11
+          Path@8..11
             Ident@8..11 "Int"
       Comma@11..12 ","
       Emptyspace@12..13 " "
@@ -282,14 +282,14 @@ Root@0..37
         Colon@14..15 ":"
         Emptyspace@15..16 " "
         TypeExpr@16..19
-          NameRef@16..19
+          Path@16..19
             Ident@16..19 "Int"
     RParen@19..20 ")"
     Emptyspace@20..21 " "
     Arrow@21..23 "->"
     Emptyspace@23..24 " "
     TypeExpr@24..28
-      NameRef@24..28
+      Path@24..28
         Ident@24..27 "Int"
         Emptyspace@27..28 " "
     FunBody@28..37
@@ -298,12 +298,12 @@ Root@0..37
         Emptyspace@29..30 " "
         ExprStmt@30..36
           InfixExpr@30..36
-            NameRef@30..32
+            Path@30..32
               Ident@30..31 "a"
               Emptyspace@31..32 " "
             Plus@32..33 "+"
             Emptyspace@33..34 " "
-            NameRef@34..36
+            Path@34..36
               Ident@34..35 "b"
               Emptyspace@35..36 " "
         RBrace@36..37 "}""#]],

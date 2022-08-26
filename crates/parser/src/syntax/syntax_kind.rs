@@ -9,6 +9,8 @@ pub enum SyntaxKind {
     At,
 
     Ident,
+    Call,
+    CallArgs,
 
     // Keywords
     And,
@@ -83,7 +85,7 @@ pub enum SyntaxKind {
     NegationExpr,
     NotExpr,
     ParenExpr,
-    NameRef,
+    Path,
     PathItem,
     StringExpr,
 
@@ -136,7 +138,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::True => Self::TrueLiteral,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
-            TokenKind::String => Self::StringExpr,
+            TokenKind::StringLiteral => Self::StringExpr,
 
             // Delimiters
             TokenKind::LBrace => Self::LBrace,
