@@ -31,7 +31,10 @@ pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
             break;
         }
 
-        parse_expr(p)?;
+        let cm = parse_expr(p);
+        if cm.is_none() {
+            break;
+        }
     }
 
     while p.at(T::Newline) {

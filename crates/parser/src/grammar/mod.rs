@@ -15,7 +15,9 @@ pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
             }
         }
         ParseEntryPoint::Expr => {
-            expr::parse_expr(p);
+            if !p.at_end() {
+                expr::parse_expr(p);
+            }
         }
     };
 
