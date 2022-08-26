@@ -62,9 +62,9 @@ fn validate_int_literal(literal: IntLiteral, errors: &mut Vec<ValidationError>) 
 mod tests {
     use super::*;
 
-    use std::ops::Range as StdRange;
+    use std::ops::Range;
 
-    fn check(input: &str, expected_errors: &[(ValidationErrorKind, StdRange<u32>)]) {
+    fn check(input: &str, expected_errors: &[(ValidationErrorKind, Range<u32>)]) {
         let parse = parser::parse(input);
 
         let expected_errors: Vec<_> = expected_errors
@@ -90,9 +90,11 @@ mod tests {
     #[test]
     #[ignore = "need to implement LSP diagnostics with parsing, potentially removing this kind of check"]
     fn validate_too_large_literal() {
+        let input = "1000000000000000000000";
+        let len = input.len() as u32;
         check(
-            "1000000000000000000000",
-            &[(ValidationErrorKind::NumberLiteralTooLarge, (0..22))],
+            input,
+            &[(ValidationErrorKind::NumberLiteralTooLarge, (0..len))],
         )
     }
 }
