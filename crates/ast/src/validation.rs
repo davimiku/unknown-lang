@@ -69,13 +69,9 @@ mod tests {
 
         let expected_errors: Vec<_> = expected_errors
             .iter()
-            .map(|(kind, range)| ValidationError {
+            .map(|(kind, Range { start, end })| ValidationError {
                 kind: *kind,
-                range: {
-                    let start = range.start.into();
-                    let end = range.end.into();
-                    TextRange::new(start, end)
-                },
+                range: TextRange::new((*start).into(), (*end).into()),
             })
             .collect();
 
