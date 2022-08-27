@@ -1,5 +1,7 @@
 use chunk::{Chunk, Op, ValueStack};
 
+use crate::builtins::print;
+
 pub(crate) struct VM<'a> {
     /// Chunk of bytecode to run
     chunk: &'a Chunk,
@@ -42,11 +44,11 @@ impl<'a> VM<'a> {
         let result = loop {
             let op = self.chunk.get_op(self.ip);
 
-            // #[cfg(test)]
-            // self.debug_print(op);
+            #[cfg(test)]
+            self.debug_print(op);
 
             match op {
-                Op::Constant(i) => {
+                Op::IConstant(i) => {
                     let constant = self.chunk.get_int(*i);
                     self.stack.push(constant.to_le_bytes());
                 }
@@ -94,6 +96,7 @@ impl<'a> VM<'a> {
 
                     self.stack.push((a / b).to_le_bytes());
                 }
+                Op::Builtin(i) => self.exec_builtin(*i),
                 Op::Ret => {
                     // TODO: better output for debugging?
                     // dbg!(self.stack.pop::<[u8; 8]>());
@@ -107,6 +110,16 @@ impl<'a> VM<'a> {
         };
 
         result
+    }
+
+    fn exec_builtin(&mut self, i: usize) {
+        // TODO: move builtins to an array/map or something to not hard-code
+        if i == 0 {
+            // print
+            self.ip += 1;
+            let op = self.chunk.get_op(self.ip).clone();
+            print(op, self.chunk)
+        }
     }
 }
 
