@@ -3,6 +3,7 @@ use exec::VM;
 
 mod builtins;
 mod exec;
+mod macros;
 
 pub fn run(chunk: &Chunk) {
     let mut vm = VM::new(chunk);
@@ -29,7 +30,7 @@ mod tests {
 
     #[test]
     fn test_print_float() {
-        // "print 1"
+        // "print 1.23"
         let mut chunk = Chunk::new();
 
         chunk.write(Op::Builtin(0), 0);
@@ -37,6 +38,21 @@ mod tests {
         chunk.write(Op::Ret, 1);
 
         chunk.disassemble("print 1.23");
+
+        super::run(&chunk);
+    }
+
+    #[test]
+    fn test_print_int_add() {
+        // "print (1 + 2)"
+        let mut chunk = Chunk::new();
+
+        chunk.write_int_constant(1, 123);
+        chunk.write_int_constant(2, 123);
+        chunk.write(Op::IAdd, 123);
+
+        chunk.write(Op::Builtin(0), 123);
+        chunk.write(Op::Ret, 123);
 
         super::run(&chunk);
     }
