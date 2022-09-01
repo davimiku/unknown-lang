@@ -98,7 +98,7 @@ impl Expr {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::FunExpr => Self::Function(Function(node)),
-            SyntaxKind::NameRef => Self::Ident(Ident(node)),
+            SyntaxKind::Path => Self::Ident(Ident(node)),
             SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::FloatExpr => Self::FloatLiteral(FloatLiteral(node)),
