@@ -26,8 +26,7 @@ pub struct Database {
 impl Database {
     // ???
     // Need a separate 'codegen' crate? The line between chunk, hir, and vm is blurred
-    pub fn expr(&self, idx: u32) -> &Expr {
-        let idx = Idx::from_raw(idx.into());
+    pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
         &self.exprs[idx]
     }
 

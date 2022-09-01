@@ -34,6 +34,12 @@ impl ValueStack {
         self.push(val.into().to_le_bytes())
     }
 
+    pub fn push_str(&mut self, val: &str) {
+        let ptr = val.as_ptr();
+        let len = val.len();
+        // self.push(val);
+    }
+
     /// Removes the top value of the stack and returns it as bytes
     pub fn pop(&mut self) -> Value {
         self.0.pop().unwrap()

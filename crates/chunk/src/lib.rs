@@ -8,19 +8,20 @@ use op::Idx;
 pub use op::Op;
 pub use stack::ValueStack;
 
-use hir::{Database, Expr};
+use hir::{Database, Expr, LocalDef, Stmt};
 
 #[derive(Debug, Default)]
-pub struct Chunk {
+pub struct Chunk<'a> {
     code: Vec<Op>,
     int_constants: Vec<i64>,
     float_constants: Vec<f64>,
+    str_constants: Vec<&'a str>,
     lines: Vec<u32>,
 }
 
 // TODO: make all pub(crate)
-impl Chunk {
-    pub fn new() -> Chunk {
+impl<'a> Chunk<'a> {
+    pub fn new() -> Chunk<'a> {
         Default::default()
     }
 
@@ -57,6 +58,20 @@ impl Chunk {
         unsafe { *self.float_constants.get_unchecked(i) }
     }
 
+    // panics if index out-of-bounds
+    #[inline(always)]
+    #[cfg(not(debug_assertions))]
+    pub fn get_str(&self, i: Idx) -> &str {
+        unsafe { *self.str_constants.get_unchecked(i) }
+    }
+
+    // panics if index out-of-bounds
+    #[inline(always)]
+    #[cfg(debug_assertions)]
+    pub fn get_str(&self, i: Idx) -> &str {
+        self.str_constants[i as usize]
+    }
+
     pub fn write(&mut self, op: Op, line: u32) {
         self.code.push(op);
         self.lines.push(line);
@@ -81,6 +96,13 @@ impl Chunk {
         }
     }
 
+    pub fn write_string_constant(&mut self, value: &'a str, line: u32) {
+        self.str_constants.push(value);
+        let i = self.str_constants.len() - 1;
+
+        self.write(Op::SConstant(i as u32), line);
+    }
+
     pub fn disassemble(&self, name: &str) {
         println!("== {name} ==");
         for (i, op) in self.code.iter().enumerate() {
@@ -90,18 +112,28 @@ impl Chunk {
         }
     }
 
-    pub fn write_expr(&mut self, expr: Expr, database: Database) {
+    pub fn write_stmt(&mut self, stmt: Stmt, database: &Database) {
+        match stmt {
+            Stmt::VariableDef(local_def) => todo!(),
+            Stmt::Expr(idx) => {
+                let expr = database.expr(idx);
+                self.write_expr(expr, database)
+            }
+        }
+    }
+
+    pub fn write_expr(&mut self, expr: &Expr, database: &Database) {
         use Expr::*;
 
         match expr {
             BoolLiteral(b) => {
-                self.write_bool_constant(b, 1);
+                self.write_bool_constant(*b, 1);
             }
             FloatLiteral(f) => {
-                self.write_float_constant(f, 1);
+                self.write_float_constant(*f, 1);
             }
             IntLiteral(i) => {
-                self.write_int_constant(i, 1);
+                self.write_int_constant(*i, 1);
             }
             StringLiteral(s) => todo!(),
             Binary {
@@ -139,13 +171,12 @@ impl Chunk {
             Empty => todo!(),
         }
     }
+
+    fn write_local_def(&mut self, local_def: &LocalDef) {
+        let name = local_def.name();
+        let value = local_def.value;
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+mod tests {}

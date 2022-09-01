@@ -7,7 +7,7 @@ use crate::{arithmetic, builtins::print};
 #[derive(Debug)]
 pub(crate) struct VM<'a> {
     /// Chunk of bytecode to run
-    chunk: &'a Chunk,
+    chunk: &'a Chunk<'a>,
 
     /// Instruction Pointer
     ip: usize, // TODO: review what the book says about a pointer being faster, needs unsafe?
@@ -68,6 +68,11 @@ impl<'a> VM<'a> {
                     let constant = self.chunk.get_float(*idx);
                     println!("FConstant({}, {})", *idx, constant);
                     self.stack.push_float(constant);
+                }
+                Op::SConstant(idx) => {
+                    let constant = self.chunk.get_str(*idx);
+                    println!("SConstant({}, {})", *idx, constant);
+                    self.stack.push_str(constant);
                 }
                 Op::FAdd => {
                     float_arithmetic!(Add::add);

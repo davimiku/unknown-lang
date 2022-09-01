@@ -41,7 +41,7 @@ pub enum Stmt {
 #[derive(Debug, PartialEq, Eq)]
 pub struct LocalDef {
     /// Expression value assigned to the variable
-    value: Idx<Expr>,
+    pub value: Idx<Expr>,
 
     /// Original AST parsed for the variable definition
     ast: ast::VariableDef,
@@ -49,7 +49,7 @@ pub struct LocalDef {
 
 // TODO: borrow the string from the AST or put it into an interner?
 impl LocalDef {
-    fn name(&self) -> String {
+    pub fn name(&self) -> String {
         self.ast
             .name()
             .expect("VariableDef to have a name")
