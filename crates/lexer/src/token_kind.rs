@@ -18,7 +18,7 @@ pub enum TokenKind {
     FloatLiteral,
 
     #[regex("\"[^\"\n]*\"")]
-    String,
+    StringLiteral,
 
     // ==========
     // Keywords
@@ -220,7 +220,7 @@ impl fmt::Display for TokenKind {
             Self::True => "‘true’",
             Self::IntLiteral => "int",
             Self::FloatLiteral => "float",
-            Self::String => "string",
+            Self::StringLiteral => "string",
 
             // Delimiters
             Self::LBrace => "‘{’",
