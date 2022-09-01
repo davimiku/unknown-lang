@@ -6,7 +6,7 @@ use crate::{Expr, TypeDiagnostic, TypeDiagnosticVariant};
 
 pub(crate) fn infer(ast: Expr) -> Result<Type, TypeDiagnostic> {
     match ast {
-        Expr::Missing => Err(TypeDiagnostic {
+        Expr::Empty => Err(TypeDiagnostic {
             variant: TypeDiagnosticVariant::Undefined {
                 name: "MISSING FIXME".to_string(),
             },
