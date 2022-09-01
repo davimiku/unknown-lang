@@ -4,5 +4,6 @@
   },
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
-  "workbench.editor.labelFormat": "default"
+  "workbench.editor.labelFormat": "default",
+  "rust-analyzer.checkOnSave.command": "clippy"
 }
