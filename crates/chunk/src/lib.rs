@@ -30,13 +30,6 @@ impl<'a> Chunk<'a> {
         &self.code[i]
     }
 
-    // panics if index out-of-bounds
-    #[inline(always)]
-    #[cfg(debug_assertions)]
-    pub fn get_int(&self, i: Idx) -> i64 {
-        self.int_constants[i as usize]
-    }
-
     // TODO: test this when the VM is stable
     #[inline(always)]
     #[cfg(not(debug_assertions))]
@@ -47,8 +40,8 @@ impl<'a> Chunk<'a> {
     // panics if index out-of-bounds
     #[inline(always)]
     #[cfg(debug_assertions)]
-    pub fn get_float(&self, i: Idx) -> f64 {
-        self.float_constants[i as usize]
+    pub fn get_int(&self, i: Idx) -> i64 {
+        self.int_constants[i as usize]
     }
 
     // TODO: test this when the VM is stable
@@ -56,6 +49,13 @@ impl<'a> Chunk<'a> {
     #[cfg(not(debug_assertions))]
     pub fn get_float(&self, i: Idx) -> f64 {
         unsafe { *self.float_constants.get_unchecked(i) }
+    }
+
+    // panics if index out-of-bounds
+    #[inline(always)]
+    #[cfg(debug_assertions)]
+    pub fn get_float(&self, i: Idx) -> f64 {
+        self.float_constants[i as usize]
     }
 
     // panics if index out-of-bounds
