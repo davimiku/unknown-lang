@@ -1,3 +1,4 @@
+use std::mem;
 use std::ops::{Add, Mul, Sub};
 
 use chunk::{Chunk, InvalidOpError, Op, ValueStack};
@@ -7,7 +8,7 @@ use crate::{arithmetic, pop_two};
 #[derive(Debug)]
 pub(crate) struct VM<'a> {
     /// Chunk of bytecode to run
-    chunk: &'a Chunk<'a>,
+    chunk: &'a Chunk,
 
     /// Instruction Pointer
     ip: usize, // TODO: review what the book says about a pointer being faster, needs unsafe?
@@ -36,8 +37,32 @@ impl<'a> VM<'a> {
             print!("     ");
             println!("{:?}", self.stack);
             println!();
-            println!("{}", op.disassemble(self.chunk));
+            println!("{}", op.disassemble(self.chunk, self.ip));
         }
+    }
+
+    /// Reads an integer from the current offset in the bytecode
+    /// and increments the instruction pointer.
+    fn read_int(&mut self) -> i64 {
+        let int = self.chunk.read_int(self.ip);
+        self.ip += mem::size_of::<i64>();
+        int
+    }
+
+    /// Reads a float from the current offset in the bytecode
+    /// and increments the instruction pointer.
+    fn read_float(&mut self) -> f64 {
+        let float = self.chunk.read_float(self.ip);
+        self.ip += mem::size_of::<f64>();
+        float
+    }
+
+    /// Reads a string from the current offset in the bytecode
+    /// and increments the instruction pointer.
+    fn read_str(&mut self) -> (u64, u64) {
+        let (ptr, len) = self.chunk.read_str(self.ip);
+        self.ip += mem::size_of::<(u64, u64)>();
+        (u64::from_le_bytes(ptr), u64::from_le_bytes(len))
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -61,26 +86,21 @@ impl<'a> VM<'a> {
             let op = op.unwrap();
             self.ip += 1;
 
-            #[cfg(test)]
-            self.debug_print(op);
+            // #[cfg(test)]
+            // self.debug_print(op);
 
             match op {
                 Op::PushInt => {
-                    // TODO: move read_int to self which increments the self.ip
-                    let constant = self.chunk.read_int(self.ip);
-                    println!("PushInt({}, {})", self.ip, constant);
+                    let constant = self.read_int();
                     self.stack.push_int(constant);
-                    self.ip += 8;
                 }
                 Op::PushFloat => {
                     // TODO: move read_float to self which increments the self.ip
-                    let constant = self.chunk.read_float(self.ip);
-                    println!("PushFloat({}, {})", self.ip, constant);
+                    let constant = self.read_float();
                     self.stack.push_float(constant);
-                    self.ip += 8;
                 }
                 Op::PushString => {
-                    todo!();
+                    let (ptr, len) = self.read_str();
                     // let constant = self.chunk.get_str(*idx);
                     // println!("SConstant({}, {})", *idx, constant);
                     // self.stack.push_str(constant);
@@ -191,13 +211,8 @@ mod tests {
         let b = 5;
 
         chunk.write_int_constant(a, 0);
-        chunk.disassemble("first int");
         chunk.write_int_constant(b, 0);
-        chunk.disassemble("second int");
-
         chunk.write_op(Op::AddInt, 0);
-        chunk.disassemble("AddInt");
-
         chunk.write_op(Op::Ret, 1);
         chunk.disassemble("Ret");
 

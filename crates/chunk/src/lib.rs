@@ -4,7 +4,7 @@
 mod op;
 mod stack;
 
-use std::{convert::TryInto, mem};
+use std::convert::TryInto;
 
 pub use op::{InvalidOpError, Op};
 pub use stack::ValueStack;
@@ -20,29 +20,13 @@ type DWord = [u8; 16];
 /// A VM "quad word" is 32 bytes (256 bits)
 type QWord = [u8; 32];
 
-/// Int are 64 bits (1 "word")
-const INT_WORDS: usize = 1;
-
-/// Float are 64 bits (1 "word")
-const FLOAT_WORDS: usize = 1;
-
-/// Strings are (ptr, len) on the stack
-/// Each part is 1 "word"
-const STRING_WORDS: usize = 2;
-
 #[derive(Debug, Default)]
-pub struct Chunk<'a> {
+pub struct Chunk {
     /// bytecode contained in the chunk
     code: Vec<u8>,
 
-    /// integer constants in the "data" section
-    int_constants: Vec<i64>,
-
-    /// float constants in the "data" section
-    float_constants: Vec<f64>,
-
     /// string constants in the "data" section
-    str_constants: Vec<&'a str>,
+    str_constants: Vec<u8>,
 
     /// tracking of the source code lines corresponding to op codes
     // FIXME: the book author calls this a "braindead" approach.
@@ -51,8 +35,8 @@ pub struct Chunk<'a> {
 }
 
 // TODO: make all pub(crate)
-impl<'a> Chunk<'a> {
-    pub fn new() -> Chunk<'a> {
+impl Chunk {
+    pub fn new() -> Chunk {
         Default::default()
     }
 
@@ -96,7 +80,7 @@ impl<'a> Chunk<'a> {
     }
 
     pub fn read_float(&self, offset: usize) -> f64 {
-        let bytes: Word = self.read_n_words(offset, FLOAT_WORDS).try_into().unwrap();
+        let bytes: Word = self.read_word(offset).try_into().unwrap();
         f64::from_le_bytes(bytes)
     }
 
@@ -115,7 +99,7 @@ impl<'a> Chunk<'a> {
     }
 
     pub fn write_bytes(&mut self, bytes: &[u8]) {
-        self.code.extend_from_slice(bytes);
+        self.code.extend(bytes);
     }
 
     pub fn write_int_constant(&mut self, value: i64, line: u32) {
@@ -144,31 +128,44 @@ impl<'a> Chunk<'a> {
         }
     }
 
-    pub fn write_string_constant(&mut self, value: &'a str, line: u32) {
-        self.str_constants.push(value);
-        let i = self.str_constants.len() - 1;
+    pub fn write_string_constant(&mut self, value: &str, line: u32) {
+        let idx = self.str_constants.len();
+        let len = value.len();
+
+        let bytes = value.as_bytes();
+        self.str_constants.extend(bytes);
 
         self.write_op(Op::PushString, line);
-        let bytes = i.to_le_bytes();
-        self.write_bytes(&bytes);
+        let idx = idx.to_le_bytes();
+        self.write_bytes(&idx);
+        let len = len.to_le_bytes();
+        self.write_bytes(&len);
     }
 
-    // FIXME: doesn't support inline constants
+    /// Prints the Chunk in a disassembled format
+    /// for human-reading.
+    ///
+    /// This format is not stable and should not be depended on.
     pub fn disassemble(&self, name: &str) {
         println!("== {name} ==");
 
-        let mut idx = 0;
+        let mut offset = 0;
         let mut op_idx = 0;
-        while idx < self.code.len() {
-            let op = self.code[idx];
+        while offset < self.code.len() {
+            let op = self.code[offset];
             let op: Op = op.try_into().expect("byte should be convertible to Op");
             let line = self.lines[op_idx];
-            // TODO: print a "  | " if it has the same line as the previous Op
-            println!("{:03} {} {}", idx, line, op.disassemble(self));
+
+            let line = if offset > 0 && line == self.lines[op_idx - 1] {
+                "   | ".to_string()
+            } else {
+                format!(" {line:04}")
+            };
+            print!("{offset:03} {line}  ");
+            offset = op.disassemble(self, offset);
+            println!();
 
             op_idx += 1;
-            idx += 1;
-            idx += op.operand_size();
         }
         println!();
     }
@@ -196,7 +193,9 @@ impl<'a> Chunk<'a> {
             IntLiteral(i) => {
                 self.write_int_constant(*i, 1);
             }
-            StringLiteral(s) => todo!(),
+            StringLiteral(s) => {
+                self.write_string_constant(s, 1);
+            }
             Binary {
                 op,
                 lhs,

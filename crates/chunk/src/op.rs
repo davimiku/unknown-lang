@@ -172,13 +172,28 @@ impl TryFrom<u8> for Op {
 }
 
 impl Op {
-    pub fn disassemble(&self, chunk: &Chunk) -> String {
+    /// Prints a dissembled form of the instruction.
+    ///
+    /// Returns the new offset to use for the next instruction.
+    pub fn disassemble(&self, chunk: &Chunk, offset: usize) -> usize {
+        let mut offset = offset + 1;
+
         match self {
-            // Op::Constant(i) => {
-            //     // let val = chunk.constants[*i];
-            //     // format!("{self:?} {val}")
-            // }
-            _ => format!("{self:?}"),
-        }
+            Op::PushInt => {
+                let int = chunk.read_int(offset);
+                offset += mem::size_of::<i64>();
+
+                print!("{self:?}    {int}");
+            }
+            Op::PushFloat => {
+                let float = chunk.read_float(offset);
+                offset += mem::size_of::<f64>();
+
+                print!("{self:?}    {float}");
+            }
+            _ => print!("{self:?}"),
+        };
+
+        offset
     }
 }
