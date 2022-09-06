@@ -4,16 +4,16 @@ const LANES: usize = 8;
 /// Values stored in the stack
 /// 8 bytes (64-bit) that can be interpreted as float, int, bool, etc.
 /// based on the bytecode operation. All values (currently) are 8-byte.
-type Value = [u8; LANES];
+type Word = [u8; LANES];
 
 /// Stack representation of a String is a (ptr, len)
 ///
 /// ptr: pointer to the string data
 /// len: byte length of the string data
-type StrValue = (Value, Value);
+type StrValue = (Word, Word);
 
 #[derive(Debug)]
-pub struct ValueStack(Vec<Value>);
+pub struct ValueStack(Vec<Word>);
 /// The base "word" size of the stack is 64-bit (8 bytes)
 ///
 /// Many values are 1 word, such as Int, Float, Bool.
@@ -22,7 +22,7 @@ pub struct ValueStack(Vec<Value>);
 
 impl ValueStack {
     /// Adds a bytes value to the top of the stack
-    pub fn push(&mut self, val: Value) {
+    pub fn push(&mut self, val: Word) {
         self.0.push(val);
     }
 
@@ -41,7 +41,7 @@ impl ValueStack {
     }
 
     /// Removes the top value of the stack and returns it as bytes
-    pub fn pop(&mut self) -> Value {
+    pub fn pop(&mut self) -> Word {
         self.0.pop().unwrap()
     }
 
@@ -55,7 +55,7 @@ impl ValueStack {
         f64::from_le_bytes(self.pop())
     }
 
-    pub fn peek(&self) -> Value {
+    pub fn peek(&self) -> Word {
         *self.0.last().unwrap()
     }
 
@@ -67,7 +67,7 @@ impl ValueStack {
         f64::from_le_bytes(self.peek())
     }
 
-    pub fn peek_at(&self, index: usize) -> &Value {
+    pub fn peek_at(&self, index: usize) -> &Word {
         &self.0[index]
     }
 
@@ -83,7 +83,7 @@ impl Default for ValueStack {
 }
 
 impl ValueStack {
-    pub fn from_values(values: &[Value]) -> Self {
+    pub fn from_values(values: &[Word]) -> Self {
         Self(values.into())
     }
 }

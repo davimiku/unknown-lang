@@ -4,18 +4,49 @@
 mod op;
 mod stack;
 
-use op::Idx;
-pub use op::Op;
+use std::{convert::TryInto, mem};
+
+pub use op::{InvalidOpError, Op};
 pub use stack::ValueStack;
 
 use hir::{Database, Expr, LocalDef, Stmt};
 
+/// A VM "word" is 8 bytes (64 bits)
+type Word = [u8; 8];
+
+/// A VM "double word" is 16 bytes (128 bits)
+type DWord = [u8; 16];
+
+/// A VM "quad word" is 32 bytes (256 bits)
+type QWord = [u8; 32];
+
+/// Int are 64 bits (1 "word")
+const INT_WORDS: usize = 1;
+
+/// Float are 64 bits (1 "word")
+const FLOAT_WORDS: usize = 1;
+
+/// Strings are (ptr, len) on the stack
+/// Each part is 1 "word"
+const STRING_WORDS: usize = 2;
+
 #[derive(Debug, Default)]
 pub struct Chunk<'a> {
-    code: Vec<Op>,
+    /// bytecode contained in the chunk
+    code: Vec<u8>,
+
+    /// integer constants in the "data" section
     int_constants: Vec<i64>,
+
+    /// float constants in the "data" section
     float_constants: Vec<f64>,
+
+    /// string constants in the "data" section
     str_constants: Vec<&'a str>,
+
+    /// tracking of the source code lines corresponding to op codes
+    // FIXME: the book author calls this a "braindead" approach.
+    // Find a better way to store source code location for bytecodes
     lines: Vec<u32>,
 }
 
@@ -25,74 +56,91 @@ impl<'a> Chunk<'a> {
         Default::default()
     }
 
+    /// Gets the Op at the given index
     #[inline(always)]
-    pub fn get_op(&self, i: usize) -> &Op {
-        &self.code[i]
+    pub fn get_op(&self, i: usize) -> Result<Op, InvalidOpError> {
+        self.code[i].try_into()
     }
 
-    // TODO: test this when the VM is stable
+    /// Gets the bytes from the given offset and amount of words.
+    ///
+    /// A "word" in this context is 8 bytes (64-bit), the base size
+    /// of values in the VM.
     #[inline(always)]
-    #[cfg(not(debug_assertions))]
-    pub fn get_int(&self, i: Idx) -> i64 {
-        unsafe { *self.int_constants.get_unchecked(i) }
+    fn read_n_words(&self, offset: usize, words: usize) -> &[u8] {
+        let end = offset + (words * 8);
+        &self.code[offset..end]
     }
 
-    // panics if index out-of-bounds
-    #[inline(always)]
-    #[cfg(debug_assertions)]
-    pub fn get_int(&self, i: Idx) -> i64 {
-        self.int_constants[i as usize]
+    fn read_word(&self, offset: usize) -> Word {
+        self.read_n_words(offset, 1)
+            .try_into()
+            .expect("should be at least 8 bytes to read")
     }
 
-    // TODO: test this when the VM is stable
-    #[inline(always)]
-    #[cfg(not(debug_assertions))]
-    pub fn get_float(&self, i: Idx) -> f64 {
-        unsafe { *self.float_constants.get_unchecked(i) }
+    fn read_dword(&self, offset: usize) -> DWord {
+        self.read_n_words(offset, 2)
+            .try_into()
+            .expect("should be at least 16 bytes to read")
     }
 
-    // panics if index out-of-bounds
-    #[inline(always)]
-    #[cfg(debug_assertions)]
-    pub fn get_float(&self, i: Idx) -> f64 {
-        self.float_constants[i as usize]
+    fn read_qword(&self, offset: usize) -> QWord {
+        self.read_n_words(offset, 4)
+            .try_into()
+            .expect("should be at least 32 bytes to read")
     }
 
-    // panics if index out-of-bounds
-    #[inline(always)]
-    #[cfg(not(debug_assertions))]
-    pub fn get_str(&self, i: Idx) -> &str {
-        unsafe { *self.str_constants.get_unchecked(i) }
+    pub fn read_int(&self, offset: usize) -> i64 {
+        let bytes: Word = self.read_word(offset);
+        i64::from_le_bytes(bytes)
     }
 
-    // panics if index out-of-bounds
-    #[inline(always)]
-    #[cfg(debug_assertions)]
-    pub fn get_str(&self, i: Idx) -> &str {
-        self.str_constants[i as usize]
+    pub fn read_float(&self, offset: usize) -> f64 {
+        let bytes: Word = self.read_n_words(offset, FLOAT_WORDS).try_into().unwrap();
+        f64::from_le_bytes(bytes)
     }
 
-    pub fn write(&mut self, op: Op, line: u32) {
-        self.code.push(op);
+    pub fn read_str(&self, offset: usize) -> (Word, Word) {
+        let bytes = self.read_dword(offset);
+
+        let (ptr, len) = bytes.split_at(8);
+
+        // TODO: better way to clone &[u8] to [u8; 8]?
+        (ptr.try_into().unwrap(), len.try_into().unwrap())
+    }
+
+    pub fn write_op(&mut self, op: Op, line: u32) {
+        self.code.push(op as u8);
         self.lines.push(line);
     }
 
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        self.code.extend_from_slice(bytes);
+    }
+
     pub fn write_int_constant(&mut self, value: i64, line: u32) {
-        self.int_constants.push(value);
-        let i = self.int_constants.len() - 1;
-        self.write(Op::IConstant(i as u32), line);
+        // TODO: decide to embed i64 in bytecode or embed a u32 index to int_constants
+        // self.int_constants.push(value);
+        // let i = self.int_constants.len() - 1;
+        self.write_op(Op::PushInt, line);
+        let bytes = value.to_le_bytes();
+
+        self.write_bytes(&bytes)
     }
 
     pub fn write_float_constant(&mut self, value: f64, line: u32) {
-        self.float_constants.push(value);
-        let i = self.float_constants.len() - 1;
-        self.write(Op::FConstant(i as u32), line);
+        // TODO: decide to embed f64 in bytecode or embed a u32 index to float_constants
+        // self.float_constants.push(value);
+        // let i = self.float_constants.len() - 1;
+        self.write_op(Op::PushFloat, line);
+        let bytes = value.to_le_bytes();
+        self.write_bytes(&bytes)
     }
 
     pub fn write_bool_constant(&mut self, value: bool, line: u32) {
         match value {
-            true => self.write(Op::TrueConstant, line),
-            false => self.write(Op::FalseConstant, line),
+            true => self.write_op(Op::PushTrue, line),
+            false => self.write_op(Op::PushFalse, line),
         }
     }
 
@@ -100,16 +148,29 @@ impl<'a> Chunk<'a> {
         self.str_constants.push(value);
         let i = self.str_constants.len() - 1;
 
-        self.write(Op::SConstant(i as u32), line);
+        self.write_op(Op::PushString, line);
+        let bytes = i.to_le_bytes();
+        self.write_bytes(&bytes);
     }
 
+    // FIXME: doesn't support inline constants
     pub fn disassemble(&self, name: &str) {
         println!("== {name} ==");
-        for (i, op) in self.code.iter().enumerate() {
-            let line = self.lines[i];
+
+        let mut idx = 0;
+        let mut op_idx = 0;
+        while idx < self.code.len() {
+            let op = self.code[idx];
+            let op: Op = op.try_into().expect("byte should be convertible to Op");
+            let line = self.lines[op_idx];
             // TODO: print a "  | " if it has the same line as the previous Op
-            println!("{:03} {} {}", i, line, op.disassemble(self))
+            println!("{:03} {} {}", idx, line, op.disassemble(self));
+
+            op_idx += 1;
+            idx += 1;
+            idx += op.operand_size();
         }
+        println!();
     }
 
     pub fn write_stmt(&mut self, stmt: Stmt, database: &Database) {
@@ -179,4 +240,21 @@ impl<'a> Chunk<'a> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_bytes() {
+        let mut chunk = Chunk::new();
+
+        let input = 8_000_000_000;
+
+        chunk.write_int_constant(input, 1);
+        let bytes = chunk.read_n_words(1, 1);
+
+        let bytes: [u8; 8] = bytes.try_into().expect("slice should have correct length");
+        let actual = i64::from_le_bytes(bytes);
+
+        assert_eq!(input, actual);
+    }
+}

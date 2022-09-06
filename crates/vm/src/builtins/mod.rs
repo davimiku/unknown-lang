@@ -2,8 +2,8 @@ use chunk::{Chunk, Op};
 
 pub(crate) fn print(op: Op, chunk: &Chunk) {
     match op {
-        Op::IConstant(i) => println!("{}", chunk.get_int(i)),
-        Op::FConstant(i) => println!("{}", chunk.get_float(i)),
+        // Op::PushInt(i) => println!("{}", chunk.get_int(i)),
+        // Op::PushFloat(i) => println!("{}", chunk.get_float(i)),
         _ => unreachable!(),
     }
 }

@@ -1,13 +1,13 @@
 use chunk::Chunk;
-use exec::VM;
+use exec::{InterpretResult, VM};
 
 mod builtins;
 mod exec;
 mod macros;
 
-pub fn run(chunk: &Chunk) {
+pub fn run(chunk: &Chunk) -> InterpretResult {
     let mut vm = VM::new(chunk);
-    vm.interpret();
+    vm.interpret()
 }
 
 #[cfg(test)]
@@ -19,13 +19,15 @@ mod tests {
         // "print 1"
         let mut chunk = Chunk::new();
 
-        chunk.write(Op::Builtin(0), 0);
+        chunk.write_op(Op::Builtin, 0);
+        // write arity / number of args
         chunk.write_int_constant(1, 0);
-        chunk.write(Op::Ret, 1);
+        // push function object?
+        chunk.write_op(Op::Ret, 1);
 
         chunk.disassemble("print 1");
 
-        super::run(&chunk);
+        super::run(&chunk).unwrap();
     }
 
     #[test]
@@ -33,13 +35,15 @@ mod tests {
         // "print 1.23"
         let mut chunk = Chunk::new();
 
-        chunk.write(Op::Builtin(0), 0);
+        chunk.write_op(Op::Builtin, 0);
+        // write arity / number of args
         chunk.write_float_constant(1.23, 0);
-        chunk.write(Op::Ret, 1);
+        // push function object?
+        chunk.write_op(Op::Ret, 1);
 
         chunk.disassemble("print 1.23");
 
-        super::run(&chunk);
+        super::run(&chunk).unwrap();
     }
 
     #[test]
@@ -49,12 +53,14 @@ mod tests {
 
         chunk.write_int_constant(1, 123);
         chunk.write_int_constant(2, 123);
-        chunk.write(Op::IAdd, 123);
+        chunk.write_op(Op::AddInt, 123);
 
-        chunk.write(Op::Builtin(0), 123);
-        chunk.write(Op::Ret, 123);
+        chunk.write_op(Op::Builtin, 123);
+        // push arity
+        // push function object
+        chunk.write_op(Op::Ret, 123);
 
-        super::run(&chunk);
+        super::run(&chunk).unwrap();
     }
 
     #[test]
@@ -63,21 +69,21 @@ mod tests {
 
         chunk.write_float_constant(1.2, 123);
         chunk.write_float_constant(3.4, 123);
-        chunk.write(Op::FAdd, 123);
+        chunk.write_op(Op::AddFloat, 123);
 
         chunk.write_float_constant(5.6, 123);
-        chunk.write(Op::FDiv, 123);
+        chunk.write_op(Op::DivFloat, 123);
 
         chunk.write_float_constant(1.0, 123);
-        chunk.write(Op::FSub, 123);
+        chunk.write_op(Op::SubFloat, 123);
 
         chunk.write_float_constant(20.0, 123);
-        chunk.write(Op::FMul, 123);
+        chunk.write_op(Op::MulFloat, 123);
 
-        chunk.write(Op::Ret, 123);
+        chunk.write_op(Op::Ret, 123);
 
         chunk.disassemble("test chunk");
 
-        super::run(&chunk);
+        super::run(&chunk).unwrap();
     }
 }

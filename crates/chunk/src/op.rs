@@ -1,57 +1,174 @@
+use std::{convert::TryFrom, fmt, mem};
+
 use crate::Chunk;
 
-pub(crate) type Idx = u32;
-
-#[derive(Debug, PartialEq, Eq, Clone)]
+/// The opcodes of the virtual machine (VM)
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub enum Op {
-    /// Boolean true constant value
-    TrueConstant,
+    /// Push `true` value on the stack.
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>** `true`
+    PushTrue,
 
-    /// Boolean false constant value
-    FalseConstant,
+    /// Push `false` value on the stack.
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>** `false`
+    PushFalse,
 
-    /// Integer constant value
-    IConstant(Idx),
+    /// Push i64 value on the stack.
+    ///
+    /// Operands: value: `i64`
+    ///
+    /// Stack: **=>** value
+    PushInt,
 
-    /// Float constant value
-    FConstant(Idx),
+    /// Push `f64` value on the stack.
+    ///
+    /// Operands: value: `f64`
+    ///
+    /// Stack: **=>** value
+    PushFloat,
 
-    /// String constant value
-    SConstant(Idx),
+    /// Push `String` value on the stack.
+    ///
+    /// Operands: value: `(ptr: u64, len: i64)`
+    ///
+    /// Stack: **=>** value
+    PushString,
 
-    /// Integer addition
-    IAdd,
+    /// Binary `+` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs + rhs)
+    AddInt,
 
-    /// Integer subtraction
-    ISub,
+    /// Binary `-` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs - rhs)
+    SubInt,
 
-    /// Integer multiplication
-    IMul,
+    /// Binary `*` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs * rhs)
+    MulInt,
 
-    /// Integer division
-    IDiv,
+    /// Binary `/` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs / rhs)
+    DivInt,
 
-    /// Float addition
-    FAdd,
+    /// Binary `%` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs % rhs)
+    RemInt,
 
-    /// Float subtraction
-    FSub,
+    /// Binary `+` operator for Float.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs + rhs)
+    AddFloat,
 
-    /// Float multiplication
-    FMul,
+    /// Binary `-` operator for Float.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs - rhs)
+    SubFloat,
 
-    /// Float division
-    FDiv,
+    /// Binary `*` operator for Float.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs * rhs)
+    MulFloat,
+
+    /// Binary `/` operator for Float.
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** (lhs / rhs)
+    DivFloat,
 
     // push local?
     // pop local?
     /// Call to a built-in function
     /// Needs index of the built-in
     /// TODO: how to indicate args?
-    Builtin(Idx),
+    Builtin,
 
     /// Return from a function
     Ret,
+
+    /// No operation
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>**
+    Noop,
+}
+
+impl Op {
+    /// Creates an Op from a byte (`u8`)
+    ///
+    /// # Safety
+    ///
+    /// Does not check if the byte is valid.
+    /// Consider using the TryFrom conversion to safely
+    /// convert from byte to Op.
+    pub unsafe fn from_raw(value: u8) -> Self {
+        mem::transmute(value)
+    }
+
+    /// Returns the size (in bytes) of the operand for each Op
+    pub fn operand_size(&self) -> usize {
+        let word = 8;
+        match self {
+            Op::PushInt => word,
+            Op::PushFloat => word,
+            Op::PushString => word * 2,
+            Op::Builtin => todo!(),
+
+            _ => 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidOpError(u8);
+
+impl fmt::Display for InvalidOpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid opcode: {:#04x}", self.0)
+    }
+}
+
+impl TryFrom<u8> for Op {
+    type Error = InvalidOpError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value > Self::Noop as u8 {
+            Err(InvalidOpError(value))
+        } else {
+            let op = unsafe { Self::from_raw(value) };
+
+            Ok(op)
+        }
+    }
 }
 
 impl Op {

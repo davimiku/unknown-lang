@@ -1,8 +1,8 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Mul, Sub};
 
-use chunk::{Chunk, Op, ValueStack};
+use chunk::{Chunk, InvalidOpError, Op, ValueStack};
 
-use crate::{arithmetic, builtins::print};
+use crate::{arithmetic, pop_two};
 
 #[derive(Debug)]
 pub(crate) struct VM<'a> {
@@ -30,8 +30,8 @@ impl<'a> VM<'a> {
         self.run()
     }
 
-    #[cfg(test)]
-    fn debug_print(&self, op: &Op) {
+    #[cfg(debug_assertions)]
+    fn debug_print(&self, op: Op) {
         {
             print!("     ");
             println!("{:?}", self.stack);
@@ -52,66 +52,89 @@ impl<'a> VM<'a> {
             };
         }
 
-        let result = loop {
+        loop {
             let op = self.chunk.get_op(self.ip);
+
+            if let Err(err) = op {
+                return Err(InterpretError::RuntimeError(err.into()));
+            }
+            let op = op.unwrap();
+            self.ip += 1;
 
             #[cfg(test)]
             self.debug_print(op);
 
             match op {
-                Op::IConstant(idx) => {
-                    let constant = self.chunk.get_int(*idx);
-                    println!("IConstant({}, {})", *idx, constant);
+                Op::PushInt => {
+                    // TODO: move read_int to self which increments the self.ip
+                    let constant = self.chunk.read_int(self.ip);
+                    println!("PushInt({}, {})", self.ip, constant);
                     self.stack.push_int(constant);
+                    self.ip += 8;
                 }
-                Op::FConstant(idx) => {
-                    let constant = self.chunk.get_float(*idx);
-                    println!("FConstant({}, {})", *idx, constant);
+                Op::PushFloat => {
+                    // TODO: move read_float to self which increments the self.ip
+                    let constant = self.chunk.read_float(self.ip);
+                    println!("PushFloat({}, {})", self.ip, constant);
                     self.stack.push_float(constant);
+                    self.ip += 8;
                 }
-                Op::SConstant(idx) => {
-                    let constant = self.chunk.get_str(*idx);
-                    println!("SConstant({}, {})", *idx, constant);
-                    self.stack.push_str(constant);
+                Op::PushString => {
+                    todo!();
+                    // let constant = self.chunk.get_str(*idx);
+                    // println!("SConstant({}, {})", *idx, constant);
+                    // self.stack.push_str(constant);
                 }
-                Op::FAdd => {
+                Op::AddFloat => {
                     float_arithmetic!(Add::add);
                 }
-                Op::FSub => {
+                Op::SubFloat => {
                     float_arithmetic!(Sub::sub);
                 }
-                Op::FMul => {
+                Op::MulFloat => {
                     float_arithmetic!(Mul::mul);
                 }
-                Op::FDiv => {
-                    float_arithmetic!(Div::div);
+                Op::DivFloat => {
+                    let (a, b) = pop_two!(self, f64);
+                    if b == 0.0 {
+                        return Err(InterpretError::RuntimeError(RuntimeError::RangeError));
+                    }
+
+                    let res = (a / b).to_le_bytes();
+                    self.stack.push(res);
                 }
-                Op::IAdd => {
+                Op::AddInt => {
                     int_arithmetic!(Add::add);
                 }
-                Op::ISub => {
+                Op::SubInt => {
                     int_arithmetic!(Sub::sub);
                 }
-                Op::IMul => {
+                Op::MulInt => {
                     int_arithmetic!(Mul::mul);
                 }
-                Op::IDiv => {
-                    int_arithmetic!(Div::div);
+                Op::DivInt => {
+                    let (a, b) = pop_two!(self, i64);
+                    if b == 0 {
+                        return Err(InterpretError::RuntimeError(RuntimeError::RangeError));
+                    }
+
+                    let res = (a / b).to_le_bytes();
+                    self.stack.push(res);
                 }
-                Op::Builtin(i) => self.exec_builtin(*i),
+                Op::Builtin => {
+                    todo!();
+                    // self.exec_builtin(*i)
+                }
                 Op::Ret => {
                     // TODO: better output for debugging?
                     // dbg!(self.stack.pop::<[u8; 8]>());
 
-                    break InterpretResult::Ok;
+                    // TODO: return the top value of the stack maybe?
+                    break Ok(());
                 }
-                _ => unimplemented!(),
+                _ => unimplemented!("unimplemented Op {}", op as u8),
             }
-
-            self.ip += 1;
-        };
-
-        result
+        }
     }
 
     fn exec_builtin(&mut self, i: u32) {
@@ -120,21 +143,42 @@ impl<'a> VM<'a> {
             // print
             // FIXME: this *only* works for constants and the Op being right after the print call
             // instead, it should pop a StrValue from the stack, follow the pointer, and print that
-            self.ip += 1;
-            let op = self.chunk.get_op(self.ip).clone();
-            print(op, self.chunk)
+            // self.ip += 1;
+            // let op = self.chunk.get_op(self.ip)?;
+            // print(op, self.chunk)
         }
     }
 }
 
-pub(crate) enum InterpretResult {
-    Ok,
+#[derive(Debug, PartialEq, Eq)]
+pub enum InterpretError {
     CompileError,
-    RuntimeError,
+    RuntimeError(RuntimeError),
+}
+
+pub type InterpretResult = Result<(), InterpretError>;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum RuntimeError {
+    InvalidOpError(InvalidOpError),
+    RangeError,
+}
+
+impl From<RuntimeError> for InterpretError {
+    fn from(e: RuntimeError) -> Self {
+        Self::RuntimeError(e)
+    }
+}
+
+impl From<InvalidOpError> for RuntimeError {
+    fn from(e: InvalidOpError) -> Self {
+        Self::InvalidOpError(e)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+
     use chunk::{Chunk, Op};
 
     use super::VM;
@@ -147,12 +191,18 @@ mod tests {
         let b = 5;
 
         chunk.write_int_constant(a, 0);
+        chunk.disassemble("first int");
         chunk.write_int_constant(b, 0);
-        chunk.write(Op::IAdd, 0);
-        chunk.write(Op::Ret, 1);
+        chunk.disassemble("second int");
+
+        chunk.write_op(Op::AddInt, 0);
+        chunk.disassemble("AddInt");
+
+        chunk.write_op(Op::Ret, 1);
+        chunk.disassemble("Ret");
 
         let mut vm = VM::new(&chunk);
-        vm.interpret();
+        vm.interpret().unwrap();
 
         assert_eq!(vm.stack.peek_int(), 7);
     }
