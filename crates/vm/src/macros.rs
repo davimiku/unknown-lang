@@ -1,25 +1,23 @@
 #[macro_export]
-macro_rules! pop_two {
-    ($self: ident, $t: ty) => {{
-        let b = $self.stack.pop();
-        let b = <$t>::from_le_bytes(b);
+macro_rules! int_bin_op {
+    ($self: ident, $f: ident) => {{
+        let b = $self.stack.pop_int();
+        let a = $self.stack.pop_int();
 
-        let a = $self.stack.pop();
-        let a = <$t>::from_le_bytes(a);
+        let res = a.$f(b);
 
-        (a, b)
+        $self.stack.push_int(res);
     }};
 }
 
-/// Pops two values from the stack, performs the provided
-/// arithmetic operation, and returns the result.
 #[macro_export]
-macro_rules! arithmetic {
-    ($self: ident, $t: ty, $F: path) => {{
-        let (a, b) = pop_two!($self, $t);
+macro_rules! float_bin_op {
+    ($self: ident, $f: ident) => {{
+        let b = $self.stack.pop_float();
+        let a = $self.stack.pop_float();
 
-        let res = $F(a, b).to_le_bytes();
+        let res = a.$f(b);
 
-        $self.stack.push(res);
+        $self.stack.push_float(res);
     }};
 }

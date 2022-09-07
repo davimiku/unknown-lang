@@ -1,10 +1,6 @@
-use std::{
-    convert::TryFrom,
-    fmt,
-    mem::{self, size_of},
-};
-
-use crate::Chunk;
+use std::convert::TryFrom;
+use std::fmt;
+use std::mem;
 
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -179,43 +175,5 @@ impl TryFrom<u8> for Op {
 
             Ok(op)
         }
-    }
-}
-
-impl Op {
-    /// Prints a dissembled form of the instruction.
-    ///
-    /// Returns the new offset to use for the next instruction.
-    pub fn disassemble(&self, chunk: &Chunk, offset: usize) -> usize {
-        print!("{self:?}    ");
-
-        let mut offset = offset + size_of::<Op>();
-        match self {
-            Op::PushInt => {
-                let int = chunk.read_int(offset);
-                offset += size_of::<i64>();
-
-                print!("{int}");
-            }
-            Op::PushFloat => {
-                let float = chunk.read_float(offset);
-                offset += size_of::<f64>();
-
-                print!("{float}");
-            }
-            Op::PushString => {
-                let (idx, len) = chunk.read_str(offset);
-                offset += size_of::<(u64, u64)>();
-
-                let s = chunk.get_str_constant(idx as usize, len as usize);
-                print!("\"{s}\"");
-            }
-            Op::ConcatString => {
-                //
-            }
-            _ => {}
-        };
-
-        offset
     }
 }

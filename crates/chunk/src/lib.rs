@@ -1,9 +1,5 @@
 // Takes an HIR node + maps of values & types, produces a
 // bytecode chunk (vector of bytes)
-
-mod op;
-mod stack;
-
 pub use op::{InvalidOpError, Op};
 pub use stack::ValueStack;
 
@@ -11,6 +7,10 @@ use std::str;
 use std::{convert::TryInto, mem};
 
 use hir::{BinaryOp, Database, Expr, LocalDef, Stmt, Type};
+
+mod disassemble;
+mod op;
+mod stack;
 
 /// A VM "word" is 8 bytes (64 bits)
 type Word = [u8; 8];
@@ -75,7 +75,7 @@ impl Chunk {
                 lhs,
                 rhs,
                 lhs_type,
-                rhs_type,
+                ..
             } => {
                 let lhs = database.expr(*lhs);
                 let rhs = database.expr(*rhs);
@@ -131,7 +131,11 @@ impl Chunk {
         self.lines.push(line);
     }
 
-    pub fn write_bytes(&mut self, bytes: &[u8]) {
+    fn write_byte(&mut self, byte: u8) {
+        self.code.push(byte);
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) {
         self.code.extend(bytes);
     }
 
@@ -167,25 +171,21 @@ impl Chunk {
         self.write_bytes(&idx);
         self.write_bytes(&len);
     }
+
+    pub fn write_builtin(&mut self, builtin_idx: u8, line: u32) {
+        self.write_op(Op::Builtin, line);
+        self.write_byte(builtin_idx);
+    }
 }
 
 // Functions to read from the Chunk.
 // TODO: Modify or implement `unsafe` functions without bounds checking
-// for release builds.
+// for release builds after further testing.
 impl Chunk {
     /// Gets the Op at the given index.
     #[inline]
     pub fn get_op(&self, i: usize) -> Result<Op, InvalidOpError> {
         self.code[i].try_into()
-    }
-
-    /// Reads N bytes from the bytecode.
-    ///
-    /// Panics if there are not enough bytes to read from
-    #[inline]
-    fn read_n_bytes(&self, offset: usize, bytes: usize) -> &[u8] {
-        let end = offset + bytes;
-        &self.code[offset..end]
     }
 
     /// Reads 1 byte from the bytecode.
@@ -199,6 +199,15 @@ impl Chunk {
             .expect("should be at least 1 byte to read");
 
         bytes[0]
+    }
+
+    /// Reads N bytes from the bytecode.
+    ///
+    /// Panics if there are not enough bytes to read from
+    #[inline]
+    fn read_n_bytes(&self, offset: usize, bytes: usize) -> &[u8] {
+        let end = offset + bytes;
+        &self.code[offset..end]
     }
 
     /// Gets the bytes from the given offset and amount of words.

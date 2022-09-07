@@ -53,6 +53,23 @@ impl ValueStack {
         self.0.pop().unwrap()
     }
 
+    /// Removes the top 2 values of the stack and returns both in a tuple
+    /// in LIFO order.
+    ///
+    /// - push A
+    /// - push B
+    /// - pop_two: returns (A, B)
+    #[inline]
+    fn pop_two(&mut self) -> (Word, Word) {
+        let b = self.pop();
+        let a = self.pop();
+
+        (a, b)
+    }
+
+    #[inline]
+    fn pop_n() {}
+
     /// Removes the top value of the stack and returns it as an i64
     #[inline]
     pub fn pop_int(&mut self) -> i64 {
@@ -63,15 +80,6 @@ impl ValueStack {
     #[inline]
     pub fn pop_float(&mut self) -> f64 {
         f64::from_le_bytes(self.pop())
-    }
-
-    /// Removes the top 2 values of the stack and returns both in a tuple
-    #[inline]
-    pub fn pop_two(&mut self) -> (Word, Word) {
-        let b = self.pop();
-        let a = self.pop();
-
-        (a, b)
     }
 
     #[inline]
