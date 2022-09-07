@@ -30,7 +30,8 @@ impl Database {
         &self.exprs[idx]
     }
 
-    pub(super) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
+    // TODO: reduce visibility after updating tests in vm::exec
+    pub fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
 
         let range = ast.map_or(Default::default(), |ast| ast.range());

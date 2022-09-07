@@ -10,7 +10,7 @@ use context::{Context, Diagnostic};
 pub use database::Database;
 use la_arena::Idx;
 use text_size::TextRange;
-use types::Type;
+pub use types::Type;
 
 struct TypeDiagnostic {
     pub variant: TypeDiagnosticVariant,

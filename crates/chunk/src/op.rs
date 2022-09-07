@@ -1,4 +1,8 @@
-use std::{convert::TryFrom, fmt, mem};
+use std::{
+    convert::TryFrom,
+    fmt,
+    mem::{self, size_of},
+};
 
 use crate::Chunk;
 
@@ -104,6 +108,13 @@ pub enum Op {
     /// Stack: lhs, rhs **=>** (lhs / rhs)
     DivFloat,
 
+    /// Binary `+` operator for String.
+    ///
+    /// Operands: mode: `u8`
+    ///
+    /// Stack: lhs, rhs **=>** "{lhs}{rhs}"
+    ConcatString,
+
     // push local?
     // pop local?
     /// Call to a built-in function
@@ -128,9 +139,9 @@ impl Op {
     /// # Safety
     ///
     /// Does not check if the byte is valid.
-    /// Consider using the TryFrom conversion to safely
+    /// You should use the TryFrom conversion to safely
     /// convert from byte to Op.
-    pub unsafe fn from_raw(value: u8) -> Self {
+    unsafe fn from_raw(value: u8) -> Self {
         mem::transmute(value)
     }
 
@@ -176,22 +187,33 @@ impl Op {
     ///
     /// Returns the new offset to use for the next instruction.
     pub fn disassemble(&self, chunk: &Chunk, offset: usize) -> usize {
-        let mut offset = offset + 1;
+        print!("{self:?}    ");
 
+        let mut offset = offset + size_of::<Op>();
         match self {
             Op::PushInt => {
                 let int = chunk.read_int(offset);
-                offset += mem::size_of::<i64>();
+                offset += size_of::<i64>();
 
-                print!("{self:?}    {int}");
+                print!("{int}");
             }
             Op::PushFloat => {
                 let float = chunk.read_float(offset);
-                offset += mem::size_of::<f64>();
+                offset += size_of::<f64>();
 
-                print!("{self:?}    {float}");
+                print!("{float}");
             }
-            _ => print!("{self:?}"),
+            Op::PushString => {
+                let (idx, len) = chunk.read_str(offset);
+                offset += size_of::<(u64, u64)>();
+
+                let s = chunk.get_str_constant(idx as usize, len as usize);
+                print!("\"{s}\"");
+            }
+            Op::ConcatString => {
+                //
+            }
+            _ => {}
         };
 
         offset

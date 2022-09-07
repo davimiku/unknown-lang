@@ -282,4 +282,5 @@ name = "vm"
 version = "0.1.0"
 dependencies = [
  "chunk",
+ "hir",
 ]

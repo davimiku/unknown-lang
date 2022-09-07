@@ -41,11 +41,19 @@ impl<'a> VM<'a> {
         }
     }
 
+    fn read_byte(&mut self) -> u8 {
+        let byte = self.chunk.read_byte(self.ip);
+        self.ip += mem::size_of::<u8>();
+
+        byte
+    }
+
     /// Reads an integer from the current offset in the bytecode
     /// and increments the instruction pointer.
     fn read_int(&mut self) -> i64 {
         let int = self.chunk.read_int(self.ip);
         self.ip += mem::size_of::<i64>();
+
         int
     }
 
@@ -54,15 +62,20 @@ impl<'a> VM<'a> {
     fn read_float(&mut self) -> f64 {
         let float = self.chunk.read_float(self.ip);
         self.ip += mem::size_of::<f64>();
+
         float
     }
 
-    /// Reads a string from the current offset in the bytecode
-    /// and increments the instruction pointer.
+    /// Reads the stack representation of a string from the
+    /// current offset in the bytecode and increments the
+    /// instruction pointer.
+    ///
+    /// Returns the bytes read from the bytecode as (u64, u64)
     fn read_str(&mut self) -> (u64, u64) {
         let (ptr, len) = self.chunk.read_str(self.ip);
         self.ip += mem::size_of::<(u64, u64)>();
-        (u64::from_le_bytes(ptr), u64::from_le_bytes(len))
+
+        (ptr, len)
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -95,15 +108,12 @@ impl<'a> VM<'a> {
                     self.stack.push_int(constant);
                 }
                 Op::PushFloat => {
-                    // TODO: move read_float to self which increments the self.ip
                     let constant = self.read_float();
                     self.stack.push_float(constant);
                 }
                 Op::PushString => {
-                    let (ptr, len) = self.read_str();
-                    // let constant = self.chunk.get_str(*idx);
-                    // println!("SConstant({}, {})", *idx, constant);
-                    // self.stack.push_str(constant);
+                    let (idx, len) = self.read_str();
+                    self.stack.push_str_constant(idx, len);
                 }
                 Op::AddFloat => {
                     float_arithmetic!(Add::add);
@@ -120,8 +130,8 @@ impl<'a> VM<'a> {
                         return Err(InterpretError::RuntimeError(RuntimeError::RangeError));
                     }
 
-                    let res = (a / b).to_le_bytes();
-                    self.stack.push(res);
+                    let res = a / b;
+                    self.stack.push_float(res);
                 }
                 Op::AddInt => {
                     int_arithmetic!(Add::add);
@@ -138,12 +148,12 @@ impl<'a> VM<'a> {
                         return Err(InterpretError::RuntimeError(RuntimeError::RangeError));
                     }
 
-                    let res = (a / b).to_le_bytes();
-                    self.stack.push(res);
+                    let res = a / b;
+                    self.stack.push_int(res);
                 }
                 Op::Builtin => {
-                    todo!();
-                    // self.exec_builtin(*i)
+                    let builtin_idx = self.read_byte();
+                    self.exec_builtin(builtin_idx);
                 }
                 Op::Ret => {
                     // TODO: better output for debugging?
@@ -157,7 +167,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    fn exec_builtin(&mut self, i: u32) {
+    fn exec_builtin(&mut self, i: u8) {
         // TODO: move builtins to an array/map or something to not hard-code
         if i == 0 {
             // print
@@ -200,25 +210,88 @@ impl From<InvalidOpError> for RuntimeError {
 mod tests {
 
     use chunk::{Chunk, Op};
+    use hir::{BinaryOp, Database, Expr, Type};
 
-    use super::VM;
+    use super::*;
 
     #[test]
-    fn int_add() {
+    fn test_manual_add_instructions() {
         let mut chunk = Chunk::new();
+        let message = "hello world";
 
-        let a = 2;
+        let a = 4;
         let b = 5;
 
         chunk.write_int_constant(a, 0);
         chunk.write_int_constant(b, 0);
         chunk.write_op(Op::AddInt, 0);
-        chunk.write_op(Op::Ret, 1);
+        chunk.write_string_constant(message, 1);
+        chunk.write_op(Op::Ret, 2);
         chunk.disassemble("Ret");
 
         let mut vm = VM::new(&chunk);
         vm.interpret().unwrap();
 
-        assert_eq!(vm.stack.peek_int(), 7);
+        assert_eq!(vm.stack.pop_int(), message.len() as i64);
+        assert_eq!(vm.stack.pop_int(), 0); // index of message
+        assert_eq!(vm.stack.pop_int(), a + b);
+    }
+
+    #[test]
+    fn test_int_add() {
+        let mut chunk = Chunk::new();
+        let mut database = Database::default();
+
+        let a = 4;
+        let b = 5;
+
+        let lhs = database.alloc_expr(Expr::IntLiteral(a), None);
+        let rhs = database.alloc_expr(Expr::IntLiteral(b), None);
+
+        let expr = Expr::Binary {
+            op: BinaryOp::Add,
+            lhs,
+            lhs_type: Type::IntLiteral(a),
+            rhs,
+            rhs_type: Type::IntLiteral(b),
+        };
+
+        chunk.write_expr(&expr, &database);
+        chunk.write_op(Op::Ret, 2);
+        chunk.disassemble("IntAdd");
+
+        let mut vm = VM::new(&chunk);
+        vm.interpret().unwrap();
+
+        assert_eq!(vm.stack.pop_int(), a + b);
+    }
+
+    #[test]
+    fn test_float_add() {
+        let mut chunk = Chunk::new();
+        let mut database = Database::default();
+
+        let a = 4.4;
+        let b = 5.5;
+
+        let lhs = database.alloc_expr(Expr::FloatLiteral(a), None);
+        let rhs = database.alloc_expr(Expr::FloatLiteral(b), None);
+
+        let expr = Expr::Binary {
+            op: BinaryOp::Add,
+            lhs,
+            lhs_type: Type::FloatLiteral(a),
+            rhs,
+            rhs_type: Type::FloatLiteral(b),
+        };
+
+        chunk.write_expr(&expr, &database);
+        chunk.write_op(Op::Ret, 2);
+        chunk.disassemble("FloatAdd");
+
+        let mut vm = VM::new(&chunk);
+        vm.interpret().unwrap();
+
+        assert_eq!(vm.stack.pop_float(), a + b);
     }
 }
