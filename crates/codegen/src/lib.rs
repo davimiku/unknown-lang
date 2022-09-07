@@ -2,6 +2,7 @@
 // bytecode chunk (vector of bytes)
 pub use op::{InvalidOpError, Op};
 
+use std::mem::size_of;
 use std::str;
 use std::{convert::TryInto, mem};
 
@@ -186,72 +187,23 @@ impl Chunk {
         self.code[i].try_into()
     }
 
-    /// Reads 1 byte from the bytecode.
-    ///
-    /// Panics if there are not enough bytes to read from.
-    #[inline]
-    pub fn read_byte(&self, offset: usize) -> u8 {
-        let bytes: [u8; 1] = self
-            .read_n_bytes(offset, 1)
-            .try_into()
-            .expect("should be at least 1 byte to read");
-
-        bytes[0]
-    }
-
-    /// Reads N bytes from the bytecode.
-    ///
-    /// Panics if there are not enough bytes to read from
-    #[inline]
-    fn read_n_bytes(&self, offset: usize, bytes: usize) -> &[u8] {
-        let end = offset + bytes;
-        &self.code[offset..end]
-    }
-
-    /// Gets the bytes from the given offset and amount of words.
-    ///
-    /// A "word" in this context is 8 bytes (64-bit), the base size
-    /// of values in the VM.
-    #[inline]
-    fn read_n_words(&self, offset: usize, words: usize) -> &[u8] {
-        self.read_n_bytes(offset, words * 8)
+    unsafe fn read_unchecked<T>(&self, offset: usize) -> T
+    where
+        T: Readable,
+    {
+        self.code.as_ptr().add(offset).cast::<T>().read_unaligned()
     }
 
     #[inline]
-    fn read_word(&self, offset: usize) -> Word {
-        self.read_n_words(offset, 1)
-            .try_into()
-            .expect("should be at least 8 bytes to read")
-    }
+    pub fn read<T>(&self, offset: usize) -> T
+    where
+        T: Readable,
+    {
+        assert!(offset + size_of::<T>() - 1 < self.code.len());
 
-    fn read_dword(&self, offset: usize) -> DWord {
-        self.read_n_words(offset, 2)
-            .try_into()
-            .expect("should be at least 16 bytes to read")
-    }
-
-    fn read_qword(&self, offset: usize) -> QWord {
-        self.read_n_words(offset, 4)
-            .try_into()
-            .expect("should be at least 32 bytes to read")
-    }
-
-    /// Reads an Int (i64) value from the bytecode starting
-    /// at the given offset.
-    ///
-    /// Panics if there are not enough bytes to read from the offset.
-    pub fn read_int(&self, offset: usize) -> i64 {
-        let bytes = self.read_word(offset);
-        i64::from_le_bytes(bytes)
-    }
-
-    /// Reads an Float (f64) value from the bytecode starting
-    /// at the given offset.
-    ///
-    /// Panics if there are not enough bytes to read from the offset.
-    pub fn read_float(&self, offset: usize) -> f64 {
-        let bytes = self.read_word(offset);
-        f64::from_le_bytes(bytes)
+        // Safety: We checked that it is not an out-of-bounds read,
+        // so this is safe.
+        unsafe { self.read_unchecked(offset) }
     }
 
     /// Reads the stack representation of a String `(u64, u64)`
@@ -265,21 +217,19 @@ impl Chunk {
     ///
     /// Panics if there are not enough bytes to read from the offset.
     pub fn read_str(&self, offset: usize) -> (u64, u64) {
-        let bytes = self.read_dword(offset);
+        let (first, second) = self.read::<(u64, u64)>(offset);
 
-        let [first, second]: [Word; 2] = unsafe { mem::transmute::<[u8; 16], [Word; 2]>(bytes) };
-
-        // TODO: better way to clone &[u8] to u64?
-        (u64::from_le_bytes(first), u64::from_le_bytes(second))
+        (first, second)
     }
 
     /// Given the stack representation of a String constant,
     /// return the corresponding String from the constants pool.
-    pub fn get_str_constant(&self, idx: usize, len: usize) -> &str {
-        let end = idx + len;
+    pub fn get_str_constant(&self, idx: u64, len: u64) -> &str {
+        let start = idx as usize;
+        let end = (idx + len) as usize;
         let bytes = self
             .str_constants
-            .get(idx..end)
+            .get(start..end)
             .expect("should be enough bytes to slice");
 
         // Safety: The compiler must have only allocated valid UTF-8
@@ -327,21 +277,49 @@ impl Chunk {
     }
 }
 
+pub unsafe trait Readable {}
+
+unsafe impl Readable for u8 {}
+unsafe impl Readable for i64 {}
+unsafe impl Readable for f64 {}
+unsafe impl Readable for (u64, u64) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_get_bytes() {
+    fn test_read_byte() {
+        let mut chunk = Chunk::new();
+
+        let input = 255;
+
+        chunk.write_byte(input);
+        let actual = chunk.read::<u8>(0);
+
+        assert_eq!(input, actual);
+    }
+
+    #[test]
+    fn test_read_int_constant() {
         let mut chunk = Chunk::new();
 
         let input = 8_000_000_000;
 
         chunk.write_int_constant(input, 1);
-        let bytes = chunk.read_n_words(1, 1);
+        let actual = chunk.read::<i64>(1);
 
-        let bytes: [u8; 8] = bytes.try_into().expect("slice should have correct length");
-        let actual = i64::from_le_bytes(bytes);
+        assert_eq!(input, actual);
+    }
+
+    #[test]
+    fn test_read_float_constant() {
+        let mut chunk = Chunk::new();
+
+        let input = 8_000_000_000.0;
+
+        chunk.write_float_constant(input, 1);
+        let actual = chunk.read::<f64>(1);
 
         assert_eq!(input, actual);
     }

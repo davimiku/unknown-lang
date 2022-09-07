@@ -23,17 +23,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bed554bd50246729a1ec158d08aa3235d1b69d94ad120ebe187e28894787e736"
 
 [[package]]
-name = "chunk"
-version = "0.1.0"
-dependencies = [
- "hir",
-]
-
-[[package]]
 name = "cli"
 version = "0.1.0"
 dependencies = [
  "parser",
+]
+
+[[package]]
+name = "codegen"
+version = "0.1.0"
+dependencies = [
+ "hir",
 ]
 
 [[package]]
@@ -281,6 +281,6 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 name = "vm"
 version = "0.1.0"
 dependencies = [
- "chunk",
+ "codegen",
  "hir",
 ]

@@ -1,18 +1,18 @@
 // TODO: move Stack to the vm crate?
 
 const STACK_MAX: usize = 256;
-const LANES: usize = 8;
+const WORD_SIZE: usize = 8;
 
 /// Values stored in the stack
 /// 8 bytes (64-bit) that can be interpreted as float, int, bool, etc.
 /// based on the bytecode operation. All values (currently) are 8-byte.
-type Word = [u8; LANES];
+type Word = [u8; WORD_SIZE];
 
 /// Stack representation of a String constant is a (idx, len)
 ///
 /// idx: index to first byte in string constants array
 /// len: byte length of the string data
-type StringConstant = (usize, usize);
+type StringConstant = (u64, u64);
 
 #[derive(Debug)]
 pub struct Stack(Vec<Word>);
@@ -23,6 +23,11 @@ pub struct Stack(Vec<Word>);
 /// care to call the appropriate push and pop functions.
 
 impl Stack {
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.0.len()
+    }
+
     /// Adds a bytes value to the top of the stack
     #[inline]
     pub fn push(&mut self, val: Word) {
@@ -49,13 +54,13 @@ impl Stack {
         self.push(len.to_le_bytes());
     }
 
-    /// Removes the top value of the stack and returns it as bytes
+    /// Removes the top Word of the stack and returns it as bytes
     #[inline]
     pub fn pop(&mut self) -> Word {
         self.0.pop().unwrap()
     }
 
-    /// Removes the top 2 values of the stack and returns both in a tuple
+    /// Removes the top 2 Words of the stack and returns both in a tuple
     /// in LIFO order.
     ///
     /// - push A
@@ -69,8 +74,18 @@ impl Stack {
         (a, b)
     }
 
+    /// Removes the top N words of the stack and returns it as a byte array.
     #[inline]
-    fn pop_n() {}
+    fn pop_n<const N: usize>(&mut self, n: usize) -> [Word; N] {
+        let start = self.0.len() - n;
+
+        let mut output: [Word; N] = [[0; 8]; N];
+        for (i, byte) in self.0.drain(start..).enumerate() {
+            output[i] = byte;
+        }
+
+        output
+    }
 
     /// Removes the top value of the stack and returns it as an i64
     #[inline]
@@ -86,13 +101,13 @@ impl Stack {
 
     #[inline]
     pub fn pop_string_literal(&mut self) -> StringConstant {
-        let (idx, len) = self.pop_two();
+        let [idx, len] = self.pop_n::<2>(2);
 
-        (usize::from_le_bytes(idx), usize::from_le_bytes(len))
+        (u64::from_le_bytes(idx), u64::from_le_bytes(len))
     }
 
     #[inline]
-    pub fn peek(&self) -> Word {
+    fn peek(&self) -> Word {
         *self.0.last().unwrap()
     }
 
@@ -166,5 +181,26 @@ mod tests {
         stack.push_int(c);
 
         assert_eq!(3, stack.peek_int());
+    }
+
+    #[test]
+    fn pop_n_times() {
+        let mut stack = Stack::default();
+
+        let word_1: Word = 1_u64.to_le_bytes();
+        let word_2: Word = 2_u64.to_le_bytes();
+        let word_3: Word = 3_u64.to_le_bytes();
+        let word_4: Word = 4_u64.to_le_bytes();
+        let word_5: Word = 5_u64.to_le_bytes();
+
+        stack.push(word_1);
+        stack.push(word_2);
+        stack.push(word_3);
+        stack.push(word_4);
+        stack.push(word_5);
+
+        let popped = stack.pop_n::<2>(2);
+
+        assert_eq!([word_4, word_5], popped);
     }
 }

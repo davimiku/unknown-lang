@@ -1,17 +1,11 @@
-use chunk::{Chunk, InvalidOpError, Op};
+use codegen::{Chunk, InvalidOpError, Op, Readable};
 use stack::Stack;
-use std::mem;
+use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
 
 mod builtins;
 mod macros;
 mod stack;
-
-// temporary for testing
-const PRINT_STR_CONSTANT: u8 = 0;
-const PRINT_STR: u8 = 1;
-const PRINT_INT: u8 = 2;
-const PRINT_FLOAT: u8 = 3;
 
 pub fn run(chunk: &Chunk) -> InterpretResult {
     let mut vm = VM::new(chunk);
@@ -44,39 +38,31 @@ impl<'a> VM<'a> {
         self.run()
     }
 
-    #[cfg(debug_assertions)]
-    fn debug_print(&self, op: Op) {
-        {
-            print!("     ");
-            println!("{:?}", self.stack);
-            println!();
-            println!("{}", op.disassemble(self.chunk, self.ip));
-        }
+    #[inline]
+    fn read<T: Readable>(&mut self) -> T {
+        let value = self.chunk.read::<T>(self.ip);
+        self.ip += size_of::<T>();
+
+        value
     }
 
+    #[inline]
     fn read_byte(&mut self) -> u8 {
-        let byte = self.chunk.read_byte(self.ip);
-        self.ip += mem::size_of::<u8>();
-
-        byte
+        self.read::<u8>()
     }
 
     /// Reads an integer from the current offset in the bytecode
     /// and increments the instruction pointer.
+    #[inline]
     fn read_int(&mut self) -> i64 {
-        let int = self.chunk.read_int(self.ip);
-        self.ip += mem::size_of::<i64>();
-
-        int
+        self.read::<i64>()
     }
 
     /// Reads a float from the current offset in the bytecode
     /// and increments the instruction pointer.
+    #[inline]
     fn read_float(&mut self) -> f64 {
-        let float = self.chunk.read_float(self.ip);
-        self.ip += mem::size_of::<f64>();
-
-        float
+        self.read::<f64>()
     }
 
     /// Reads the stack representation of a string from the
@@ -84,11 +70,9 @@ impl<'a> VM<'a> {
     /// instruction pointer.
     ///
     /// Returns the bytes read from the bytecode as (u64, u64)
+    #[inline]
     fn read_str(&mut self) -> (u64, u64) {
-        let (ptr, len) = self.chunk.read_str(self.ip);
-        self.ip += mem::size_of::<(u64, u64)>();
-
-        (ptr, len)
+        self.read::<(u64, u64)>()
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -187,7 +171,13 @@ impl From<InvalidOpError> for RuntimeError {
 
 #[cfg(test)]
 mod tests {
-    use chunk::{Chunk, Op};
+
+    const PRINT_STR_CONSTANT: u8 = 0;
+    const PRINT_STR: u8 = 1;
+    const PRINT_INT: u8 = 2;
+    const PRINT_FLOAT: u8 = 3;
+
+    use codegen::{Chunk, Op};
 
     use hir::{BinaryOp, Database, Expr, Type};
 
