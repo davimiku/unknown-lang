@@ -1,9 +1,11 @@
-use chunk::{Chunk, InvalidOpError, Op, ValueStack};
+use chunk::{Chunk, InvalidOpError, Op};
+use stack::Stack;
 use std::mem;
 use std::ops::{Add, Mul, Sub};
 
 mod builtins;
 mod macros;
+mod stack;
 
 // temporary for testing
 const PRINT_STR_CONSTANT: u8 = 0;
@@ -25,7 +27,7 @@ pub(crate) struct VM<'a> {
     ip: usize, // TODO: review what the book says about a pointer being faster, needs unsafe?
 
     /// Program stack containing values
-    stack: ValueStack,
+    stack: Stack,
 }
 
 impl<'a> VM<'a> {

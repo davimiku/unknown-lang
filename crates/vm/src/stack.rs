@@ -1,3 +1,5 @@
+// TODO: move Stack to the vm crate?
+
 const STACK_MAX: usize = 256;
 const LANES: usize = 8;
 
@@ -13,14 +15,14 @@ type Word = [u8; LANES];
 type StringConstant = (usize, usize);
 
 #[derive(Debug)]
-pub struct ValueStack(Vec<Word>);
+pub struct Stack(Vec<Word>);
 /// The base "word" size of the stack is 64-bit (8 bytes)
 ///
 /// Many values are 1 word, such as Int, Float, Bool.
 /// Larger values or compound stack values should take
 /// care to call the appropriate push and pop functions.
 
-impl ValueStack {
+impl Stack {
     /// Adds a bytes value to the top of the stack
     #[inline]
     pub fn push(&mut self, val: Word) {
@@ -115,13 +117,13 @@ impl ValueStack {
     }
 }
 
-impl Default for ValueStack {
+impl Default for Stack {
     fn default() -> Self {
         Self(Vec::with_capacity(STACK_MAX))
     }
 }
 
-impl ValueStack {
+impl Stack {
     pub fn from_values(values: &[Word]) -> Self {
         Self(values.into())
     }
@@ -133,7 +135,7 @@ mod tests {
 
     #[test]
     fn push_value() {
-        let mut stack = ValueStack::default();
+        let mut stack = Stack::default();
 
         stack.push_int(1);
 
@@ -142,7 +144,7 @@ mod tests {
 
     #[test]
     fn push_twice() {
-        let mut stack = ValueStack::default();
+        let mut stack = Stack::default();
 
         stack.push_int(1);
         stack.push_int(2);
@@ -152,7 +154,7 @@ mod tests {
 
     #[test]
     fn addition() {
-        let mut stack = ValueStack::default();
+        let mut stack = Stack::default();
 
         stack.push_int(1_i64);
         stack.push_int(2_i64);

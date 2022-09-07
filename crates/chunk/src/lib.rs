@@ -1,7 +1,6 @@
 // Takes an HIR node + maps of values & types, produces a
 // bytecode chunk (vector of bytes)
 pub use op::{InvalidOpError, Op};
-pub use stack::ValueStack;
 
 use std::str;
 use std::{convert::TryInto, mem};
@@ -10,7 +9,6 @@ use hir::{BinaryOp, Database, Expr, LocalDef, Stmt, Type};
 
 mod disassemble;
 mod op;
-mod stack;
 
 /// A VM "word" is 8 bytes (64 bits)
 type Word = [u8; 8];
