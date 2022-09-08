@@ -111,19 +111,21 @@ impl Context {
     }
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
+        use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
             match ast {
-                ast::Expr::Binary(ast) => self.lower_binary(ast),
-                ast::Expr::Block(ast) => self.lower_block(ast),
-                ast::Expr::BoolLiteral(ast) => self.lower_bool_literal(ast),
-                ast::Expr::FloatLiteral(ast) => self.lower_float_literal(ast),
-                ast::Expr::Function(ast) => self.lower_function_def(ast),
-                ast::Expr::Loop(ast) => self.lower_loop(ast),
-                ast::Expr::IntLiteral(ast) => self.lower_int_literal(ast),
-                ast::Expr::Paren(ast) => return self.lower_expr(ast.expr()),
-                ast::Expr::StringLiteral(ast) => self.lower_string_literal(ast),
-                ast::Expr::Unary(ast) => self.lower_unary(ast),
-                ast::Expr::Ident(ast) => self.lower_ident(ast),
+                Binary(ast) => self.lower_binary(ast),
+                Block(ast) => self.lower_block(ast),
+                BoolLiteral(ast) => self.lower_bool_literal(ast),
+                Call(ast) => self.lower_call(ast),
+                FloatLiteral(ast) => self.lower_float_literal(ast),
+                Function(ast) => self.lower_function_def(ast),
+                Loop(ast) => self.lower_loop(ast),
+                IntLiteral(ast) => self.lower_int_literal(ast),
+                Paren(ast) => return self.lower_expr(ast.expr()),
+                StringLiteral(ast) => self.lower_string_literal(ast),
+                Unary(ast) => self.lower_unary(ast),
+                Ident(ast) => self.lower_ident(ast),
             }
         } else {
             Expr::Empty
