@@ -38,6 +38,10 @@ impl<'a> VM<'a> {
         self.run()
     }
 
+    /// Reads bytes from the bytecode and returns as T.
+    /// Increments current instruction pointer accordingly.
+    ///
+    /// Panics if there are not enough bytes to read.
     #[inline]
     fn read<T: Readable>(&mut self) -> T {
         let value = self.chunk.read::<T>(self.ip);
@@ -49,20 +53,6 @@ impl<'a> VM<'a> {
     #[inline]
     fn read_byte(&mut self) -> u8 {
         self.read::<u8>()
-    }
-
-    /// Reads an integer from the current offset in the bytecode
-    /// and increments the instruction pointer.
-    #[inline]
-    fn read_int(&mut self) -> i64 {
-        self.read::<i64>()
-    }
-
-    /// Reads a float from the current offset in the bytecode
-    /// and increments the instruction pointer.
-    #[inline]
-    fn read_float(&mut self) -> f64 {
-        self.read::<f64>()
     }
 
     /// Reads the stack representation of a string from the
@@ -90,11 +80,11 @@ impl<'a> VM<'a> {
 
             match op {
                 Op::PushInt => {
-                    let constant = self.read_int();
+                    let constant = self.read::<i64>();
                     self.stack.push_int(constant);
                 }
                 Op::PushFloat => {
-                    let constant = self.read_float();
+                    let constant = self.read::<f64>();
                     self.stack.push_float(constant);
                 }
                 Op::PushString => {
