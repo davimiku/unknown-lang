@@ -26,6 +26,7 @@ pub(crate) fn infer(ast: Expr) -> Result<Type, TypeDiagnostic> {
         Expr::Unary { op, expr, typ } => todo!(),
         Expr::Block { stmts, typ } => todo!(),
         Expr::VariableRef { name, typ } => todo!(),
+        Expr::Call { path, args } => todo!(),
         Expr::Function {
             params,
             body,

@@ -85,6 +85,8 @@ impl Database {
             Expr::IntLiteral(i) => write!(s, "{}", i),
             Expr::StringLiteral(sl) => write!(s, "{}", sl),
 
+            Expr::Call { path, args } => todo!(),
+
             Expr::Binary { op, lhs, rhs, .. } => {
                 self.write_expr(s, *lhs, indent)?;
 

@@ -82,6 +82,7 @@ pub enum Expr {
     Block(Block),
     Binary(Binary),
     BoolLiteral(BoolLiteral),
+    Call(Call),
     Function(Function),
     IntLiteral(IntLiteral),
     FloatLiteral(FloatLiteral),
@@ -97,6 +98,7 @@ impl Expr {
         let result = match node.kind() {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
+            SyntaxKind::Call => Self::Call(Call(node)),
             SyntaxKind::FunExpr => Self::Function(Function(node)),
             SyntaxKind::Path => Self::Ident(Ident(node)),
             SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
@@ -117,6 +119,7 @@ impl Expr {
             Expr::Block(e) => e.range(),
             Expr::Binary(e) => e.range(),
             Expr::BoolLiteral(e) => e.range(),
+            Expr::Call(e) => e.range(),
             Expr::Function(e) => e.range(),
             Expr::IntLiteral(e) => e.range(),
             Expr::FloatLiteral(e) => e.range(),
@@ -252,6 +255,15 @@ impl BoolLiteral {
         self.0.first_token()
     }
 
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Call(SyntaxNode);
+
+impl Call {
     pub fn range(&self) -> TextRange {
         self.0.text_range()
     }

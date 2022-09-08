@@ -264,11 +264,15 @@ impl Context {
         }
     }
 
-    fn lower_call() {
+    fn lower_call(&mut self, ast: ast::Call) -> Expr {
         // check for mismatched arg count (no auto-currying it seems)
         // lower_expr each of the args
         // (return Expr::Call)
-        todo!()
+
+        Expr::Call {
+            path: todo!(),
+            args: todo!(),
+        }
     }
 
     fn lower_function_def(&mut self, ast: ast::Function) -> Expr {

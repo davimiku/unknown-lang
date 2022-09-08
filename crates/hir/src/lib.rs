@@ -83,9 +83,15 @@ pub enum Expr {
         // last_expr: Idx<Expr>,
         typ: Type,
     },
-    // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
-    // so that it can handle `a`, `a.b`, `a.b.c`, etc.
+    Call {
+        // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
+        // so that it can handle `a`, `a.b`, `a.b.c`, etc.
+        path: String,
+        args: Vec<Idx<Expr>>,
+    },
     VariableRef {
+        // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
+        // so that it can handle `a`, `a.b`, `a.b.c`, etc.
         name: String,
         typ: Type,
     },
