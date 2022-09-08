@@ -1,8 +1,5 @@
 use la_arena::{Arena, ArenaMap, Idx};
-use std::{
-    fmt::{self, Write as FmtWrite},
-    io::{stdout, Write as IoWrite},
-};
+use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
 use crate::{Expr, LocalDef, Stmt};
@@ -67,7 +64,7 @@ impl Database {
             Stmt::VariableDef(stmt) => {
                 let def = &self.local_defs[*stmt];
 
-                write!(s, "let i{:?} = ", stmt.into_raw())?;
+                write!(s, "let _{:?} = ", stmt.into_raw())?;
                 self.write_expr(s, def.value, indent)
             }
             Stmt::Expr(expr) => self.write_expr(s, *expr, indent),
@@ -369,7 +366,7 @@ mod tests {
 
     #[test]
     fn lower_paren_expr() {
-        let input = &"((((((abc))))))";
+        let input = "((((((abc))))))";
         let expected_hir = Expr::VariableRef {
             name: "abc".into(),
             typ: Default::default(),
