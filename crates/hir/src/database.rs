@@ -10,7 +10,7 @@ pub struct Database {
     stmts: Arena<Stmt>,
 
     /// Allocated expressions
-    exprs: Arena<Expr>,
+    pub(crate) exprs: Arena<Expr>,
 
     /// Text ranges of the expressions from `exprs`
     /// Invariant: The indexes must be kept in sync
@@ -21,12 +21,6 @@ pub struct Database {
 }
 
 impl Database {
-    // ???
-    // Need a separate 'codegen' crate? The line between chunk, hir, and vm is blurred
-    pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
-        &self.exprs[idx]
-    }
-
     // TODO: reduce visibility after updating tests in vm::exec
     pub fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
@@ -308,17 +302,9 @@ mod tests {
 
         let lhs = exprs.alloc(Expr::IntLiteral(1));
         let rhs = exprs.alloc(Expr::IntLiteral(2));
+        let op = BinaryOp::Add;
 
-        check_expr(
-            "1 + 2",
-            Expr::Binary {
-                op: BinaryOp::Add,
-                lhs,
-                rhs,
-                lhs_type: Default::default(),
-                rhs_type: Default::default(),
-            },
-        );
+        check_expr("1 + 2", Expr::Binary { op, lhs, rhs });
     }
 
     #[test]
@@ -327,17 +313,9 @@ mod tests {
 
         let lhs = exprs.alloc(Expr::IntLiteral(10));
         let rhs = exprs.alloc(Expr::Empty);
+        let op = BinaryOp::Sub;
 
-        check_expr(
-            "10 -",
-            Expr::Binary {
-                op: BinaryOp::Sub,
-                lhs,
-                rhs,
-                lhs_type: Default::default(),
-                rhs_type: Default::default(),
-            },
-        );
+        check_expr("10 -", Expr::Binary { op, lhs, rhs });
     }
 
     #[test]
@@ -367,10 +345,7 @@ mod tests {
     #[test]
     fn lower_paren_expr() {
         let input = "((((((abc))))))";
-        let expected_hir = Expr::VariableRef {
-            name: "abc".into(),
-            typ: Default::default(),
-        };
+        let expected_hir = Expr::VariableRef { name: "abc".into() };
 
         check_expr(input, expected_hir)
     }
@@ -379,14 +354,11 @@ mod tests {
     fn lower_negation_expr() {
         let mut exprs = Arena::new();
 
-        let ten = exprs.alloc(Expr::IntLiteral(10));
+        let expr = exprs.alloc(Expr::IntLiteral(10));
+        let op = UnaryOp::Neg;
 
         let input = "-10";
-        let expected_hir = Expr::Unary {
-            op: UnaryOp::Neg,
-            expr: ten,
-            typ: Default::default(),
-        };
+        let expected_hir = Expr::Unary { op, expr };
 
         check_expr(input, expected_hir);
     }
@@ -394,10 +366,7 @@ mod tests {
     #[test]
     fn lower_variable_ref() {
         let input = "foo";
-        let expected_hir = Expr::VariableRef {
-            name: "foo".into(),
-            typ: Default::default(),
-        };
+        let expected_hir = Expr::VariableRef { name: "foo".into() };
 
         check_expr(input, expected_hir)
     }
@@ -414,10 +383,7 @@ mod tests {
     fn lower_empty_block() {
         let input = "{}";
 
-        let expected_hir = Expr::Block {
-            stmts: vec![],
-            typ: Default::default(),
-        };
+        let expected_hir = Expr::Block { stmts: vec![] };
 
         check_expr(input, expected_hir)
     }
@@ -427,13 +393,10 @@ mod tests {
         let mut exprs = Arena::new();
 
         let expr = exprs.alloc(Expr::BoolLiteral(true));
+        let op = UnaryOp::Not;
 
         let input = "not true";
-        let expected_hir = Expr::Unary {
-            op: UnaryOp::Not,
-            expr,
-            typ: Default::default(),
-        };
+        let expected_hir = Expr::Unary { op, expr };
 
         check_expr(input, expected_hir)
     }

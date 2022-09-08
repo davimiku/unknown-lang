@@ -1,27 +1,15 @@
-mod check;
 mod context;
 mod database;
-mod infer;
-mod types;
+mod typecheck;
 
 use std::fmt;
 
-use context::{Context, Diagnostic};
-pub use database::Database;
+pub use context::{Context, Diagnostic};
+use database::Database;
 use la_arena::Idx;
-use text_size::TextRange;
-pub use types::Type;
+pub use typecheck::Type;
 
-struct TypeDiagnostic {
-    pub variant: TypeDiagnosticVariant,
-    pub range: TextRange,
-}
-
-enum TypeDiagnosticVariant {
-    TypeMismatch { expected: Type, actual: Type },
-    Undefined { name: String },
-}
-
+// TODO: interned string?
 #[derive(Debug, PartialEq, Eq)]
 pub struct Name(String);
 
@@ -68,20 +56,15 @@ pub enum Expr {
     Binary {
         op: BinaryOp,
         lhs: Idx<Expr>,
-        lhs_type: Type,
         rhs: Idx<Expr>,
-        rhs_type: Type,
     },
     Unary {
         op: UnaryOp,
         expr: Idx<Expr>,
-        typ: Type,
     },
     Block {
         stmts: Vec<Idx<Stmt>>,
-        // TODO: should we instead use the last index of stmts?
         // last_expr: Idx<Expr>,
-        typ: Type,
     },
     Call {
         // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
@@ -93,7 +76,6 @@ pub enum Expr {
         // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
         // so that it can handle `a`, `a.b`, `a.b.c`, etc.
         name: String,
-        typ: Type,
     },
     Function {
         params: Vec<Idx<Expr>>, // names (or empty?)

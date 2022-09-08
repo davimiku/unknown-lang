@@ -3,10 +3,11 @@ use std::{collections::HashMap, str::FromStr};
 use la_arena::Idx;
 use parser::SyntaxKind;
 
-use crate::{BinaryOp, Database, Expr, LocalDef, Stmt, UnaryOp};
+use crate::typecheck::TypeCheckResults;
+use crate::{BinaryOp, Database, Expr, LocalDef, Stmt, Type, UnaryOp};
 
 // temp
-pub(crate) type Diagnostic = ();
+pub type Diagnostic = ();
 
 #[derive(Debug)]
 pub(crate) struct Scope {
@@ -24,9 +25,12 @@ impl Scope {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Context {
+pub struct Context {
     /// Database holding the lowered Stmt/Expr and associated data
     pub(crate) database: Database,
+
+    /// Results of type checking and inferring expressions
+    pub(crate) typecheck_results: TypeCheckResults,
 
     /// Diagnostics found while lowering
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -38,6 +42,21 @@ pub(crate) struct Context {
 
 // Scope-related functions
 impl Context {
+    /// Returns the expression at
+    pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
+        &self.database.exprs[idx]
+    }
+
+    pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
+        &self.typecheck_results[idx]
+    }
+
+    // TODO: probably remove this, it's only used for temporary tests in the vm crate
+    // that should be removed later.
+    pub fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
+        self.database.alloc_expr(expr, ast)
+    }
+
     pub(crate) fn insert_local_def(&mut self, name: String, idx: Idx<LocalDef>) {
         let current_scope = &mut self.scopes[self.current_scope_idx];
 
@@ -186,13 +205,7 @@ impl Context {
         let lhs = self.lower_expr(ast.lhs());
         let rhs = self.lower_expr(ast.rhs());
 
-        Expr::Binary {
-            op,
-            lhs,
-            rhs,
-            lhs_type: Default::default(),
-            rhs_type: Default::default(),
-        }
+        Expr::Binary { op, lhs, rhs }
     }
 
     fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
@@ -204,11 +217,7 @@ impl Context {
 
         let expr = self.lower_expr(ast.expr());
 
-        Expr::Unary {
-            op,
-            expr,
-            typ: Default::default(),
-        }
+        Expr::Unary { op, expr }
     }
 
     fn lower_block(&mut self, ast: ast::Block) -> Expr {
@@ -217,12 +226,7 @@ impl Context {
         // temp: dummy value
         let stmts = Vec::new();
 
-        Expr::Block {
-            stmts,
-            // TODO: should we instead use the last index of stmts?
-            // last_expr: None,
-            typ: Default::default(),
-        }
+        Expr::Block { stmts }
     }
 
     fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
@@ -260,7 +264,6 @@ impl Context {
 
         Expr::VariableRef {
             name: ast.name().unwrap().text().into(),
-            typ: Default::default(),
         }
     }
 

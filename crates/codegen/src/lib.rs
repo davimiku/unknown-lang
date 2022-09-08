@@ -6,7 +6,7 @@ use std::convert::TryInto;
 use std::mem::size_of;
 use std::str;
 
-use hir::{BinaryOp, Database, Expr, LocalDef, Stmt, Type};
+use hir::{BinaryOp, Context, Expr, LocalDef, Stmt, Type};
 
 mod disassemble;
 mod op;
@@ -43,17 +43,17 @@ impl Chunk {
 
 // Functions to write to the Chunk
 impl Chunk {
-    pub fn write_stmt(&mut self, stmt: Stmt, database: &Database) {
+    pub fn write_stmt(&mut self, stmt: Stmt, context: &Context) {
         match stmt {
             Stmt::VariableDef(local_def) => todo!(),
             Stmt::Expr(idx) => {
-                let expr = database.expr(idx);
-                self.write_expr(expr, database)
+                let expr = context.expr(idx);
+                self.write_expr(expr, context)
             }
         }
     }
 
-    pub fn write_expr(&mut self, expr: &Expr, database: &Database) {
+    pub fn write_expr(&mut self, expr: &Expr, context: &Context) {
         use Expr::*;
 
         match expr {
@@ -69,38 +69,35 @@ impl Chunk {
             StringLiteral(s) => {
                 self.write_string_constant(s, 1);
             }
-            Binary {
-                op,
-                lhs,
-                rhs,
-                lhs_type,
-                ..
-            } => {
-                let lhs = database.expr(*lhs);
-                let rhs = database.expr(*rhs);
+            Binary { op, lhs, rhs } => {
+                use Type::*;
 
-                self.write_expr(lhs, database);
-                self.write_expr(rhs, database);
+                let lhs_type = context.type_of(*lhs);
+                let lhs = context.expr(*lhs);
+                let rhs = context.expr(*rhs);
+
+                self.write_expr(lhs, context);
+                self.write_expr(rhs, context);
 
                 match op {
                     BinaryOp::Add => match lhs_type {
-                        Type::Float | Type::FloatLiteral(_) => self.write_op(Op::AddFloat, 1),
-                        Type::Int | Type::IntLiteral(_) => self.write_op(Op::AddInt, 1),
+                        Float | FloatLiteral(_) => self.write_op(Op::AddFloat, 1),
+                        Int | IntLiteral(_) => self.write_op(Op::AddInt, 1),
                         _ => unreachable!(),
                     },
                     BinaryOp::Sub => match lhs_type {
-                        Type::Float | Type::FloatLiteral(_) => self.write_op(Op::SubFloat, 1),
-                        Type::Int | Type::IntLiteral(_) => self.write_op(Op::SubInt, 1),
+                        Float | FloatLiteral(_) => self.write_op(Op::SubFloat, 1),
+                        Int | IntLiteral(_) => self.write_op(Op::SubInt, 1),
                         _ => unreachable!(),
                     },
                     BinaryOp::Mul => match lhs_type {
-                        Type::Float | Type::FloatLiteral(_) => self.write_op(Op::MulFloat, 1),
-                        Type::Int | Type::IntLiteral(_) => self.write_op(Op::MulInt, 1),
+                        Float | FloatLiteral(_) => self.write_op(Op::MulFloat, 1),
+                        Int | IntLiteral(_) => self.write_op(Op::MulInt, 1),
                         _ => unreachable!(),
                     },
                     BinaryOp::Div => match lhs_type {
-                        Type::Float | Type::FloatLiteral(_) => self.write_op(Op::DivFloat, 1),
-                        Type::Int | Type::IntLiteral(_) => self.write_op(Op::DivInt, 1),
+                        Float | FloatLiteral(_) => self.write_op(Op::DivFloat, 1),
+                        Int | IntLiteral(_) => self.write_op(Op::DivInt, 1),
                         _ => unreachable!(),
                     },
                     BinaryOp::Rem => todo!(),
@@ -108,9 +105,9 @@ impl Chunk {
                     BinaryOp::Path => todo!(),
                 }
             }
-            Unary { op, expr, typ } => todo!(),
-            Block { stmts, typ } => todo!(),
-            VariableRef { name, typ } => todo!(),
+            Unary { op, expr } => todo!(),
+            Block { stmts } => todo!(),
+            VariableRef { name } => todo!(),
             Call { path, args } => todo!(),
             Function {
                 params,
@@ -281,6 +278,11 @@ impl Chunk {
     }
 }
 
+/// Types implementing this trait may be read from the bytecode.
+///
+/// # Safety
+///
+/// Types implementing this trait must not implement Drop.
 pub unsafe trait Readable {}
 
 unsafe impl Readable for u8 {}

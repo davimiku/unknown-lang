@@ -3,7 +3,7 @@
 //!
 //!
 
-use crate::{types::Type, Expr, TypeDiagnostic};
+use crate::Expr;
 
 pub(crate) fn check(input: Expr, expected: Type) -> Option<TypeDiagnostic> {
     todo!()

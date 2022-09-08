@@ -1,8 +1,8 @@
 //!
 //! Type inference
 
-use crate::types::Type;
-use crate::{Expr, TypeDiagnostic, TypeDiagnosticVariant};
+use crate::types::{Type, TypeDiagnostic, TypeDiagnosticVariant};
+use crate::Expr;
 
 pub(crate) fn infer(ast: Expr) -> Result<Type, TypeDiagnostic> {
     match ast {
@@ -16,16 +16,10 @@ pub(crate) fn infer(ast: Expr) -> Result<Type, TypeDiagnostic> {
         Expr::FloatLiteral(f) => Ok(Type::FloatLiteral(f)),
         Expr::IntLiteral(i) => Ok(Type::IntLiteral(i)),
         Expr::StringLiteral(s) => Ok(Type::StringLiteral(s)),
-        Expr::Binary {
-            op,
-            lhs,
-            rhs,
-            lhs_type,
-            rhs_type,
-        } => todo!(),
-        Expr::Unary { op, expr, typ } => todo!(),
-        Expr::Block { stmts, typ } => todo!(),
-        Expr::VariableRef { name, typ } => todo!(),
+        Expr::Binary { op, lhs, rhs } => todo!(),
+        Expr::Unary { op, expr } => todo!(),
+        Expr::Block { stmts } => todo!(),
+        Expr::VariableRef { name } => todo!(),
         Expr::Call { path, args } => todo!(),
         Expr::Function {
             params,
