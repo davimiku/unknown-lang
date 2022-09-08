@@ -2,9 +2,9 @@
 // bytecode chunk (vector of bytes)
 pub use op::{InvalidOpError, Op};
 
+use std::convert::TryInto;
 use std::mem::size_of;
 use std::str;
-use std::{convert::TryInto, mem};
 
 use hir::{BinaryOp, Database, Expr, LocalDef, Stmt, Type};
 
@@ -111,6 +111,7 @@ impl Chunk {
             Unary { op, expr, typ } => todo!(),
             Block { stmts, typ } => todo!(),
             VariableRef { name, typ } => todo!(),
+            Call { path, args } => todo!(),
             Function {
                 params,
                 body,
@@ -194,6 +195,9 @@ impl Chunk {
         self.code.as_ptr().add(offset).cast::<T>().read_unaligned()
     }
 
+    /// Reads bytes from the bytecode and returns as T.
+    ///
+    /// Panics if there are not enough bytes to read.
     #[inline]
     pub fn read<T>(&self, offset: usize) -> T
     where
