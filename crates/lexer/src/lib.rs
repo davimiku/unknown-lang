@@ -37,23 +37,23 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub text: &'a str,
     pub range: TextRange,
 }
 
-impl<'a> Token<'a> {
-    fn new(kind: TokenKind, text: &'a str, range: TextRange) -> Self {
-        Token { kind, text, range }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::token_kind::TokenKind::*;
     use super::*;
+
+    impl<'a> Token<'a> {
+        fn new(kind: TokenKind, text: &'a str, range: TextRange) -> Self {
+            Token { kind, text, range }
+        }
+    }
 
     fn range<S: Into<TextSize>>(start: S, end: S) -> TextRange {
         TextRange::new(start.into(), end.into())
