@@ -108,15 +108,16 @@ Root@0..13
     Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
-    Path@10..13
-      Ident@10..13 "bar""#]],
+    Call@10..13
+      Path@10..13
+        Ident@10..13 "bar""#]],
         );
     }
 
     #[test]
     fn parse_variable_with_type_annotation() {
         check(
-            "let x: int = 1",
+            "let x: Int = 1",
             expect![[r#"
 Root@0..14
   VariableDef@0..14
@@ -126,9 +127,10 @@ Root@0..14
     Colon@5..6 ":"
     Emptyspace@6..7 " "
     TypeExpr@7..11
-      Path@7..11
-        Ident@7..10 "int"
-        Emptyspace@10..11 " "
+      Call@7..11
+        Path@7..11
+          Ident@7..10 "Int"
+          Emptyspace@10..11 " "
     Equals@11..12 "="
     Emptyspace@12..13 " "
     IntExpr@13..14
@@ -172,11 +174,14 @@ Root@0..3
             expect![[r#"
 Root@0..7
   ExprStmt@0..7
-    Path@0..6
-      Ident@0..5 "print"
-      Emptyspace@5..6 " "
-    Path@6..7
-      Ident@6..7 "a""#]],
+    Call@0..7
+      Path@0..6
+        Ident@0..5 "print"
+        Emptyspace@5..6 " "
+      CallArgs@6..7
+        Call@6..7
+          Path@6..7
+            Ident@6..7 "a""#]],
         )
     }
 
@@ -224,7 +229,7 @@ Root@0..17
     Emptyspace@15..16 " "
     Path@16..17
       Ident@16..17 "a"
-error at 8..11: expected int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
+error at 8..11: expected Int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
         );
     }
 }
