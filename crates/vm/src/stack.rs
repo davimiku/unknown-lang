@@ -44,6 +44,11 @@ impl Stack {
         self.push(val.into().to_le_bytes())
     }
 
+    #[inline]
+    pub fn push_bool(&mut self, val: bool) {
+        self.push(i64::from(val).to_le_bytes())
+    }
+
     /// Pushes the stack representation of a String to the stack.
     ///
     /// This is a (u64, u64) representing the (idx, len) of the
@@ -97,6 +102,14 @@ impl Stack {
     #[inline]
     pub fn pop_float(&mut self) -> f64 {
         f64::from_le_bytes(self.pop())
+    }
+
+    /// Removes the top value of the stack and returns it as a bool
+    #[inline]
+    pub fn pop_bool(&mut self) -> bool {
+        let int = self.pop_int();
+
+        int != 0
     }
 
     #[inline]
@@ -165,6 +178,18 @@ mod tests {
         stack.push_int(2);
 
         assert_eq!(2, stack.peek_int());
+    }
+
+    #[allow(clippy::bool_assert_comparison)] // comparing literal booleans
+    #[test]
+    fn push_pop_bool() {
+        let mut stack = Stack::default();
+
+        stack.push_bool(true);
+        stack.push_bool(false);
+
+        assert_eq!(false, stack.pop_bool());
+        assert_eq!(true, stack.pop_bool());
     }
 
     #[test]
