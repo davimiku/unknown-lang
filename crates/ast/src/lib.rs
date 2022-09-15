@@ -36,7 +36,7 @@ impl Root {
 #[derive(Debug)]
 pub enum Stmt {
     /// A local (let) binding
-    VariableDef(VariableDef),
+    LocalDef(LocalDef),
 
     /// Expression
     Expr(Expr),
@@ -45,7 +45,7 @@ pub enum Stmt {
 impl Stmt {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
-            SyntaxKind::VariableDef => Self::VariableDef(VariableDef(node)),
+            SyntaxKind::VariableDef => Self::LocalDef(LocalDef(node)),
             _ => {
                 let expr = node.children().find_map(Expr::cast)?;
                 Self::Expr(expr)
@@ -57,15 +57,19 @@ impl Stmt {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct VariableDef(SyntaxNode);
+pub struct LocalDef(SyntaxNode);
 
-impl VariableDef {
+impl LocalDef {
     // TODO: Pattern rather than name (Ident)
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
             .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn type_annotation(&self) -> Option<TypeExpr> {
+        self.0.children().find_map(TypeExpr::cast)
     }
 
     pub fn value(&self) -> Option<Expr> {
@@ -83,14 +87,15 @@ pub enum Expr {
     Binary(Binary),
     BoolLiteral(BoolLiteral),
     Call(Call),
-    Function(Function),
-    IntLiteral(IntLiteral),
     FloatLiteral(FloatLiteral),
+    Function(Function),
+    Ident(Ident),
+    IntLiteral(IntLiteral),
     Loop(Loop),
     Paren(ParenExpr),
     StringLiteral(StringLiteral),
+    TypeExpr(TypeExpr),
     Unary(Unary),
-    Ident(Ident),
 }
 
 impl Expr {
@@ -115,19 +120,21 @@ impl Expr {
     }
 
     pub fn range(self) -> TextRange {
+        use Expr::*;
         match self {
-            Expr::Block(e) => e.range(),
-            Expr::Binary(e) => e.range(),
-            Expr::BoolLiteral(e) => e.range(),
-            Expr::Call(e) => e.range(),
-            Expr::Function(e) => e.range(),
-            Expr::IntLiteral(e) => e.range(),
-            Expr::FloatLiteral(e) => e.range(),
-            Expr::Loop(e) => e.range(),
-            Expr::Paren(e) => e.range(),
-            Expr::StringLiteral(e) => e.range(),
-            Expr::Unary(e) => e.range(),
-            Expr::Ident(e) => e.range(),
+            Block(e) => e.range(),
+            Binary(e) => e.range(),
+            BoolLiteral(e) => e.range(),
+            Call(e) => e.range(),
+            FloatLiteral(e) => e.range(),
+            Function(e) => e.range(),
+            Ident(e) => e.range(),
+            IntLiteral(e) => e.range(),
+            Loop(e) => e.range(),
+            Paren(e) => e.range(),
+            StringLiteral(e) => e.range(),
+            TypeExpr(e) => e.range(),
+            Unary(e) => e.range(),
         }
     }
 }
@@ -264,8 +271,39 @@ impl BoolLiteral {
 pub struct Call(SyntaxNode);
 
 impl Call {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::Call {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+
+    // TODO: how to get the call args...
+    pub fn call_args(&self) -> Option<CallArgs> {
+        self.0.children().find_map(CallArgs::cast)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CallArgs(SyntaxNode);
+
+impl CallArgs {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::CallArgs {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    // TODO: perhaps implement Iterator (Item = Expr) for CallArgs so the caller can collect
+    pub fn as_vec(&self) -> Vec<Expr> {
+        self.0.children().filter_map(Expr::cast).collect()
     }
 }
 
@@ -309,6 +347,23 @@ impl StringLiteral {
 
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeExpr(SyntaxNode);
+
+impl TypeExpr {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::TypeExpr {
+            Some(Self(node))
+        } else {
+            None
+        }
     }
 
     pub fn range(&self) -> TextRange {
@@ -405,5 +460,89 @@ pub struct TypeDef(SyntaxNode);
 impl TypeDef {
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn parse_node(input: &str) -> SyntaxNode {
+        parser::parse_expr(input).syntax()
+    }
+
+    fn parse_expr(input: &str) -> Expr {
+        let root = Root::cast(parse_node(input)).unwrap();
+        root.expr().expect("expected a top-level expression")
+    }
+
+    #[test]
+    fn call_no_arguments() {
+        let input = "my_func";
+        let parsed = parse_expr(input);
+
+        assert!(matches!(parsed, Expr::Call(_)));
+
+        if let Expr::Call(call) = parsed {
+            let call_args = call.call_args();
+            assert!(matches!(call_args, None));
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn call_empty_arg() {
+        let input = "my_func ()";
+        let parsed = parse_expr(input);
+
+        assert!(matches!(parsed, Expr::Call(_)));
+
+        if let Expr::Call(call) = parsed {
+            let call_args = call.call_args();
+            assert!(matches!(call_args, Some(_)));
+
+            let args = call_args.unwrap().as_vec();
+            assert_eq!(0, args.len());
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn call_one_arg() {
+        let input = "my_func 1";
+        let parsed = parse_expr(input);
+
+        assert!(matches!(parsed, Expr::Call(_)));
+
+        if let Expr::Call(call) = parsed {
+            let call_args = call.call_args();
+            assert!(matches!(call_args, Some(_)));
+
+            let args = call_args.unwrap().as_vec();
+            assert_eq!(1, args.len());
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn call_arguments() {
+        let input = "my_func (1, 2)";
+        let parsed = parse_expr(input);
+
+        assert!(matches!(parsed, Expr::Call(_)));
+
+        if let Expr::Call(call) = parsed {
+            let call_args = call.call_args();
+            assert!(matches!(call_args, Some(_)));
+
+            let args = call_args.unwrap().as_vec();
+            assert_eq!(2, args.len());
+        } else {
+            unreachable!()
+        }
     }
 }
