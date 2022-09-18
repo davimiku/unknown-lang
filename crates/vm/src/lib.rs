@@ -34,8 +34,9 @@ impl<'a> VM<'a> {
     }
 
     pub(crate) fn interpret(&mut self) -> InterpretResult {
-        // the book separates interpret from run, we may not need to
+        // TODO: setup actions?
         self.run()
+        // TODO: cleanup actions?
     }
 
     /// Reads bytes from the bytecode and returns as T.
@@ -78,23 +79,24 @@ impl<'a> VM<'a> {
             // #[cfg(test)]
             // self.debug_print(op);
 
+            use Op::*;
             match op {
-                Op::PushInt => {
+                PushInt => {
                     let constant = self.read::<i64>();
                     self.stack.push_int(constant);
                 }
-                Op::PushFloat => {
+                PushFloat => {
                     let constant = self.read::<f64>();
                     self.stack.push_float(constant);
                 }
-                Op::PushString => {
+                PushString => {
                     let (idx, len) = self.read_str();
                     self.stack.push_str_constant(idx, len);
                 }
-                Op::AddFloat => float_bin_op!(self, add),
-                Op::SubFloat => float_bin_op!(self, sub),
-                Op::MulFloat => float_bin_op!(self, mul),
-                Op::DivFloat => {
+                AddFloat => float_bin_op!(self, add),
+                SubFloat => float_bin_op!(self, sub),
+                MulFloat => float_bin_op!(self, mul),
+                DivFloat => {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
                     if b == 0.0 {
@@ -104,10 +106,11 @@ impl<'a> VM<'a> {
                     let res = a / b;
                     self.stack.push_float(res);
                 }
-                Op::AddInt => int_bin_op!(self, add),
-                Op::SubInt => int_bin_op!(self, sub),
-                Op::MulInt => int_bin_op!(self, mul),
-                Op::DivInt => {
+                NegateFloat => {}
+                AddInt => int_bin_op!(self, add),
+                SubInt => int_bin_op!(self, sub),
+                MulInt => int_bin_op!(self, mul),
+                DivInt => {
                     let b = self.stack.pop_int();
                     let a = self.stack.pop_int();
                     if b == 0 {
@@ -117,11 +120,14 @@ impl<'a> VM<'a> {
                     let res = a / b;
                     self.stack.push_int(res);
                 }
-                Op::Builtin => {
+                NegateInt => {
+                    //
+                }
+                Builtin => {
                     let builtin_idx = self.read_byte();
                     self.exec_builtin(builtin_idx);
                 }
-                Op::Ret => {
+                Ret => {
                     // TODO: better output for debugging?
                     // dbg!(self.stack.pop::<[u8; 8]>());
 
@@ -169,7 +175,7 @@ mod tests {
 
     use codegen::{Chunk, Op};
 
-    use hir::{BinaryOp, Context, Expr};
+    use hir::{BinaryExpr, BinaryOp, Context, Expr};
 
     use super::*;
 
@@ -209,7 +215,7 @@ mod tests {
         let rhs = context.alloc_expr(Expr::IntLiteral(b), None);
         let op = BinaryOp::Add;
 
-        let expr = Expr::Binary { op, lhs, rhs };
+        let expr = Expr::Binary(BinaryExpr { op, lhs, rhs });
         chunk.write_expr(&expr, &context);
 
         chunk.write_op(Op::Ret, 2);
@@ -234,7 +240,7 @@ mod tests {
         let rhs = context.alloc_expr(Expr::FloatLiteral(b), None);
         let op = BinaryOp::Add;
 
-        let expr = Expr::Binary { op, lhs, rhs };
+        let expr = Expr::Binary(BinaryExpr { op, lhs, rhs });
         chunk.write_expr(&expr, &context);
 
         chunk.write_op(Op::Ret, 2);
@@ -248,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_print_int() {
-        // "print 1"
+        // `print 1`
         let mut chunk = Chunk::new();
 
         chunk.write_int_constant(1, 0);
@@ -264,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_print_float() {
-        // "print 1.23"
+        // `print 1.23`
         let mut chunk = Chunk::new();
 
         chunk.write_float_constant(1.23, 0);
@@ -274,6 +280,20 @@ mod tests {
 
         chunk.write_op(Op::Ret, 1);
         chunk.disassemble("print 1.23");
+
+        super::run(&chunk).unwrap();
+    }
+
+    #[test]
+    fn test_print_string() {
+        // `print "hello"`
+        let mut chunk = Chunk::new();
+
+        chunk.write_string_constant("hello", 0);
+        chunk.write_builtin(PRINT_STR_CONSTANT, 0);
+
+        chunk.write_op(Op::Ret, 1);
+        chunk.disassemble("print \"hello\"");
 
         super::run(&chunk).unwrap();
     }
