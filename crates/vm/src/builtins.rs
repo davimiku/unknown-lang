@@ -19,4 +19,10 @@ impl VM<'_> {
 
         println!("{float}");
     }
+
+    pub(crate) fn print_bool(&mut self) {
+        let b = self.stack.pop_bool();
+
+        println!("{b}");
+    }
 }
