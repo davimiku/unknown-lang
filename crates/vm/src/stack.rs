@@ -1,4 +1,10 @@
-// TODO: move Stack to the vm crate?
+//! The `Stack` is the storage location of values of
+//! a known size during the course of the program.
+//!
+//! This `stack` module provides an abstraction over a
+//! `Vec` to limit it to stack-like operations.
+
+// TODO: see decision item on base size of stack values
 
 const STACK_MAX: usize = 256;
 const WORD_SIZE: usize = 8;
@@ -10,9 +16,9 @@ type Word = [u8; WORD_SIZE];
 
 /// Stack representation of a String constant is a (idx, len)
 ///
-/// idx: index to first byte in string constants array
+/// idx: index to first byte in string literals array
 /// len: byte length of the string data
-type StringConstant = (u64, u64);
+type StringLiteral = (u64, u64);
 
 #[derive(Debug)]
 pub struct Stack(Vec<Word>);
@@ -22,12 +28,8 @@ pub struct Stack(Vec<Word>);
 /// Larger values or compound stack values should take
 /// care to call the appropriate push and pop functions.
 
+// Mutating functions
 impl Stack {
-    #[inline]
-    pub fn size(&self) -> usize {
-        self.0.len()
-    }
-
     /// Adds a bytes value to the top of the stack
     #[inline]
     pub fn push(&mut self, val: Word) {
@@ -113,10 +115,24 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_string_literal(&mut self) -> StringConstant {
+    pub fn pop_string_literal(&mut self) -> StringLiteral {
         let [idx, len] = self.pop_n::<2>(2);
 
         (u64::from_le_bytes(idx), u64::from_le_bytes(len))
+    }
+
+    /// Mutates the top value of the stack in-place.
+    #[inline]
+    pub fn replace_top(&mut self, val: Word) {
+        self.0[0] = val;
+    }
+}
+
+// Non-mutating functions
+impl Stack {
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.0.len()
     }
 
     #[inline]
