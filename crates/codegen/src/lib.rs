@@ -6,7 +6,9 @@ use std::convert::TryInto;
 use std::mem::size_of;
 use std::str;
 
-use hir::{BinaryOp, Context, Expr, LocalDef, Stmt, Type};
+use hir::{
+    BinaryExpr, BinaryOp, BlockExpr, Context, Expr, LocalDef, Stmt, Type, UnaryExpr, UnaryOp,
+};
 
 mod disassemble;
 mod op;
@@ -57,56 +59,13 @@ impl Chunk {
         use Expr::*;
 
         match expr {
-            BoolLiteral(b) => {
-                self.write_bool_constant(*b, 1);
-            }
-            FloatLiteral(f) => {
-                self.write_float_constant(*f, 1);
-            }
-            IntLiteral(i) => {
-                self.write_int_constant(*i, 1);
-            }
-            StringLiteral(s) => {
-                self.write_string_constant(s, 1);
-            }
-            Binary { op, lhs, rhs } => {
-                use Type::*;
+            BoolLiteral(b) => self.write_bool_constant(*b, 1),
+            FloatLiteral(f) => self.write_float_constant(*f, 1),
+            IntLiteral(i) => self.write_int_constant(*i, 1),
+            StringLiteral(s) => self.write_string_constant(s, 1),
 
-                let lhs_type = context.type_of(*lhs);
-                let lhs = context.expr(*lhs);
-                let rhs = context.expr(*rhs);
-
-                self.write_expr(lhs, context);
-                self.write_expr(rhs, context);
-
-                match op {
-                    BinaryOp::Add => match lhs_type {
-                        Float | FloatLiteral(_) => self.write_op(Op::AddFloat, 1),
-                        Int | IntLiteral(_) => self.write_op(Op::AddInt, 1),
-                        _ => unreachable!(),
-                    },
-                    BinaryOp::Sub => match lhs_type {
-                        Float | FloatLiteral(_) => self.write_op(Op::SubFloat, 1),
-                        Int | IntLiteral(_) => self.write_op(Op::SubInt, 1),
-                        _ => unreachable!(),
-                    },
-                    BinaryOp::Mul => match lhs_type {
-                        Float | FloatLiteral(_) => self.write_op(Op::MulFloat, 1),
-                        Int | IntLiteral(_) => self.write_op(Op::MulInt, 1),
-                        _ => unreachable!(),
-                    },
-                    BinaryOp::Div => match lhs_type {
-                        Float | FloatLiteral(_) => self.write_op(Op::DivFloat, 1),
-                        Int | IntLiteral(_) => self.write_op(Op::DivInt, 1),
-                        _ => unreachable!(),
-                    },
-                    BinaryOp::Rem => todo!(),
-                    BinaryOp::Exp => todo!(),
-                    BinaryOp::Path => todo!(),
-                }
-            }
-            Unary { op, expr } => todo!(),
-            Block { stmts } => todo!(),
+            Binary(expr) => self.write_binary_expr(expr, context),
+            Unary(expr) => self.write_unary_expr(expr, context),
             VariableRef { name } => todo!(),
             Call { path, args } => todo!(),
             Function {
@@ -114,9 +73,73 @@ impl Chunk {
                 body,
                 return_type_annotation,
             } => todo!(),
-            Empty => todo!(),
+
+            Block(BlockExpr { stmts }) => todo!(),
+
+            // This should be unreachable, codegen should never start if lowering failed
+            // TODO: add some machinery for some debug output. It should still panic
+            Empty => unreachable!(),
         }
     }
+
+    fn write_binary_expr(&mut self, expr: &BinaryExpr, context: &Context) {
+        let BinaryExpr { op, lhs, rhs } = expr;
+        let lhs_type = context.type_of(*lhs);
+        let lhs = context.expr(*lhs);
+        let rhs = context.expr(*rhs);
+
+        self.write_expr(lhs, context);
+        self.write_expr(rhs, context);
+
+        use BinaryOp::*;
+        use Type::*;
+        match op {
+            Add => match lhs_type {
+                Float | FloatLiteral(_) => self.write_op(Op::AddFloat, 1),
+                Int | IntLiteral(_) => self.write_op(Op::AddInt, 1),
+                _ => unreachable!(),
+            },
+            Sub => match lhs_type {
+                Float | FloatLiteral(_) => self.write_op(Op::SubFloat, 1),
+                Int | IntLiteral(_) => self.write_op(Op::SubInt, 1),
+                _ => unreachable!(),
+            },
+            Mul => match lhs_type {
+                Float | FloatLiteral(_) => self.write_op(Op::MulFloat, 1),
+                Int | IntLiteral(_) => self.write_op(Op::MulInt, 1),
+                _ => unreachable!(),
+            },
+            Div => match lhs_type {
+                Float | FloatLiteral(_) => self.write_op(Op::DivFloat, 1),
+                Int | IntLiteral(_) => self.write_op(Op::DivInt, 1),
+                _ => unreachable!(),
+            },
+            Rem => todo!(),
+            Exp => todo!(),
+            Path => todo!(),
+        }
+    }
+
+    fn write_unary_expr(&mut self, expr: &UnaryExpr, context: &Context) {
+        let UnaryExpr { op, expr: idx } = expr;
+        let expr_type = context.type_of(*idx);
+        let expr = context.expr(*idx);
+
+        self.write_expr(expr, context);
+
+        use Type::*;
+        use UnaryOp::*;
+        match op {
+            Neg => match expr_type {
+                Float => self.write_op(Op::NegateFloat, 1),
+                Int => self.write_op(Op::NegateInt, 1),
+                _ => unreachable!(),
+            },
+            Not => todo!(),
+        }
+    }
+
+    // fn write_block_expr(&mut self, context: &)
 
     fn write_local_def(&mut self, local_def: &LocalDef) {
         let name = local_def.name();
@@ -172,6 +195,12 @@ impl Chunk {
     pub fn write_builtin(&mut self, builtin_idx: u8, line: u32) {
         self.write_op(Op::Builtin, line);
         self.write_byte(builtin_idx);
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.code.shrink_to_fit();
+        self.lines.shrink_to_fit();
+        self.str_constants.shrink_to_fit();
     }
 }
 
