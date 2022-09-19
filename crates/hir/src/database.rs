@@ -2,12 +2,12 @@ use la_arena::{Arena, ArenaMap, Idx};
 use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
-use crate::{Expr, LocalDef, Stmt};
+use crate::{BinaryExpr, BlockExpr, Expr, LocalDef, Stmt, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
     /// Allocated statements
-    stmts: Arena<Stmt>,
+    pub(crate) stmts: Arena<Stmt>,
 
     /// Allocated expressions
     pub(crate) exprs: Arena<Expr>,
@@ -17,7 +17,7 @@ pub struct Database {
     expr_ranges: ArenaMap<Idx<Expr>, TextRange>,
 
     /// Local (let) bindings of variable definitions
-    local_defs: Arena<LocalDef>,
+    pub(crate) local_defs: Arena<LocalDef>,
 }
 
 impl Database {
@@ -35,8 +35,8 @@ impl Database {
         self.stmts.alloc(stmt)
     }
 
-    pub(super) fn alloc_local(&mut self, local: LocalDef) -> Idx<LocalDef> {
-        self.local_defs.alloc(local)
+    pub(super) fn alloc_local(&mut self, local_def: LocalDef) -> Idx<LocalDef> {
+        self.local_defs.alloc(local_def)
     }
 
     pub fn debug_string(&self) -> String {
@@ -78,7 +78,7 @@ impl Database {
 
             Expr::Call { path, args } => todo!(),
 
-            Expr::Binary { op, lhs, rhs, .. } => {
+            Expr::Binary(BinaryExpr { op, lhs, rhs, .. }) => {
                 self.write_expr(s, *lhs, indent)?;
 
                 write!(s, " {} ", op)?;
@@ -86,13 +86,13 @@ impl Database {
                 self.write_expr(s, *rhs, indent)
             }
 
-            Expr::Unary { op, expr, .. } => {
+            Expr::Unary(UnaryExpr { op, expr, .. }) => {
                 write!(s, "{}", op)?;
 
                 self.write_expr(s, *expr, indent)
             }
 
-            Expr::Block { stmts, .. } => {
+            Expr::Block(BlockExpr { stmts, .. }) => {
                 writeln!(s, "{{")?;
                 indent += 4;
 
@@ -134,7 +134,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::context::Context;
-    use crate::{BinaryOp, UnaryOp};
+    use crate::{BinaryExpr, BinaryOp, BlockExpr, UnaryExpr, UnaryOp};
 
     use super::*;
 
@@ -236,7 +236,7 @@ mod tests {
         let x = &context.database.stmts[stmt.unwrap()];
         match x {
             Stmt::VariableDef(d) => {
-                let v = (&context.database.local_defs[*d]);
+                let v = &context.database.local_defs[*d];
                 dbg!(&context.database.exprs[v.value]);
             }
             Stmt::Expr(_) => unreachable!(),
@@ -304,7 +304,7 @@ mod tests {
         let rhs = exprs.alloc(Expr::IntLiteral(2));
         let op = BinaryOp::Add;
 
-        check_expr("1 + 2", Expr::Binary { op, lhs, rhs });
+        check_expr("1 + 2", Expr::Binary(BinaryExpr { op, lhs, rhs }));
     }
 
     #[test]
@@ -315,7 +315,7 @@ mod tests {
         let rhs = exprs.alloc(Expr::Empty);
         let op = BinaryOp::Sub;
 
-        check_expr("10 -", Expr::Binary { op, lhs, rhs });
+        check_expr("10 -", Expr::Binary(BinaryExpr { op, lhs, rhs }));
     }
 
     #[test]
@@ -343,6 +343,14 @@ mod tests {
     }
 
     #[test]
+    fn lower_variable_ref() {
+        let input = "foo";
+        let expected_hir = Expr::VariableRef { name: "foo".into() };
+
+        check_expr(input, expected_hir)
+    }
+
+    #[test]
     fn lower_paren_expr() {
         let input = "((((((abc))))))";
         let expected_hir = Expr::VariableRef { name: "abc".into() };
@@ -358,17 +366,9 @@ mod tests {
         let op = UnaryOp::Neg;
 
         let input = "-10";
-        let expected_hir = Expr::Unary { op, expr };
+        let expected_hir = Expr::Unary(UnaryExpr { op, expr });
 
         check_expr(input, expected_hir);
-    }
-
-    #[test]
-    fn lower_variable_ref() {
-        let input = "foo";
-        let expected_hir = Expr::VariableRef { name: "foo".into() };
-
-        check_expr(input, expected_hir)
     }
 
     #[test]
@@ -383,7 +383,7 @@ mod tests {
     fn lower_empty_block() {
         let input = "{}";
 
-        let expected_hir = Expr::Block { stmts: vec![] };
+        let expected_hir = Expr::Block(BlockExpr { stmts: vec![] });
 
         check_expr(input, expected_hir)
     }
@@ -396,7 +396,7 @@ mod tests {
         let op = UnaryOp::Not;
 
         let input = "not true";
-        let expected_hir = Expr::Unary { op, expr };
+        let expected_hir = Expr::Unary(UnaryExpr { op, expr });
 
         check_expr(input, expected_hir)
     }

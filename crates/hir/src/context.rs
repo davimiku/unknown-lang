@@ -4,18 +4,22 @@ use la_arena::Idx;
 use parser::SyntaxKind;
 
 use crate::typecheck::TypeCheckResults;
-use crate::{BinaryOp, Database, Expr, LocalDef, Stmt, Type, UnaryOp};
+use crate::{
+    BinaryExpr, BinaryOp, BlockExpr, Database, Expr, LocalDef, Stmt, Type, UnaryExpr, UnaryOp,
+};
 
 // temp
 pub type Diagnostic = ();
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Scope {
     // TODO: module scope has no parent. Represent as -1, 0, or change to Option<usize> ?
     // or make "above module" as 0, and module scope starts at 1
     parent_idx: usize,
 
     local_defs: HashMap<String, Idx<LocalDef>>,
+
+    type_defs: HashMap<String, Idx<Type>>,
 }
 
 impl Scope {
@@ -42,9 +46,17 @@ pub struct Context {
 
 // Scope-related functions
 impl Context {
-    /// Returns the expression at
+    /// Returns the expression at the given index
     pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
         &self.database.exprs[idx]
+    }
+
+    pub fn stmt(&self, idx: Idx<Stmt>) -> &Stmt {
+        &self.database.stmts[idx]
+    }
+
+    pub fn local_def(&self, idx: Idx<LocalDef>) -> &LocalDef {
+        &self.database.local_defs[idx]
     }
 
     pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
@@ -85,6 +97,7 @@ impl Context {
         self.scopes.push(Scope {
             parent_idx: self.current_scope_idx,
             local_defs: Default::default(),
+            type_defs: Default::default(),
         });
 
         self.current_scope_idx = self.scopes.len();
@@ -101,7 +114,7 @@ impl Context {
 impl Context {
     pub(crate) fn lower_stmt(&mut self, ast: ast::Stmt) -> Option<Idx<Stmt>> {
         let stmt = match ast {
-            ast::Stmt::VariableDef(ast) => self.lower_variable_def(ast),
+            ast::Stmt::LocalDef(ast) => self.lower_variable_def(ast),
             ast::Stmt::Expr(ast) => {
                 let idx = self.lower_expr(Some(ast));
 
@@ -114,11 +127,16 @@ impl Context {
         Some(idx)
     }
 
-    fn lower_variable_def(&mut self, ast: ast::VariableDef) -> Stmt {
+    fn lower_variable_def(&mut self, ast: ast::LocalDef) -> Stmt {
         let name = ast.name();
         let value = self.lower_expr(ast.value());
-        let local = LocalDef { value, ast };
-        let idx = self.database.alloc_local(local);
+        let type_annotation = None;
+        let local_def = LocalDef {
+            value,
+            type_annotation,
+            ast,
+        };
+        let idx = self.database.alloc_local(local_def);
 
         if let Some(name) = name {
             let name = name.text().to_string();
@@ -139,18 +157,23 @@ impl Context {
                 Call(ast) => self.lower_call(ast),
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_def(ast),
-                Loop(ast) => self.lower_loop(ast),
+                Ident(ast) => self.lower_ident(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
+                Loop(ast) => self.lower_loop(ast),
                 Paren(ast) => return self.lower_expr(ast.expr()),
                 StringLiteral(ast) => self.lower_string_literal(ast),
+                TypeExpr(ast) => self.lower_type_expr(ast),
                 Unary(ast) => self.lower_unary(ast),
-                Ident(ast) => self.lower_ident(ast),
             }
         } else {
             Expr::Empty
         };
 
         self.database.alloc_expr(expr, ast)
+    }
+
+    fn lower_type_expr(&mut self, ast: ast::TypeExpr) -> Expr {
+        todo!()
     }
 
     fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {
@@ -205,7 +228,7 @@ impl Context {
         let lhs = self.lower_expr(ast.lhs());
         let rhs = self.lower_expr(ast.rhs());
 
-        Expr::Binary { op, lhs, rhs }
+        Expr::Binary(BinaryExpr { op, lhs, rhs })
     }
 
     fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
@@ -217,7 +240,7 @@ impl Context {
 
         let expr = self.lower_expr(ast.expr());
 
-        Expr::Unary { op, expr }
+        Expr::Unary(UnaryExpr { op, expr })
     }
 
     fn lower_block(&mut self, ast: ast::Block) -> Expr {
@@ -226,7 +249,7 @@ impl Context {
         // temp: dummy value
         let stmts = Vec::new();
 
-        Expr::Block { stmts }
+        Expr::Block(BlockExpr { stmts })
     }
 
     fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
@@ -268,13 +291,22 @@ impl Context {
     }
 
     fn lower_call(&mut self, ast: ast::Call) -> Expr {
-        // check for mismatched arg count (no auto-currying it seems)
-        // lower_expr each of the args
-        // (return Expr::Call)
+        let ident = ast.ident();
+        // TODO: yeah...
+        let name = ident.unwrap().name().unwrap().text().to_string();
+        let call_args = ast.call_args();
 
-        Expr::Call {
-            path: todo!(),
-            args: todo!(),
+        if let Some(call_args) = call_args {
+            let args = call_args
+                .as_vec()
+                .iter()
+                .map(|expr| self.lower_expr(Some(expr.clone())))
+                .collect();
+
+            // TODO: check for mismatched arg count?
+            Expr::Call { path: name, args }
+        } else {
+            Expr::VariableRef { name }
         }
     }
 
