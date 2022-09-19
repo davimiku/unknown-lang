@@ -1,3 +1,13 @@
+//! Typechecking
+//!
+//! This module group consists of three main concepts:
+//!
+//! - Type definitions themselves
+//! - Type checks for the user's explicit annotations
+//! - Type inference for when the user does not annotate
+
+mod check;
+mod infer;
 mod types;
 use std::ops::Index;
 
@@ -5,7 +15,11 @@ use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::Type;
 
-use crate::Expr;
+use crate::{Context, Expr};
+
+pub fn typecheck(expr: Idx<Expr>, context: &mut Context) {
+    todo!()
+}
 
 #[derive(Debug, Default)]
 pub struct TypeCheckResults {

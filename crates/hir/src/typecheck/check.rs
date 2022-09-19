@@ -3,13 +3,43 @@
 //!
 //!
 
-use crate::Expr;
+use la_arena::Idx;
 
-pub(crate) fn check(input: Expr, expected: Type) -> Option<TypeDiagnostic> {
+use super::{Type, TypeDiagnostic};
+use crate::{Context, Expr, Stmt};
+
+pub(crate) fn check_stmt(idx: Idx<Stmt>, context: &Context) -> Option<TypeDiagnostic> {
+    let stmt = context.stmt(idx);
+
+    match stmt {
+        Stmt::VariableDef(idx) => {
+            let local_def = context.local_def(*idx);
+            let annotation = local_def.type_annotation;
+            todo!()
+        }
+        Stmt::Expr(idx) => {
+            let expr = context.expr(*idx);
+        }
+    }
+
+    todo!()
+}
+
+pub(crate) fn check_expr(
+    idx: Idx<Expr>,
+    expected: Type,
+    context: &Context,
+) -> Option<TypeDiagnostic> {
     todo!()
 }
 
 /// Is A a subtype of B
+///
+/// A subtype allows for A to be used in expressions where B is expected.
+///
+/// For example:
+///    FloatLiteral is a subtype of Float
+///    If a Float was required, a FloatLiteral would suffice.
 fn is_subtype(a: Type, b: Type) -> bool {
     use Type::*;
     match (a, b) {
