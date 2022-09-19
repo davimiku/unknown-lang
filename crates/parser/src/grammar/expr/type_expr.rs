@@ -70,6 +70,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 // fun (string, string) -> int
-fn parse_fun_signature(p: &mut Parser) -> CompletedMarker {
+fn parse_fun_signature(_p: &mut Parser) -> CompletedMarker {
     todo!()
 }
