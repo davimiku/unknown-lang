@@ -76,6 +76,13 @@ pub enum Op {
     /// Stack: lhs, rhs **=>** (lhs % rhs)
     RemInt,
 
+    /// Unary `-` operator for Int.
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>**
+    NegateInt,
+
     /// Binary `+` operator for Float.
     ///
     /// Operands:
@@ -103,6 +110,13 @@ pub enum Op {
     ///
     /// Stack: lhs, rhs **=>** (lhs / rhs)
     DivFloat,
+
+    /// Unary `-` operator for Float.
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>**
+    NegateFloat,
 
     /// Binary `+` operator for String.
     ///

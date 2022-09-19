@@ -68,12 +68,7 @@ impl<'a> VM<'a> {
 
     fn run(&mut self) -> InterpretResult {
         loop {
-            let op = self.chunk.get_op(self.ip);
-
-            if let Err(err) = op {
-                return Err(err.into());
-            }
-            let op = op.unwrap();
+            let op = self.chunk.get_op(self.ip)?;
             self.ip += 1;
 
             // #[cfg(test)]
@@ -106,7 +101,10 @@ impl<'a> VM<'a> {
                     let res = a / b;
                     self.stack.push_float(res);
                 }
-                NegateFloat => {}
+                NegateFloat => {
+                    let top = self.stack.peek_float();
+                    self.stack.replace_top((-top).to_le_bytes());
+                }
                 AddInt => int_bin_op!(self, add),
                 SubInt => int_bin_op!(self, sub),
                 MulInt => int_bin_op!(self, mul),
@@ -121,7 +119,8 @@ impl<'a> VM<'a> {
                     self.stack.push_int(res);
                 }
                 NegateInt => {
-                    //
+                    let top = self.stack.peek_int();
+                    self.stack.replace_top((-top).to_le_bytes());
                 }
                 Builtin => {
                     let builtin_idx = self.read_byte();
@@ -172,6 +171,7 @@ mod tests {
     const PRINT_STR: u8 = 1;
     const PRINT_INT: u8 = 2;
     const PRINT_FLOAT: u8 = 3;
+    const PRINT_BOOL: u8 = 4;
 
     use codegen::{Chunk, Op};
 
@@ -313,6 +313,46 @@ mod tests {
         chunk.write_op(Op::Ret, 123);
 
         chunk.disassemble("print (1 + 2)");
+
+        super::run(&chunk).unwrap();
+    }
+
+    #[test]
+    fn test_int_negate() {
+        // "print -1"
+        // normally the -1 would be part of the IntLiteral but this is a test
+
+        let mut chunk = Chunk::new();
+
+        chunk.write_int_constant(12345, 123);
+        chunk.write_op(Op::NegateInt, 123);
+
+        chunk.write_builtin(PRINT_INT, 123);
+        // write arity (operand)
+        // push function object
+        chunk.write_op(Op::Ret, 123);
+
+        chunk.disassemble("print -12345");
+
+        super::run(&chunk).unwrap();
+    }
+
+    #[test]
+    fn test_float_negate() {
+        // "print -1"
+        // normally the -1 would be part of the IntLiteral but this is a test
+
+        let mut chunk = Chunk::new();
+
+        chunk.write_float_constant(12.345, 123);
+        chunk.write_op(Op::NegateFloat, 123);
+
+        chunk.write_builtin(PRINT_FLOAT, 123);
+        // write arity (operand)
+        // push function object
+        chunk.write_op(Op::Ret, 123);
+
+        chunk.disassemble("print -12.345");
 
         super::run(&chunk).unwrap();
     }
