@@ -131,11 +131,6 @@ impl Stack {
 // Non-mutating functions
 impl Stack {
     #[inline]
-    pub fn size(&self) -> usize {
-        self.0.len()
-    }
-
-    #[inline]
     fn peek(&self) -> Word {
         *self.0.last().unwrap()
     }
@@ -164,12 +159,6 @@ impl Stack {
 impl Default for Stack {
     fn default() -> Self {
         Self(Vec::with_capacity(STACK_MAX))
-    }
-}
-
-impl Stack {
-    pub fn from_values(values: &[Word]) -> Self {
-        Self(values.into())
     }
 }
 
