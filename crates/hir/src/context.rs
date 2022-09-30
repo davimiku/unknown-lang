@@ -13,8 +13,8 @@ pub type Diagnostic = ();
 
 #[derive(Debug, Default)]
 struct Scope {
-    // TODO: module scope has no parent. Represent as -1, 0, or change to Option<usize> ?
-    // or make "above module" as 0, and module scope starts at 1
+    // module scope is the top level (child modules do not inherit scope from their parent)
+    // 0 is used as a sentinel value, the top level scope has a parent_idx of 0
     parent_idx: usize,
 
     local_defs: HashMap<String, Idx<LocalDef>>,
@@ -28,7 +28,7 @@ impl Scope {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Scopes(Vec<Scope>);
 
 impl Scopes {
@@ -42,6 +42,7 @@ impl Scopes {
         scope.parent_idx
     }
 
+    /// Creates a ScopesIter starting at the given idx.
     fn iter_from(&self, idx: usize) -> ScopesIter {
         ScopesIter {
             curr: idx,
@@ -58,7 +59,7 @@ impl Scopes {
             ..Default::default()
         });
 
-        self.0.len()
+        self.0.len() - 1
     }
 
     pub(crate) fn insert_local_def(
@@ -73,6 +74,15 @@ impl Scopes {
     }
 }
 
+impl Default for Scopes {
+    fn default() -> Self {
+        // Begins with the sentinel at index 0
+        Self(vec![Scope::default()])
+    }
+}
+
+/// An iterator for scopes that walks upwards through
+/// each parent until it reaches the top.
 struct ScopesIter<'a> {
     curr: usize,
     scopes: &'a Scopes,
@@ -82,9 +92,15 @@ impl<'a> Iterator for ScopesIter<'a> {
     type Item = &'a Scope;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let scope = self.scopes.get(self.curr);
+        if self.curr == 0 {
+            // sentinel value: reached the top level scope
+            return None;
+        }
+        let scope = self.scopes.get(self.curr).expect("valid current index");
 
-        scope.and_then(|s| self.scopes.get(s.parent_idx))
+        self.curr = scope.parent_idx;
+
+        Some(scope)
     }
 }
 
@@ -367,4 +383,49 @@ fn parse_ignore_underscore<T: FromStr>(s: &str) -> Option<T> {
     s.retain(|c| c != '_');
 
     s.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_scopes() -> Scopes {
+        let mut scopes = Scopes::default();
+
+        // 0 (sentinel)
+        // 1 (module)
+        // | -> 2 -> 3
+        // | -> 4
+        // | -> 5 -> 6 -> 7
+        scopes.push(0); // 1
+        scopes.push(1); // 2
+        scopes.push(2); // 3
+        scopes.push(1); // 4
+        scopes.push(1); // 5
+        scopes.push(5); // 6
+        scopes.push(6); // 7
+        scopes
+    }
+
+    #[test]
+    fn scopes_iter() {
+        let scopes = make_scopes();
+
+        // (starting index, expected parent indexes)
+        let cases: Vec<(usize, Vec<usize>)> = vec![
+            //
+            (3, vec![2, 1, 0]),
+            (4, vec![1, 0]),
+            (7, vec![6, 5, 1, 0]),
+        ];
+
+        for (start, expected) in cases {
+            let actual: Vec<_> = scopes
+                .iter_from(start)
+                .map(|scope| scope.parent_idx)
+                .collect();
+
+            assert_eq!(actual, expected);
+        }
+    }
 }
