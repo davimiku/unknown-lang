@@ -346,9 +346,10 @@ impl Context {
     }
 
     fn lower_call(&mut self, ast: ast::Call) -> Expr {
-        let ident = ast.ident();
-        // TODO: yeah...
-        let name = ident.unwrap().name().unwrap().text().to_string();
+        let ident = ast.ident().unwrap();
+        let syntax_token = ident.name().unwrap();
+
+        let name = syntax_token.text().to_string();
         let call_args = ast.call_args();
 
         if let Some(call_args) = call_args {
