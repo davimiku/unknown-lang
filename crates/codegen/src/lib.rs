@@ -1,5 +1,5 @@
-// Takes an HIR node + maps of values & types, produces a
-// bytecode chunk (vector of bytes)
+//! Takes an HIR node + maps of values & types, produces a
+//! bytecode chunk (vector of bytes)
 pub use op::{InvalidOpError, Op};
 
 use std::convert::TryInto;
@@ -15,12 +15,6 @@ mod op;
 
 /// A VM "word" is 8 bytes (64 bits)
 type Word = [u8; 8];
-
-/// A VM "double word" is 16 bytes (128 bits)
-type DWord = [u8; 16];
-
-/// A VM "quad word" is 32 bytes (256 bits)
-type QWord = [u8; 32];
 
 #[derive(Debug, Default)]
 pub struct Chunk {
