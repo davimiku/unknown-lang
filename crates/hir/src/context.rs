@@ -12,7 +12,7 @@ use crate::{
 pub type Diagnostic = ();
 
 #[derive(Debug, Default)]
-pub(crate) struct Scope {
+struct Scope {
     // TODO: module scope has no parent. Represent as -1, 0, or change to Option<usize> ?
     // or make "above module" as 0, and module scope starts at 1
     parent_idx: usize,
@@ -29,6 +29,66 @@ impl Scope {
 }
 
 #[derive(Debug, Default)]
+pub(crate) struct Scopes(Vec<Scope>);
+
+impl Scopes {
+    fn get(&self, idx: usize) -> Option<&Scope> {
+        self.0.get(idx)
+    }
+
+    fn get_parent_idx(&self, idx: usize) -> usize {
+        let scope = &self.0[idx];
+
+        scope.parent_idx
+    }
+
+    fn iter_from(&self, idx: usize) -> ScopesIter {
+        ScopesIter {
+            curr: idx,
+            scopes: self,
+        }
+    }
+
+    /// Adds a new scope
+    ///
+    /// Returns the index of the added scope
+    fn push(&mut self, parent_idx: usize) -> usize {
+        self.0.push(Scope {
+            parent_idx,
+            ..Default::default()
+        });
+
+        self.0.len()
+    }
+
+    pub(crate) fn insert_local_def(
+        &mut self,
+        scope_idx: usize,
+        name: String,
+        local_def_idx: Idx<LocalDef>,
+    ) {
+        let scope = &mut self.0[scope_idx];
+
+        scope.local_defs.insert(name, local_def_idx);
+    }
+}
+
+struct ScopesIter<'a> {
+    curr: usize,
+    scopes: &'a Scopes,
+}
+
+impl<'a> Iterator for ScopesIter<'a> {
+    type Item = &'a Scope;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let scope = self.scopes.get(self.curr);
+
+        scope.and_then(|s| self.scopes.get(s.parent_idx))
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Context {
     /// Database holding the lowered Stmt/Expr and associated data
     pub(crate) database: Database,
@@ -41,7 +101,7 @@ pub struct Context {
 
     current_scope_idx: usize,
 
-    pub(crate) scopes: Vec<Scope>,
+    pub(crate) scopes: Scopes,
 }
 
 // Scope-related functions
@@ -70,43 +130,22 @@ impl Context {
     }
 
     pub(crate) fn insert_local_def(&mut self, name: String, idx: Idx<LocalDef>) {
-        let current_scope = &mut self.scopes[self.current_scope_idx];
-
-        current_scope.local_defs.insert(name, idx);
+        self.scopes
+            .insert_local_def(self.current_scope_idx, name, idx)
     }
 
     pub(crate) fn lookup_name(&self, name: &str) -> Option<Idx<LocalDef>> {
-        // TODO: could newtype Vec<Scope> as Scopes and implement Iter
-        let mut idx = self.current_scope_idx;
-        loop {
-            if idx == 0 {
-                break None;
-            }
-
-            let scope = &self.scopes[idx];
-
-            if let Some(value) = scope.get(name) {
-                break Some(value);
-            }
-
-            idx = scope.parent_idx;
-        }
+        self.scopes
+            .iter_from(self.current_scope_idx)
+            .find_map(|scope| scope.get(name))
     }
 
     pub(crate) fn push_scope(&mut self) {
-        self.scopes.push(Scope {
-            parent_idx: self.current_scope_idx,
-            local_defs: Default::default(),
-            type_defs: Default::default(),
-        });
-
-        self.current_scope_idx = self.scopes.len();
+        self.current_scope_idx = self.scopes.push(self.current_scope_idx);
     }
 
     pub(crate) fn pop_scope(&mut self) {
-        let current_scope = &mut self.scopes[self.current_scope_idx];
-
-        self.current_scope_idx = current_scope.parent_idx;
+        self.current_scope_idx = self.scopes.get_parent_idx(self.current_scope_idx);
     }
 }
 
