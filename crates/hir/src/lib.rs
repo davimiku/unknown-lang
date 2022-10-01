@@ -1,5 +1,6 @@
 mod context;
 mod database;
+mod scope;
 mod typecheck;
 
 use std::fmt;
