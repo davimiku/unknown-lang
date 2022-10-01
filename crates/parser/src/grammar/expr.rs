@@ -209,17 +209,24 @@ fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
 
 fn parse_path(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
-    p.expect(Ident);
+
+    parse_ident(p);
 
     while p.at(Dot) {
         p.bump(); // eat Dot
 
         // TODO: would be better with recovery here, at least to the next newline or '}'
         // or potentially recover right away and continue to parse the next thing
-        p.expect(Ident);
+        parse_ident(p);
     }
 
     m.complete(p, SyntaxKind::Path)
+}
+
+pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    p.expect(Ident);
+    m.complete(p, SyntaxKind::Ident)
 }
 
 fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
@@ -440,7 +447,8 @@ Root@0..7
 Root@0..1
   Call@0..1
     Path@0..1
-      Ident@0..1 "a""#]],
+      Ident@0..1
+        Ident@0..1 "a""#]],
         );
     }
 
@@ -746,7 +754,8 @@ Root@0..6
     LParen@0..1 "("
     Call@1..6
       Path@1..6
-        Ident@1..6 "hello"
+        Ident@1..6
+          Ident@1..6 "hello"
 error at 1..6: expected ‘.’ or ‘)’"#]],
         );
     }
@@ -759,7 +768,8 @@ error at 1..6: expected ‘.’ or ‘)’"#]],
 Root@0..1
   Call@0..1
     Path@0..1
-      Ident@0..1 "a""#]],
+      Ident@0..1
+        Ident@0..1 "a""#]],
         )
     }
 
@@ -771,9 +781,11 @@ Root@0..1
 Root@0..3
   Call@0..3
     Path@0..3
-      Ident@0..1 "a"
+      Ident@0..1
+        Ident@0..1 "a"
       Dot@1..2 "."
-      Ident@2..3 "b""#]],
+      Ident@2..3
+        Ident@2..3 "b""#]],
         )
     }
 
@@ -785,11 +797,14 @@ Root@0..3
 Root@0..5
   Call@0..5
     Path@0..5
-      Ident@0..1 "a"
+      Ident@0..1
+        Ident@0..1 "a"
       Dot@1..2 "."
-      Ident@2..3 "b"
+      Ident@2..3
+        Ident@2..3 "b"
       Dot@3..4 "."
-      Ident@4..5 "c""#]],
+      Ident@4..5
+        Ident@4..5 "c""#]],
         )
     }
 
@@ -802,15 +817,18 @@ Root@0..7
   InfixExpr@0..7
     Call@0..4
       Path@0..4
-        Ident@0..1 "a"
+        Ident@0..1
+          Ident@0..1 "a"
         Dot@1..2 "."
-        Ident@2..3 "b"
-        Emptyspace@3..4 " "
+        Ident@2..4
+          Ident@2..3 "b"
+          Emptyspace@3..4 " "
     Star@4..5 "*"
     Emptyspace@5..6 " "
     Call@6..7
       Path@6..7
-        Ident@6..7 "c""#]],
+        Ident@6..7
+          Ident@6..7 "c""#]],
         )
     }
 
@@ -822,8 +840,9 @@ Root@0..7
 Root@0..7
   Call@0..7
     Path@0..5
-      Ident@0..4 "func"
-      Emptyspace@4..5 " "
+      Ident@0..5
+        Ident@0..4 "func"
+        Emptyspace@4..5 " "
     CallArgs@5..7
       LParen@5..6 "("
       RParen@6..7 ")""#]],
@@ -838,8 +857,9 @@ Root@0..7
 Root@0..7
   Call@0..7
     Path@0..6
-      Ident@0..5 "print"
-      Emptyspace@5..6 " "
+      Ident@0..6
+        Ident@0..5 "print"
+        Emptyspace@5..6 " "
     CallArgs@6..7
       IntExpr@6..7
         IntLiteral@6..7 "1""#]],
@@ -854,12 +874,14 @@ Root@0..7
 Root@0..7
   Call@0..7
     Path@0..6
-      Ident@0..5 "print"
-      Emptyspace@5..6 " "
+      Ident@0..6
+        Ident@0..5 "print"
+        Emptyspace@5..6 " "
     CallArgs@6..7
       Call@6..7
         Path@6..7
-          Ident@6..7 "a""#]],
+          Ident@6..7
+            Ident@6..7 "a""#]],
         )
     }
 
@@ -871,16 +893,20 @@ Root@0..7
 Root@0..11
   Call@0..11
     Path@0..6
-      Ident@0..5 "print"
-      Emptyspace@5..6 " "
+      Ident@0..6
+        Ident@0..5 "print"
+        Emptyspace@5..6 " "
     CallArgs@6..11
       Call@6..11
         Path@6..11
-          Ident@6..7 "a"
+          Ident@6..7
+            Ident@6..7 "a"
           Dot@7..8 "."
-          Ident@8..9 "b"
+          Ident@8..9
+            Ident@8..9 "b"
           Dot@9..10 "."
-          Ident@10..11 "c""#]],
+          Ident@10..11
+            Ident@10..11 "c""#]],
         )
     }
 
@@ -892,8 +918,9 @@ Root@0..11
 Root@0..10
   Call@0..10
     Path@0..4
-      Ident@0..3 "add"
-      Emptyspace@3..4 " "
+      Ident@0..4
+        Ident@0..3 "add"
+        Emptyspace@3..4 " "
     CallArgs@4..10
       LParen@4..5 "("
       IntExpr@5..6
@@ -938,8 +965,9 @@ Root@0..35
     VariableDef@4..13
       Let@4..7 "let"
       Emptyspace@7..8 " "
-      Ident@8..9 "x"
-      Emptyspace@9..10 " "
+      Ident@8..10
+        Ident@8..9 "x"
+        Emptyspace@9..10 " "
       Equals@10..11 "="
       Emptyspace@11..12 " "
       IntExpr@12..13
@@ -949,8 +977,9 @@ Root@0..35
     VariableDef@16..25
       Let@16..19 "let"
       Emptyspace@19..20 " "
-      Ident@20..21 "y"
-      Emptyspace@21..22 " "
+      Ident@20..22
+        Ident@20..21 "y"
+        Emptyspace@21..22 " "
       Equals@22..23 "="
       Emptyspace@23..24 " "
       IntExpr@24..25
@@ -961,13 +990,15 @@ Root@0..35
       InfixExpr@28..33
         Call@28..30
           Path@28..30
-            Ident@28..29 "x"
-            Emptyspace@29..30 " "
+            Ident@28..30
+              Ident@28..29 "x"
+              Emptyspace@29..30 " "
         Plus@30..31 "+"
         Emptyspace@31..32 " "
         Call@32..33
           Path@32..33
-            Ident@32..33 "y"
+            Ident@32..33
+              Ident@32..33 "y"
       Newline@33..34 "\n"
     RBrace@34..35 "}""#]],
         )

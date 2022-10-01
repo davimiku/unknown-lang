@@ -5,7 +5,7 @@ use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use super::parse_type;
+use super::{parse_ident, parse_type};
 
 /// Parses function definition as an expression
 ///
@@ -66,7 +66,7 @@ fn parse_fun_param_list(p: &mut Parser) -> CompletedMarker {
 fn parse_fun_param(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
 
-    p.expect(Ident);
+    parse_ident(p);
     p.expect(Colon);
 
     parse_type(p);
@@ -148,8 +148,9 @@ Root@0..77
         VariableDef@22..31
           Let@22..25 "let"
           Emptyspace@25..26 " "
-          Ident@26..27 "a"
-          Emptyspace@27..28 " "
+          Ident@26..28
+            Ident@26..27 "a"
+            Emptyspace@27..28 " "
           Equals@28..29 "="
           Emptyspace@29..30 " "
           IntExpr@30..31
@@ -159,8 +160,9 @@ Root@0..77
         VariableDef@42..51
           Let@42..45 "let"
           Emptyspace@45..46 " "
-          Ident@46..47 "b"
-          Emptyspace@47..48 " "
+          Ident@46..48
+            Ident@46..47 "b"
+            Emptyspace@47..48 " "
           Equals@48..49 "="
           Emptyspace@49..50 " "
           IntExpr@50..51
@@ -169,13 +171,17 @@ Root@0..77
         Emptyspace@52..62 "          "
         ExprStmt@62..76
           InfixExpr@62..67
-            Path@62..64
-              Ident@62..63 "a"
-              Emptyspace@63..64 " "
+            Call@62..64
+              Path@62..64
+                Ident@62..64
+                  Ident@62..63 "a"
+                  Emptyspace@63..64 " "
             Plus@64..65 "+"
             Emptyspace@65..66 " "
-            Path@66..67
-              Ident@66..67 "b"
+            Call@66..67
+              Path@66..67
+                Ident@66..67
+                  Ident@66..67 "b"
           Newline@67..68 "\n"
           Emptyspace@68..76 "        "
         RBrace@76..77 "}""#]],
@@ -199,8 +205,9 @@ Root@0..19
     Emptyspace@9..10 " "
     TypeExpr@10..14
       Path@10..14
-        Ident@10..13 "Int"
-        Emptyspace@13..14 " "
+        Ident@10..14
+          Ident@10..13 "Int"
+          Emptyspace@13..14 " "
     FunBody@14..19
       BlockExpr@14..19
         LBrace@14..15 "{"
@@ -225,20 +232,23 @@ Root@0..29
     LParen@4..5 "("
     FunParamList@5..11
       FunParam@5..11
-        Ident@5..6 "a"
+        Ident@5..6
+          Ident@5..6 "a"
         Colon@6..7 ":"
         Emptyspace@7..8 " "
         TypeExpr@8..11
           Path@8..11
-            Ident@8..11 "Int"
+            Ident@8..11
+              Ident@8..11 "Int"
     RParen@11..12 ")"
     Emptyspace@12..13 " "
     Arrow@13..15 "->"
     Emptyspace@15..16 " "
     TypeExpr@16..20
       Path@16..20
-        Ident@16..19 "Int"
-        Emptyspace@19..20 " "
+        Ident@16..20
+          Ident@16..19 "Int"
+          Emptyspace@19..20 " "
     FunBody@20..29
       BlockExpr@20..29
         LBrace@20..21 "{"
@@ -246,8 +256,9 @@ Root@0..29
         ExprStmt@22..28
           InfixExpr@22..28
             Path@22..24
-              Ident@22..23 "a"
-              Emptyspace@23..24 " "
+              Ident@22..24
+                Ident@22..23 "a"
+                Emptyspace@23..24 " "
             Plus@24..25 "+"
             Emptyspace@25..26 " "
             IntExpr@26..28

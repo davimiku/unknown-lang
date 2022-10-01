@@ -1,6 +1,6 @@
 use lexer::TokenKind;
 
-use crate::grammar::expr::{parse_block, parse_expr, parse_type};
+use crate::grammar::expr::{parse_block, parse_expr, parse_ident, parse_type};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
@@ -53,7 +53,7 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
 
     if !p.at(TokenKind::Equals) {
         // TODO: Pattern rather than Ident for destructuring
-        p.expect(TokenKind::Ident);
+        parse_ident(p);
 
         if p.at(TokenKind::Colon) {
             p.bump();
@@ -104,13 +104,15 @@ Root@0..13
   VariableDef@0..13
     Let@0..3 "let"
     Emptyspace@3..4 " "
-    Ident@4..7 "foo"
-    Emptyspace@7..8 " "
+    Ident@4..8
+      Ident@4..7 "foo"
+      Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
     Call@10..13
       Path@10..13
-        Ident@10..13 "bar""#]],
+        Ident@10..13
+          Ident@10..13 "bar""#]],
         );
     }
 
@@ -123,14 +125,16 @@ Root@0..14
   VariableDef@0..14
     Let@0..3 "let"
     Emptyspace@3..4 " "
-    Ident@4..5 "x"
+    Ident@4..5
+      Ident@4..5 "x"
     Colon@5..6 ":"
     Emptyspace@6..7 " "
     TypeExpr@7..11
       Call@7..11
         Path@7..11
-          Ident@7..10 "Int"
-          Emptyspace@10..11 " "
+          Ident@7..11
+            Ident@7..10 "Int"
+            Emptyspace@10..11 " "
     Equals@11..12 "="
     Emptyspace@12..13 " "
     IntExpr@13..14
@@ -176,12 +180,14 @@ Root@0..7
   ExprStmt@0..7
     Call@0..7
       Path@0..6
-        Ident@0..5 "print"
-        Emptyspace@5..6 " "
+        Ident@0..6
+          Ident@0..5 "print"
+          Emptyspace@5..6 " "
       CallArgs@6..7
         Call@6..7
           Path@6..7
-            Ident@6..7 "a""#]],
+            Ident@6..7
+              Ident@6..7 "a""#]],
         )
     }
 
