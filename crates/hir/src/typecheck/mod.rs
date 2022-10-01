@@ -17,6 +17,8 @@ pub use types::Type;
 
 use crate::{Context, Expr};
 
+// returns diagnostics
+// mutates context to add inferred types to TypeCheckResults
 pub fn typecheck(expr: Idx<Expr>, context: &mut Context) {
     todo!()
 }

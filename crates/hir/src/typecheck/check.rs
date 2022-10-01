@@ -4,8 +4,10 @@
 //!
 
 use la_arena::Idx;
+use text_size::TextRange;
 
-use super::{Type, TypeDiagnostic};
+use super::infer::infer_expr;
+use super::{Type, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::{Context, Expr, Stmt};
 
 pub(crate) fn check_stmt(idx: Idx<Stmt>, context: &Context) -> Option<TypeDiagnostic> {
@@ -26,11 +28,26 @@ pub(crate) fn check_stmt(idx: Idx<Stmt>, context: &Context) -> Option<TypeDiagno
 }
 
 pub(crate) fn check_expr(
-    idx: Idx<Expr>,
+    expr: &Expr,
     expected: Type,
-    context: &Context,
+    context: &mut Context,
 ) -> Option<TypeDiagnostic> {
-    todo!()
+    let result = infer_expr(expr, context);
+
+    match result {
+        Ok(actual) => {
+            if is_subtype(&actual, &expected) {
+                None
+            } else {
+                Some(TypeDiagnostic {
+                    variant: TypeDiagnosticVariant::TypeMismatch { expected, actual },
+                    // TODO: get a real TextRange (from context.database ?)
+                    range: TextRange::default(),
+                })
+            }
+        }
+        Err(diag) => Some(diag),
+    }
 }
 
 /// Is A a subtype of B
@@ -40,7 +57,7 @@ pub(crate) fn check_expr(
 /// For example:
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
-fn is_subtype(a: Type, b: Type) -> bool {
+fn is_subtype(a: &Type, b: &Type) -> bool {
     use Type::*;
     match (a, b) {
         (Bool, Bool) => true,

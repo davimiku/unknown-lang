@@ -6,8 +6,8 @@ use crate::{BinaryExpr, BinaryOp, BlockExpr, Context, Expr, UnaryExpr};
 
 type InferResult = Result<Type, TypeDiagnostic>;
 
-pub(crate) fn infer(ast: &Expr, context: &mut Context) -> InferResult {
-    match ast {
+pub(crate) fn infer_expr(expr: &Expr, context: &mut Context) -> InferResult {
+    match expr {
         Expr::Empty => Err(TypeDiagnostic {
             variant: TypeDiagnosticVariant::Undefined {
                 name: "MISSING FIXME".to_string(),
@@ -18,11 +18,9 @@ pub(crate) fn infer(ast: &Expr, context: &mut Context) -> InferResult {
         Expr::FloatLiteral(f) => Ok(Type::FloatLiteral(*f)),
         Expr::IntLiteral(i) => Ok(Type::IntLiteral(*i)),
         Expr::StringLiteral(s) => Ok(Type::StringLiteral(s.clone())),
-        Expr::Binary(BinaryExpr { op, lhs, rhs }) => {
-            infer_binary(*op, context.expr(*lhs), context.expr(*rhs))
-        }
-        Expr::Unary(UnaryExpr { op, expr }) => todo!(),
-        Expr::Block(BlockExpr { stmts }) => todo!(),
+        Expr::Binary(expr) => infer_binary(expr, context),
+        Expr::Unary(expr) => todo!(),
+        Expr::Block(expr) => todo!(),
         Expr::VariableRef { name } => todo!(),
         Expr::Call { path, args } => todo!(),
         Expr::Function {
@@ -33,8 +31,10 @@ pub(crate) fn infer(ast: &Expr, context: &mut Context) -> InferResult {
     }
 }
 
-fn infer_binary(op: BinaryOp, lhs: &Expr, rhs: &Expr) -> InferResult {
-    match op {
+fn infer_binary(expr: &BinaryExpr, context: &Context) -> InferResult {
+    let lhs = context.expr(expr.lhs);
+    let rhs = context.expr(expr.rhs);
+    match expr.op {
         BinaryOp::Add => todo!(),
         BinaryOp::Sub => todo!(),
         BinaryOp::Mul => todo!(),
