@@ -14,7 +14,7 @@ pub struct Database {
 
     /// Text ranges of the expressions from `exprs`
     /// Invariant: The indexes must be kept in sync
-    expr_ranges: ArenaMap<Idx<Expr>, TextRange>,
+    pub(crate) expr_ranges: ArenaMap<Idx<Expr>, TextRange>,
 
     /// Local (let) bindings of variable definitions
     pub(crate) local_defs: Arena<LocalDef>,
@@ -71,12 +71,24 @@ impl Database {
         match &self.exprs[idx] {
             Expr::Empty => write!(s, "{{empty}}"),
 
-            Expr::BoolLiteral(b) => write!(s, "{}", b),
-            Expr::FloatLiteral(f) => write!(s, "{}", f),
-            Expr::IntLiteral(i) => write!(s, "{}", i),
-            Expr::StringLiteral(sl) => write!(s, "{}", sl),
+            Expr::BoolLiteral(b) => write!(s, "{b}"),
+            Expr::FloatLiteral(f) => write!(s, "{f}"),
+            Expr::IntLiteral(i) => write!(s, "{i}"),
+            Expr::StringLiteral(sl) => write!(s, "{sl}"),
 
-            Expr::Call { path, args } => todo!(),
+            Expr::Call { path, args } => {
+                write!(s, "{path} ")?;
+                if args.len() == 1 {
+                    self.write_expr(s, args[0], indent)
+                } else {
+                    write!(s, "(")?;
+                    for arg in args {
+                        self.write_expr(s, *arg, indent)?;
+                        write!(s, ",")?;
+                    }
+                    write!(s, ")")
+                }
+            }
 
             Expr::Binary(BinaryExpr { op, lhs, rhs, .. }) => {
                 self.write_expr(s, *lhs, indent)?;
@@ -200,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lower_variable_def() {
+    fn experiment_lower_variable_def() {
         let input = "let a = b";
         let root = parse(input);
         let ast = root.stmts().next().unwrap();
@@ -216,7 +228,7 @@ mod tests {
     #[test]
     fn lower_variable_def() {
         let input = "let a = b";
-        let expected_string = "let i0 = b\n";
+        let expected_string = "let _0 = b\n";
 
         check_stmt(input, expected_string)
     }
@@ -247,7 +259,7 @@ mod tests {
     #[test]
     fn lower_variable_def_without_value() {
         let input = "let a =";
-        let expected_string = "let i0 = {empty}\n";
+        let expected_string = "let _0 = {empty}\n";
 
         check_stmt(input, expected_string);
     }
@@ -263,7 +275,7 @@ mod tests {
     #[test]
     fn lower_expr_stmt_call() {
         let input = "print a";
-        let expected_string = "print i0\n";
+        let expected_string = "print a\n";
 
         check_stmt(input, expected_string);
     }
@@ -287,9 +299,9 @@ mod tests {
     let c = 3
         }"#;
         let expected_string = r#"{
-    let i0 = 1
-    let i1 = 2
-    let i2 = 3
+    let _0 = 1
+    let _1 = 2
+    let _2 = 3
 }
 "#;
 

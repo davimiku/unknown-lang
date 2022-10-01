@@ -61,7 +61,7 @@ impl Context {
     pub(crate) fn lookup_name(&self, name: &str) -> Option<Idx<LocalDef>> {
         self.scopes
             .iter_from(self.current_scope_idx)
-            .find_map(|scope| scope.get(name))
+            .find_map(|scope| scope.get_local(name))
     }
 
     pub(crate) fn push_scope(&mut self) {
@@ -254,10 +254,11 @@ impl Context {
     }
 
     fn lower_call(&mut self, ast: ast::Call) -> Expr {
-        let ident = ast.ident().unwrap();
-        let syntax_token = ident.name().unwrap();
+        let path = ast.path().unwrap();
+        let idents = path.idents();
 
-        let name = syntax_token.text().to_string();
+        // TODO: handle multiple idents in a Path :)
+        let name = idents[0].name().unwrap().to_string();
         let call_args = ast.call_args();
 
         if let Some(call_args) = call_args {
