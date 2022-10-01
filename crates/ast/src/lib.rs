@@ -283,14 +283,8 @@ impl Call {
         self.0.text_range()
     }
 
-    // FIXME: return Path rather than Ident
-    // currently only "works" for single Ident paths
-    pub fn ident(&self) -> Option<Ident> {
-        self.0
-            .first_child()
-            .unwrap()
-            .children()
-            .find_map(Ident::cast)
+    pub fn path(&self) -> Option<Path> {
+        self.0.children().find_map(Path::cast)
     }
 
     // TODO: how to get the call args...
@@ -407,7 +401,7 @@ pub struct Ident(SyntaxNode);
 
 impl Ident {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        if node.kind() == SyntaxKind::CallArgs {
+        if node.kind() == SyntaxKind::Ident {
             Some(Self(node))
         } else {
             None
@@ -419,6 +413,27 @@ impl Ident {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Path(SyntaxNode);
+
+impl Path {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::Path {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+
+    pub fn idents(&self) -> Vec<Ident> {
+        self.0.descendants().filter_map(Ident::cast).collect()
     }
 }
 
