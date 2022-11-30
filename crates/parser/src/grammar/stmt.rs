@@ -130,11 +130,10 @@ Root@0..14
     Colon@5..6 ":"
     Emptyspace@6..7 " "
     TypeExpr@7..11
-      Call@7..11
-        Path@7..11
-          Ident@7..11
-            Ident@7..10 "Int"
-            Emptyspace@10..11 " "
+      Path@7..11
+        Ident@7..11
+          Ident@7..10 "Int"
+          Emptyspace@10..11 " "
     Equals@11..12 "="
     Emptyspace@12..13 " "
     IntExpr@13..14
