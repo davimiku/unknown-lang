@@ -10,17 +10,13 @@ use super::{parse_ident, parse_type};
 /// Parses function definition as an expression
 ///
 /// ```txt
-/// fun () -> {}              // no args, returns unit (elided)
-/// fun () -> Unit {}         // no args, returns unit (explicit)
-/// fun (a: T) -> {}          // one arg, returns unit (elided)
-/// fun (a: T) -> Unit {}     // one arg, returns unit (explicit)
-/// fun (a: T) -> a + 1       // inferred return type, no curly braces
-/// fun (a: T) -> { a + 1 }   // inferred return type, curly braces
-/// fun (a: T) -> T { a + 1 } // explicit return type, curly braces
-/// fun (a: T, b: U) -> ...   // two parameters, same possibilities for body/return
+/// fun () -> {}            // no args, returns Unit (elided)
+/// fun () -> A {}          // no args, returns A
+/// fun (a: A) -> {}        // one arg, returns Unit (elided)
+/// fun (a: A) -> B {}      // one arg, returns B
+/// fun (a: A, b: B) -> ... // two parameters, same possibilities for body/return
 /// ```
 ///
-/// For brevity, the examples above use `T`, `U` which is any type.
 pub(super) fn parse_fun_expr(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(Fun));
 
@@ -82,8 +78,8 @@ fn parse_fun_return_type(p: &mut Parser) -> Option<CompletedMarker> {
     }
 }
 
-// TODO: handle function bodies without curly braces?
-// let square = (a: Int) -> a ** 2
+// TODO Design Decision: handle function bodies without curly braces?
+// ex. let square = (a: Int) -> a ** 2
 fn parse_fun_body(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(LBrace));
 
@@ -255,10 +251,11 @@ Root@0..29
         Emptyspace@21..22 " "
         ExprStmt@22..28
           InfixExpr@22..28
-            Path@22..24
-              Ident@22..24
-                Ident@22..23 "a"
-                Emptyspace@23..24 " "
+            Call@22..24
+              Path@22..24
+                Ident@22..24
+                  Ident@22..23 "a"
+                  Emptyspace@23..24 " "
             Plus@24..25 "+"
             Emptyspace@25..26 " "
             IntExpr@26..28
@@ -280,43 +277,52 @@ Root@0..37
     LParen@4..5 "("
     FunParamList@5..19
       FunParam@5..11
-        Ident@5..6 "a"
+        Ident@5..6
+          Ident@5..6 "a"
         Colon@6..7 ":"
         Emptyspace@7..8 " "
         TypeExpr@8..11
           Path@8..11
-            Ident@8..11 "Int"
+            Ident@8..11
+              Ident@8..11 "Int"
       Comma@11..12 ","
       Emptyspace@12..13 " "
       FunParam@13..19
-        Ident@13..14 "b"
+        Ident@13..14
+          Ident@13..14 "b"
         Colon@14..15 ":"
         Emptyspace@15..16 " "
         TypeExpr@16..19
           Path@16..19
-            Ident@16..19 "Int"
+            Ident@16..19
+              Ident@16..19 "Int"
     RParen@19..20 ")"
     Emptyspace@20..21 " "
     Arrow@21..23 "->"
     Emptyspace@23..24 " "
     TypeExpr@24..28
       Path@24..28
-        Ident@24..27 "Int"
-        Emptyspace@27..28 " "
+        Ident@24..28
+          Ident@24..27 "Int"
+          Emptyspace@27..28 " "
     FunBody@28..37
       BlockExpr@28..37
         LBrace@28..29 "{"
         Emptyspace@29..30 " "
         ExprStmt@30..36
           InfixExpr@30..36
-            Path@30..32
-              Ident@30..31 "a"
-              Emptyspace@31..32 " "
+            Call@30..32
+              Path@30..32
+                Ident@30..32
+                  Ident@30..31 "a"
+                  Emptyspace@31..32 " "
             Plus@32..33 "+"
             Emptyspace@33..34 " "
-            Path@34..36
-              Ident@34..35 "b"
-              Emptyspace@35..36 " "
+            Call@34..36
+              Path@34..36
+                Ident@34..36
+                  Ident@34..35 "b"
+                  Emptyspace@35..36 " "
         RBrace@36..37 "}""#]],
         )
     }
