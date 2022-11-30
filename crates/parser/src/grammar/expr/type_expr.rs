@@ -1,20 +1,37 @@
-use lexer::TokenKind;
+use lexer::TokenKind::{self, *};
 
-use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
+use crate::{grammar::expr::parse_path, parser::marker::CompletedMarker};
 
-use super::{
-    parse_bool_literal, parse_int_literal, parse_name_ref, parse_string_literal, BinaryOp,
-};
+use super::{parse_bool_literal, parse_int_literal, parse_string_literal, BinaryOp};
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
 }
 
-// not sure if this is overkill or not, but would eventually like to do type expressions
-// that are resolved at comptime, like a blend of Zig and TypeScript
-// Type expressions should have as identical as possible syntax as value expressions
+/// Parses a type expression.
+///
+/// This could take a few forms:
+///
+/// ```rs
+/// type Example = A
+/// //             ^  simple identifier
+///
+/// type Example = A.B
+/// //             ^^^ path
+///
+/// type Example = fun () -> A
+/// //             ^^^^^^^^^^^  function no arguments
+///
+/// type Example = fun A -> B
+/// //             ^^^^^^^^^^  function one argument
+///
+/// type Example = fun (A, B) -> C
+///                ^^^^^^^^^^^^^^^ function call multiple arguments
+/// ```
+///
+/// TODO: Split examples out to separate function docs
 fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
     let mut lhs = parse_lhs(p)?;
 
@@ -23,6 +40,8 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         let op = if p.at(TokenKind::Dot) {
             BinaryOp::Path
         // todo: union? intersection?
+        // } else if p.at(TokenKind::Arrow) {
+        // function definition like `A -> B`
         } else {
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
@@ -67,6 +86,12 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     };
 
     Some(cm)
+}
+
+fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
+    assert!(p.at(Ident));
+
+    parse_path(p)
 }
 
 // fun (string, string) -> int
