@@ -179,20 +179,20 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
 /// This could take a few forms:
 ///
 /// ```txt
-/// let a = b
-/// //      ^   simple identifier
+/// let example = b
+/// //            ^   simple identifier
 ///
-/// let a = b.c
-/// //      ^^^ path
+/// let example = b.c
+/// //            ^^^ path
 ///
-/// let a = f ()
-/// //      ^^^^ function call no arguments
+/// let example = f ()
+/// //            ^^^^ function call no arguments
 ///
-/// let a = f b
-/// //      ^^^  function call one argument
+/// let example = f b
+/// //            ^^^  function call one argument
 ///
-/// let a = f (b, c)
-///         ^^^^^^^^ function call multiple arguments
+/// let example = f (b, c)
+///               ^^^^^^^^ function call multiple arguments
 /// ```
 fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(Ident));
