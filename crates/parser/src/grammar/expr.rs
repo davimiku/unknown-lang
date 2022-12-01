@@ -27,7 +27,7 @@ pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(Ident));
+    assert!(p.at(Ident)); // Update for literal types?
 
     let m = p.start();
     parse_type_expr(p);
@@ -63,8 +63,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             And => BinaryOp::And,
             Or => BinaryOp::Or,
             Dot => BinaryOp::Path,
-            // TODO: can function expressions be parsed as a Binary expression?
-            // Arrow => BinaryOp::Fun
+            Arrow => BinaryOp::Function,
 
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
@@ -129,7 +128,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         //             ^
         // parentheses are already overloaded as a grouping expression & parameters,
         // probably can't overload again as tuples
-        LParen => parse_paren_expr(p),
+        LParen => parse_paren_expr_or_function_params(p),
         Fun => parse_fun_expr(p),
         LBrace => parse_block(p),
         Loop => parse_loop(p),
@@ -284,12 +283,41 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::NotExpr)
 }
 
-fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
+// paren expr or function params??
+// paren expr: (1 + 2) * 3
+//
+// empty paren expr == 0 params: ()
+// 1 param with explicit type: (a: Int)
+// 1 param with inferred type: (a)
+// 2 params with explicit types: (a: Int, b: Int)
+// 2 params with inferred types: (a, b)
+fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(LParen));
 
     let m = p.start();
     p.bump();
-    expr_binding_power(p, 0);
+
+    // early exit for `()`
+    if p.at(RParen) {
+        p.bump();
+        return m.complete(p, SyntaxKind::ParenExpr);
+    }
+
+    loop {
+        expr_binding_power(p, 0);
+
+        if p.at(Colon) {
+            p.bump();
+            parse_type(p);
+        }
+
+        if p.at(Comma) {
+            p.bump();
+        } else {
+            break;
+        }
+    }
+
     p.expect(RParen);
 
     m.complete(p, SyntaxKind::ParenExpr)
@@ -333,19 +361,20 @@ enum BinaryOp {
     /// `.`
     Path,
     // `->`
-    // Fun,
+    Function,
 }
 
 impl BinaryOp {
     /// Binding power tuple of (left, right)
     fn binding_power(&self) -> (u8, u8) {
         match self {
-            Self::Or => (1, 2),
-            Self::And => (3, 4),
-            Self::Add | Self::Sub => (5, 6),
-            Self::Mul | Self::Div | Self::Rem => (7, 8),
-            Self::Exp => (10, 9),
-            Self::Path => (11, 12),
+            Self::Function => (1, 1),
+            Self::Or => (3, 4),
+            Self::And => (5, 6),
+            Self::Add | Self::Sub => (7, 8),
+            Self::Mul | Self::Div | Self::Rem => (9, 10),
+            Self::Exp => (12, 11),
+            Self::Path => (13, 14),
         }
     }
 }
