@@ -23,7 +23,7 @@ const EXPR_START: [TokenKind; 7] = [
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
-    expr_binding_power(p, 0)
+    expr_binding_power(p, 0, false)
 }
 
 pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
@@ -48,10 +48,15 @@ pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BlockExpr)
 }
 
-fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
-    let mut lhs = parse_lhs(p)?;
+fn expr_binding_power(
+    p: &mut Parser,
+    minimum_binding_power: u8,
+    just_parsed_arrow: bool, // TODO: feels like a hack, find a better way
+) -> Option<CompletedMarker> {
+    let mut lhs = parse_lhs(p, just_parsed_arrow)?;
 
     loop {
+        let mut just_parsed_arrow = false;
         let curr = p.peek()?;
         let op = match curr {
             Plus => BinaryOp::Add,
@@ -63,7 +68,10 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             And => BinaryOp::And,
             Or => BinaryOp::Or,
             Dot => BinaryOp::Path,
-            Arrow => BinaryOp::Function,
+            Arrow => {
+                just_parsed_arrow = true;
+                BinaryOp::Function
+            }
 
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
@@ -82,7 +90,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         // Starts a new marker that "wraps" the already parsed LHS
         let m = lhs.precede(p);
 
-        let parsed_rhs = expr_binding_power(p, right_binding_power).is_some();
+        let parsed_rhs = expr_binding_power(p, right_binding_power, just_parsed_arrow).is_some();
         lhs = m.complete(p, SyntaxKind::InfixExpr);
 
         if !parsed_rhs {
@@ -94,7 +102,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
     Some(lhs)
 }
 
-fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
+fn parse_lhs(p: &mut Parser, just_parsed_arrow: bool) -> Option<CompletedMarker> {
     let curr = p.peek();
     if curr.is_none() {
         p.error();
@@ -108,20 +116,18 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         StringLiteral => parse_string_literal(p),
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
-        Ident => parse_name_ref(p),
+        Ident => {
+            if just_parsed_arrow {
+                // "-> A { ... }"
+                parse_type(p);
+
+                parse_expr(p)?
+            } else {
+                parse_variable_ident(p)
+            }
+        }
         Dash => parse_negation_expr(p),
         Not => parse_not_expr(p),
-        // TODO: this could be the start of function arguments
-        // ex.
-        // let add = (a: int, b: int) -> { a + b }
-        //           ^
-        // ex.
-        // let print_hello = () -> { print "hello" }
-        //                   ^
-        // For now, require a "fun" keyword before the arg list.
-        // Without "fun" the parsing requires lookahead until
-        // the arrow. It may be implemented this way in the future.
-        //
         // TODO: this might also be the start of a tuple?
         // ex.
         // let point = (1, 2)
@@ -193,7 +199,7 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
 /// let example = f (b, c)
 ///               ^^^^^^^^ function call multiple arguments
 /// ```
-fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
+fn parse_variable_ident(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(Ident));
 
     let m = p.start();
@@ -262,7 +268,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator’s token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power);
+    expr_binding_power(p, right_binding_power, false);
 
     m.complete(p, SyntaxKind::NegationExpr)
 }
@@ -278,7 +284,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power);
+    expr_binding_power(p, right_binding_power, false);
 
     m.complete(p, SyntaxKind::NotExpr)
 }
@@ -304,11 +310,20 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
     }
 
     loop {
-        expr_binding_power(p, 0);
+        let e = expr_binding_power(p, 0, false);
+
+        if e.is_none() {
+            break;
+        }
+        let e = e.unwrap();
 
         if p.at(Colon) {
             p.bump();
+
+            let m = e.precede(p);
+
             parse_type(p);
+            m.complete(p, SyntaxKind::FunParam);
         }
 
         if p.at(Comma) {
@@ -609,6 +624,7 @@ Root@0..12
     }
 
     #[test]
+    // ???
     fn do_not_parse_operator_if_getting_rhs_failed() {
         check_expr(
             "(1+",
@@ -621,7 +637,7 @@ Root@0..3
         IntLiteral@1..2 "1"
       Plus@2..3 "+"
 error at 2..3: expected 
-error at 2..3: expected ‘)’"#]],
+error at 2..3: expected ‘:’, ‘,’ or ‘)’"#]],
         );
     }
 
