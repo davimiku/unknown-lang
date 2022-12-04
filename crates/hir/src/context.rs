@@ -6,7 +6,8 @@ use parser::SyntaxKind;
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, Database, Expr, LocalDef, Stmt, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LocalDef, Stmt, Type, UnaryExpr,
+    UnaryOp,
 };
 
 // temp
@@ -26,6 +27,13 @@ pub struct Context {
     current_scope_idx: usize,
 
     pub(crate) scopes: Scopes,
+}
+
+// Constructors
+impl Context {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 // Scope-related functions
@@ -255,21 +263,20 @@ impl Context {
 
     fn lower_call(&mut self, ast: ast::Call) -> Expr {
         let path = ast.path().unwrap();
-        let idents = path.idents();
+        let mut idents = path.ident_strings();
 
         // TODO: handle multiple idents in a Path :)
-        let name = idents[0].name().unwrap().to_string();
+        let name = idents.next().unwrap();
         let call_args = ast.call_args();
 
         if let Some(call_args) = call_args {
             let args = call_args
-                .as_vec()
-                .iter()
+                .args()
                 .map(|expr| self.lower_expr(Some(expr.clone())))
                 .collect();
 
             // TODO: check for mismatched arg count?
-            Expr::Call { path: name, args }
+            Expr::Call(CallExpr { path: name, args })
         } else {
             Expr::VariableRef { name }
         }

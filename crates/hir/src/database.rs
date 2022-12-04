@@ -2,7 +2,7 @@ use la_arena::{Arena, ArenaMap, Idx};
 use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
-use crate::{BinaryExpr, BlockExpr, Expr, LocalDef, Stmt, UnaryExpr};
+use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LocalDef, Stmt, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
@@ -76,7 +76,7 @@ impl Database {
             Expr::IntLiteral(i) => write!(s, "{i}"),
             Expr::StringLiteral(sl) => write!(s, "{sl}"),
 
-            Expr::Call { path, args } => {
+            Expr::Call(CallExpr { path, args }) => {
                 write!(s, "{path} ")?;
                 if args.len() == 1 {
                     self.write_expr(s, args[0], indent)
@@ -164,7 +164,7 @@ mod tests {
         let root = parse(input);
         let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::default();
+        let mut context = Context::new();
         context.lower_stmt(ast).unwrap();
 
         let actual_string = context.database.debug_string();
@@ -177,7 +177,7 @@ mod tests {
     //     let root = parse(input);
     //     let ast = root.stmts().next().unwrap();
 
-    //     let mut context = Context::default();
+    //     let mut context = Context::new();
     //     let hir_idx = context.lower_stmt(ast).unwrap();
     //     let hir = context.database.stmts[hir_idx].clone();
 
@@ -191,7 +191,7 @@ mod tests {
         let root = parse_expr(input);
         let ast = root.expr().expect("expected a top-level expression");
 
-        let mut context = Context::default();
+        let mut context = Context::new();
         let actual = context.lower_expr(Some(ast));
 
         let mut expected_database = Database::default();
@@ -217,7 +217,7 @@ mod tests {
         let root = parse(input);
         let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::default();
+        let mut context = Context::new();
         let hir = context.lower_stmt(ast).unwrap();
 
         let s = context.database.debug_string();
@@ -242,7 +242,7 @@ mod tests {
         let root = parse("let = 10");
         let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::default();
+        let mut context = Context::new();
         let stmt = context.lower_stmt(ast);
         dbg!(stmt);
         let x = &context.database.stmts[stmt.unwrap()];
