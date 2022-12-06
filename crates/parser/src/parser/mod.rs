@@ -28,6 +28,9 @@ pub(crate) struct Parser<'t, 'input> {
     /// Temporary list of expected tokens for error reporting
     expected_kinds: Vec<TokenKind>,
 
+    /// The last token just parsed
+    pub(crate) last_token_kind: TokenKind,
+
     /// Entry point of parsing to control how the events are used
     pub(crate) entry_point: ParseEntryPoint,
 }
@@ -38,6 +41,7 @@ impl<'t, 'input> Parser<'t, 'input> {
             source,
             events: Vec::new(),
             expected_kinds: Vec::new(),
+            last_token_kind: TokenKind::Emptyspace,
             errors: Vec::new(),
             entry_point,
         }
@@ -112,7 +116,8 @@ impl<'t, 'input> Parser<'t, 'input> {
     /// Panic: if the input is already at the end
     pub(crate) fn bump(&mut self) {
         self.expected_kinds.clear();
-        self.source.next_token().unwrap();
+        self.last_token_kind = self.source.peek_kind().unwrap();
+        self.source.next_token().expect("a next token to exist");
         self.events.push(Event::AddToken);
     }
 

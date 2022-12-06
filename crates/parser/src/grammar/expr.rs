@@ -23,7 +23,7 @@ const EXPR_START: [TokenKind; 7] = [
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
-    expr_binding_power(p, 0, false)
+    expr_binding_power(p, 0)
 }
 
 pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
@@ -48,15 +48,10 @@ pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BlockExpr)
 }
 
-fn expr_binding_power(
-    p: &mut Parser,
-    minimum_binding_power: u8,
-    just_parsed_arrow: bool, // TODO: feels like a hack, find a better way
-) -> Option<CompletedMarker> {
-    let mut lhs = parse_lhs(p, just_parsed_arrow)?;
+fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
+    let mut lhs = parse_lhs(p)?;
 
     loop {
-        let mut just_parsed_arrow = false;
         let curr = p.peek()?;
         let op = match curr {
             Plus => BinaryOp::Add,
@@ -68,10 +63,7 @@ fn expr_binding_power(
             And => BinaryOp::And,
             Or => BinaryOp::Or,
             Dot => BinaryOp::Path,
-            Arrow => {
-                just_parsed_arrow = true;
-                BinaryOp::Function
-            }
+            Arrow => BinaryOp::Function,
 
             // Not at an operator, so is not a binary expression, so break having
             // just parsed the "lhs"
@@ -90,7 +82,7 @@ fn expr_binding_power(
         // Starts a new marker that "wraps" the already parsed LHS
         let m = lhs.precede(p);
 
-        let parsed_rhs = expr_binding_power(p, right_binding_power, just_parsed_arrow).is_some();
+        let parsed_rhs = expr_binding_power(p, right_binding_power).is_some();
         lhs = m.complete(p, SyntaxKind::InfixExpr);
 
         if !parsed_rhs {
@@ -102,7 +94,7 @@ fn expr_binding_power(
     Some(lhs)
 }
 
-fn parse_lhs(p: &mut Parser, just_parsed_arrow: bool) -> Option<CompletedMarker> {
+fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     let curr = p.peek();
     if curr.is_none() {
         p.error();
@@ -117,7 +109,7 @@ fn parse_lhs(p: &mut Parser, just_parsed_arrow: bool) -> Option<CompletedMarker>
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
         Ident => {
-            if just_parsed_arrow {
+            if p.last_token_kind == TokenKind::Arrow {
                 // "-> A { ... }"
                 parse_type(p);
 
@@ -268,7 +260,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator’s token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, false);
+    expr_binding_power(p, right_binding_power);
 
     m.complete(p, SyntaxKind::NegationExpr)
 }
@@ -284,7 +276,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, false);
+    expr_binding_power(p, right_binding_power);
 
     m.complete(p, SyntaxKind::NotExpr)
 }
@@ -310,7 +302,7 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
     }
 
     loop {
-        let e = expr_binding_power(p, 0, false);
+        let e = expr_binding_power(p, 0);
 
         if e.is_none() {
             break;
