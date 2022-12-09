@@ -2,7 +2,7 @@ use la_arena::{Arena, ArenaMap, Idx};
 use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
-use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LocalDef, Stmt, UnaryExpr};
+use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LetBinding, Stmt, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
@@ -17,7 +17,7 @@ pub struct Database {
     pub(crate) expr_ranges: ArenaMap<Idx<Expr>, TextRange>,
 
     /// Local (let) bindings of variable definitions
-    pub(crate) local_defs: Arena<LocalDef>,
+    pub(crate) let_bindings: Arena<LetBinding>,
 }
 
 impl Database {
@@ -35,8 +35,8 @@ impl Database {
         self.stmts.alloc(stmt)
     }
 
-    pub(super) fn alloc_local(&mut self, local_def: LocalDef) -> Idx<LocalDef> {
-        self.local_defs.alloc(local_def)
+    pub(super) fn alloc_let_binding(&mut self, let_binding: LetBinding) -> Idx<LetBinding> {
+        self.let_bindings.alloc(let_binding)
     }
 
     pub fn debug_string(&self) -> String {
@@ -55,12 +55,6 @@ impl Database {
         write!(s, "{}", " ".repeat(indent))?;
 
         match &self.stmts[idx] {
-            Stmt::VariableDef(stmt) => {
-                let def = &self.local_defs[*stmt];
-
-                write!(s, "let _{:?} = ", stmt.into_raw())?;
-                self.write_expr(s, def.value, indent)
-            }
             Stmt::Expr(expr) => self.write_expr(s, *expr, indent),
         }?;
 
@@ -139,12 +133,22 @@ impl Database {
 
                 self.write_expr(s, *body, indent)
             }
+
+            Expr::LetBinding(local_def) => {
+                // let def = &self.local_defs[*local_def];
+
+                // write!(s, "let _{:?} = ", local_def.into_raw())?;
+                // self.write_expr(s, def.value, indent);
+                todo!()
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ast::IntLiteral;
+
     use crate::context::Context;
     use crate::{BinaryExpr, BinaryOp, BlockExpr, UnaryExpr, UnaryOp};
 
@@ -212,6 +216,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "TODO: revisit after finishing Stmt -> Expr for LetBinding"]
     fn experiment_lower_variable_def() {
         let input = "let a = b";
         let root = parse(input);
@@ -226,11 +231,18 @@ mod tests {
     }
 
     #[test]
-    fn lower_variable_def() {
-        let input = "let a = b";
-        let expected_string = "let _0 = b\n";
+    fn lower_let_binding() {
+        let input = "let a = 1";
+        let mut exprs = Arena::new();
 
-        check_stmt(input, expected_string)
+        let expected_let_binding = LetBinding {
+            ast: todo!(),
+            type_annotation: None,
+            value: exprs.alloc(Expr::IntLiteral(1)),
+        };
+        let expected_hir = Expr::LetBinding(expected_let_binding);
+
+        check_expr(input, expected_hir);
     }
 
     #[test]
@@ -246,22 +258,31 @@ mod tests {
         let stmt = context.lower_stmt(ast);
         dbg!(stmt);
         let x = &context.database.stmts[stmt.unwrap()];
-        match x {
-            Stmt::VariableDef(d) => {
-                let v = &context.database.local_defs[*d];
-                dbg!(&context.database.exprs[v.value]);
-            }
-            Stmt::Expr(_) => unreachable!(),
-        }
+        // match x {
+        //     Stmt::VariableDef(d) => {
+        //         let v = &context.database.local_defs[*d];
+        //         dbg!(&context.database.exprs[v.value]);
+        //     }
+        //     Stmt::Expr(_) => unreachable!(),
+        // }
         // assert!(context.lower_stmt(ast).is_none());
     }
 
     #[test]
+    #[ignore = "TODO: revisit this after fixing AST for Stmt -> Expr for LetBinding"]
+
     fn lower_variable_def_without_value() {
         let input = "let a =";
-        let expected_string = "let _0 = {empty}\n";
+        // let mut exprs = Arena::new();
 
-        check_stmt(input, expected_string);
+        let expected_let_binding = LetBinding {
+            ast: todo!(),
+            type_annotation: None,
+            value: todo!(),
+        };
+        let expected_hir = Expr::LetBinding(expected_let_binding);
+
+        check_expr(input, expected_hir);
     }
 
     #[test]
@@ -315,8 +336,9 @@ mod tests {
         let lhs = exprs.alloc(Expr::IntLiteral(1));
         let rhs = exprs.alloc(Expr::IntLiteral(2));
         let op = BinaryOp::Add;
+        let expected_hir = Expr::Binary(BinaryExpr { op, lhs, rhs });
 
-        check_expr("1 + 2", Expr::Binary(BinaryExpr { op, lhs, rhs }));
+        check_expr("1 + 2", expected_hir);
     }
 
     #[test]

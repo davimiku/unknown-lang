@@ -1,22 +1,41 @@
 //! Takes an HIR node + maps of values & types, produces a
 //! bytecode chunk (vector of bytes)
+use la_arena::Idx;
 pub use op::{InvalidOpError, Op};
 
 use std::convert::TryInto;
 use std::mem::size_of;
-use std::str;
 
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, Context, Expr, LocalDef, Stmt, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, LetBinding, Stmt, Type, UnaryExpr,
+    UnaryOp,
 };
 
 mod disassemble;
 mod op;
 
+// TODO: extract to a shared "builtins" crate
+pub const PRINT_STR_CONSTANT: u8 = 0;
+pub const PRINT_STR: u8 = 1;
+pub const PRINT_INT: u8 = 2;
+pub const PRINT_FLOAT: u8 = 3;
+pub const PRINT_BOOL: u8 = 4;
+
+pub fn codegen(stmts: &[Idx<Stmt>], context: Context) -> Chunk {
+    let mut chunk = Chunk::new();
+
+    for idx in stmts {
+        let stmt = context.stmt(*idx);
+        chunk.write_stmt(stmt, &context);
+    }
+
+    chunk
+}
+
 /// A VM "word" is 8 bytes (64 bits)
 type Word = [u8; 8];
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Chunk {
     /// bytecode contained in the chunk
     code: Vec<u8>,
@@ -32,18 +51,26 @@ pub struct Chunk {
 
 // TODO: make all pub(crate)
 impl Chunk {
-    pub fn new() -> Chunk {
+    pub fn new() -> Self {
         Default::default()
+    }
+
+    #[cfg(test)]
+    pub fn new_with(code: Vec<u8>, str_constants: Vec<u8>, lines: Vec<u32>) -> Self {
+        Self {
+            code,
+            str_constants,
+            lines,
+        }
     }
 }
 
 // Functions to write to the Chunk
 impl Chunk {
-    pub fn write_stmt(&mut self, stmt: Stmt, context: &Context) {
+    pub fn write_stmt(&mut self, stmt: &Stmt, context: &Context) {
         match stmt {
-            Stmt::VariableDef(local_def) => todo!(),
             Stmt::Expr(idx) => {
-                let expr = context.expr(idx);
+                let expr = context.expr(*idx);
                 self.write_expr(expr, context)
             }
         }
@@ -61,12 +88,15 @@ impl Chunk {
             Binary(expr) => self.write_binary_expr(expr, context),
             Unary(expr) => self.write_unary_expr(expr, context),
             VariableRef { name } => todo!(),
-            Call { path, args } => todo!(),
+            Call(expr) => self.write_call_expr(expr, context),
             Function {
                 params,
                 body,
                 return_type_annotation,
             } => todo!(),
+            LetBinding(expr) => {
+                todo!()
+            }
 
             Block(BlockExpr { stmts }) => todo!(),
 
@@ -133,9 +163,40 @@ impl Chunk {
         }
     }
 
+    fn write_call_expr(&mut self, expr: &CallExpr, context: &Context) {
+        let CallExpr { path, args } = expr;
+
+        let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of(*idx)).collect();
+
+        // TODO: more general check for builtin
+        if path == "print" {
+            self.write_builtin_call(path, arg_types);
+        }
+    }
+
+    fn write_builtin_call(&mut self, path: &str, arg_types: Vec<&Type>) {
+        if path == "print" {
+            let arg_type = *arg_types.get(0).expect("print to have 1 argument");
+            let builtin_idx = match arg_type {
+                Type::Bool | Type::BoolLiteral(_) => PRINT_BOOL,
+                Type::Float | Type::FloatLiteral(_) => PRINT_FLOAT,
+                Type::Int | Type::IntLiteral(_) => PRINT_INT,
+                Type::String => PRINT_STR,
+                Type::StringLiteral(_) => PRINT_STR_CONSTANT,
+
+                Type::Named(_) => todo!(),
+
+                _ => unreachable!(),
+            };
+
+            self.write_builtin(builtin_idx, 1);
+            // need instructions for push/pop?
+        }
+    }
+
     // fn write_block_expr(&mut self, context: &)
 
-    fn write_local_def(&mut self, local_def: &LocalDef) {
+    fn write_local_def(&mut self, local_def: &LetBinding) {
         let name = local_def.name();
         let value = local_def.value;
     }
@@ -264,7 +325,7 @@ impl Chunk {
         }
 
         #[cfg(debug_assertions)]
-        str::from_utf8(bytes).expect("bytes should be valid UTF-8")
+        std::str::from_utf8(bytes).expect("bytes should be valid UTF-8")
     }
 }
 

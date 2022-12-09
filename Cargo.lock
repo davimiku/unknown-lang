@@ -26,7 +26,9 @@ checksum = "bed554bd50246729a1ec158d08aa3235d1b69d94ad120ebe187e28894787e736"
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "compiler",
  "parser",
+ "vm",
 ]
 
 [[package]]
@@ -35,6 +37,16 @@ version = "0.1.0"
 dependencies = [
  "hir",
  "la-arena",
+]
+
+[[package]]
+name = "compiler"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "codegen",
+ "hir",
+ "parser",
 ]
 
 [[package]]

@@ -1,5 +1,11 @@
 use crate::VM;
 
+pub const PRINT_STR_CONSTANT: u8 = 0;
+pub const PRINT_STR: u8 = 1;
+pub const PRINT_INT: u8 = 2;
+pub const PRINT_FLOAT: u8 = 3;
+pub const PRINT_BOOL: u8 = 4;
+
 impl VM<'_> {
     pub(crate) fn print_str_constant(&mut self) {
         let (idx, len) = self.stack.pop_string_literal();

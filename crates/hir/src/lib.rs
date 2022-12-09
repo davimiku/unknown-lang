@@ -10,6 +10,17 @@ use database::Database;
 use la_arena::Idx;
 pub use typecheck::Type;
 
+pub fn lower(ast: ast::Root) -> (Vec<Idx<Stmt>>, Context) {
+    let mut context = Context::new();
+
+    let stmts: Vec<_> = ast
+        .stmts()
+        .filter_map(|stmt| context.lower_stmt(stmt))
+        .collect();
+
+    (stmts, context)
+}
+
 // TODO: interned string?
 #[derive(Debug, PartialEq, Eq)]
 pub struct Name(String);
@@ -23,7 +34,7 @@ pub struct Fqn {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
-    VariableDef(Idx<LocalDef>),
+    // VariableDef(Idx<LetBinding>),
     Expr(Idx<Expr>),
 }
 
@@ -35,7 +46,7 @@ pub enum Stmt {
 /// ```
 ///
 #[derive(Debug, PartialEq, Eq)]
-pub struct LocalDef {
+pub struct LetBinding {
     /// Expression value assigned to the variable
     pub value: Idx<Expr>,
 
@@ -43,15 +54,16 @@ pub struct LocalDef {
     type_annotation: Option<Idx<Expr>>,
 
     /// Original AST parsed for the variable definition
-    ast: ast::LocalDef,
+    /// TODO: why? Create a hir::Pattern instead?
+    ast: ast::LetBinding,
 }
 
 // TODO: borrow the string from the AST or put it into an interner?
-impl LocalDef {
+impl LetBinding {
     pub fn name(&self) -> String {
         self.ast
             .name()
-            .expect("VariableDef to have a name")
+            .expect("LetBinding to have a name")
             .text()
             .to_string()
     }
@@ -77,6 +89,14 @@ pub struct BlockExpr {
     // last_expr: Idx<Expr>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct CallExpr {
+    // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
+    // so that it can handle `a`, `a.b`, `a.b.c`, etc.
+    pub path: String,
+    pub args: Vec<Idx<Expr>>,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     /// A missing expression from the parse tree
@@ -100,24 +120,32 @@ pub enum Expr {
     /// Unary expression, ex. `-a`, `not b`
     Unary(UnaryExpr),
 
+    /// Block expression. Contains other expressions, and the
+    /// result is the evaluation of the final expression.
+    ///
+    /// {
+    ///     let z = x + y
+    ///     z / 2
+    /// }
     Block(BlockExpr),
-    Call {
-        // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
-        // so that it can handle `a`, `a.b`, `a.b.c`, etc.
-        path: String,
-        args: Vec<Idx<Expr>>,
-    },
+
+    Call(CallExpr),
+
     VariableRef {
         // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
         // so that it can handle `a`, `a.b`, `a.b.c`, etc.
         name: String,
     },
+
     Function {
         params: Vec<Idx<Expr>>, // names (or empty?)
         body: Idx<Expr>,        // Expr::Block ?
 
         return_type_annotation: Option<Idx<Expr>>, // type name
     },
+
+    // rename: ValueBinding?
+    LetBinding(LetBinding),
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -160,14 +188,4 @@ impl fmt::Display for UnaryOp {
             UnaryOp::Not => write!(f, "not "),
         }
     }
-}
-
-pub fn lower(ast: ast::Root) -> (Database, Vec<Diagnostic>) {
-    let mut context = Context::default();
-
-    for stmt in ast.stmts() {
-        context.lower_stmt(stmt);
-    }
-
-    (context.database, context.diagnostics)
 }

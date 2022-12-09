@@ -6,7 +6,7 @@ use parser::SyntaxKind;
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LocalDef, Stmt, Type, UnaryExpr,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LetBinding, Stmt, Type, UnaryExpr,
     UnaryOp,
 };
 
@@ -47,8 +47,8 @@ impl Context {
         &self.database.stmts[idx]
     }
 
-    pub fn local_def(&self, idx: Idx<LocalDef>) -> &LocalDef {
-        &self.database.local_defs[idx]
+    pub fn local_def(&self, idx: Idx<LetBinding>) -> &LetBinding {
+        &self.database.let_bindings[idx]
     }
 
     pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
@@ -61,12 +61,12 @@ impl Context {
         self.database.alloc_expr(expr, ast)
     }
 
-    pub(crate) fn insert_local_def(&mut self, name: String, idx: Idx<LocalDef>) {
+    pub(crate) fn insert_local_def(&mut self, name: String, idx: Idx<LetBinding>) {
         self.scopes
             .insert_local_def(self.current_scope_idx, name, idx)
     }
 
-    pub(crate) fn lookup_name(&self, name: &str) -> Option<Idx<LocalDef>> {
+    pub(crate) fn lookup_name(&self, name: &str) -> Option<Idx<LetBinding>> {
         self.scopes
             .iter_from(self.current_scope_idx)
             .find_map(|scope| scope.get_local(name))
@@ -85,7 +85,7 @@ impl Context {
 impl Context {
     pub(crate) fn lower_stmt(&mut self, ast: ast::Stmt) -> Option<Idx<Stmt>> {
         let stmt = match ast {
-            ast::Stmt::LocalDef(ast) => self.lower_variable_def(ast),
+            ast::Stmt::Import(_) => unimplemented!(),
             ast::Stmt::Expr(ast) => {
                 let idx = self.lower_expr(Some(ast));
 
@@ -98,16 +98,16 @@ impl Context {
         Some(idx)
     }
 
-    fn lower_variable_def(&mut self, ast: ast::LocalDef) -> Stmt {
+    fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
         let name = ast.name();
         let value = self.lower_expr(ast.value());
         let type_annotation = None;
-        let local_def = LocalDef {
+        let let_binding = LetBinding {
             value,
             type_annotation,
             ast,
         };
-        let idx = self.database.alloc_local(local_def);
+        let idx = self.database.alloc_let_binding(let_binding);
 
         if let Some(name) = name {
             let name = name.text().to_string();
@@ -115,7 +115,8 @@ impl Context {
         }
         // insert into scopes .insert(name, idx)
 
-        Stmt::VariableDef(idx)
+        // Expr::LetBinding(idx)
+        todo!();
     }
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
@@ -130,6 +131,7 @@ impl Context {
                 Function(ast) => self.lower_function_def(ast),
                 Ident(ast) => self.lower_ident(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
+                LetBinding(ast) => self.lower_let_binding(ast),
                 Loop(ast) => self.lower_loop(ast),
                 Paren(ast) => return self.lower_expr(ast.expr()),
                 StringLiteral(ast) => self.lower_string_literal(ast),
@@ -223,7 +225,7 @@ impl Context {
         Expr::Block(BlockExpr { stmts })
     }
 
-    fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
+    fn lower_loop(&mut self, ast: ast::LoopExpr) -> Expr {
         dbg!(&ast);
 
         // create a new scope

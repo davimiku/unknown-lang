@@ -125,13 +125,14 @@ pub enum Op {
     /// Stack: lhs, rhs **=>** "{lhs}{rhs}"
     ConcatString,
 
-    // push local?
-    // pop local?
     /// Call to a built-in function
-    /// Needs index of the built-in
-    /// TODO: how to indicate args?
+    ///
+    /// Operands: built-in index: `u8`
+    ///
     Builtin,
 
+    // push local?
+    // pop local?
     /// Return from a function
     Ret,
 

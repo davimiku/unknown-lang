@@ -14,11 +14,6 @@ pub(crate) fn check_stmt(idx: Idx<Stmt>, context: &Context) -> Option<TypeDiagno
     let stmt = context.stmt(idx);
 
     match stmt {
-        Stmt::VariableDef(idx) => {
-            let local_def = context.local_def(*idx);
-            let annotation = local_def.type_annotation;
-            todo!()
-        }
         Stmt::Expr(idx) => {
             let expr = context.expr(*idx);
         }

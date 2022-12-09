@@ -167,15 +167,11 @@ impl From<InvalidOpError> for RuntimeError {
 #[cfg(test)]
 mod tests {
 
-    const PRINT_STR_CONSTANT: u8 = 0;
-    const PRINT_STR: u8 = 1;
-    const PRINT_INT: u8 = 2;
-    const PRINT_FLOAT: u8 = 3;
-    const PRINT_BOOL: u8 = 4;
-
     use codegen::{Chunk, Op};
 
     use hir::{BinaryExpr, BinaryOp, Context, Expr};
+
+    use crate::builtins::{PRINT_FLOAT, PRINT_INT, PRINT_STR_CONSTANT};
 
     use super::*;
 
@@ -206,7 +202,7 @@ mod tests {
     #[ignore = "failing because typecheck isn't implemented"]
     fn test_int_add() {
         let mut chunk = Chunk::new();
-        let mut context = Context::default();
+        let mut context = Context::new();
 
         let a = 4;
         let b = 5;
@@ -231,7 +227,7 @@ mod tests {
     #[ignore = "failing because typecheck isn't implemented"]
     fn test_float_add() {
         let mut chunk = Chunk::new();
-        let mut context = Context::default();
+        let mut context = Context::new();
 
         let a = 4.4;
         let b = 5.5;

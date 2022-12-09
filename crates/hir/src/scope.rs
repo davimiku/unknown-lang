@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use la_arena::Idx;
 
-use crate::{LocalDef, Type};
+use crate::{LetBinding, Type};
 
 #[derive(Debug, Default)]
 pub(crate) struct Scope {
@@ -24,13 +24,13 @@ pub(crate) struct Scope {
     // 0 is used as a sentinel value, the top level scope has a parent_idx of 0
     pub(crate) parent_idx: usize,
 
-    local_defs: HashMap<String, Idx<LocalDef>>,
+    local_defs: HashMap<String, Idx<LetBinding>>,
 
     type_defs: HashMap<String, Idx<Type>>,
 }
 
 impl Scope {
-    pub(crate) fn get_local(&self, key: &str) -> Option<Idx<LocalDef>> {
+    pub(crate) fn get_local(&self, key: &str) -> Option<Idx<LetBinding>> {
         self.local_defs.get(key).copied()
     }
 
@@ -77,7 +77,7 @@ impl Scopes {
         &mut self,
         scope_idx: usize,
         name: String,
-        local_def_idx: Idx<LocalDef>,
+        local_def_idx: Idx<LetBinding>,
     ) {
         let scope = &mut self.0[scope_idx];
 

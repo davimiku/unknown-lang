@@ -46,8 +46,7 @@ impl Root {
 
 #[derive(Debug)]
 pub enum Stmt {
-    /// A local (let) binding
-    LocalDef(LocalDef),
+    Import(()),
 
     /// Expression
     Expr(Expr),
@@ -56,7 +55,6 @@ pub enum Stmt {
 impl Stmt {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         let result = match node.kind() {
-            SyntaxKind::VariableDef => Self::LocalDef(LocalDef(node)),
             _ => {
                 let expr = node.children().find_map(Expr::cast)?;
                 Self::Expr(expr)
@@ -67,10 +65,10 @@ impl Stmt {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct LocalDef(SyntaxNode);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LetBinding(SyntaxNode);
 
-impl LocalDef {
+impl LetBinding {
     // TODO: Pattern rather than name (Ident)
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0
@@ -84,6 +82,7 @@ impl LocalDef {
     }
 
     pub fn value(&self) -> Option<Expr> {
+        // TODO: check this doesn't pick up pattern / destructuring
         self.0.children().find_map(Expr::cast)
     }
 
@@ -102,9 +101,11 @@ pub enum Expr {
     Function(Function),
     Ident(Ident),
     IntLiteral(IntLiteral),
-    Loop(Loop),
+    LetBinding(LetBinding),
+    Loop(LoopExpr),
     Paren(ParenExpr),
     StringLiteral(StringLiteral),
+    // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     TypeExpr(TypeExpr),
     Unary(Unary),
 }
@@ -115,12 +116,13 @@ impl Expr {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::Call => Self::Call(Call(node)),
-            SyntaxKind::Path => Self::Ident(Ident(node)), // ???
+            SyntaxKind::FloatExpr => Self::FloatLiteral(FloatLiteral(node)),
             SyntaxKind::InfixExpr => Self::cast_binary(node),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
-            SyntaxKind::FloatExpr => Self::FloatLiteral(FloatLiteral(node)),
+            SyntaxKind::LoopExpr => Self::Loop(LoopExpr(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
+            SyntaxKind::Path => Self::Ident(Ident(node)), // ???
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
@@ -138,6 +140,7 @@ impl Expr {
             Function(e) => e.range(),
             Ident(e) => e.range(),
             IntLiteral(e) => e.range(),
+            LetBinding(e) => e.range(),
             Loop(e) => e.range(),
             Paren(e) => e.range(),
             StringLiteral(e) => e.range(),
@@ -194,6 +197,10 @@ pub struct Block(SyntaxNode);
 impl Block {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::BlockExpr).then_some(Self(node))
+    }
+
+    pub fn exprs(&self) -> impl Iterator<Item = Expr> {
+        self.0.children().filter_map(Expr::cast)
     }
 
     // TODO: Iterator ?
@@ -398,11 +405,15 @@ impl IntLiteral {
 }
 
 #[derive(Debug, Clone)]
-pub struct Loop(SyntaxNode);
+pub struct LoopExpr(SyntaxNode);
 
-impl Loop {
-    pub fn block(&self) -> Block {
-        todo!()
+impl LoopExpr {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::LoopExpr).then_some(Self(node))
+    }
+
+    pub fn block(&self) -> Option<Block> {
+        self.0.children().find_map(Block::cast)
     }
 
     pub fn range(&self) -> TextRange {
@@ -656,5 +667,16 @@ mod tests {
         let rhs = assert_matches!(assert_some!(rhs.expr()), Expr::Function);
         assert_eq!(rhs.param_list().params().next(), expected_rhs_param_list);
         assert_eq!(rhs.return_type(), expected_rhs_return_type);
+    }
+
+    #[test]
+    fn loop_empty_body() {
+        let input = "loop { }";
+
+        let parsed = parse_expr(input);
+
+        let loop_expr = assert_matches!(parsed, Expr::Loop);
+        let block = assert_some!(loop_expr.block());
+        assert!(block.exprs().count() == 0);
     }
 }

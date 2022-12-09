@@ -998,7 +998,7 @@ Root@0..35
     LBrace@0..1 "{"
     Newline@1..2 "\n"
     Emptyspace@2..4 "  "
-    VariableDef@4..13
+    LetBinding@4..13
       Let@4..7 "let"
       Emptyspace@7..8 " "
       Ident@8..10
@@ -1010,7 +1010,7 @@ Root@0..35
         IntLiteral@12..13 "1"
     Newline@13..14 "\n"
     Emptyspace@14..16 "  "
-    VariableDef@16..25
+    LetBinding@16..25
       Let@16..19 "let"
       Emptyspace@19..20 " "
       Ident@20..22

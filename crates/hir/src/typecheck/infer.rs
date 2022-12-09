@@ -22,12 +22,17 @@ pub(crate) fn infer_expr(expr: &Expr, context: &mut Context) -> InferResult {
         Expr::Unary(expr) => todo!(),
         Expr::Block(expr) => todo!(),
         Expr::VariableRef { name } => todo!(),
-        Expr::Call { path, args } => todo!(),
+        Expr::Call(expr) => todo!(),
         Expr::Function {
             params,
             body,
             return_type_annotation,
         } => todo!(),
+        Expr::LetBinding(idx) => {
+            // let local_def = context.local_def(*idx);
+            // let annotation = local_def.type_annotation;
+            todo!()
+        }
     }
 }
 

@@ -70,7 +70,6 @@ pub enum SyntaxKind {
 
     // Stmt
     ModuleDef,
-    VariableDef,
     ExprStmt,
 
     // Expr
@@ -81,6 +80,7 @@ pub enum SyntaxKind {
     FunExpr,
     InfixExpr,
     IntExpr,
+    LetBinding,
     LoopExpr,
     NegationExpr,
     NotExpr,

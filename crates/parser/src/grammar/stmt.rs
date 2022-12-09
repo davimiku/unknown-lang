@@ -69,7 +69,7 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
 
     parse_expr(p);
 
-    m.complete(p, SyntaxKind::VariableDef)
+    m.complete(p, SyntaxKind::LetBinding)
 }
 
 fn parse_module_def(p: &mut Parser) -> CompletedMarker {
@@ -101,7 +101,7 @@ mod tests {
             "let foo = bar",
             expect![[r#"
 Root@0..13
-  VariableDef@0..13
+  LetBinding@0..13
     Let@0..3 "let"
     Emptyspace@3..4 " "
     Ident@4..8
@@ -122,7 +122,7 @@ Root@0..13
             "let x: Int = 1",
             expect![[r#"
 Root@0..14
-  VariableDef@0..14
+  LetBinding@0..14
     Let@0..3 "let"
     Emptyspace@3..4 " "
     Ident@4..5
@@ -147,7 +147,7 @@ Root@0..14
             "let = 1",
             expect![[r#"
 Root@0..7
-  VariableDef@0..7
+  LetBinding@0..7
     Let@0..3 "let"
     Emptyspace@3..4 " "
     Equals@4..5 "="
@@ -217,7 +217,7 @@ Root@0..14
             "let a =\nlet b = a",
             expect![[r#"
 Root@0..17
-  VariableDef@0..8
+  LetBinding@0..8
     Let@0..3 "let"
     Emptyspace@3..4 " "
     Ident@4..5 "a"
@@ -225,7 +225,7 @@ Root@0..17
     Equals@6..7 "="
     Error@7..8
       Error@7..8 "\n"
-  VariableDef@8..17
+  LetBinding@8..17
     Let@8..11 "let"
     Emptyspace@11..12 " "
     Ident@12..13 "b"
