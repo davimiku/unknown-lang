@@ -16,7 +16,6 @@ pub enum SyntaxKind {
     And,
     Else,
     For,
-    Fun,
     If,
     Let,
     Loop,
@@ -75,6 +74,7 @@ pub enum SyntaxKind {
     ExprStmt,
 
     // Expr
+    AssignmentExpr,
     BlockExpr,
     BoolExpr,
     FloatExpr,
@@ -88,8 +88,7 @@ pub enum SyntaxKind {
     Path,
     PathItem,
     StringExpr,
-
-    TypeExpr, // ???
+    TypeExpr,
 
     // Function components
     FunBody,
@@ -118,7 +117,6 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::And => Self::And,
             TokenKind::Else => Self::Else,
             TokenKind::For => Self::For,
-            TokenKind::Fun => Self::Fun,
             TokenKind::If => Self::If,
             TokenKind::Let => Self::Let,
             TokenKind::Loop => Self::Loop,

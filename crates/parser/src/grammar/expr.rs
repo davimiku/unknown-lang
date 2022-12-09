@@ -1,4 +1,5 @@
-mod function;
+#[cfg(test)]
+mod function_tests;
 mod type_expr;
 
 use lexer::TokenKind::{self, *};
@@ -8,7 +9,6 @@ use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use self::function::parse_fun_expr;
 use self::type_expr::parse_type_expr;
 
 /// Tokens that may start an expression
@@ -127,7 +127,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // parentheses are already overloaded as a grouping expression & parameters,
         // probably can't overload again as tuples
         LParen => parse_paren_expr_or_function_params(p),
-        Fun => parse_fun_expr(p),
         LBrace => parse_block(p),
         Loop => parse_loop(p),
         _ => {

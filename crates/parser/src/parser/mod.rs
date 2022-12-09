@@ -31,6 +31,8 @@ pub(crate) struct Parser<'t, 'input> {
     /// The last token just parsed
     pub(crate) last_token_kind: TokenKind,
 
+    // TODO: do we need a 1 token lookahead?
+    // pub(crate) next_token_kind: Option<TokenKind>,
     /// Entry point of parsing to control how the events are used
     pub(crate) entry_point: ParseEntryPoint,
 }

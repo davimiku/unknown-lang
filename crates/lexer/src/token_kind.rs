@@ -32,9 +32,6 @@ pub enum TokenKind {
     #[token("for")]
     For,
 
-    #[token("fun")]
-    Fun,
-
     #[token("if")]
     If,
 
@@ -201,7 +198,6 @@ impl fmt::Display for TokenKind {
             Self::And => "‘and’",
             Self::Else => "‘else’",
             Self::For => "‘for’",
-            Self::Fun => "‘fun’",
             Self::If => "‘if’",
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",

@@ -78,8 +78,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
         parse_name_ref(p)
-    } else if p.at(TokenKind::Fun) {
-        parse_fun_signature(p)
     } else {
         p.error();
         return None;
@@ -92,9 +90,4 @@ fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
     assert!(p.at(Ident));
 
     parse_path(p)
-}
-
-// fun (string, string) -> int
-fn parse_fun_signature(_p: &mut Parser) -> CompletedMarker {
-    todo!()
 }
