@@ -259,7 +259,7 @@ impl Context {
         // // (return lower_call)
 
         Expr::VariableRef {
-            name: ast.name().unwrap().text().into(),
+            name: ast.name_token().unwrap().text().into(),
         }
     }
 
@@ -269,7 +269,7 @@ impl Context {
 
         // TODO: handle multiple idents in a Path :)
         let name = idents.next().unwrap();
-        let call_args = ast.call_args();
+        let call_args = ast.args();
 
         if let Some(call_args) = call_args {
             let args = call_args

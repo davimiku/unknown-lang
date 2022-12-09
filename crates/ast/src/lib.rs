@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod tests;
 mod validation;
 
 use parser::{Parse, SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
@@ -54,6 +56,7 @@ pub enum Stmt {
 
 impl Stmt {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
+        #[allow(clippy::match_single_binding)] // TODO: may have a Stmt::Import
         let result = match node.kind() {
             _ => {
                 let expr = node.children().find_map(Expr::cast)?;
@@ -256,7 +259,7 @@ impl Call {
         self.0.children().find_map(Path::cast)
     }
 
-    pub fn call_args(&self) -> Option<CallArgs> {
+    pub fn args(&self) -> Option<CallArgs> {
         self.0.children().find_map(CallArgs::cast)
     }
 }
@@ -374,8 +377,12 @@ impl Ident {
         (node.kind() == SyntaxKind::Ident).then_some(Self(node))
     }
 
-    pub fn name(&self) -> Option<SyntaxToken> {
+    pub fn name_token(&self) -> Option<SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn name(&self) -> Option<String> {
+        self.name_token().map(|token| String::from(token.text()))
     }
 
     pub fn range(&self) -> TextRange {
@@ -451,7 +458,7 @@ impl Path {
     }
 
     pub fn ident_tokens(&self) -> impl Iterator<Item = SyntaxToken> {
-        self.idents().filter_map(|ident| ident.name())
+        self.idents().filter_map(|ident| ident.name_token())
     }
 
     pub fn ident_strings(&self) -> impl Iterator<Item = String> {
@@ -511,172 +518,5 @@ impl Unary {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    /// Asserts that the provided `Option` is `Some`
-    /// and returns the unwrapped value.
-    macro_rules! assert_some {
-        ($value:expr) => {{
-            assert!($value.is_some());
-            $value.unwrap()
-        }};
-    }
-
-    /// Asserts that the provided enum is the provided variant,
-    /// and extracts the inner value.
-    macro_rules! assert_matches {
-        ($value:expr, $variant:path) => {{
-            assert!(matches!($value, $variant(_)));
-
-            if let $variant(x) = $value {
-                x
-            } else {
-                unreachable!()
-            }
-        }};
-    }
-
-    fn parse_node(input: &str) -> SyntaxNode {
-        parser::parse_expr(input).syntax()
-    }
-
-    fn parse_expr(input: &str) -> Expr {
-        let root = Root::cast(parse_node(input)).unwrap();
-        root.expr().expect("expected a top-level expression")
-    }
-
-    #[test]
-    fn call_no_arguments() {
-        let input = "my_func";
-        let parsed = parse_expr(input);
-
-        let call = assert_matches!(parsed, Expr::Call);
-
-        let call_args = call.call_args();
-        assert!(call_args.is_none());
-    }
-
-    #[test]
-    fn call_empty_arg() {
-        let input = "my_func ()";
-        let parsed = parse_expr(input);
-
-        let call = assert_matches!(parsed, Expr::Call);
-        assert_eq!(
-            call.path().unwrap().ident_strings().next().unwrap(),
-            "my_func"
-        );
-        let call_args = assert_some!(call.call_args());
-
-        assert_eq!(0, call_args.args().count());
-    }
-
-    #[test]
-    fn call_one_arg() {
-        let input = "my_func 1";
-        let parsed = parse_expr(input);
-
-        let call = assert_matches!(parsed, Expr::Call);
-        let call_args = assert_some!(call.call_args());
-
-        assert_eq!(1, call_args.args().count());
-    }
-
-    #[test]
-    fn call_arguments() {
-        let input = "my_func (1, 2)";
-        let parsed = parse_expr(input);
-
-        let call = assert_matches!(parsed, Expr::Call);
-        let call_args = assert_some!(call.call_args());
-
-        assert_eq!(2, call_args.args().count());
-    }
-
-    #[test]
-    fn empty_function() {
-        let input = "() -> { }";
-        let parsed = parse_expr(input);
-        let expected_param_list = None;
-        let expected_return_type = None;
-
-        let function = assert_matches!(parsed, Expr::Function);
-
-        assert_eq!(function.param_list().params().next(), expected_param_list);
-        assert_eq!(function.return_type(), expected_return_type);
-    }
-
-    #[test]
-    fn nullary_function_with_return_type() {
-        let input = "() -> Int { }";
-        let parsed = parse_expr(input);
-        let expected_param_list = None;
-        let expected_return_type = "Int";
-
-        let function = assert_matches!(parsed, Expr::Function);
-
-        assert_eq!(function.param_list().params().next(), expected_param_list);
-
-        let return_type = assert_some!(function
-            .return_type()
-            .and_then(|type_expr| type_expr.as_path())
-            .and_then(|path| path.idents().next())
-            .and_then(|ident| ident.name()));
-        assert_eq!(return_type.text(), expected_return_type);
-    }
-
-    #[test]
-    fn unary_function_with_explicit_param_type() {
-        let input = "(a: A, b: B) -> { }";
-        let parsed = parse_expr(input);
-
-        let function = assert_matches!(parsed, Expr::Function);
-
-        let param_list = function.param_list();
-        let params = param_list.params();
-        for param in params {
-            dbg!(param.ident().unwrap().name().unwrap());
-        }
-    }
-
-    #[test]
-    fn add_int_and_function() {
-        // not a valid expression by the type checker, but should still produce an AST
-        let input = "1 + (() -> { })";
-        let expected_lhs = "1";
-        let expected_rhs_param_list = None;
-        let expected_rhs_return_type = None;
-
-        let parsed = parse_expr(input);
-
-        let binary = assert_matches!(parsed, Expr::Binary);
-
-        let lhs = assert_some!(binary.lhs());
-        let lhs = assert_matches!(lhs, Expr::IntLiteral);
-        let lhs = assert_some!(lhs.value_as_string());
-        assert_eq!(expected_lhs, lhs);
-
-        let rhs = assert_some!(binary.rhs());
-        let rhs = assert_matches!(rhs, Expr::Paren);
-        let rhs = assert_matches!(assert_some!(rhs.expr()), Expr::Function);
-        assert_eq!(rhs.param_list().params().next(), expected_rhs_param_list);
-        assert_eq!(rhs.return_type(), expected_rhs_return_type);
-    }
-
-    #[test]
-    fn loop_empty_body() {
-        let input = "loop { }";
-
-        let parsed = parse_expr(input);
-
-        let loop_expr = assert_matches!(parsed, Expr::Loop);
-        let block = assert_some!(loop_expr.block());
-        assert!(block.exprs().count() == 0);
     }
 }
