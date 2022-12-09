@@ -165,10 +165,12 @@ impl Expr {
 pub struct Binary(SyntaxNode);
 
 impl Binary {
+    /// Returns the left-hand side of the expression
     pub fn lhs(&self) -> Option<Expr> {
         self.0.children().find_map(Expr::cast)
     }
 
+    /// Returns the right-hand side of the expression
     pub fn rhs(&self) -> Option<Expr> {
         self.0.children().filter_map(Expr::cast).nth(1)
     }
@@ -384,6 +386,10 @@ impl IntLiteral {
 
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn value_as_string(&self) -> Option<String> {
+        self.value().map(|token| String::from(token.text()))
     }
 
     pub fn range(&self) -> TextRange {
@@ -626,5 +632,29 @@ mod tests {
         for param in params {
             dbg!(param.ident().unwrap().name().unwrap());
         }
+    }
+
+    #[test]
+    fn add_int_and_function() {
+        // not a valid expression by the type checker, but should still produce an AST
+        let input = "1 + (() -> { })";
+        let expected_lhs = "1";
+        let expected_rhs_param_list = None;
+        let expected_rhs_return_type = None;
+
+        let parsed = parse_expr(input);
+
+        let binary = assert_matches!(parsed, Expr::Binary);
+
+        let lhs = assert_some!(binary.lhs());
+        let lhs = assert_matches!(lhs, Expr::IntLiteral);
+        let lhs = assert_some!(lhs.value_as_string());
+        assert_eq!(expected_lhs, lhs);
+
+        let rhs = assert_some!(binary.rhs());
+        let rhs = assert_matches!(rhs, Expr::Paren);
+        let rhs = assert_matches!(assert_some!(rhs.expr()), Expr::Function);
+        assert_eq!(rhs.param_list().params().next(), expected_rhs_param_list);
+        assert_eq!(rhs.return_type(), expected_rhs_return_type);
     }
 }
