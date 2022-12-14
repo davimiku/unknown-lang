@@ -24,12 +24,14 @@ macro_rules! assert_matches {
 }
 
 fn parse_node(input: &str) -> SyntaxNode {
-    parser::parse_expr(input).syntax()
+    parser::parse(input).syntax()
 }
 
 fn parse_expr(input: &str) -> Expr {
-    let root = Root::cast(parse_node(input)).unwrap();
-    root.expr().expect("expected a top-level expression")
+    let root = Root::cast(parse_node(input)).expect("valid Root node");
+    let mut exprs: Vec<Expr> = root.exprs().collect();
+    assert!(exprs.len() == 1);
+    exprs.remove(0)
 }
 
 #[test]

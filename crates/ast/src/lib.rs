@@ -33,38 +33,12 @@ impl Root {
         }
     }
 
-    pub fn stmts(&self) -> impl Iterator<Item = Stmt> {
-        self.0.children().filter_map(Stmt::cast)
-    }
-
-    pub fn expr(&self) -> Option<Expr> {
-        self.0.children().find_map(Expr::cast)
+    pub fn exprs(&self) -> impl Iterator<Item = Expr> {
+        self.0.children().filter_map(Expr::cast)
     }
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
-    }
-}
-
-#[derive(Debug)]
-pub enum Stmt {
-    Import(()),
-
-    /// Expression
-    Expr(Expr),
-}
-
-impl Stmt {
-    pub fn cast(node: SyntaxNode) -> Option<Self> {
-        #[allow(clippy::match_single_binding)] // TODO: may have a Stmt::Import
-        let result = match node.kind() {
-            _ => {
-                let expr = node.children().find_map(Expr::cast)?;
-                Self::Expr(expr)
-            }
-        };
-
-        Some(result)
     }
 }
 
@@ -204,11 +178,6 @@ impl Block {
 
     pub fn exprs(&self) -> impl Iterator<Item = Expr> {
         self.0.children().filter_map(Expr::cast)
-    }
-
-    // TODO: Iterator ?
-    pub fn stmts(&self) -> Vec<Stmt> {
-        todo!()
     }
 
     pub fn last_expr(&self) -> Option<Expr> {

@@ -2,13 +2,10 @@ use la_arena::{Arena, ArenaMap, Idx};
 use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
-use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LetBinding, Stmt, UnaryExpr};
+use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LetBinding, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
-    /// Allocated statements
-    pub(crate) stmts: Arena<Stmt>,
-
     /// Allocated expressions
     pub(crate) exprs: Arena<Expr>,
 
@@ -31,35 +28,31 @@ impl Database {
         idx
     }
 
-    pub(super) fn alloc_stmt(&mut self, stmt: Stmt) -> Idx<Stmt> {
-        self.stmts.alloc(stmt)
-    }
-
     pub(super) fn alloc_let_binding(&mut self, let_binding: LetBinding) -> Idx<LetBinding> {
         self.let_bindings.alloc(let_binding)
     }
 
-    pub fn debug_string(&self) -> String {
-        let mut s = String::new();
+    // pub fn debug_string(&self) -> String {
+    //     let mut s = String::new();
 
-        let indent: usize = 0;
+    //     let indent: usize = 0;
 
-        for (stmt, ..) in self.stmts.iter() {
-            self.write_stmt(&mut s, stmt, indent).unwrap();
-        }
+    //     for (stmt, ..) in self.stmts.iter() {
+    //         self.write_stmt(&mut s, stmt, indent).unwrap();
+    //     }
 
-        s
-    }
+    //     s
+    // }
 
-    fn write_stmt(&self, s: &mut String, idx: Idx<Stmt>, indent: usize) -> fmt::Result {
-        write!(s, "{}", " ".repeat(indent))?;
+    // fn write_stmt(&self, s: &mut String, idx: Idx<Stmt>, indent: usize) -> fmt::Result {
+    //     write!(s, "{}", " ".repeat(indent))?;
 
-        match &self.stmts[idx] {
-            Stmt::Expr(expr) => self.write_expr(s, *expr, indent),
-        }?;
+    //     match &self.stmts[idx] {
+    //         Stmt::Expr(expr) => self.write_expr(s, *expr, indent),
+    //     }?;
 
-        writeln!(s)
-    }
+    //     writeln!(s)
+    // }
 
     fn write_expr(&self, s: &mut String, idx: Idx<Expr>, mut indent: usize) -> fmt::Result {
         match &self.exprs[idx] {
@@ -98,12 +91,12 @@ impl Database {
                 self.write_expr(s, *expr, indent)
             }
 
-            Expr::Block(BlockExpr { stmts, .. }) => {
+            Expr::Block(BlockExpr { exprs: stmts, .. }) => {
                 writeln!(s, "{{")?;
                 indent += 4;
 
                 for idx in stmts {
-                    self.write_stmt(s, *idx, indent)?;
+                    self.write_expr(s, *idx, indent)?;
                 }
 
                 indent -= 4;
@@ -147,7 +140,6 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use ast::IntLiteral;
 
     use crate::context::Context;
     use crate::{BinaryExpr, BinaryOp, BlockExpr, UnaryExpr, UnaryOp};
@@ -162,20 +154,20 @@ mod tests {
         ast::Root::cast(parser::parse_expr(input).syntax()).unwrap()
     }
 
-    fn check_stmt<S: Into<String>>(input: &str, expected_string: S) {
-        let expected_string = expected_string.into();
+    // fn check_stmt<S: Into<String>>(input: &str, expected_string: S) {
+    //     let expected_string = expected_string.into();
 
-        let root = parse(input);
-        let ast = root.stmts().next().unwrap();
+    //     let root = parse(input);
+    //     let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::new();
-        context.lower_stmt(ast).unwrap();
+    //     let mut context = Context::new();
+    //     context.lower_stmt(ast).unwrap();
 
-        let actual_string = context.database.debug_string();
-        assert_eq!(expected_string, actual_string);
+    //     let actual_string = context.database.debug_string();
+    //     assert_eq!(expected_string, actual_string);
 
-        // TODO: check diagnostics
-    }
+    //     // TODO: check diagnostics
+    // }
 
     // fn check_stmt(input: &str, expected_hir: Stmt, expected_database: Database) {
     //     let root = parse(input);
@@ -193,7 +185,10 @@ mod tests {
 
     fn check_expr(input: &str, expected_hir: Expr) {
         let root = parse_expr(input);
-        let ast = root.expr().expect("expected a top-level expression");
+        let ast = root
+            .exprs()
+            .next()
+            .expect("expected a top-level expression");
 
         let mut context = Context::new();
         let actual = context.lower_expr(Some(ast));
@@ -207,27 +202,26 @@ mod tests {
         );
     }
 
-    fn init_arenas() -> (Arena<Stmt>, Arena<Expr>, ArenaMap<Idx<Expr>, TextRange>) {
-        let statements = Arena::new();
+    fn init_arenas() -> (Arena<Expr>, ArenaMap<Idx<Expr>, TextRange>) {
         let exprs = Arena::new();
         let expr_ranges = ArenaMap::default();
 
-        (statements, exprs, expr_ranges)
+        (exprs, expr_ranges)
     }
 
     #[test]
     #[ignore = "TODO: revisit after finishing Stmt -> Expr for LetBinding"]
     fn experiment_lower_variable_def() {
-        let input = "let a = b";
-        let root = parse(input);
-        let ast = root.stmts().next().unwrap();
+        // let input = "let a = b";
+        // let root = parse(input);
+        // let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::new();
-        let hir = context.lower_stmt(ast).unwrap();
+        // let mut context = Context::new();
+        // let hir = context.lower_stmt(ast).unwrap();
 
-        let s = context.database.debug_string();
+        // let s = context.database.debug_string();
 
-        dbg!(s);
+        // dbg!(s);
     }
 
     #[test]
@@ -252,13 +246,13 @@ mod tests {
     // should parse the expression still (IntLiteral 10)
     // but the identifier (pattern) is missing
     fn lower_variable_def_without_name() {
-        let root = parse("let = 10");
-        let ast = root.stmts().next().unwrap();
+        // let root = parse("let = 10");
+        // let ast = root.stmts().next().unwrap();
 
-        let mut context = Context::new();
-        let stmt = context.lower_stmt(ast);
-        dbg!(stmt);
-        let x = &context.database.stmts[stmt.unwrap()];
+        // let mut context = Context::new();
+        // let stmt = context.lower_stmt(ast);
+        // dbg!(stmt);
+        // let x = &context.database.stmts[stmt.unwrap()];
         // match x {
         //     Stmt::VariableDef(d) => {
         //         let v = &context.database.local_defs[*d];
@@ -284,50 +278,6 @@ mod tests {
         let expected_hir = Expr::LetBinding(expected_let_binding);
 
         check_expr(input, expected_hir);
-    }
-
-    #[test]
-    fn lower_expr_stmt_int_literal() {
-        let input = "123";
-        let expected_string = "123\n";
-
-        check_stmt(input, expected_string);
-    }
-
-    #[test]
-    fn lower_expr_stmt_call() {
-        let input = "print a";
-        let expected_string = "print a\n";
-
-        check_stmt(input, expected_string);
-    }
-
-    #[test]
-    fn lower_expr_stmt_empty_block() {
-        let input = "{}";
-        let expected_string = r#"{
-}
-"#;
-
-        check_stmt(input, expected_string);
-    }
-
-    #[test]
-    #[ignore = "lowering not implemented for blocks"]
-    fn lower_expr_stmt_block_stmts() {
-        let input = r#"{
-    let a = 1
-    let b = 2
-    let c = 3
-        }"#;
-        let expected_string = r#"{
-    let _0 = 1
-    let _1 = 2
-    let _2 = 3
-}
-"#;
-
-        check_stmt(input, expected_string);
     }
 
     #[test]
@@ -418,7 +368,7 @@ mod tests {
     fn lower_empty_block() {
         let input = "{}";
 
-        let expected_hir = Expr::Block(BlockExpr { stmts: vec![] });
+        let expected_hir = Expr::Block(BlockExpr { exprs: vec![] });
 
         check_expr(input, expected_hir)
     }

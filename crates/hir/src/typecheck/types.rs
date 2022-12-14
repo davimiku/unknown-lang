@@ -1,6 +1,6 @@
 use crate::Name;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Undetermined,
     Error,
@@ -14,6 +14,7 @@ pub enum Type {
     String,
     StringLiteral(String), // TODO: use a borrowed string instead (borrow from whom?)
     Named(Name),
+    Unit,
     // Fun -- (Vec<Type>, Type) ? for params type and return type
 }
 

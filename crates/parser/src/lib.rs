@@ -27,7 +27,7 @@ pub fn parse(input: &str) -> Parse {
 pub fn parse_expr(input: &str) -> Parse {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let source = Source::new(&tokens);
-    let parser = Parser::new(source, ParseEntryPoint::Expr);
+    let parser = Parser::new(source, ParseEntryPoint::ExprText);
     let events = parser.parse();
     let sink = Sink::new(&tokens, events);
 
@@ -63,7 +63,16 @@ impl Parse {
 #[cfg(test)]
 fn check(input: &str, expected_tree: expect_test::Expect) {
     let parse = parse(input);
+
     expected_tree.assert_eq(&parse.debug_tree());
+}
+
+#[cfg(test)]
+fn check_error(input: &str, expected_tree: expect_test::Expect, expected_errors: Vec<ParseError>) {
+    let parse = parse(input);
+
+    expected_tree.assert_eq(&parse.debug_tree());
+    assert_eq!(parse.errors, expected_errors);
 }
 
 // Convenience function to test expression parsing directly, since _most_
@@ -71,5 +80,6 @@ fn check(input: &str, expected_tree: expect_test::Expect) {
 #[cfg(test)]
 fn check_expr(input: &str, expected_tree: expect_test::Expect) {
     let parse = parse_expr(input);
+
     expected_tree.assert_eq(&parse.debug_tree());
 }

@@ -9,7 +9,7 @@
 mod check;
 mod infer;
 mod types;
-use std::ops::Index;
+use std::{cell::RefCell, ops::Index};
 
 use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
@@ -17,10 +17,12 @@ pub use types::Type;
 
 use crate::{Context, Expr};
 
+use self::check::check_expr;
+
 // returns diagnostics
 // mutates context to add inferred types to TypeCheckResults
-pub fn typecheck(expr: Idx<Expr>, context: &mut Context) {
-    todo!()
+pub fn check(expr: Idx<Expr>, context: Context) {
+    check_expr(expr, Type::Unit, &RefCell::new(context));
 }
 
 #[derive(Debug, Default)]
@@ -38,6 +40,12 @@ impl Index<Idx<Expr>> for TypeCheckResults {
     }
 }
 
+impl TypeCheckResults {
+    pub(super) fn set_type(&mut self, idx: Idx<Expr>, r#type: Type) {
+        self.expr_types.insert(idx, r#type)
+    }
+}
+
 pub struct FunctionSignature {
     /// Types of the function parameters, in order
     parameter_types: Vec<Type>,
@@ -52,6 +60,16 @@ pub struct TypeDiagnostic {
 }
 
 pub enum TypeDiagnosticVariant {
-    TypeMismatch { expected: Type, actual: Type },
-    Undefined { name: String },
+    ArgsMismatch {
+        name: String,
+        expected: u32,
+        actual: u32,
+    },
+    TypeMismatch {
+        expected: Type,
+        actual: Type,
+    },
+    Undefined {
+        name: String,
+    },
 }

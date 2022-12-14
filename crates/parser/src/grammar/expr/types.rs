@@ -77,17 +77,11 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
-        parse_name_ref(p)
+        parse_path(p)
     } else {
         p.error();
         return None;
     };
 
     Some(cm)
-}
-
-fn parse_name_ref(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(Ident));
-
-    parse_path(p)
 }

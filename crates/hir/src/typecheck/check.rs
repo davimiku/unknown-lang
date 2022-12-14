@@ -3,33 +3,23 @@
 //!
 //!
 
+use std::cell::RefCell;
+
 use la_arena::Idx;
 use text_size::TextRange;
 
 use super::infer::infer_expr;
 use super::{Type, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::{Context, Expr, Stmt};
-
-pub(crate) fn check_stmt(idx: Idx<Stmt>, context: &Context) -> Option<TypeDiagnostic> {
-    let stmt = context.stmt(idx);
-
-    match stmt {
-        Stmt::Expr(idx) => {
-            let expr = context.expr(*idx);
-        }
-    }
-
-    todo!()
-}
+use crate::{Context, Expr};
 
 pub(crate) fn check_expr(
-    expr: &Expr,
+    expr: Idx<Expr>,
     expected: Type,
-    context: &mut Context,
+    context: &RefCell<Context>,
 ) -> Option<TypeDiagnostic> {
-    let result = infer_expr(expr, context);
+    let inferred_result = infer_expr(expr, context);
 
-    match result {
+    match inferred_result {
         Ok(actual) => {
             if is_subtype(&actual, &expected) {
                 None

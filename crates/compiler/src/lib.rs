@@ -3,9 +3,9 @@ use codegen::Chunk;
 pub fn compile(input: &str) -> Chunk {
     let parse_tree = parser::parse(input);
     let ast: ast::Root = parse_tree.into();
-    let (stmts, context) = hir::lower(ast);
+    let (exprs, context) = hir::lower(ast);
 
-    codegen::codegen(&stmts, context)
+    codegen::codegen(&exprs, context)
 }
 
 #[cfg(test)]

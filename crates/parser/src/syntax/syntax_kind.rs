@@ -68,10 +68,6 @@ pub enum SyntaxKind {
     Dot,
     Question,
 
-    // Stmt
-    ModuleDef,
-    ExprStmt,
-
     // Expr
     AssignmentExpr,
     BlockExpr,
@@ -80,7 +76,6 @@ pub enum SyntaxKind {
     FunExpr,
     InfixExpr,
     IntExpr,
-    LetBinding,
     LoopExpr,
     NegationExpr,
     NotExpr,
@@ -89,6 +84,10 @@ pub enum SyntaxKind {
     PathItem,
     StringExpr,
     TypeExpr,
+
+    // Expr "statements"
+    ImportBinding,
+    LetBinding,
 
     // Function components
     FunBody,

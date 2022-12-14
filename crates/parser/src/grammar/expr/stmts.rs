@@ -1,53 +1,23 @@
+//!
+//! This module represents what users would consider to be statements.
+//!
+//! In the compiler, they are represented as a variant of Expr that happens
+//! to always return Unit.
+//!
+//! For example:
+//!
+//! ```ignore
+//! import { read_file } from "stdlib.io"
+//! ```
+
 use lexer::TokenKind;
 
-use crate::grammar::expr::{parse_block, parse_expr, parse_ident, parse_type};
+use crate::grammar::expr::{parse_expr, parse_ident, parse_type};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
-pub(super) fn parse_stmt(p: &mut Parser) -> Option<CompletedMarker> {
-    use TokenKind as T;
-    if p.at_end() {
-        return None;
-    }
-
-    while p.at(T::Newline) {
-        p.bump();
-    }
-
-    if p.at(T::Let) {
-        return Some(parse_variable_def(p));
-    } else if p.at(T::Type) {
-        // parse_type_def
-        todo!();
-    } else if p.at(T::Module) {
-        return Some(parse_module_def(p));
-    }
-
-    // start ExprStmt
-    let m = p.start();
-
-    loop {
-        if p.at_set(&[T::Newline, T::RBrace]) || p.at_end() {
-            break;
-        }
-
-        let cm = parse_expr(p);
-        if cm.is_none() {
-            break;
-        }
-    }
-
-    while p.at(T::Newline) {
-        p.bump();
-    }
-
-    let cm = m.complete(p, SyntaxKind::ExprStmt);
-
-    Some(cm)
-}
-
-fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Let));
+pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::Let));
     let m = p.start();
     p.bump();
 
@@ -72,28 +42,10 @@ fn parse_variable_def(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::LetBinding)
 }
 
-fn parse_module_def(p: &mut Parser) -> CompletedMarker {
-    assert!(p.at(TokenKind::Module));
-    let m = p.start();
-    p.bump();
-
-    p.expect(TokenKind::Ident);
-    p.expect(TokenKind::Equals);
-
-    parse_block(p);
-
-    m.complete(p, SyntaxKind::ModuleDef)
-}
-
 #[cfg(test)]
 mod tests {
     use crate::check;
     use expect_test::expect;
-
-    #[test]
-    fn parse_empty() {
-        check("", expect![[r#"Root@0..0"#]])
-    }
 
     #[test]
     fn parse_variable_definition() {
@@ -154,59 +106,6 @@ Root@0..7
     Emptyspace@5..6 " "
     IntExpr@6..7
       IntLiteral@6..7 "1""#]],
-        )
-    }
-
-    #[test]
-    fn parse_expr_statement() {
-        check(
-            "123",
-            expect![[r#"
-Root@0..3
-  ExprStmt@0..3
-    IntExpr@0..3
-      IntLiteral@0..3 "123""#]],
-        )
-    }
-
-    #[test]
-    fn parse_function_call() {
-        let input = "print a";
-        check(
-            input,
-            expect![[r#"
-Root@0..7
-  ExprStmt@0..7
-    Call@0..7
-      Path@0..6
-        Ident@0..6
-          Ident@0..5 "print"
-          Emptyspace@5..6 " "
-      CallArgs@6..7
-        Call@6..7
-          Path@6..7
-            Ident@6..7
-              Ident@6..7 "a""#]],
-        )
-    }
-
-    #[test]
-    fn parse_module_definition() {
-        check(
-            "module a = { }",
-            expect![[r#"
-Root@0..14
-  ModuleDef@0..14
-    Module@0..6 "module"
-    Emptyspace@6..7 " "
-    Ident@7..8 "a"
-    Emptyspace@8..9 " "
-    Equals@9..10 "="
-    Emptyspace@10..11 " "
-    BlockExpr@11..14
-      LBrace@11..12 "{"
-      Emptyspace@12..13 " "
-      RBrace@13..14 "}""#]],
         )
     }
 

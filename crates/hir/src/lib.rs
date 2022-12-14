@@ -5,24 +5,36 @@ mod typecheck;
 
 use std::fmt;
 
+use ast::Block;
 pub use context::{Context, Diagnostic};
 use database::Database;
 use la_arena::Idx;
 pub use typecheck::Type;
 
-pub fn lower(ast: ast::Root) -> (Vec<Idx<Stmt>>, Context) {
+pub fn lower_with_typecheck(ast: ast::Root) -> (Idx<Expr>, Context) {
+    // typecheck::check()
+    let (stmts, context) = lower(ast);
+
+    todo!()
+}
+
+pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
     let mut context = Context::new();
 
-    let stmts: Vec<_> = ast
-        .stmts()
-        .filter_map(|stmt| context.lower_stmt(stmt))
+    let exprs: Vec<Idx<Expr>> = ast
+        .exprs()
+        .map(|expr| context.lower_expr(Some(expr)))
         .collect();
 
-    (stmts, context)
+    // wrap everything in a block
+    let block = Expr::Block(BlockExpr { exprs });
+    let block = context.alloc_expr(block, None);
+
+    (block, context)
 }
 
 // TODO: interned string?
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Name(String);
 
 /// Fully-Qualified name of a identifier
@@ -30,12 +42,6 @@ pub struct Name(String);
 pub struct Fqn {
     pub module: Name,
     pub name: Name,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Stmt {
-    // VariableDef(Idx<LetBinding>),
-    Expr(Idx<Expr>),
 }
 
 /// Local definition (let binding)
@@ -85,7 +91,7 @@ pub struct UnaryExpr {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockExpr {
-    pub stmts: Vec<Idx<Stmt>>,
+    pub exprs: Vec<Idx<Expr>>,
     // last_expr: Idx<Expr>,
 }
 
@@ -93,7 +99,10 @@ pub struct BlockExpr {
 pub struct CallExpr {
     // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
     // so that it can handle `a`, `a.b`, `a.b.c`, etc.
+    /// Qualified path that the function is bound to
     pub path: String,
+
+    /// Arguments that the function are applied to
     pub args: Vec<Idx<Expr>>,
 }
 

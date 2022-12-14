@@ -20,7 +20,7 @@ pub(crate) struct Parser<'t, 'input> {
     /// Token source
     source: Source<'t, 'input>,
 
-    errors: Vec<()>,
+    errors: Vec<ParseError>,
 
     /// Parsing events that have occurred
     events: Vec<Event>,
@@ -33,6 +33,7 @@ pub(crate) struct Parser<'t, 'input> {
 
     // TODO: do we need a 1 token lookahead?
     // pub(crate) next_token_kind: Option<TokenKind>,
+    //
     /// Entry point of parsing to control how the events are used
     pub(crate) entry_point: ParseEntryPoint,
 }
@@ -100,6 +101,7 @@ impl<'t, 'input> Parser<'t, 'input> {
             found,
             range,
         };
+        self.errors.push(parse_error.clone());
         self.events.push(Event::Error(parse_error));
 
         if !self.at_set(&RECOVERY_SET) && !self.at_end() {
@@ -180,7 +182,7 @@ impl<'t, 'input> Parser<'t, 'input> {
 pub(super) enum ParseEntryPoint {
     Root, // should produce a Vec<Stmt>
 
-    Expr, // useful for testing parsing single expressions
+    ExprText, // test parsing single expressions
 
-          // possibly others in the future for metaprogramming (RA has separate entry for macro expansion)
+              // possibly others in the future for metaprogramming (RA has separate entry for macro expansion)
 }

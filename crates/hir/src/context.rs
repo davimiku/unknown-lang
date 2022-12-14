@@ -6,8 +6,7 @@ use parser::SyntaxKind;
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LetBinding, Stmt, Type, UnaryExpr,
-    UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LetBinding, Type, UnaryExpr, UnaryOp,
 };
 
 // temp
@@ -43,16 +42,16 @@ impl Context {
         &self.database.exprs[idx]
     }
 
-    pub fn stmt(&self, idx: Idx<Stmt>) -> &Stmt {
-        &self.database.stmts[idx]
-    }
-
     pub fn local_def(&self, idx: Idx<LetBinding>) -> &LetBinding {
         &self.database.let_bindings[idx]
     }
 
     pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
         &self.typecheck_results[idx]
+    }
+
+    pub fn set_type_of(&mut self, idx: Idx<Expr>, r#type: Type) {
+        self.typecheck_results.set_type(idx, r#type)
     }
 
     // TODO: probably remove this, it's only used for temporary tests in the vm crate
@@ -83,42 +82,6 @@ impl Context {
 
 // Lowering functions
 impl Context {
-    pub(crate) fn lower_stmt(&mut self, ast: ast::Stmt) -> Option<Idx<Stmt>> {
-        let stmt = match ast {
-            ast::Stmt::Import(_) => unimplemented!(),
-            ast::Stmt::Expr(ast) => {
-                let idx = self.lower_expr(Some(ast));
-
-                Stmt::Expr(idx)
-            }
-        };
-
-        let idx = self.database.alloc_stmt(stmt);
-
-        Some(idx)
-    }
-
-    fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
-        let name = ast.name();
-        let value = self.lower_expr(ast.value());
-        let type_annotation = None;
-        let let_binding = LetBinding {
-            value,
-            type_annotation,
-            ast,
-        };
-        let idx = self.database.alloc_let_binding(let_binding);
-
-        if let Some(name) = name {
-            let name = name.text().to_string();
-            self.insert_local_def(name, idx);
-        }
-        // insert into scopes .insert(name, idx)
-
-        // Expr::LetBinding(idx)
-        todo!();
-    }
-
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
@@ -143,6 +106,27 @@ impl Context {
         };
 
         self.database.alloc_expr(expr, ast)
+    }
+
+    fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
+        let name = ast.name();
+        let value = self.lower_expr(ast.value());
+        let type_annotation = None;
+        let let_binding = LetBinding {
+            value,
+            type_annotation,
+            ast,
+        };
+        let idx = self.database.alloc_let_binding(let_binding);
+
+        if let Some(name) = name {
+            let name = name.text().to_string();
+            self.insert_local_def(name, idx);
+        }
+        // insert into scopes .insert(name, idx)
+
+        // Expr::LetBinding(idx)
+        todo!();
     }
 
     fn lower_type_expr(&mut self, ast: ast::TypeExpr) -> Expr {
@@ -220,9 +204,9 @@ impl Context {
         // create a new scope
 
         // temp: dummy value
-        let stmts = Vec::new();
+        let exprs = Vec::new();
 
-        Expr::Block(BlockExpr { stmts })
+        Expr::Block(BlockExpr { exprs })
     }
 
     fn lower_loop(&mut self, ast: ast::LoopExpr) -> Expr {

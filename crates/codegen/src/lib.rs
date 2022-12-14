@@ -7,8 +7,7 @@ use std::convert::TryInto;
 use std::mem::size_of;
 
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, LetBinding, Stmt, Type, UnaryExpr,
-    UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, LetBinding, Type, UnaryExpr, UnaryOp,
 };
 
 mod disassemble;
@@ -21,13 +20,11 @@ pub const PRINT_INT: u8 = 2;
 pub const PRINT_FLOAT: u8 = 3;
 pub const PRINT_BOOL: u8 = 4;
 
-pub fn codegen(stmts: &[Idx<Stmt>], context: Context) -> Chunk {
+pub fn codegen(idx: &Idx<Expr>, context: Context) -> Chunk {
     let mut chunk = Chunk::new();
 
-    for idx in stmts {
-        let stmt = context.stmt(*idx);
-        chunk.write_stmt(stmt, &context);
-    }
+    let expr = context.expr(*idx);
+    chunk.write_expr(expr, &context);
 
     chunk
 }
@@ -44,7 +41,8 @@ pub struct Chunk {
     str_constants: Vec<u8>,
 
     /// tracking of the source code lines corresponding to op codes
-    // FIXME: the book author calls this a "braindead" approach.
+    // FIXME: the Crafting Interpreters author calls this a "braindead" approach,
+    // just a starting point for simplicity.
     // Find a better way to store source code location for bytecodes
     lines: Vec<u32>,
 }
@@ -67,15 +65,6 @@ impl Chunk {
 
 // Functions to write to the Chunk
 impl Chunk {
-    pub fn write_stmt(&mut self, stmt: &Stmt, context: &Context) {
-        match stmt {
-            Stmt::Expr(idx) => {
-                let expr = context.expr(*idx);
-                self.write_expr(expr, context)
-            }
-        }
-    }
-
     pub fn write_expr(&mut self, expr: &Expr, context: &Context) {
         use Expr::*;
 
@@ -98,10 +87,17 @@ impl Chunk {
                 todo!()
             }
 
-            Block(BlockExpr { stmts }) => todo!(),
+            Block(BlockExpr { exprs }) => {
+                // write something for a scope?
+                for expr in exprs {
+                    let expr = context.expr(*expr);
+                    self.write_expr(expr, context);
+                }
+                // end scope?
+            }
 
             // This should be unreachable, codegen should never start if lowering failed
-            // TODO: add some machinery for some debug output. It should still panic
+            // TODO: add some machinery for some debug output and gracefully abort
             Empty => unreachable!(),
         }
     }
