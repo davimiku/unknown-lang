@@ -9,7 +9,7 @@
 mod check;
 mod infer;
 mod types;
-use std::{cell::RefCell, ops::Index};
+use std::ops::Index;
 
 use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
@@ -21,8 +21,11 @@ use self::check::check_expr;
 
 // returns diagnostics
 // mutates context to add inferred types to TypeCheckResults
-pub fn check(expr: Idx<Expr>, context: Context) {
-    check_expr(expr, Type::Unit, &RefCell::new(context));
+pub fn check(expr: Idx<Expr>, context: &Context) -> TypeCheckResults {
+    let mut results = TypeCheckResults::default();
+    check_expr(expr, Type::Unit, &mut results, context);
+
+    results
 }
 
 #[derive(Debug, Default)]

@@ -3,21 +3,20 @@
 //!
 //!
 
-use std::cell::RefCell;
-
 use la_arena::Idx;
 use text_size::TextRange;
 
 use super::infer::infer_expr;
-use super::{Type, TypeDiagnostic, TypeDiagnosticVariant};
+use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::{Context, Expr};
 
 pub(crate) fn check_expr(
     expr: Idx<Expr>,
     expected: Type,
-    context: &RefCell<Context>,
+    results: &mut TypeCheckResults,
+    context: &Context,
 ) -> Option<TypeDiagnostic> {
-    let inferred_result = infer_expr(expr, context);
+    let inferred_result = infer_expr(expr, results, context);
 
     match inferred_result {
         Ok(actual) => {

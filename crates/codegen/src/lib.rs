@@ -3,8 +3,9 @@
 use la_arena::Idx;
 pub use op::{InvalidOpError, Op};
 
-use std::convert::TryInto;
+use std::fmt::{self, Display};
 use std::mem::size_of;
+use std::{convert::TryInto, fmt::Debug};
 
 use hir::{
     BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, LetBinding, Type, UnaryExpr, UnaryOp,
@@ -12,6 +13,8 @@ use hir::{
 
 mod disassemble;
 mod op;
+#[cfg(test)]
+mod tests;
 
 // TODO: extract to a shared "builtins" crate
 pub const PRINT_STR_CONSTANT: u8 = 0;
@@ -20,11 +23,15 @@ pub const PRINT_INT: u8 = 2;
 pub const PRINT_FLOAT: u8 = 3;
 pub const PRINT_BOOL: u8 = 4;
 
-pub fn codegen(idx: &Idx<Expr>, context: Context) -> Chunk {
+// needs to be replaced with a Span for each expression
+const FAKE_LINE_NUMBER: u32 = 123;
+
+pub fn codegen(idx: &Idx<Expr>, context: &Context) -> Chunk {
     let mut chunk = Chunk::new();
 
     let expr = context.expr(*idx);
-    chunk.write_expr(expr, &context);
+    chunk.write_expr(expr, context);
+    chunk.write_ret(FAKE_LINE_NUMBER);
 
     chunk
 }
@@ -43,7 +50,8 @@ pub struct Chunk {
     /// tracking of the source code lines corresponding to op codes
     // FIXME: the Crafting Interpreters author calls this a "braindead" approach,
     // just a starting point for simplicity.
-    // Find a better way to store source code location for bytecodes
+    // Find a better way to store source code location for bytecodes, such as Span
+    // corresponding to each expression
     lines: Vec<u32>,
 }
 
@@ -69,10 +77,10 @@ impl Chunk {
         use Expr::*;
 
         match expr {
-            BoolLiteral(b) => self.write_bool_constant(*b, 1),
-            FloatLiteral(f) => self.write_float_constant(*f, 1),
-            IntLiteral(i) => self.write_int_constant(*i, 1),
-            StringLiteral(s) => self.write_string_constant(s, 1),
+            BoolLiteral(b) => self.write_bool_constant(*b, FAKE_LINE_NUMBER),
+            FloatLiteral(f) => self.write_float_constant(*f, FAKE_LINE_NUMBER),
+            IntLiteral(i) => self.write_int_constant(*i, FAKE_LINE_NUMBER),
+            StringLiteral(s) => self.write_string_constant(s, FAKE_LINE_NUMBER),
 
             Binary(expr) => self.write_binary_expr(expr, context),
             Unary(expr) => self.write_unary_expr(expr, context),
@@ -115,23 +123,23 @@ impl Chunk {
         use Type::*;
         match op {
             Add => match lhs_type {
-                Float | FloatLiteral(_) => self.write_op(Op::AddFloat, 1),
-                Int | IntLiteral(_) => self.write_op(Op::AddInt, 1),
+                Float | FloatLiteral(_) => self.write_op(Op::AddFloat, FAKE_LINE_NUMBER),
+                Int | IntLiteral(_) => self.write_op(Op::AddInt, FAKE_LINE_NUMBER),
                 _ => unreachable!(),
             },
             Sub => match lhs_type {
-                Float | FloatLiteral(_) => self.write_op(Op::SubFloat, 1),
-                Int | IntLiteral(_) => self.write_op(Op::SubInt, 1),
+                Float | FloatLiteral(_) => self.write_op(Op::SubFloat, FAKE_LINE_NUMBER),
+                Int | IntLiteral(_) => self.write_op(Op::SubInt, FAKE_LINE_NUMBER),
                 _ => unreachable!(),
             },
             Mul => match lhs_type {
-                Float | FloatLiteral(_) => self.write_op(Op::MulFloat, 1),
-                Int | IntLiteral(_) => self.write_op(Op::MulInt, 1),
+                Float | FloatLiteral(_) => self.write_op(Op::MulFloat, FAKE_LINE_NUMBER),
+                Int | IntLiteral(_) => self.write_op(Op::MulInt, FAKE_LINE_NUMBER),
                 _ => unreachable!(),
             },
             Div => match lhs_type {
-                Float | FloatLiteral(_) => self.write_op(Op::DivFloat, 1),
-                Int | IntLiteral(_) => self.write_op(Op::DivInt, 1),
+                Float | FloatLiteral(_) => self.write_op(Op::DivFloat, FAKE_LINE_NUMBER),
+                Int | IntLiteral(_) => self.write_op(Op::DivInt, FAKE_LINE_NUMBER),
                 _ => unreachable!(),
             },
             Rem => todo!(),
@@ -151,8 +159,8 @@ impl Chunk {
         use UnaryOp::*;
         match op {
             Neg => match expr_type {
-                Float => self.write_op(Op::NegateFloat, 1),
-                Int => self.write_op(Op::NegateInt, 1),
+                Float => self.write_op(Op::NegateFloat, FAKE_LINE_NUMBER),
+                Int => self.write_op(Op::NegateInt, FAKE_LINE_NUMBER),
                 _ => unreachable!(),
             },
             Not => todo!(),
@@ -162,6 +170,10 @@ impl Chunk {
     fn write_call_expr(&mut self, expr: &CallExpr, context: &Context) {
         let CallExpr { path, args } = expr;
 
+        for arg in args {
+            let arg = context.expr(*arg);
+            self.write_expr(arg, context);
+        }
         let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of(*idx)).collect();
 
         // TODO: more general check for builtin
@@ -185,7 +197,7 @@ impl Chunk {
                 _ => unreachable!(),
             };
 
-            self.write_builtin(builtin_idx, 1);
+            self.write_builtin(builtin_idx, FAKE_LINE_NUMBER);
             // need instructions for push/pop?
         }
     }
@@ -246,6 +258,14 @@ impl Chunk {
     pub fn write_builtin(&mut self, builtin_idx: u8, line: u32) {
         self.write_op(Op::Builtin, line);
         self.write_byte(builtin_idx);
+    }
+
+    pub fn write_ret(&mut self, line: u32) {
+        self.write_op(Op::Ret, line);
+    }
+
+    pub fn write_noop(&mut self, line: u32) {
+        self.write_op(Op::Noop, line);
     }
 
     pub fn shrink_to_fit(&mut self) {
@@ -327,15 +347,13 @@ impl Chunk {
 
 // Functions for debugging the Chunk
 #[cfg(debug_assertions)]
-impl Chunk {
+impl Display for Chunk {
     /// Prints the Chunk in a disassembled format
     /// for human-reading.
     ///
     /// This format is not stable and should not be depended on.
     // TODO: Vertically align each column
-    pub fn disassemble(&self, name: &str) {
-        println!("== {name} ==");
-
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut offset = 0;
         let mut op_idx = 0;
         while offset < self.code.len() {
@@ -348,18 +366,20 @@ impl Chunk {
             } else {
                 format!(" {line:04}")
             };
-            print!("{offset:03} {line}  ");
+            write!(f, "{offset:03} {line}  ")?;
             offset = op.disassemble(self, offset);
-            println!();
+            writeln!(f)?;
 
             op_idx += 1;
         }
-        println!();
+        writeln!(f)
     }
 }
 
 /// Types implementing this trait may be read from the bytecode.
 ///
+/// `unsafe` could be removed after negative_impls is stabilized.
+/// https://github.com/rust-lang/rust/issues/68318
 /// # Safety
 ///
 /// Types implementing this trait must not implement Drop.
@@ -369,44 +389,3 @@ unsafe impl Readable for u8 {}
 unsafe impl Readable for i64 {}
 unsafe impl Readable for f64 {}
 unsafe impl Readable for (u64, u64) {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_read_byte() {
-        let mut chunk = Chunk::new();
-
-        let input = 255;
-
-        chunk.write_byte(input);
-        let actual = chunk.read::<u8>(0);
-
-        assert_eq!(input, actual);
-    }
-
-    #[test]
-    fn test_read_int_constant() {
-        let mut chunk = Chunk::new();
-
-        let input = 8_000_000_000;
-
-        chunk.write_int_constant(input, 1);
-        let actual = chunk.read::<i64>(1);
-
-        assert_eq!(input, actual);
-    }
-
-    #[test]
-    fn test_read_float_constant() {
-        let mut chunk = Chunk::new();
-
-        let input = 8_000_000_000.0;
-
-        chunk.write_float_constant(input, 1);
-        let actual = chunk.read::<f64>(1);
-
-        assert_eq!(input, actual);
-    }
-}

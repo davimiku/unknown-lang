@@ -27,7 +27,7 @@ pub fn parse(input: &str) -> Parse {
 pub fn parse_expr(input: &str) -> Parse {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let source = Source::new(&tokens);
-    let parser = Parser::new(source, ParseEntryPoint::ExprText);
+    let parser = Parser::new(source, ParseEntryPoint::ExprTest);
     let events = parser.parse();
     let sink = Sink::new(&tokens, events);
 

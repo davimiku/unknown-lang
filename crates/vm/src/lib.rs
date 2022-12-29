@@ -133,7 +133,8 @@ impl<'a> VM<'a> {
                     // TODO: return the top value of the stack maybe?
                     break Ok(());
                 }
-                _ => unimplemented!("unimplemented Op {}", op as u8),
+                Noop => {}
+                _ => unimplemented!("unimplemented Op {:?}", op),
             }
         }
     }
@@ -188,7 +189,7 @@ mod tests {
         chunk.write_op(Op::AddInt, 0);
         chunk.write_string_constant(message, 1);
         chunk.write_op(Op::Ret, 2);
-        chunk.disassemble("Ret");
+        println!("{chunk}");
 
         let mut vm = VM::new(&chunk);
         vm.interpret().unwrap();
@@ -215,7 +216,7 @@ mod tests {
         chunk.write_expr(&expr, &context);
 
         chunk.write_op(Op::Ret, 2);
-        chunk.disassemble("IntAdd");
+        println!("{chunk}");
 
         let mut vm = VM::new(&chunk);
         vm.interpret().unwrap();
@@ -240,7 +241,7 @@ mod tests {
         chunk.write_expr(&expr, &context);
 
         chunk.write_op(Op::Ret, 2);
-        chunk.disassemble("FloatAdd");
+        println!("{chunk}");
 
         let mut vm = VM::new(&chunk);
         vm.interpret().unwrap();
@@ -259,7 +260,7 @@ mod tests {
         // push function object?
         chunk.write_op(Op::Ret, 1);
 
-        chunk.disassemble("print 1");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -275,7 +276,7 @@ mod tests {
         // push function object?
 
         chunk.write_op(Op::Ret, 1);
-        chunk.disassemble("print 1.23");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -289,7 +290,7 @@ mod tests {
         chunk.write_builtin(PRINT_STR_CONSTANT, 0);
 
         chunk.write_op(Op::Ret, 1);
-        chunk.disassemble("print \"hello\"");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -308,7 +309,7 @@ mod tests {
         // push function object
         chunk.write_op(Op::Ret, 123);
 
-        chunk.disassemble("print (1 + 2)");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -328,7 +329,7 @@ mod tests {
         // push function object
         chunk.write_op(Op::Ret, 123);
 
-        chunk.disassemble("print -12345");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -348,7 +349,7 @@ mod tests {
         // push function object
         chunk.write_op(Op::Ret, 123);
 
-        chunk.disassemble("print -12.345");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }
@@ -372,7 +373,7 @@ mod tests {
 
         chunk.write_op(Op::Ret, 123);
 
-        chunk.disassemble("test chunk");
+        println!("{chunk}");
 
         super::run(&chunk).unwrap();
     }

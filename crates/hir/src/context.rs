@@ -14,7 +14,7 @@ pub type Diagnostic = ();
 
 #[derive(Debug, Default)]
 pub struct Context {
-    /// Database holding the lowered Stmt/Expr and associated data
+    /// Database holding the lowered expressions and associated data
     pub(crate) database: Database,
 
     /// Results of type checking and inferring expressions
@@ -48,10 +48,6 @@ impl Context {
 
     pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
         &self.typecheck_results[idx]
-    }
-
-    pub fn set_type_of(&mut self, idx: Idx<Expr>, r#type: Type) {
-        self.typecheck_results.set_type(idx, r#type)
     }
 
     // TODO: probably remove this, it's only used for temporary tests in the vm crate

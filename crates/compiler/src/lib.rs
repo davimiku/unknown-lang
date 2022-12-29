@@ -5,7 +5,7 @@ pub fn compile(input: &str) -> Chunk {
     let ast: ast::Root = parse_tree.into();
     let (exprs, context) = hir::lower(ast);
 
-    codegen::codegen(&exprs, context)
+    codegen::codegen(&exprs, &context)
 }
 
 #[cfg(test)]

@@ -37,16 +37,15 @@ pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
 
 /// Parses a block of code, which is an expression delimited by
 /// curly braces. A block may contain zero to many expressions.
-///
-/// The final expression of a block (also known as a "tail expression")
-/// is
 pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(LBrace));
     let m = p.start();
     p.bump();
 
     while !p.at(RBrace) && !p.at_end() {
+        p.bump_all_space();
         parse_expr(p);
+        p.bump_all_space();
     }
 
     p.expect(RBrace);

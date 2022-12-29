@@ -1,18 +1,22 @@
-use std::{fs, io};
+#[cfg(not(test))]
+use std::fs;
+
+use std::io;
 
 fn main() -> io::Result<()> {
     let input = get_program_input()?;
-    println!("{input}");
+    println!("test input: `{input}`");
 
     let chunk = compiler::compile(&input);
+    println!("{chunk}");
+
+    println!("Begin execution:");
+    println!("===== =====");
 
     let result = vm::run(&chunk);
-    println!();
-    println!("{result:?}");
 
-    // let parsed = parser::parse(&input);
-
-    // println!("{}", &parsed.debug_tree());
+    println!("===== =====");
+    println!("result: {result:?}");
 
     Ok(())
 }
@@ -20,13 +24,14 @@ fn main() -> io::Result<()> {
 #[cfg(test)]
 #[test]
 fn test_main() {
-    // TODO: crashes because type checking isn't finished yet
-    main().expect("OK");
+    let main_result = main();
+
+    assert!(main_result.is_ok());
 }
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"print 1"#;
+    let program = r#"print 100"#;
 
     Ok(program.to_owned())
 }

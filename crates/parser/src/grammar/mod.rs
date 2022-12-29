@@ -13,7 +13,7 @@ pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
             }
             m.complete(p, SyntaxKind::Root)
         }
-        ParseEntryPoint::ExprText => expr::parse_expr(p).expect("successfully parsed an Expr"),
+        ParseEntryPoint::ExprTest => expr::parse_expr(p).expect("successfully parsed an Expr"),
     }
 }
 

@@ -120,8 +120,8 @@ fn parse_infix_expression_with_emptyspace() {
         " 1 +   2* 3 ",
         expect![[r#"
 InfixExpr@0..12
-  Emptyspace@0..1 " "
-  IntExpr@1..3
+  IntExpr@0..3
+    Emptyspace@0..1 " "
     IntLiteral@1..2 "1"
     Emptyspace@2..3 " "
   Plus@3..4 "+"
@@ -305,7 +305,7 @@ ParenExpr@0..6
     Path@1..6
       Ident@1..6
         Ident@1..6 "hello"
-error at 1..6: expected ‘.’ or ‘)’"#]],
+error at 1..6: expected ‘.’, ‘:’, ‘,’ or ‘)’"#]],
     );
 }
 
@@ -480,15 +480,33 @@ fn parse_block_with_one_expr() {
         expect![[r#"
 BlockExpr@0..3
   LBrace@0..1 "{"
-  ExprStmt@1..2
-    IntExpr@1..2
-      IntLiteral@1..2 "1"
+  IntExpr@1..2
+    IntLiteral@1..2 "1"
   RBrace@2..3 "}""#]],
     )
 }
 
 #[test]
-fn parse_block_with_statements() {
+fn parse_block_newline() {
+    check_expr(
+        r#"{
+  1
+}"#,
+        expect![[r#"
+BlockExpr@0..7
+  LBrace@0..1 "{"
+  Newline@1..2 "\n"
+  Emptyspace@2..4 "  "
+  IntExpr@4..5
+    IntLiteral@4..5 "1"
+  Newline@5..6 "\n"
+  RBrace@6..7 "}""#]],
+    )
+}
+
+#[test]
+// FIXME: parsing newline should be OK here
+fn parse_block_expressions_multiple_lines() {
     check_expr(
         r#"{
   let x = 1
@@ -524,20 +542,19 @@ BlockExpr@0..35
       IntLiteral@24..25 "2"
   Newline@25..26 "\n"
   Emptyspace@26..28 "  "
-  ExprStmt@28..34
-    InfixExpr@28..33
-      Call@28..30
-        Path@28..30
-          Ident@28..30
-            Ident@28..29 "x"
-            Emptyspace@29..30 " "
-      Plus@30..31 "+"
-      Emptyspace@31..32 " "
-      Call@32..33
-        Path@32..33
-          Ident@32..33
-            Ident@32..33 "y"
-    Newline@33..34 "\n"
+  InfixExpr@28..33
+    Call@28..30
+      Path@28..30
+        Ident@28..30
+          Ident@28..29 "x"
+          Emptyspace@29..30 " "
+    Plus@30..31 "+"
+    Emptyspace@31..32 " "
+    Call@32..33
+      Path@32..33
+        Ident@32..33
+          Ident@32..33 "y"
+  Newline@33..34 "\n"
   RBrace@34..35 "}""#]],
     )
 }

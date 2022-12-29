@@ -125,6 +125,13 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events.push(Event::AddToken);
     }
 
+    /// Consumes all emptyspace and newlines until the next non-space token
+    pub(crate) fn bump_all_space(&mut self) {
+        while self.at_set(&[TokenKind::Emptyspace, TokenKind::Newline]) {
+            self.bump();
+        }
+    }
+
     pub(crate) fn error_and_bump(&mut self, message: &str) {
         self.error_recover(message, &[]);
     }
@@ -180,9 +187,9 @@ impl<'t, 'input> Parser<'t, 'input> {
 
 #[derive(Debug)]
 pub(super) enum ParseEntryPoint {
-    Root, // should produce a Vec<Stmt>
+    Root, // should produce a Vec<Expr>
 
-    ExprText, // test parsing single expressions
+    ExprTest, // test parsing single expressions
 
               // possibly others in the future for metaprogramming (RA has separate entry for macro expansion)
 }

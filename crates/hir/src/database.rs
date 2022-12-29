@@ -91,11 +91,11 @@ impl Database {
                 self.write_expr(s, *expr, indent)
             }
 
-            Expr::Block(BlockExpr { exprs: stmts, .. }) => {
+            Expr::Block(BlockExpr { exprs, .. }) => {
                 writeln!(s, "{{")?;
                 indent += 4;
 
-                for idx in stmts {
+                for idx in exprs {
                     self.write_expr(s, *idx, indent)?;
                 }
 
@@ -146,49 +146,12 @@ mod tests {
 
     use super::*;
 
-    fn parse(input: &str) -> ast::Root {
-        ast::Root::cast(parser::parse(input).syntax()).unwrap()
+    fn parse_expr(input: &str) -> ast::Expr {
+        ast::Expr::cast(parser::parse_expr(input).syntax()).unwrap()
     }
-
-    fn parse_expr(input: &str) -> ast::Root {
-        ast::Root::cast(parser::parse_expr(input).syntax()).unwrap()
-    }
-
-    // fn check_stmt<S: Into<String>>(input: &str, expected_string: S) {
-    //     let expected_string = expected_string.into();
-
-    //     let root = parse(input);
-    //     let ast = root.stmts().next().unwrap();
-
-    //     let mut context = Context::new();
-    //     context.lower_stmt(ast).unwrap();
-
-    //     let actual_string = context.database.debug_string();
-    //     assert_eq!(expected_string, actual_string);
-
-    //     // TODO: check diagnostics
-    // }
-
-    // fn check_stmt(input: &str, expected_hir: Stmt, expected_database: Database) {
-    //     let root = parse(input);
-    //     let ast = root.stmts().next().unwrap();
-
-    //     let mut context = Context::new();
-    //     let hir_idx = context.lower_stmt(ast).unwrap();
-    //     let hir = context.database.stmts[hir_idx].clone();
-
-    //     context.database.debug_string();
-
-    //     assert_eq!(context.database, expected_database);
-    //     assert_eq!(expected_hir, hir);
-    // }
 
     fn check_expr(input: &str, expected_hir: Expr) {
-        let root = parse_expr(input);
-        let ast = root
-            .exprs()
-            .next()
-            .expect("expected a top-level expression");
+        let ast = parse_expr(input);
 
         let mut context = Context::new();
         let actual = context.lower_expr(Some(ast));

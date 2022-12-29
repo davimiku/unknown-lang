@@ -1,20 +1,19 @@
 //!
 //! Type inference
 
-use std::cell::RefCell;
-
 use la_arena::Idx;
 
-use super::{Type, TypeDiagnostic, TypeDiagnosticVariant};
+use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::{BinaryExpr, BinaryOp, Context, Expr};
 
 type InferResult = Result<Type, TypeDiagnostic>;
 
-// TODO: need &mut Context to update the type in the context?
-// or have a separate typed HIR?
-pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &RefCell<Context>) -> InferResult {
-    let context_ref = context.borrow();
-    let expr = context_ref.expr(expr_idx);
+pub(crate) fn infer_expr(
+    expr_idx: Idx<Expr>,
+    results: &mut TypeCheckResults,
+    context: &Context,
+) -> InferResult {
+    let expr = context.expr(expr_idx);
 
     let inferred_result = match expr {
         Expr::Empty => Err(TypeDiagnostic {
@@ -25,11 +24,35 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &RefCell<Context>) -> Inf
         }),
         Expr::BoolLiteral(b) => Ok(Type::BoolLiteral(*b)),
         Expr::FloatLiteral(f) => Ok(Type::FloatLiteral(*f)),
-        Expr::IntLiteral(i) => Ok(Type::IntLiteral(*i)),
+        Expr::IntLiteral(i) => {
+            let inferred_type = Type::IntLiteral(*i);
+            results.set_type(expr_idx, inferred_type.clone());
+            Ok(inferred_type)
+        }
         Expr::StringLiteral(s) => Ok(Type::StringLiteral(s.clone())),
-        Expr::Binary(expr) => infer_binary(expr, &context.borrow()),
+        Expr::Binary(expr) => infer_binary(expr, context),
         Expr::Unary(expr) => todo!(),
-        Expr::Block(expr) => todo!(),
+        Expr::Block(block) => {
+            let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
+                .exprs
+                .iter()
+                .map(|arg| infer_expr(*arg, results, context))
+                .collect();
+
+            // TODO: clean this up?
+            // logic: if expr_types is OK, set the type of this block to the tail_expr type, or Unit if
+            // the block is empty
+            expr_types.map(|expr_types| {
+                let tail_type = expr_types.last();
+                tail_type.map_or_else(
+                    || Type::Unit,
+                    |tail_type| {
+                        results.set_type(expr_idx, tail_type.clone());
+                        Type::Unit
+                    },
+                )
+            })
+        }
         Expr::VariableRef { name } => todo!(),
         Expr::Call(expr) => {
             let name = &expr.path;
@@ -40,14 +63,11 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &RefCell<Context>) -> Inf
                 .expect("less than 4 billion arguments");
 
             // Stops/returns the first inference error found
-            let mut arg_types = Vec::with_capacity(len as usize);
-            for arg in args {
-                let arg_type = infer_expr(*arg, context)?;
-                arg_types.push(arg_type);
-            }
-            // let arg_types: Result<Vec<Type>, TypeDiagnostic> =
-            //     args.iter().map(|arg| infer_expr(*arg, context)).collect();
-            // let arg_types = arg_types?;
+            let arg_types: Result<Vec<Type>, TypeDiagnostic> = args
+                .iter()
+                .map(|arg| infer_expr(*arg, results, context))
+                .collect();
+            let arg_types = arg_types?;
 
             // this is temporary until we have definition files for builtins
             // number of args checking should be generalized
@@ -80,9 +100,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &RefCell<Context>) -> Inf
     };
 
     if let Ok(ref inferred_type) = inferred_result {
-        context
-            .borrow_mut()
-            .set_type_of(expr_idx, inferred_type.clone());
+        results.set_type(expr_idx, inferred_type.clone());
     }
 
     inferred_result

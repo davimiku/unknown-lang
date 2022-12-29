@@ -5,18 +5,10 @@ mod typecheck;
 
 use std::fmt;
 
-use ast::Block;
 pub use context::{Context, Diagnostic};
 use database::Database;
 use la_arena::Idx;
 pub use typecheck::Type;
-
-pub fn lower_with_typecheck(ast: ast::Root) -> (Idx<Expr>, Context) {
-    // typecheck::check()
-    let (stmts, context) = lower(ast);
-
-    todo!()
-}
 
 pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
     let mut context = Context::new();
@@ -27,10 +19,20 @@ pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
         .collect();
 
     // wrap everything in a block
-    let block = Expr::Block(BlockExpr { exprs });
-    let block = context.alloc_expr(block, None);
+    let root = Expr::Block(BlockExpr { exprs });
+    let root = context.alloc_expr(root, None);
 
-    (block, context)
+    let typecheck_results = typecheck::check(root, &context);
+    context.typecheck_results = typecheck_results;
+
+    (root, context)
+}
+
+pub fn lower_from_input(input: &str) -> (Idx<Expr>, Context) {
+    let parsed = parser::parse(input).syntax();
+    let root = ast::Root::cast(parsed).expect("valid Root node");
+
+    lower(root)
 }
 
 // TODO: interned string?
