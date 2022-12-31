@@ -23,141 +23,183 @@ pub enum TokenKind {
     // ==========
     // Keywords
     // ==========
+    /// ‘and’
     #[token("and")]
     And,
 
+    /// ‘else’
     #[token("else")]
     Else,
 
+    /// ‘for’
     #[token("for")]
     For,
 
+    /// ‘if’
     #[token("if")]
     If,
 
+    /// ‘let’
     #[token("let")]
     Let,
 
+    /// ‘loop’
     #[token("loop")]
     Loop,
 
+    /// ‘module’
     #[token("module")]
     Module,
 
+    /// ‘not’
     #[token("not")]
     Not,
 
+    /// ‘or’
     #[token("or")]
     Or,
 
+    /// ‘return’
     #[token("return")]
     Return,
 
+    /// ‘struct’
     #[token("struct")]
     Struct,
 
+    /// ‘try’
     #[token("try")]
     Try,
 
+    /// ‘type’
     #[token("type")]
     Type,
 
+    /// ‘union’
     #[token("union")]
     Union,
 
+    /// ‘while’
     #[token("while")]
     While,
 
     // ==========
     // Well-known values
     // ==========
+    /// ‘false’
     #[token("false")]
     False,
 
+    /// ‘true’
     #[token("true")]
     True,
 
     // ==========
     // Delimiters
     // ==========
+    /// ‘{’
     #[token("{")]
     LBrace,
 
+    /// ‘}’
     #[token("}")]
     RBrace,
 
+    /// ‘(’
     #[token("(")]
     LParen,
 
+    /// ‘)’
     #[token(")")]
     RParen,
 
+    /// ‘[’
     #[token("[")]
     LBracket,
 
+    /// ‘]’
     #[token("]")]
     RBracket,
 
     // ==========
     // Separators
     // ==========
+    /// ‘:’
     #[token(":")]
     Colon,
 
+    /// ‘;’
     #[token(";")]
     Semicolon,
 
+    /// ‘,’
     #[token(",")]
     Comma,
 
     // ==========
     // Operators
     // ==========
+    /// ‘+’
     #[token("+")]
     Plus,
 
+    /// ‘-’
     #[token("-")]
     Dash,
 
+    /// ‘*’
     #[token("*")]
     Star,
 
+    /// ‘/’
     #[token("/")]
     Slash,
 
+    /// ‘^’
     #[token("^")]
     Caret,
 
+    /// ‘%’
     #[token("%")]
     Percent,
 
+    /// ‘<’
     #[token("<")]
     LAngle,
 
+    /// ‘<=’
     #[token("<=")]
     LAngleEquals,
 
+    /// ‘>’
     #[token(">")]
     RAngle,
 
+    /// ‘>=’
     #[token(">=")]
     RAngleEquals,
 
+    /// ‘==’
     #[token("==")]
     EqualsEquals,
 
+    /// ‘!=’
     #[token("!=")]
     BangEquals,
 
+    /// ‘=’
     #[token("=")]
     Equals,
 
+    /// ‘..’
     #[token("..")]
     DotDot,
 
+    /// ‘.’
     #[token(".")]
     Dot,
 
+    /// ‘->’
     #[token("->")]
     Arrow,
 
@@ -190,7 +232,7 @@ impl TokenKind {
 }
 
 impl fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Ident => "identifier",
 
