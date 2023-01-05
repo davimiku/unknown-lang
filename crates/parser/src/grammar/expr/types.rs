@@ -1,5 +1,6 @@
 use lexer::TokenKind::{self, *};
 
+use crate::grammar::expr::{parse_ident, parse_type};
 use crate::parser::Parser;
 use crate::SyntaxKind;
 use crate::{grammar::expr::parse_path, parser::marker::CompletedMarker};
@@ -78,10 +79,81 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
         parse_path(p)
+    } else if p.at(TokenKind::Union) {
+        parse_union(p)
+    } else if p.at(TokenKind::Struct) {
+        parse_struct(p)
     } else {
         p.error();
         return None;
     };
 
     Some(cm)
+}
+
+fn parse_union(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::Union));
+
+    let m = p.start();
+    p.bump();
+    parse_compound_type_block(p);
+    m.complete(p, SyntaxKind::UnionTypeExpr)
+}
+
+fn parse_struct(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::Struct));
+
+    let m = p.start();
+    p.bump();
+    parse_compound_type_block(p);
+    m.complete(p, SyntaxKind::StructTypeExpr)
+}
+
+/// Parses a "compound type block"
+// TODO: better name?
+fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::LBrace));
+
+    let m = p.start();
+    p.bump();
+    while !p.at(RBrace) && !p.at_end() {
+        p.bump_all_space();
+        parse_compound_type_item(p);
+        p.bump_all_space();
+    }
+
+    p.expect(RBrace);
+
+    m.complete(p, SyntaxKind::CompoundTypeBlock)
+}
+
+fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::Ident));
+
+    let m = p.start();
+    parse_ident(p);
+    p.expect(TokenKind::Colon);
+    parse_type(p);
+    p.expect(TokenKind::Comma);
+
+    m.complete(p, SyntaxKind::CompoundTypeItem)
+}
+
+#[cfg(test)]
+mod tests {
+    use expect_test::expect;
+
+    use crate::parse;
+
+    fn check(input: &str, expected_tree: expect_test::Expect) {
+        let parse = parse(input);
+
+        expected_tree.assert_eq(&parse.debug_tree());
+    }
+
+    #[test]
+    fn parse_union() {
+        let input = "type AB = union { a: A, b: B }";
+        check(input, expect![[r#""#]])
+    }
 }

@@ -1,4 +1,4 @@
-mod stmts;
+mod bindings;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -9,7 +9,7 @@ use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use self::stmts::parse_let_binding;
+use self::bindings::{parse_let_binding, parse_type_binding};
 use self::types::parse_type_expr;
 
 /// Tokens that may start an expression
@@ -118,9 +118,11 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         StringLiteral => parse_string_literal(p),
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
+
         Ident => {
-            if p.last_token_kind == TokenKind::Arrow {
-                // "-> A { ... }"
+            if p.last_token_kind == Arrow {
+                // "-> Type { ... }"
+                //     ^^^^
                 parse_type(p);
 
                 parse_expr(p)?
@@ -128,6 +130,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
                 parse_variable_ident(p)
             }
         }
+
         Dash => parse_negation_expr(p),
         Not => parse_not_expr(p),
         // TODO: this might also be the start of a tuple?
@@ -139,7 +142,9 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
         Loop => parse_loop(p),
+
         Let => parse_let_binding(p),
+        Type => parse_type_binding(p),
         _ => {
             p.error();
             return None;

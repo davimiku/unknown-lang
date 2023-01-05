@@ -83,11 +83,18 @@ pub enum SyntaxKind {
     Path,
     PathItem,
     StringExpr,
+    StructTypeExpr,
     TypeExpr,
+    UnionTypeExpr,
 
     // Expr "statements"
     ImportBinding,
     LetBinding,
+    TypeBinding,
+
+    // Type components
+    CompoundTypeBlock,
+    CompoundTypeItem,
 
     // Function components
     FunBody,

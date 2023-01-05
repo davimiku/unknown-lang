@@ -1,13 +1,16 @@
+//! This module represents bindings to variables and type variables.
 //!
-//! This module represents what users would consider to be statements.
-//!
-//! In the compiler, they are represented as a variant of Expr that happens
-//! to always return Unit.
+//! These are known as "let binding" and "type binding". In the future,
+//! other kinds of bindings may be added here.
 //!
 //! For example:
 //!
 //! ```ignore
-//! import { read_file } from "stdlib.io"
+//! type A = Int
+//!
+//! let a: A = 1
+//!
+//! let b = "Hello, World"
 //! ```
 
 use lexer::TokenKind;
@@ -42,15 +45,35 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::LetBinding)
 }
 
+pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(TokenKind::Type));
+    let m = p.start();
+    p.bump();
+
+    if !p.at(TokenKind::Equals) {
+        parse_ident(p);
+
+        p.expect(TokenKind::Equals);
+    } else {
+        // invalid syntax but parse gracefully anyways
+        p.bump();
+    }
+
+    parse_type(p);
+
+    m.complete(p, SyntaxKind::TypeBinding)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::check;
     use expect_test::expect;
 
     #[test]
-    fn parse_variable_definition() {
+    fn parse_let_binding() {
+        let input = "let foo = bar";
         check(
-            "let foo = bar",
+            input,
             expect![[r#"
 Root@0..13
   LetBinding@0..13
@@ -69,9 +92,10 @@ Root@0..13
     }
 
     #[test]
-    fn parse_variable_with_type_annotation() {
+    fn parse_let_binding_with_type() {
+        let input = "let x: Int = 1";
         check(
-            "let x: Int = 1",
+            input,
             expect![[r#"
 Root@0..14
   LetBinding@0..14
@@ -94,9 +118,10 @@ Root@0..14
     }
 
     #[test]
-    fn parse_variable_without_identifier() {
+    fn parse_let_binding_no_ident() {
+        let input = "let = 1";
         check(
-            "let = 1",
+            input,
             expect![[r#"
 Root@0..7
   LetBinding@0..7
@@ -112,8 +137,9 @@ Root@0..7
     #[test]
     #[ignore = "Recovery not implemented yet"]
     fn recover_on_let_token() {
+        let input = "let a =\nlet b = a";
         check(
-            "let a =\nlet b = a",
+            input,
             expect![[r#"
 Root@0..17
   LetBinding@0..8
@@ -135,5 +161,46 @@ Root@0..17
       Ident@16..17 "a"
 error at 8..11: expected Int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
         );
+    }
+
+    #[test]
+    fn parse_type_binding() {
+        let input = "type A = String";
+        check(
+            input,
+            expect![[r#"
+Root@0..15
+  TypeBinding@0..15
+    Type@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..7
+      Ident@5..6 "A"
+      Emptyspace@6..7 " "
+    Equals@7..8 "="
+    Emptyspace@8..9 " "
+    TypeExpr@9..15
+      Path@9..15
+        Ident@9..15
+          Ident@9..15 "String""#]],
+        )
+    }
+
+    #[test]
+    fn parse_type_binding_no_ident() {
+        let input = "type = String";
+        check(
+            input,
+            expect![[r#"
+Root@0..13
+  TypeBinding@0..13
+    Type@0..4 "type"
+    Emptyspace@4..5 " "
+    Equals@5..6 "="
+    Emptyspace@6..7 " "
+    TypeExpr@7..13
+      Path@7..13
+        Ident@7..13
+          Ident@7..13 "String""#]],
+        )
     }
 }
