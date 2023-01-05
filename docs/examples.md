@@ -5,10 +5,11 @@
 ```
 // `print` is a built-in function
 // Text within quote marks are strings
+print 1
 print "Hello World"
 ```
 
-The `print` function only accepts a String currently.
+The `print` function is currently a hard-coded builtin that only accepts a String, Int, Float, or Bool.
 
 ## Types
 
@@ -23,24 +24,27 @@ The `print` function only accepts a String currently.
 
 Sum types allow the programmer to define some data must be one of a set of variants.
 
-For example, if the variants are defined as `A`, `B`, `C` - then the data must be `A` OR `B` OR `C`.
+For example, if the variants are defined as `A`, `B`, `C` - then the sum type of those variants represents `A` OR `B` OR `C`.
 
 There is one kind of sum type in this language which is known as a "tagged union" or "discriminated union". This is defined with the keyword `union`.
 
 - Keyword `union` starts the definition
-- Curly braces `{` and `}` surround the variants definition
+- Curly braces `{` and `}` surround the variant definitions
 - Each variant is a `variant_name: Type` pair
   - The name is how you'll refer to the variant, and the Type is the data associated with that variant
   - Pairs are separated by commas
+  - Line breaks are optionally used to separate pairs for aesthetics
 
-Syntax example:
+Minimal example:
 
 ```txt
-union {
-    a: A,
-    b: B,
-    c: C,
-}
+union { a: A, b: B, c: C }
+```
+
+Binding to a type variable:
+
+```txt
+type Example = union { a: A, b: B, c: C }
 ```
 
 Practical example:
@@ -54,9 +58,45 @@ type Event = union {
 }
 ```
 
-Any data of type `Event` is precisely one of these four variants. In this case, there are also different kinds of data associated with each variant.
+Any data of type `Event` is precisely one of these four variants.
 
-`(...) -> { ... }`: functions (see the section below)
+**Product Types**:
+
+Product types allow the programmer to define data that is the combination of other data.
+
+For example, if data is defined as `A`, `B`, `C` - then the product type of that data represents `A` AND `B` AND `C`.
+
+There is one kind of product type in this language which is known as a "structure". This is defined with the keyword `struct`.
+
+- Keyword `struct` starts the definition
+- Curly braces `{` and `}` surround the field definitions
+- Each field is a `field_name: Type` pair
+  - The name is how you'll refer to the field, and the Type is the data associated with that field
+  - Pairs are separated by commas
+  - Line breaks are optionally used to separate pairs for aesthetics
+
+Minimal example:
+
+```txt
+struct { a: A, b: B, c: C }
+```
+
+Binding to a type variable:
+
+```txt
+type Example = struct { a: A, b: B, c: C }
+```
+
+Practical example:
+
+```txt
+type Event = union {
+    login: LoginEvent,
+    logout: LogoutEvent,
+    cart_add: CartAddEvent,
+    checkout: CheckoutEvent,
+}
+```
 
 ## Variables
 
