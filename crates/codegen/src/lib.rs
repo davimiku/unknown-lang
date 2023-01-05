@@ -348,11 +348,10 @@ impl Chunk {
 // Functions for debugging the Chunk
 #[cfg(debug_assertions)]
 impl Display for Chunk {
-    /// Prints the Chunk in a disassembled format
-    /// for human-reading.
+    /// Prints the Chunk in a disassembled format for human-reading.
     ///
-    /// This format is not stable and should not be depended on.
-    // TODO: Vertically align each column
+    /// This format is not stable and should not be depended on for
+    /// any kind of machine parsing.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut offset = 0;
         let mut op_idx = 0;
@@ -366,7 +365,7 @@ impl Display for Chunk {
             } else {
                 format!(" {line:04}")
             };
-            write!(f, "{offset:03} {line}  ")?;
+            write!(f, "{offset:04}  {line}  ")?;
             offset = op.disassemble(self, offset);
             writeln!(f)?;
 
