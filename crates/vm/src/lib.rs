@@ -1,3 +1,4 @@
+use builtins::{PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STR, PRINT_STR_CONSTANT};
 use codegen::{Chunk, InvalidOpError, Op, Readable};
 use stack::Stack;
 use std::mem::size_of;
@@ -33,7 +34,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub(crate) fn interpret(&mut self) -> InterpretResult {
+    fn interpret(&mut self) -> InterpretResult {
         // TODO: setup actions?
         self.run()
         // TODO: cleanup actions?
@@ -142,10 +143,11 @@ impl<'a> VM<'a> {
     fn exec_builtin(&mut self, i: u8) {
         // TODO: move builtins to an array/map or something to not hard-code
         match i {
-            0 => self.print_str_constant(),
-            1 => {} // self.print_str
-            2 => self.print_int(),
-            3 => self.print_float(),
+            PRINT_STR_CONSTANT => self.print_str_constant(),
+            PRINT_STR => {} // self.print_str
+            PRINT_INT => self.print_int(),
+            PRINT_FLOAT => self.print_float(),
+            PRINT_BOOL => self.print_bool(),
             _ => {}
         }
     }

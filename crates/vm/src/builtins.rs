@@ -1,5 +1,7 @@
 use crate::VM;
 
+// TODO: move to a shared "builtins" crate
+// remove duplication with codegen crate
 pub const PRINT_STR_CONSTANT: u8 = 0;
 pub const PRINT_STR: u8 = 1;
 pub const PRINT_INT: u8 = 2;
