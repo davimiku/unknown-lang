@@ -71,6 +71,6 @@ mod tests {
 
         let actual: Vec<Token> = lexer.collect();
 
-        assert_eq!(actual, expected);
+        assert_eq!(expected, actual);
     }
 }
