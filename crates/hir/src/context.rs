@@ -6,7 +6,8 @@ use parser::SyntaxKind;
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, LetBinding, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, IfExpr, LetBinding, Type, UnaryExpr,
+    UnaryOp,
 };
 
 // temp
@@ -89,6 +90,7 @@ impl Context {
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_def(ast),
                 Ident(ast) => self.lower_ident(ast),
+                If(ast) => self.lower_if_expr(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
                 LetBinding(ast) => self.lower_let_binding(ast),
                 Loop(ast) => self.lower_loop(ast),
@@ -274,6 +276,20 @@ impl Context {
             body,
             return_type_annotation,
         }
+    }
+
+    fn lower_if_expr(&mut self, ast: ast::IfExpr) -> Expr {
+        let condition = self.lower_expr(ast.condition_expr());
+        let then_branch = self.lower_expr(ast.then_branch());
+        let else_branch = ast
+            .else_branch()
+            .map(|else_branch| self.lower_expr(Some(else_branch)));
+
+        Expr::If(IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
 }
 

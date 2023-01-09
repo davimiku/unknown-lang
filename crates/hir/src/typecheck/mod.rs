@@ -6,6 +6,7 @@
 //! - Type checks for the user's explicit annotations
 //! - Type inference for when the user does not annotate
 
+mod builtins;
 mod check;
 mod infer;
 mod types;
@@ -20,15 +21,14 @@ use crate::{Context, Expr};
 use self::check::check_expr;
 
 // returns diagnostics
-// mutates context to add inferred types to TypeCheckResults
 pub fn check(expr: Idx<Expr>, context: &Context) -> TypeCheckResults {
     let mut results = TypeCheckResults::default();
-    check_expr(expr, Type::Unit, &mut results, context);
+    check_expr(expr, &Type::Unit, &mut results, context);
 
     results
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct TypeCheckResults {
     /// Correctly resolved types (inferred or checked)
     /// mapped to the corresponding `Expr` index.
@@ -47,6 +47,11 @@ impl TypeCheckResults {
     pub(super) fn set_type(&mut self, idx: Idx<Expr>, r#type: Type) {
         self.expr_types.insert(idx, r#type)
     }
+
+    #[cfg(test)]
+    pub(super) fn with_expr_types(expr_types: ArenaMap<Idx<Expr>, Type>) -> Self {
+        Self { expr_types }
+    }
 }
 
 pub struct FunctionSignature {
@@ -57,11 +62,13 @@ pub struct FunctionSignature {
     return_type: Type,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct TypeDiagnostic {
     pub variant: TypeDiagnosticVariant,
     pub range: TextRange,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum TypeDiagnosticVariant {
     ArgsMismatch {
         name: String,
@@ -73,6 +80,9 @@ pub enum TypeDiagnosticVariant {
         actual: Type,
     },
     Undefined {
+        name: String,
+    },
+    NoOverloadFound {
         name: String,
     },
 }

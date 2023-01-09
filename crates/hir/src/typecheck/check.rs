@@ -12,7 +12,7 @@ use crate::{Context, Expr};
 
 pub(crate) fn check_expr(
     expr: Idx<Expr>,
-    expected: Type,
+    expected: &Type,
     results: &mut TypeCheckResults,
     context: &Context,
 ) -> Option<TypeDiagnostic> {
@@ -20,11 +20,14 @@ pub(crate) fn check_expr(
 
     match inferred_result {
         Ok(actual) => {
-            if is_subtype(&actual, &expected) {
+            if is_subtype(&actual, expected) {
                 None
             } else {
                 Some(TypeDiagnostic {
-                    variant: TypeDiagnosticVariant::TypeMismatch { expected, actual },
+                    variant: TypeDiagnosticVariant::TypeMismatch {
+                        expected: expected.clone(),
+                        actual,
+                    },
                     // TODO: get a real TextRange (from context.database ?)
                     range: TextRange::default(),
                 })

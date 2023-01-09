@@ -5,8 +5,7 @@
 //! parent scope.
 //!
 //! Scopes are defined by the user, with the top-level scope being the
-//! module scope. Even if a module is a child module, it does not inherit
-//! the scope of its parent modules.
+//! module scope. A module boundary is always an encapsulation boundary.
 //!
 //! Scopes are composed of definitions for variables and types. Conceptually,
 //! scopes exist as a tree, but for performance the internal implementation is
@@ -155,7 +154,7 @@ mod tests {
                 .map(|scope| scope.parent_idx)
                 .collect();
 
-            assert_eq!(actual, expected);
+            assert_eq!(expected, actual);
         }
     }
 }

@@ -19,6 +19,8 @@ pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
         .collect();
 
     // wrap everything in a block
+    // TODO: instead wrap in a pseudo `main` function?
+    // or wrap in a "Module" kind of structure?
     let root = Expr::Block(BlockExpr { exprs });
     let root = context.alloc_expr(root, None);
 
@@ -94,7 +96,7 @@ pub struct UnaryExpr {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockExpr {
     pub exprs: Vec<Idx<Expr>>,
-    // last_expr: Idx<Expr>,
+    // tail_expr: Option<Idx<Expr>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -106,6 +108,20 @@ pub struct CallExpr {
 
     /// Arguments that the function are applied to
     pub args: Vec<Idx<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IfExpr {
+    /// Condition to check before branching
+    pub condition: Idx<Expr>,
+
+    /// Expression that is executed when the condition is true
+    pub then_branch: Idx<Expr>,
+
+    /// Expression that is executed when the condition is false
+    /// When there is an `else if ...`, this is another IfExpr.
+    /// (TODO: maybe remove this part of the comment if it's obvious)
+    pub else_branch: Option<Idx<Expr>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -155,8 +171,9 @@ pub enum Expr {
         return_type_annotation: Option<Idx<Expr>>, // type name
     },
 
-    // rename: ValueBinding?
     LetBinding(LetBinding),
+
+    If(IfExpr),
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -198,5 +215,78 @@ impl fmt::Display for UnaryOp {
             // TODO: "not" or "!"  ?
             UnaryOp::Not => write!(f, "not "),
         }
+    }
+}
+
+/// Asserts that the provided `Result` is `Ok`
+/// and returns the unwrapped value.
+macro_rules! assert_ok {
+    ($value:expr) => {{
+        assert!($value.is_ok());
+        $value.unwrap()
+    }};
+}
+pub(crate) use assert_ok;
+
+/// Asserts that the provided `Result` is `Err`
+/// and returns the unwrapped error.
+macro_rules! assert_err {
+    ($value:expr) => {{
+        assert!($value.is_err());
+        $value.unwrap_err()
+    }};
+}
+pub(crate) use assert_err;
+
+#[cfg(test)]
+mod tests {
+    use la_arena::{Arena, ArenaMap};
+
+    use crate::{lower_from_input, typecheck::TypeCheckResults, BlockExpr, Expr, Type};
+
+    // TODO: would be better if this checked the type of the tail expression
+    // So input of `123` checks IntLiteral(123) -- the only expression
+    // input of
+    // ```
+    // let a = "Hello"
+    // a
+    // ```
+    // checks the tail expression `a` which is StringLiteral("Hello")
+    fn check_typecheck_results(input: &str, expected_expr: Expr, expected_type: Type) {
+        let mut arena = Arena::default();
+        let mut expr_types = ArenaMap::default();
+        let expected = arena.alloc(expected_expr);
+        expr_types.insert(expected, expected_type);
+
+        // root gets wrapped in a Block (the implicit 'main' module)
+        // TODO: return type won't always be Unit?
+        let expected = arena.alloc(Expr::Block(BlockExpr {
+            exprs: vec![expected],
+        }));
+        expr_types.insert(expected, Type::Unit);
+        let expected = TypeCheckResults::with_expr_types(expr_types);
+
+        let (_, context) = lower_from_input(input);
+        let actual = context.typecheck_results;
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn typecheck_int_literal() {
+        let input = "1";
+
+        check_typecheck_results(input, Expr::IntLiteral(1), Type::IntLiteral(1));
+    }
+
+    #[test]
+    fn typecheck_string_literal() {
+        let input = r#""Hello""#;
+
+        check_typecheck_results(
+            input,
+            Expr::StringLiteral("Hello".to_string()),
+            Type::StringLiteral("Hello".to_string()),
+        )
     }
 }

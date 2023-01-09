@@ -32,29 +32,7 @@ impl Database {
         self.let_bindings.alloc(let_binding)
     }
 
-    // pub fn debug_string(&self) -> String {
-    //     let mut s = String::new();
-
-    //     let indent: usize = 0;
-
-    //     for (stmt, ..) in self.stmts.iter() {
-    //         self.write_stmt(&mut s, stmt, indent).unwrap();
-    //     }
-
-    //     s
-    // }
-
-    // fn write_stmt(&self, s: &mut String, idx: Idx<Stmt>, indent: usize) -> fmt::Result {
-    //     write!(s, "{}", " ".repeat(indent))?;
-
-    //     match &self.stmts[idx] {
-    //         Stmt::Expr(expr) => self.write_expr(s, *expr, indent),
-    //     }?;
-
-    //     writeln!(s)
-    // }
-
-    fn write_expr(&self, s: &mut String, idx: Idx<Expr>, mut indent: usize) -> fmt::Result {
+    fn fmt_expr(&self, s: &mut String, idx: Idx<Expr>, mut indent: usize) -> fmt::Result {
         match &self.exprs[idx] {
             Expr::Empty => write!(s, "{{empty}}"),
 
@@ -66,11 +44,11 @@ impl Database {
             Expr::Call(CallExpr { path, args }) => {
                 write!(s, "{path} ")?;
                 if args.len() == 1 {
-                    self.write_expr(s, args[0], indent)
+                    self.fmt_expr(s, args[0], indent)
                 } else {
                     write!(s, "(")?;
                     for arg in args {
-                        self.write_expr(s, *arg, indent)?;
+                        self.fmt_expr(s, *arg, indent)?;
                         write!(s, ",")?;
                     }
                     write!(s, ")")
@@ -78,17 +56,17 @@ impl Database {
             }
 
             Expr::Binary(BinaryExpr { op, lhs, rhs, .. }) => {
-                self.write_expr(s, *lhs, indent)?;
+                self.fmt_expr(s, *lhs, indent)?;
 
                 write!(s, " {} ", op)?;
 
-                self.write_expr(s, *rhs, indent)
+                self.fmt_expr(s, *rhs, indent)
             }
 
             Expr::Unary(UnaryExpr { op, expr, .. }) => {
                 write!(s, "{}", op)?;
 
-                self.write_expr(s, *expr, indent)
+                self.fmt_expr(s, *expr, indent)
             }
 
             Expr::Block(BlockExpr { exprs, .. }) => {
@@ -96,7 +74,7 @@ impl Database {
                 indent += 4;
 
                 for idx in exprs {
-                    self.write_expr(s, *idx, indent)?;
+                    self.fmt_expr(s, *idx, indent)?;
                 }
 
                 indent -= 4;
@@ -114,17 +92,17 @@ impl Database {
                 write!(s, "fun (")?;
 
                 for param in params {
-                    self.write_expr(s, *param, indent)?;
+                    self.fmt_expr(s, *param, indent)?;
                 }
 
                 write!(s, ") -> ")?;
 
                 if return_type_annotation.is_some() {
                     let return_type = return_type_annotation.unwrap();
-                    self.write_expr(s, return_type, indent)?;
+                    self.fmt_expr(s, return_type, indent)?;
                 }
 
-                self.write_expr(s, *body, indent)
+                self.fmt_expr(s, *body, indent)
             }
 
             Expr::LetBinding(local_def) => {
@@ -132,6 +110,10 @@ impl Database {
 
                 // write!(s, "let _{:?} = ", local_def.into_raw())?;
                 // self.write_expr(s, def.value, indent);
+                todo!()
+            }
+
+            Expr::If(if_expr) => {
                 todo!()
             }
         }
