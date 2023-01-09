@@ -104,6 +104,10 @@ impl Chunk {
                 // end scope?
             }
 
+            If(expr) => {
+                todo!()
+            }
+
             // This should be unreachable, codegen should never start if lowering failed
             // TODO: add some machinery for some debug output and gracefully abort
             Empty => unreachable!(),
