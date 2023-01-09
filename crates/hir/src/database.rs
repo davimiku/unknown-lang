@@ -124,7 +124,7 @@ impl Database {
 mod tests {
 
     use crate::context::Context;
-    use crate::{BinaryExpr, BinaryOp, BlockExpr, UnaryExpr, UnaryOp};
+    use crate::{BinaryExpr, BinaryOp, BlockExpr, IfExpr, UnaryExpr, UnaryOp};
 
     use super::*;
 
@@ -327,6 +327,23 @@ mod tests {
 
         let input = "not true";
         let expected_hir = Expr::Unary(UnaryExpr { op, expr });
+
+        check_expr(input, expected_hir)
+    }
+
+    #[test]
+    fn lower_if_expression() {
+        let mut exprs = Arena::new();
+
+        let condition = exprs.alloc(Expr::BoolLiteral(true));
+        let then_branch = exprs.alloc(Expr::Block(BlockExpr { exprs: vec![] }));
+
+        let input = "if true {}";
+        let expected_hir = Expr::If(IfExpr {
+            condition,
+            then_branch,
+            else_branch: None,
+        });
 
         check_expr(input, expected_hir)
     }
