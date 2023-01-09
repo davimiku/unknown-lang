@@ -42,32 +42,6 @@ impl Root {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LetBinding(SyntaxNode);
-
-impl LetBinding {
-    // TODO: Pattern rather than name (Ident)
-    pub fn name(&self) -> Option<SyntaxToken> {
-        self.0
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
-    }
-
-    pub fn type_annotation(&self) -> Option<TypeExpr> {
-        self.0.children().find_map(TypeExpr::cast)
-    }
-
-    pub fn value(&self) -> Option<Expr> {
-        // TODO: check this doesn't pick up pattern / destructuring
-        self.0.children().find_map(Expr::cast)
-    }
-
-    pub fn range(&self) -> TextRange {
-        self.0.text_range()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Expr {
     Block(Block),
@@ -77,6 +51,7 @@ pub enum Expr {
     FloatLiteral(FloatLiteral),
     Function(Function),
     Ident(Ident),
+    If(IfExpr),
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
     Loop(LoopExpr),
@@ -93,7 +68,13 @@ impl Expr {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::Call => Self::Call(Call(node)),
+            // TODO: clean up code here
+            SyntaxKind::ConditionExpr | SyntaxKind::ThenBranchExpr | SyntaxKind::ElseBranchExpr => {
+                Expr::cast(node.first_child().expect("TODO: handle missing case?"))
+                    .expect("contained castable expression")
+            }
             SyntaxKind::FloatExpr => Self::FloatLiteral(FloatLiteral(node)),
+            SyntaxKind::IfExpr => Self::If(IfExpr(node)),
             SyntaxKind::InfixExpr => Self::cast_binary(node),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::LoopExpr => Self::Loop(LoopExpr(node)),
@@ -116,6 +97,7 @@ impl Expr {
             FloatLiteral(e) => e.range(),
             Function(e) => e.range(),
             Ident(e) => e.range(),
+            If(e) => e.range(),
             IntLiteral(e) => e.range(),
             LetBinding(e) => e.range(),
             Loop(e) => e.range(),
@@ -360,6 +342,40 @@ impl Ident {
 }
 
 #[derive(Debug, Clone)]
+pub struct IfExpr(SyntaxNode);
+
+impl IfExpr {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::IfExpr).then_some(Self(node))
+    }
+
+    pub fn condition_expr(&self) -> Option<Expr> {
+        self.0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::ConditionExpr)
+            .and_then(Expr::cast)
+    }
+
+    pub fn then_branch(&self) -> Option<Expr> {
+        self.0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::ThenBranchExpr)
+            .and_then(Expr::cast)
+    }
+
+    pub fn else_branch(&self) -> Option<Expr> {
+        self.0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::ElseBranchExpr)
+            .and_then(Expr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct IntLiteral(SyntaxNode);
 
 impl IntLiteral {
@@ -373,6 +389,32 @@ impl IntLiteral {
 
     pub fn value_as_string(&self) -> Option<String> {
         self.value().map(|token| String::from(token.text()))
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LetBinding(SyntaxNode);
+
+impl LetBinding {
+    // TODO: Pattern rather than name (Ident)
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.0
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .find(|token| token.kind() == SyntaxKind::Ident)
+    }
+
+    pub fn type_annotation(&self) -> Option<TypeExpr> {
+        self.0.children().find_map(TypeExpr::cast)
+    }
+
+    pub fn value(&self) -> Option<Expr> {
+        // TODO: check this doesn't pick up pattern / destructuring
+        self.0.children().find_map(Expr::cast)
     }
 
     pub fn range(&self) -> TextRange {
