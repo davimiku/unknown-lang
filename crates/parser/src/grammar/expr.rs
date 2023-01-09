@@ -12,15 +12,20 @@ use crate::SyntaxKind;
 use self::bindings::{parse_let_binding, parse_type_binding};
 use self::types::parse_type_expr;
 
-/// Tokens that may start an expression
-const EXPR_START: [TokenKind; 7] = [
-    LBrace,
+/// Tokens that may be the start of a function argument
+// Note that although blocks are expressions, LBrace can't be the
+// start of a function arg due to ambiguity with `if a {}`
+// (is the condition `a` or is the condition `a` called with empty block as arg)
+// Blocks can be a function arg but need to be surrounded by parentheses.
+// Leaving this comment here until language syntax is documented better
+const FUNCTION_ARG_START: [TokenKind; 7] = [
     LParen,
     Ident,
     IntLiteral,
+    FloatLiteral,
     StringLiteral,
-    False,
-    True,
+    False, // TODO: remove when true/false are turned into idents
+    True,  // TODO: remove when true/false are turned into idents
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -141,10 +146,13 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         // probably can't overload again as tuples
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
-        Loop => parse_loop(p),
+        Loop => parse_loop_expr(p),
 
         Let => parse_let_binding(p),
         Type => parse_type_binding(p),
+
+        If => parse_if_expr(p),
+
         _ => {
             p.error();
             return None;
@@ -212,7 +220,7 @@ fn parse_variable_ident(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     parse_path(p);
 
-    if p.at_set(&EXPR_START) {
+    if p.at_set(&FUNCTION_ARG_START) {
         parse_function_arguments(p);
     }
 
@@ -243,7 +251,7 @@ pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at_set(&EXPR_START));
+    debug_assert!(p.at_set(&FUNCTION_ARG_START));
     let m = p.start();
 
     // single arg may omit the parentheses
@@ -252,7 +260,7 @@ fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
     } else {
         p.bump();
 
-        while p.at_set(&EXPR_START) {
+        while p.at_set(&FUNCTION_ARG_START) {
             parse_expr(p);
 
             if p.at(Comma) {
@@ -346,7 +354,7 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
-fn parse_loop(p: &mut Parser) -> CompletedMarker {
+fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(Loop));
     let m = p.start();
     p.bump();
@@ -354,6 +362,33 @@ fn parse_loop(p: &mut Parser) -> CompletedMarker {
     parse_block(p);
 
     m.complete(p, SyntaxKind::LoopExpr)
+}
+
+fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(If));
+    let m = p.start();
+    p.bump();
+
+    parse_condition_expr(p);
+    parse_block(p);
+
+    while p.at(Else) {
+        p.bump();
+
+        if p.at(If) {
+            p.bump();
+            parse_condition_expr(p);
+        }
+        parse_block(p);
+    }
+
+    m.complete(p, SyntaxKind::IfExpr)
+}
+
+fn parse_condition_expr(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    parse_expr(p);
+    m.complete(p, SyntaxKind::ConditionExpr)
 }
 
 enum BinaryOp {
@@ -383,6 +418,7 @@ enum BinaryOp {
 
     /// `.`
     Path,
+
     // `->`
     Function,
 }
