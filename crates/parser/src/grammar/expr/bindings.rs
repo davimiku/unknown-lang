@@ -15,7 +15,7 @@
 
 use lexer::TokenKind;
 
-use crate::grammar::expr::{parse_expr, parse_ident, parse_type};
+use crate::grammar::expr::{parse_expr, parse_ident_token, parse_type};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
@@ -26,7 +26,7 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
 
     if !p.at(TokenKind::Equals) {
         // TODO: Pattern rather than Ident for destructuring
-        parse_ident(p);
+        parse_ident_token(p);
 
         if p.at(TokenKind::Colon) {
             p.bump();
@@ -51,7 +51,7 @@ pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
     p.bump();
 
     if !p.at(TokenKind::Equals) {
-        parse_ident(p);
+        parse_ident_token(p);
 
         p.expect(TokenKind::Equals);
     } else {

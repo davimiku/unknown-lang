@@ -1,6 +1,6 @@
 use lexer::TokenKind::{self, *};
 
-use crate::grammar::expr::{parse_ident, parse_type};
+use crate::grammar::expr::{parse_ident_token, parse_type};
 use crate::parser::Parser;
 use crate::SyntaxKind;
 use crate::{grammar::expr::parse_path, parser::marker::CompletedMarker};
@@ -131,7 +131,7 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(TokenKind::Ident));
 
     let m = p.start();
-    parse_ident(p);
+    parse_ident_token(p);
     p.expect(TokenKind::Colon);
     parse_type(p);
     p.expect(TokenKind::Comma);

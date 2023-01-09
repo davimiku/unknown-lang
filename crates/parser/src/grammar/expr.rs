@@ -124,17 +124,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
 
-        Ident => {
-            if p.last_token_kind == Arrow {
-                // "-> Type { ... }"
-                //     ^^^^
-                parse_type(p);
-
-                parse_expr(p)?
-            } else {
-                parse_variable_ident(p)
-            }
-        }
+        Ident => parse_ident(p)?,
 
         Dash => parse_negation_expr(p),
         Not => parse_not_expr(p),
@@ -160,6 +150,18 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     };
 
     Some(cm)
+}
+
+fn parse_ident(p: &mut Parser) -> Option<CompletedMarker> {
+    Some(if p.last_token_kind == Arrow {
+        // "-> Type { ... }"
+        //     ^^^^
+        parse_type(p);
+
+        parse_expr(p)?
+    } else {
+        parse_variable_ident(p)
+    })
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
@@ -231,20 +233,20 @@ fn parse_path(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(Ident));
     let m = p.start();
 
-    parse_ident(p);
+    parse_ident_token(p);
 
     while p.at(Dot) {
         p.bump(); // eat Dot
 
         // TODO: would be better with recovery here, at least to the next newline or '}'
         // or potentially recover right away and continue to parse the next thing
-        parse_ident(p);
+        parse_ident_token(p);
     }
 
     m.complete(p, SyntaxKind::Path)
 }
 
-pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
+pub(crate) fn parse_ident_token(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.expect(Ident);
     m.complete(p, SyntaxKind::Ident)
@@ -370,16 +372,15 @@ fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
     p.bump();
 
     parse_condition_expr(p);
-    parse_block(p);
 
-    while p.at(Else) {
-        p.bump();
+    if p.at(LBrace) {
+        parse_then_branch(p);
+    } else {
+        p.error();
+    }
 
-        if p.at(If) {
-            p.bump();
-            parse_condition_expr(p);
-        }
-        parse_block(p);
+    if p.at(Else) {
+        parse_else_branch(p);
     }
 
     m.complete(p, SyntaxKind::IfExpr)
@@ -389,6 +390,31 @@ fn parse_condition_expr(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     parse_expr(p);
     m.complete(p, SyntaxKind::ConditionExpr)
+}
+
+fn parse_then_branch(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(LBrace)); // TODO: be fault tolerant
+
+    let m = p.start();
+    parse_block(p);
+    m.complete(p, SyntaxKind::ThenBranchExpr)
+}
+
+fn parse_else_branch(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(Else));
+
+    let m = p.start();
+    p.bump();
+
+    if p.at(If) {
+        parse_if_expr(p);
+    } else if p.at(LBrace) {
+        parse_block(p);
+    } else {
+        p.error();
+    }
+
+    m.complete(p, SyntaxKind::ElseBranchExpr)
 }
 
 enum BinaryOp {

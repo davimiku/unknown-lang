@@ -72,7 +72,6 @@ pub enum SyntaxKind {
     AssignmentExpr,
     BlockExpr,
     BoolExpr,
-    ConditionExpr,
     FloatExpr,
     FunExpr,
     IfExpr,
@@ -88,6 +87,11 @@ pub enum SyntaxKind {
     StructTypeExpr,
     TypeExpr,
     UnionTypeExpr,
+
+    // IfExpr
+    ConditionExpr,
+    ThenBranchExpr,
+    ElseBranchExpr,
 
     // Expr "statements"
     ImportBinding,
