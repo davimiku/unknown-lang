@@ -23,15 +23,8 @@ macro_rules! assert_matches {
     }};
 }
 
-fn parse_node(input: &str) -> SyntaxNode {
-    parser::parse(input).syntax()
-}
-
 fn parse_expr(input: &str) -> Expr {
-    let root = Root::cast(parse_node(input)).expect("valid Root node");
-    let mut exprs: Vec<Expr> = root.exprs().collect();
-    assert!(exprs.len() == 1);
-    exprs.remove(0)
+    Expr::cast(parser::parse_expr(input).syntax()).unwrap()
 }
 
 #[test]
@@ -150,7 +143,7 @@ fn unary_function_with_explicit_param_type() {
 
 #[test]
 fn add_int_and_function() {
-    // not a valid expression by the type checker, but should still produce an AST
+    // not a valid expression by the type checker, but should still produce a valid AST
     let input = "1 + (() -> { })";
     let expected_lhs = "1";
     let expected_rhs_param_list = None;
@@ -197,4 +190,38 @@ fn if_expr_empty() {
     assert_matches!(then_branch, Expr::Block);
 
     assert!(if_expr.else_branch().is_none());
+}
+
+#[test]
+fn if_else_expr() {
+    let input = "if a {} else {}";
+
+    let parsed = parse_expr(input);
+
+    let if_expr = assert_matches!(parsed, Expr::If);
+    let condition = assert_some!(if_expr.condition_expr());
+    assert_matches!(condition, Expr::Call);
+
+    let then_branch = assert_some!(if_expr.then_branch());
+    assert_matches!(then_branch, Expr::Block);
+
+    let else_branch = assert_some!(if_expr.else_branch());
+    assert_matches!(else_branch, Expr::Block);
+}
+
+#[test]
+fn if_else_if_expr() {
+    let input = "if a {} else if b {}";
+
+    let parsed = parse_expr(input);
+
+    let if_expr = assert_matches!(parsed, Expr::If);
+    let condition = assert_some!(if_expr.condition_expr());
+    assert_matches!(condition, Expr::Call);
+
+    let then_branch = assert_some!(if_expr.then_branch());
+    assert_matches!(then_branch, Expr::Block);
+
+    let else_branch = assert_some!(if_expr.else_branch());
+    assert_matches!(else_branch, Expr::If);
 }
