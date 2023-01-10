@@ -348,5 +348,49 @@ mod tests {
         check_expr(input, expected_hir)
     }
 
+    #[test]
+    fn lower_if_else_expression() {
+        let mut exprs = Arena::new();
+
+        let condition = exprs.alloc(Expr::BoolLiteral(true));
+        let then_branch = exprs.alloc(Expr::Block(BlockExpr { exprs: vec![] }));
+        let else_branch = exprs.alloc(Expr::Block(BlockExpr { exprs: vec![] }));
+
+        let input = "if true {} else {}";
+        let expected_hir = Expr::If(IfExpr {
+            condition,
+            then_branch,
+            else_branch: Some(else_branch),
+        });
+
+        check_expr(input, expected_hir)
+    }
+
+    #[test]
+    fn lower_if_else_if_expression() {
+        let mut exprs = Arena::new();
+
+        let condition = exprs.alloc(Expr::BoolLiteral(true));
+        let then_branch = exprs.alloc(Expr::Block(BlockExpr { exprs: vec![] }));
+
+        let condition2 = exprs.alloc(Expr::BoolLiteral(false));
+        let then_branch2 = exprs.alloc(Expr::Block(BlockExpr { exprs: vec![] }));
+
+        let else_branch = exprs.alloc(Expr::If(IfExpr {
+            condition: condition2,
+            then_branch: then_branch2,
+            else_branch: None,
+        }));
+
+        let input = "if true {} else if false {}";
+        let expected_hir = Expr::If(IfExpr {
+            condition,
+            then_branch,
+            else_branch: Some(else_branch),
+        });
+
+        check_expr(input, expected_hir)
+    }
+
     // TODO: lower block tests
 }
