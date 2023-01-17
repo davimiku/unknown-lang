@@ -85,4 +85,8 @@ pub enum TypeDiagnosticVariant {
     NoOverloadFound {
         name: String,
     },
+    Incompatible {
+        a: Type,
+        b: Type,
+    },
 }

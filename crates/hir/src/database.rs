@@ -129,7 +129,7 @@ mod tests {
     use super::*;
 
     fn parse_expr(input: &str) -> ast::Expr {
-        ast::Expr::cast(parser::parse_expr(input).syntax()).unwrap()
+        ast::Expr::cast(parser::test_parse_expr(input).syntax()).unwrap()
     }
 
     fn check_expr(input: &str, expected_hir: Expr) {

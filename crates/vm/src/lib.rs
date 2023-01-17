@@ -89,6 +89,12 @@ impl<'a> VM<'a> {
                     let (idx, len) = self.read_str();
                     self.stack.push_str_constant(idx, len);
                 }
+                PushTrue => {
+                    self.stack.push_bool(true);
+                }
+                PushFalse => {
+                    self.stack.push_bool(false);
+                }
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),
                 MulFloat => float_bin_op!(self, mul),
@@ -126,6 +132,17 @@ impl<'a> VM<'a> {
                 Builtin => {
                     let builtin_idx = self.read_byte();
                     self.exec_builtin(builtin_idx);
+                }
+                Jump => {
+                    let offset = self.read::<u32>();
+                    self.ip = self.ip + offset as usize;
+                }
+                JumpIfFalse => {
+                    let offset = self.read::<u32>();
+                    let condition = self.stack.pop_bool();
+                    if !condition {
+                        self.ip = self.ip + offset as usize;
+                    }
                 }
                 Ret => {
                     // TODO: better output for debugging?
@@ -215,7 +232,8 @@ mod tests {
         let op = BinaryOp::Add;
 
         let expr = Expr::Binary(BinaryExpr { op, lhs, rhs });
-        chunk.write_expr(&expr, &context);
+        let expr = context.alloc_expr(expr, None);
+        chunk.write_expr(expr, &context);
 
         chunk.write_op(Op::Ret, 2);
         println!("{chunk}");
@@ -240,7 +258,8 @@ mod tests {
         let op = BinaryOp::Add;
 
         let expr = Expr::Binary(BinaryExpr { op, lhs, rhs });
-        chunk.write_expr(&expr, &context);
+        let expr = context.alloc_expr(expr, None);
+        chunk.write_expr(expr, &context);
 
         chunk.write_op(Op::Ret, 2);
         println!("{chunk}");

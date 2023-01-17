@@ -3,11 +3,10 @@
 
 use la_arena::Idx;
 
-use super::{
-    builtins::get_builtin_functions, check::check_expr, Type, TypeCheckResults, TypeDiagnostic,
-    TypeDiagnosticVariant,
-};
-use crate::{BinaryExpr, BinaryOp, Context, Expr};
+use super::builtins::get_builtin_functions;
+use super::check::{check_expr, check_exprs};
+use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
+use crate::{BinaryExpr, BinaryOp, Context, Expr, IfExpr};
 
 type InferResult = Result<Type, TypeDiagnostic>;
 
@@ -16,8 +15,11 @@ pub(crate) fn infer_expr(
     results: &mut TypeCheckResults,
     context: &Context,
 ) -> InferResult {
-    let expr = context.expr(expr_idx);
+    if let Some(already_inferred_type) = results.expr_types.get(expr_idx) {
+        return Ok(already_inferred_type.clone());
+    }
 
+    let expr = context.expr(expr_idx);
     let builtin_signatures = get_builtin_functions();
 
     let inferred_result = match expr {
@@ -72,7 +74,7 @@ pub(crate) fn infer_expr(
                         if overload.arg_types.len() == args.len() {
                             let overload_is_match = overload.arg_types.iter().zip(args.iter()).all(
                                 |(expected, expr)| {
-                                    check_expr(*expr, expected, results, context).is_none()
+                                    check_expr(*expr, expected, results, context).is_ok()
                                 },
                             );
 
@@ -111,9 +113,7 @@ pub(crate) fn infer_expr(
             // let annotation = local_def.type_annotation;
             todo!()
         }
-        Expr::If(if_expr) => {
-            todo!()
-        }
+        Expr::If(if_expr) => infer_if_expr(if_expr, results, context),
     };
 
     if let Ok(ref inferred_type) = inferred_result {
@@ -121,6 +121,33 @@ pub(crate) fn infer_expr(
     }
 
     inferred_result
+}
+
+fn infer_if_expr(
+    if_expr: &IfExpr,
+    results: &mut TypeCheckResults,
+    context: &Context,
+) -> InferResult {
+    let IfExpr {
+        then_branch,
+        else_branch,
+        ..
+    } = if_expr;
+
+    if let Some(else_branch) = else_branch {
+        let then_type = infer_expr(*then_branch, results, context)?;
+        let else_type = infer_expr(*else_branch, results, context)?;
+
+        infer_compatible_type(&then_type, &else_type).ok_or(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::Incompatible {
+                a: then_type,
+                b: else_type,
+            },
+            range: Default::default(),
+        })
+    } else {
+        Ok(Type::Unit)
+    }
 }
 
 fn infer_binary(
@@ -146,6 +173,36 @@ fn infer_binary(
         BinaryOp::Exp => todo!(),
         BinaryOp::Path => todo!(),
     }
+}
+
+/// Determines the most specific type that is compatible with two types.
+///
+/// This is mostly to deal with the built-in subtype relationships
+/// between literals and their corresponding primitive types.
+fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
+    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    if a == b {
+        return Some(a.clone());
+    };
+
+    #[rustfmt::skip]
+    let compatible_type = match (a, b) {
+        // widen to the primitive type when one is a primitive
+        (BoolLiteral(_), Bool) | (Bool, BoolLiteral(_)) => Bool,
+        (IntLiteral(_), Int) | (Int, IntLiteral(_)) => Int,
+        (FloatLiteral(_), Float) | (Float, FloatLiteral(_)) => Float,
+        (StringLiteral(_), String) | (String, StringLiteral(_)) => String,
+
+        // widen to the primitive type if both are literals and are not equal
+        (BoolLiteral(a), BoolLiteral(b)) => if a == b { BoolLiteral(*a) } else { Bool },
+        (IntLiteral(a), IntLiteral(b)) => if a == b { IntLiteral(*a) } else { Int },
+        (FloatLiteral(a), FloatLiteral(b)) => if a == b { FloatLiteral(*a) } else { Float },
+        (StringLiteral(a), StringLiteral(b)) => if a == b { StringLiteral(a.clone()) } else { String },
+
+        (_, _) => return None,
+    };
+
+    Some(compatible_type)
 }
 
 #[cfg(test)]

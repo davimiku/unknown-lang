@@ -125,6 +125,15 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events.push(Event::AddToken);
     }
 
+    /// Bumps the parser if it's at the given token
+    /// Useful for optional tokens, such as trailing commas
+    pub(crate) fn bump_if(&mut self, kind: TokenKind) {
+        self.bump_all_space();
+        if self.at(kind) {
+            self.bump();
+        }
+    }
+
     /// Consumes all emptyspace and newlines until the next non-space token
     pub(crate) fn bump_all_space(&mut self) {
         while self.at_set(&[TokenKind::Emptyspace, TokenKind::Newline]) {
@@ -190,6 +199,7 @@ pub(super) enum ParseEntryPoint {
     Root, // should produce a Vec<Expr>
 
     ExprTest, // test parsing single expressions
+    TypeTest, // test parsing single type expressions
 
               // possibly others in the future for metaprogramming (RA has separate entry for macro expansion)
 }

@@ -24,7 +24,7 @@ macro_rules! assert_matches {
 }
 
 fn parse_expr(input: &str) -> Expr {
-    Expr::cast(parser::parse_expr(input).syntax()).unwrap()
+    Expr::cast(parser::test_parse_expr(input).syntax()).unwrap()
 }
 
 #[test]

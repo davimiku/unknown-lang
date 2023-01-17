@@ -116,10 +116,17 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    while !p.at(RBrace) && !p.at_end() {
+    loop {
         p.bump_all_space();
         parse_compound_type_item(p);
         p.bump_all_space();
+
+        if p.at(RBrace) || p.at_end() {
+            p.bump_if(Comma);
+            break;
+        } else {
+            p.expect(Comma);
+        }
     }
 
     p.expect(RBrace);
@@ -131,10 +138,10 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(TokenKind::Ident));
 
     let m = p.start();
+
     parse_ident_token(p);
     p.expect(TokenKind::Colon);
     parse_type(p);
-    p.expect(TokenKind::Comma);
 
     m.complete(p, SyntaxKind::CompoundTypeItem)
 }
@@ -143,17 +150,85 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
 mod tests {
     use expect_test::expect;
 
-    use crate::parse;
+    use crate::test_parse_type_expr;
 
     fn check(input: &str, expected_tree: expect_test::Expect) {
-        let parse = parse(input);
+        let parse = test_parse_type_expr(input);
 
         expected_tree.assert_eq(&parse.debug_tree());
     }
 
     #[test]
     fn parse_union() {
-        let input = "type AB = union { a: A, b: B }";
-        check(input, expect![[r#""#]])
+        let input = "union { a: A, b: B }";
+        check(
+            input,
+            expect![[r#"
+UnionTypeExpr@0..20
+  Union@0..5 "union"
+  Emptyspace@5..6 " "
+  CompoundTypeBlock@6..20
+    LBrace@6..7 "{"
+    Emptyspace@7..8 " "
+    CompoundTypeItem@8..12
+      Ident@8..9
+        Ident@8..9 "a"
+      Colon@9..10 ":"
+      Emptyspace@10..11 " "
+      TypeExpr@11..12
+        Path@11..12
+          Ident@11..12
+            Ident@11..12 "A"
+    Comma@12..13 ","
+    Emptyspace@13..14 " "
+    CompoundTypeItem@14..19
+      Ident@14..15
+        Ident@14..15 "b"
+      Colon@15..16 ":"
+      Emptyspace@16..17 " "
+      TypeExpr@17..19
+        Path@17..19
+          Ident@17..19
+            Ident@17..18 "B"
+            Emptyspace@18..19 " "
+    RBrace@19..20 "}""#]],
+        )
+    }
+
+    #[test]
+    fn parse_struct() {
+        let input = "struct { a: A, b: B }";
+        check(
+            input,
+            expect![[r#"
+StructTypeExpr@0..21
+  Struct@0..6 "struct"
+  Emptyspace@6..7 " "
+  CompoundTypeBlock@7..21
+    LBrace@7..8 "{"
+    Emptyspace@8..9 " "
+    CompoundTypeItem@9..13
+      Ident@9..10
+        Ident@9..10 "a"
+      Colon@10..11 ":"
+      Emptyspace@11..12 " "
+      TypeExpr@12..13
+        Path@12..13
+          Ident@12..13
+            Ident@12..13 "A"
+    Comma@13..14 ","
+    Emptyspace@14..15 " "
+    CompoundTypeItem@15..20
+      Ident@15..16
+        Ident@15..16 "b"
+      Colon@16..17 ":"
+      Emptyspace@17..18 " "
+      TypeExpr@18..20
+        Path@18..20
+          Ident@18..20
+            Ident@18..19 "B"
+            Emptyspace@19..20 " "
+    RBrace@20..21 "}""#]],
+        )
     }
 }

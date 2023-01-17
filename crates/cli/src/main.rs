@@ -31,7 +31,8 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"print "Hello, World!""#;
+    // TODO: not working
+    let program = r#"if false { print "then branch" } else { print "else branch" }"#;
 
     Ok(program.to_owned())
 }

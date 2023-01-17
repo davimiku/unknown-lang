@@ -14,23 +14,27 @@ use std::fmt::Write;
 pub use syntax::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 
 pub fn parse(input: &str) -> Parse {
-    let tokens: Vec<_> = Lexer::new(input).collect();
-    let source = Source::new(&tokens);
-    let parser = Parser::new(source, ParseEntryPoint::Root);
-    let events = parser.parse();
-    let sink = Sink::new(&tokens, events);
-
-    sink.finish()
+    parse_from_input(input, ParseEntryPoint::Root)
 }
 
 /// parsing entry point for expressions directly for easier testing
-pub fn parse_expr(input: &str) -> Parse {
+/// TODO: #[cfg(test)]
+pub fn test_parse_expr(input: &str) -> Parse {
+    parse_from_input(input, ParseEntryPoint::ExprTest)
+}
+
+/// parsing entry point for type expressions directly for easier testing
+/// TODO: #[cfg(test)]
+pub fn test_parse_type_expr(input: &str) -> Parse {
+    parse_from_input(input, ParseEntryPoint::TypeTest)
+}
+
+fn parse_from_input(input: &str, entry_point: ParseEntryPoint) -> Parse {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let source = Source::new(&tokens);
-    let parser = Parser::new(source, ParseEntryPoint::ExprTest);
+    let parser = Parser::new(source, entry_point);
     let events = parser.parse();
     let sink = Sink::new(&tokens, events);
-
     sink.finish()
 }
 
@@ -79,7 +83,15 @@ fn check_error(input: &str, expected_tree: expect_test::Expect, expected_errors:
 // language constructs are expressions.
 #[cfg(test)]
 fn check_expr(input: &str, expected_tree: expect_test::Expect) {
-    let parse = parse_expr(input);
+    let parse = test_parse_expr(input);
+
+    expected_tree.assert_eq(&parse.debug_tree());
+}
+
+// Convenience function to test type expression parsing directly.
+#[cfg(test)]
+fn check_type_expr(input: &str, expected_tree: expect_test::Expect) {
+    let parse = test_parse_type_expr(input);
 
     expected_tree.assert_eq(&parse.debug_tree());
 }

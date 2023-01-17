@@ -199,10 +199,11 @@ impl Context {
     }
 
     fn lower_block(&mut self, ast: ast::Block) -> Expr {
-        // create a new scope
-
-        // temp: dummy value
-        let exprs = Vec::new();
+        // create a new scope?
+        let exprs = ast
+            .exprs()
+            .map(|expr_ast| self.lower_expr(Some(expr_ast)))
+            .collect();
 
         Expr::Block(BlockExpr { exprs })
     }

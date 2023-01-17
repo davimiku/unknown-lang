@@ -15,26 +15,35 @@ pub(crate) fn check_expr(
     expected: &Type,
     results: &mut TypeCheckResults,
     context: &Context,
-) -> Option<TypeDiagnostic> {
-    let inferred_result = infer_expr(expr, results, context);
+) -> Result<(), TypeDiagnostic> {
+    let actual = infer_expr(expr, results, context)?;
 
-    match inferred_result {
-        Ok(actual) => {
-            if is_subtype(&actual, expected) {
-                None
-            } else {
-                Some(TypeDiagnostic {
-                    variant: TypeDiagnosticVariant::TypeMismatch {
-                        expected: expected.clone(),
-                        actual,
-                    },
-                    // TODO: get a real TextRange (from context.database ?)
-                    range: TextRange::default(),
-                })
-            }
-        }
-        Err(diag) => Some(diag),
+    if is_subtype(&actual, expected) {
+        Ok(())
+    } else {
+        Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::TypeMismatch {
+                expected: expected.clone(),
+                actual,
+            },
+            // TODO: get a real TextRange (from context.database ?)
+            range: TextRange::default(),
+        })
     }
+}
+
+pub(crate) fn check_exprs<I>(
+    exprs: I,
+    results: &mut TypeCheckResults,
+    context: &Context,
+) -> Result<(), TypeDiagnostic>
+where
+    I: IntoIterator<Item = Idx<Expr>>,
+{
+    let exprs = exprs.into_iter();
+    let expr_types = exprs.map(|expr| infer_expr(expr, results, context));
+
+    todo!()
 }
 
 /// Is A a subtype of B
@@ -45,32 +54,29 @@ pub(crate) fn check_expr(
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
 fn is_subtype(a: &Type, b: &Type) -> bool {
-    use Type::*;
-    match (a, b) {
-        (Bool, Bool) => true,
-        (Bool, Named(_)) => todo!(),
+    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
 
+    if a == b {
+        return true;
+    }
+
+    match (a, b) {
+        (Bool, Named(_)) => todo!(),
         (BoolLiteral(_), Bool) => true,
         (BoolLiteral(a), BoolLiteral(b)) => a == b,
         (BoolLiteral(_), Named(_)) => todo!(),
 
-        (Float, Float) => true,
         (Float, Named(_)) => todo!(),
-
         (FloatLiteral(_), Float) => true,
         (FloatLiteral(a), FloatLiteral(b)) => a == b,
         (FloatLiteral(_), Named(_)) => todo!(),
 
-        (Int, Int) => true,
         (Int, Named(_)) => todo!(),
-
         (IntLiteral(_), Int) => true,
         (IntLiteral(a), IntLiteral(b)) => a == b,
         (IntLiteral(_), Named(_)) => todo!(),
 
-        (String, String) => true,
         (String, Named(_)) => todo!(),
-
         (StringLiteral(_), String) => true,
         (StringLiteral(a), StringLiteral(b)) => a == b,
 

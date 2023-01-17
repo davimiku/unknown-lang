@@ -8,7 +8,8 @@ use std::mem::size_of;
 use std::{convert::TryInto, fmt::Debug};
 
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, LetBinding, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, IfExpr, LetBinding, Type, UnaryExpr,
+    UnaryOp,
 };
 
 mod disassemble;
@@ -29,8 +30,7 @@ const FAKE_LINE_NUMBER: u32 = 123;
 pub fn codegen(idx: &Idx<Expr>, context: &Context) -> Chunk {
     let mut chunk = Chunk::new();
 
-    let expr = context.expr(*idx);
-    chunk.write_expr(expr, context);
+    chunk.write_expr(*idx, context);
     chunk.write_ret(FAKE_LINE_NUMBER);
 
     chunk
@@ -73,9 +73,10 @@ impl Chunk {
 
 // Functions to write to the Chunk
 impl Chunk {
-    pub fn write_expr(&mut self, expr: &Expr, context: &Context) {
+    pub fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
         use Expr::*;
 
+        let expr = context.expr(expr);
         match expr {
             BoolLiteral(b) => self.write_bool_constant(*b, FAKE_LINE_NUMBER),
             FloatLiteral(f) => self.write_float_constant(*f, FAKE_LINE_NUMBER),
@@ -92,20 +93,50 @@ impl Chunk {
                 return_type_annotation,
             } => todo!(),
             LetBinding(expr) => {
+                let v: u16 = 34;
                 todo!()
             }
 
             Block(BlockExpr { exprs }) => {
                 // write something for a scope?
                 for expr in exprs {
-                    let expr = context.expr(*expr);
-                    self.write_expr(expr, context);
+                    self.write_expr(*expr, context);
                 }
                 // end scope?
             }
 
-            If(expr) => {
-                todo!()
+            If(IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            }) => {
+                self.write_expr(*condition, context);
+
+                self.write_op(Op::JumpIfFalse, FAKE_LINE_NUMBER);
+                let jumpiff_offset = self.code.len();
+                self.write_u32_ones_bytes();
+
+                self.write_expr(*then_branch, context);
+                // backpatch offset to the JumpIfFalse Op
+                let then_size = (self.code.len() - jumpiff_offset + 1) as i32;
+                for (i, byte) in then_size.to_le_bytes().iter().enumerate() {
+                    self.code[jumpiff_offset + i] = *byte;
+                }
+
+                self.write_op(Op::Jump, FAKE_LINE_NUMBER);
+                let jump_offset = self.code.len();
+                if let Some(else_branch) = else_branch {
+                    self.write_u32_ones_bytes();
+
+                    self.write_expr(*else_branch, context);
+                    // backpatch offset to the Op::Jump, not including the operands of Jump itself
+                    let else_size = (self.code.len() - jump_offset - 4) as i32;
+                    for (i, byte) in else_size.to_le_bytes().iter().enumerate() {
+                        self.code[jump_offset + i] = *byte;
+                    }
+                } else {
+                    self.write_u32_zeros_bytes();
+                }
             }
 
             // This should be unreachable, codegen should never start if lowering failed
@@ -117,11 +148,9 @@ impl Chunk {
     fn write_binary_expr(&mut self, expr: &BinaryExpr, context: &Context) {
         let BinaryExpr { op, lhs, rhs } = expr;
         let lhs_type = context.type_of(*lhs);
-        let lhs = context.expr(*lhs);
-        let rhs = context.expr(*rhs);
 
-        self.write_expr(lhs, context);
-        self.write_expr(rhs, context);
+        self.write_expr(*lhs, context);
+        self.write_expr(*rhs, context);
 
         use BinaryOp::*;
         use Type::*;
@@ -155,9 +184,8 @@ impl Chunk {
     fn write_unary_expr(&mut self, expr: &UnaryExpr, context: &Context) {
         let UnaryExpr { op, expr: idx } = expr;
         let expr_type = context.type_of(*idx);
-        let expr = context.expr(*idx);
 
-        self.write_expr(expr, context);
+        self.write_expr(*idx, context);
 
         use Type::*;
         use UnaryOp::*;
@@ -175,8 +203,7 @@ impl Chunk {
         let CallExpr { path, args } = expr;
 
         for arg in args {
-            let arg = context.expr(*arg);
-            self.write_expr(arg, context);
+            self.write_expr(*arg, context);
         }
         let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of(*idx)).collect();
 
@@ -224,6 +251,17 @@ impl Chunk {
 
     fn write_bytes(&mut self, bytes: &[u8]) {
         self.code.extend(bytes);
+    }
+
+    // bad name?
+    fn write_u32_ones_bytes(&mut self) {
+        let all_ones: u32 = 0xFFFFFFFF;
+        self.write_bytes(&all_ones.to_le_bytes());
+    }
+
+    fn write_u32_zeros_bytes(&mut self) {
+        let all_zeros: u32 = 0;
+        self.write_bytes(&all_zeros.to_le_bytes());
     }
 
     pub fn write_int_constant(&mut self, value: i64, line: u32) {
@@ -280,8 +318,6 @@ impl Chunk {
 }
 
 // Functions to read from the Chunk.
-// TODO: Modify or implement `unsafe` functions without bounds checking
-// for release builds after further testing.
 impl Chunk {
     /// Gets the Op at the given index.
     #[inline]
@@ -383,12 +419,14 @@ impl Display for Chunk {
 ///
 /// `unsafe` could be removed after negative_impls is stabilized.
 /// https://github.com/rust-lang/rust/issues/68318
+///
 /// # Safety
 ///
 /// Types implementing this trait must not implement Drop.
 pub unsafe trait Readable {}
 
 unsafe impl Readable for u8 {}
+unsafe impl Readable for u32 {}
 unsafe impl Readable for i64 {}
 unsafe impl Readable for f64 {}
 unsafe impl Readable for (u64, u64) {}

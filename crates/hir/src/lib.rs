@@ -119,8 +119,6 @@ pub struct IfExpr {
     pub then_branch: Idx<Expr>,
 
     /// Expression that is executed when the condition is false
-    /// When there is an `else if ...`, this is another IfExpr.
-    /// (TODO: maybe remove this part of the comment if it's obvious)
     pub else_branch: Option<Idx<Expr>>,
 }
 
@@ -256,14 +254,14 @@ mod tests {
         let mut arena = Arena::default();
         let mut expr_types = ArenaMap::default();
         let expected = arena.alloc(expected_expr);
-        expr_types.insert(expected, expected_type);
+        expr_types.insert(expected, expected_type.clone());
 
         // root gets wrapped in a Block (the implicit 'main' module)
         // TODO: return type won't always be Unit?
         let expected = arena.alloc(Expr::Block(BlockExpr {
             exprs: vec![expected],
         }));
-        expr_types.insert(expected, Type::Unit);
+        expr_types.insert(expected, expected_type);
         let expected = TypeCheckResults::with_expr_types(expr_types);
 
         let (_, context) = lower_from_input(input);

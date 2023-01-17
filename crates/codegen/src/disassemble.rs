@@ -51,6 +51,12 @@ impl Op {
 
                 print!("{}", BUILTIN_NAMES[builtin_idx as usize])
             }
+            Op::Jump | Op::JumpIfFalse => {
+                let jump_offset = chunk.read::<u32>(offset);
+                offset += size_of::<i32>();
+
+                print!("{jump_offset}")
+            }
             _ => {}
         };
 

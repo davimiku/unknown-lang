@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 use std::mem;
+use std::mem::size_of;
 
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -131,6 +132,19 @@ pub enum Op {
     ///
     Builtin,
 
+    /// Unconditional forwards jump by the given offset
+    ///
+    /// Operands: jump amount: `u32`
+    Jump,
+
+    /// Jumps forwards by the given offset if the top of
+    /// the stack is false.
+    ///
+    /// Operands: jump amount: `u32`
+    ///
+    /// Stack: cond **=>**
+    JumpIfFalse,
+
     // push local?
     // pop local?
     /// Return from a function
@@ -158,12 +172,12 @@ impl Op {
 
     /// Returns the size (in bytes) of the operand for each Op
     pub fn operand_size(&self) -> usize {
-        let word = 8;
         match self {
-            Op::PushInt => word,
-            Op::PushFloat => word,
-            Op::PushString => word * 2,
-            Op::Builtin => todo!(),
+            Op::PushInt => size_of::<u64>(),
+            Op::PushFloat => size_of::<f64>(),
+            Op::PushString => size_of::<(u64, u64)>(),
+            Op::Builtin => size_of::<u8>(),
+            Op::Jump | Op::JumpIfFalse => size_of::<u32>(),
 
             _ => 0,
         }

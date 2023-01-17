@@ -53,3 +53,11 @@ fn test_read_float_constant() {
 fn test_print_input() {
     //
 }
+
+#[test]
+fn test_if_else() {
+    let input = "print 1";
+
+    let chunk = generate_chunk(input);
+    println!("{chunk}");
+}
