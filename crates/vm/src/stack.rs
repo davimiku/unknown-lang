@@ -38,17 +38,17 @@ impl Stack {
 
     #[inline]
     pub fn push_int<I: Into<i64>>(&mut self, val: I) {
-        self.push(val.into().to_le_bytes())
+        self.push(val.into().to_ne_bytes())
     }
 
     #[inline]
     pub fn push_float<F: Into<f64>>(&mut self, val: F) {
-        self.push(val.into().to_le_bytes())
+        self.push(val.into().to_ne_bytes())
     }
 
     #[inline]
     pub fn push_bool(&mut self, val: bool) {
-        self.push(i64::from(val).to_le_bytes())
+        self.push(i64::from(val).to_ne_bytes())
     }
 
     /// Pushes the stack representation of a String to the stack.
@@ -57,8 +57,8 @@ impl Stack {
     /// bytes for this string constant in the string constants Vec.
     #[inline]
     pub fn push_str_constant(&mut self, idx: u64, len: u64) {
-        self.push(idx.to_le_bytes());
-        self.push(len.to_le_bytes());
+        self.push(idx.to_ne_bytes());
+        self.push(len.to_ne_bytes());
     }
 
     /// Removes the top Word of the stack and returns it as bytes
@@ -97,13 +97,13 @@ impl Stack {
     /// Removes the top value of the stack and returns it as an i64
     #[inline]
     pub fn pop_int(&mut self) -> i64 {
-        i64::from_le_bytes(self.pop())
+        i64::from_ne_bytes(self.pop())
     }
 
     /// Removes the top value of the stack and returns it as an i64
     #[inline]
     pub fn pop_float(&mut self) -> f64 {
-        f64::from_le_bytes(self.pop())
+        f64::from_ne_bytes(self.pop())
     }
 
     /// Removes the top value of the stack and returns it as a bool
@@ -118,7 +118,7 @@ impl Stack {
     pub fn pop_string_literal(&mut self) -> StringLiteral {
         let [idx, len] = self.pop_n::<2>(2);
 
-        (u64::from_le_bytes(idx), u64::from_le_bytes(len))
+        (u64::from_ne_bytes(idx), u64::from_ne_bytes(len))
     }
 
     /// Mutates the top value of the stack in-place.
@@ -137,12 +137,12 @@ impl Stack {
 
     #[inline]
     pub fn peek_int(&self) -> i64 {
-        i64::from_le_bytes(self.peek())
+        i64::from_ne_bytes(self.peek())
     }
 
     #[inline]
     pub fn peek_float(&self) -> f64 {
-        f64::from_le_bytes(self.peek())
+        f64::from_ne_bytes(self.peek())
     }
 
     #[inline]
@@ -217,11 +217,11 @@ mod tests {
     fn pop_n_times() {
         let mut stack = Stack::default();
 
-        let word_1: Word = 1_u64.to_le_bytes();
-        let word_2: Word = 2_u64.to_le_bytes();
-        let word_3: Word = 3_u64.to_le_bytes();
-        let word_4: Word = 4_u64.to_le_bytes();
-        let word_5: Word = 5_u64.to_le_bytes();
+        let word_1: Word = 1_u64.to_ne_bytes();
+        let word_2: Word = 2_u64.to_ne_bytes();
+        let word_3: Word = 3_u64.to_ne_bytes();
+        let word_4: Word = 4_u64.to_ne_bytes();
+        let word_5: Word = 5_u64.to_ne_bytes();
 
         stack.push(word_1);
         stack.push(word_2);

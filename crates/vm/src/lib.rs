@@ -110,7 +110,7 @@ impl<'a> VM<'a> {
                 }
                 NegateFloat => {
                     let top = self.stack.peek_float();
-                    self.stack.replace_top((-top).to_le_bytes());
+                    self.stack.replace_top((-top).to_ne_bytes());
                 }
                 AddInt => int_bin_op!(self, add),
                 SubInt => int_bin_op!(self, sub),
@@ -127,7 +127,7 @@ impl<'a> VM<'a> {
                 }
                 NegateInt => {
                     let top = self.stack.peek_int();
-                    self.stack.replace_top((-top).to_le_bytes());
+                    self.stack.replace_top((-top).to_ne_bytes());
                 }
                 Builtin => {
                     let builtin_idx = self.read_byte();
