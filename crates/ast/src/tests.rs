@@ -24,6 +24,7 @@ macro_rules! assert_matches {
 }
 
 fn parse_expr(input: &str) -> Expr {
+    // TODO: remove and switch to more of a opaque box test
     Expr::cast(parser::test_parse_expr(input).syntax()).unwrap()
 }
 

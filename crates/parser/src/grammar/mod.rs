@@ -1,18 +1,16 @@
 mod expr;
 
 use crate::parser::marker::CompletedMarker;
-#[cfg(test)]
 use crate::parser::ParseEntryPoint;
 use crate::parser::Parser;
 
 use crate::syntax::SyntaxKind;
 
-#[cfg(not(test))]
-pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
-    parse_root(p)
-}
+// pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
+//     parse_root(p)
+// }
 
-#[cfg(test)]
+// TODO: Remove this and all tests from AST that relies on these internal details
 pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
     match p.entry_point {
         ParseEntryPoint::Root => parse_root(p),

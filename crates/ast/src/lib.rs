@@ -320,7 +320,7 @@ impl FunParamList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(SyntaxNode);
 
 impl Ident {

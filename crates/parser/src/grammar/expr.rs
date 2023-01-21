@@ -40,8 +40,7 @@ pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::TypeExpr)
 }
 
-// TODO: this is somewhat awkward, but makes tests for type expressions easier
-#[cfg(test)]
+// TODO: remove this after language is more developed and switch to more opaque box tests
 pub(super) fn test_parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     parse_type_expr(p)
 }
