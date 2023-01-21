@@ -110,6 +110,14 @@ pub struct CallExpr {
     pub args: Vec<Idx<Expr>>,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct FunctionExpr {
+    pub params: Vec<Idx<Expr>>, // names (or empty?)
+    pub body: Idx<Expr>,        // Expr::Block ?
+
+    pub return_type_annotation: Option<Idx<Expr>>, // type name
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct IfExpr {
     /// Condition to check before branching
@@ -162,12 +170,7 @@ pub enum Expr {
         name: String,
     },
 
-    Function {
-        params: Vec<Idx<Expr>>, // names (or empty?)
-        body: Idx<Expr>,        // Expr::Block ?
-
-        return_type_annotation: Option<Idx<Expr>>, // type name
-    },
+    Function(FunctionExpr),
 
     LetBinding(LetBinding),
 

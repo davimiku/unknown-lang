@@ -6,7 +6,7 @@ use la_arena::Idx;
 use super::builtins::get_builtin_functions;
 use super::check::{check_expr, check_exprs};
 use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::{BinaryExpr, BinaryOp, Context, Expr, IfExpr};
+use crate::{BinaryExpr, BinaryOp, Context, Expr, FunctionExpr, IfExpr};
 
 type InferResult = Result<Type, TypeDiagnostic>;
 
@@ -103,11 +103,11 @@ pub(crate) fn infer_expr(
 
             // Ok(Type::Undetermined)
         }
-        Expr::Function {
+        Expr::Function(FunctionExpr {
             params,
             body,
             return_type_annotation,
-        } => todo!(),
+        }) => todo!(),
         Expr::LetBinding(idx) => {
             // let local_def = context.local_def(*idx);
             // let annotation = local_def.type_annotation;

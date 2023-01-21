@@ -2,12 +2,13 @@ use std::str::FromStr;
 
 use la_arena::Idx;
 use parser::SyntaxKind;
+use text_size::TextRange;
 
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, IfExpr, LetBinding, Type, UnaryExpr,
-    UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Database, Expr, FunctionExpr, IfExpr, LetBinding,
+    Type, UnaryExpr, UnaryOp,
 };
 
 // temp
@@ -49,6 +50,10 @@ impl Context {
 
     pub fn type_of(&self, idx: Idx<Expr>) -> &Type {
         &self.typecheck_results[idx]
+    }
+
+    pub fn range_of(&self, idx: Idx<Expr>) -> TextRange {
+        self.database.expr_ranges[idx]
     }
 
     // TODO: probably remove this, it's only used for temporary tests in the vm crate
@@ -272,11 +277,11 @@ impl Context {
         let body = todo!();
         let return_type_annotation = todo!();
 
-        Expr::Function {
+        Expr::Function(FunctionExpr {
             params,
             body,
             return_type_annotation,
-        }
+        })
     }
 
     fn lower_if_expr(&mut self, ast: ast::IfExpr) -> Expr {

@@ -2,7 +2,7 @@ use la_arena::{Arena, ArenaMap, Idx};
 use std::fmt::{self, Write as FmtWrite};
 use text_size::TextRange;
 
-use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, LetBinding, UnaryExpr};
+use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, FunctionExpr, LetBinding, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
@@ -84,11 +84,11 @@ impl Database {
 
             Expr::VariableRef { name, .. } => write!(s, "{}", name),
 
-            Expr::Function {
+            Expr::Function(FunctionExpr {
                 params,
                 body,
                 return_type_annotation,
-            } => {
+            }) => {
                 write!(s, "fun (")?;
 
                 for param in params {
