@@ -24,13 +24,12 @@ pub use op::{InvalidOpError, Op};
 use text_size::TextRange;
 
 use std::convert::TryInto;
-use std::fmt::Debug;
-use std::fmt::{self, Display};
-use std::mem::size_of;
+use std::fmt::{self, Debug, Display};
+use std::{default, mem};
 
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, LetBinding,
-    Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, LocalDef,
+    LocalRef, Type, UnaryExpr, UnaryOp,
 };
 
 mod disassemble;
@@ -65,24 +64,44 @@ struct Code {
 }
 
 impl Code {
+    fn from_op(op: Op, range: TextRange) -> Self {
+        Self {
+            bytes: vec![op as u8],
+            ranges: vec![range],
+        }
+    }
+}
+
+impl Code {
+    #[inline]
     fn append(&mut self, mut source: Code) {
         self.bytes.append(&mut source.bytes);
         self.ranges.append(&mut source.ranges);
     }
 
+    #[inline]
     fn push(&mut self, source: (u8, TextRange)) {
         self.bytes.push(source.0);
         self.ranges.push(source.1);
     }
 
+    #[inline]
     fn push_byte(&mut self, source: u8) {
         self.bytes.push(source);
     }
 
+    #[inline]
+    fn push_byte_2(&mut self, source: (u8, u8)) {
+        self.bytes.push(source.0);
+        self.bytes.push(source.1);
+    }
+
+    #[inline]
     fn extend_from_slice(&mut self, source: &[u8]) {
         self.bytes.extend_from_slice(source);
     }
 
+    #[inline]
     fn shrink_to_fit(&mut self) {
         self.bytes.shrink_to_fit();
         self.ranges.shrink_to_fit();
@@ -105,6 +124,14 @@ pub struct Chunk {
 
     /// constants pool that are not encoded as operands, ex. strings
     constants: Vec<u8>,
+
+    // TODO: temp?
+    // this works in Crafting Interpreters because of the assumption that
+    // all locals are the same size.
+    // Could use a Vec instead, mapping the index to the size?
+    local_count: u32,
+
+    stack_slot_size: u32,
 }
 
 // TODO: make all pub(crate)
@@ -119,7 +146,11 @@ impl Chunk {
             bytes: bytecode,
             ranges,
         };
-        Self { code, constants }
+        Self {
+            code,
+            constants,
+            ..Default::default()
+        }
     }
 }
 
@@ -135,10 +166,10 @@ impl Chunk {
     ///
     /// **Invariant**: the index of each `TextRange` in that `Vec` need to correspond to the index of
     /// the corresponding `Op` within the bytecode.
-    fn synth_expr(&mut self, expr: Idx<Expr>, context: &Context) -> Code {
+    fn synth_expr(&mut self, expr_idx: Idx<Expr>, context: &Context) -> Code {
         use Expr::*;
 
-        let expr = context.expr(expr);
+        let expr = context.expr(expr_idx);
         match expr {
             BoolLiteral(b) => self.synth_bool_constant(*b, TextRange::default()),
             FloatLiteral(f) => self.synth_float_constant(*f, TextRange::default()),
@@ -147,10 +178,10 @@ impl Chunk {
 
             Binary(expr) => self.synth_binary_expr(expr, context),
             Unary(expr) => self.synth_unary_expr(expr, context),
-            VariableRef { name } => todo!(),
-            Call(expr) => self.synth_call_expr(expr, context),
             Function(expr) => self.synth_function_expr(expr, context),
-            LetBinding(expr) => self.synth_let_binding(expr, context),
+            LocalDef(expr) => self.synth_local_def(expr.value, context),
+            Call(expr) => self.synth_call_expr(expr, context),
+            LocalRef(expr) => self.synth_variable_ref(expr_idx, expr, context),
             Block(expr) => self.synth_block_expr(expr, context),
             If(expr) => self.synth_if_expr(expr, context),
 
@@ -179,7 +210,7 @@ impl Chunk {
         code
     }
 
-    fn synth_int_constant(&self, value: i64, range: TextRange) -> Code {
+    fn synth_int_constant(&self, value: Int, range: TextRange) -> Code {
         let mut code: Code = self.synth_op(Op::PushInt, range).into();
         code.extend_from_slice(&value.to_ne_bytes());
 
@@ -201,7 +232,7 @@ impl Chunk {
 
     fn synth_binary_expr(&mut self, expr: &BinaryExpr, context: &Context) -> Code {
         let BinaryExpr { op, lhs, rhs } = expr;
-        let lhs_type = context.type_of(*lhs);
+        let lhs_type = context.type_of_expr(*lhs);
 
         let mut code = self.synth_expr(*lhs, context);
         code.append(self.synth_expr(*rhs, context));
@@ -239,7 +270,7 @@ impl Chunk {
 
     fn synth_unary_expr(&mut self, expr: &UnaryExpr, context: &Context) -> Code {
         let UnaryExpr { op, expr: idx } = expr;
-        let expr_type = context.type_of(*idx);
+        let expr_type = context.type_of_expr(*idx);
 
         let mut code = self.synth_expr(*idx, context);
 
@@ -261,16 +292,41 @@ impl Chunk {
         todo!()
     }
 
-    fn synth_let_binding(&mut self, expr: &LetBinding, context: &Context) -> Code {
-        todo!()
+    fn synth_local_def(&mut self, value: Idx<Expr>, context: &Context) -> Code {
+        let expr_type = context.type_of_expr(value);
+        let word_size = word_size_of(expr_type);
+
+        self.local_count += 1;
+        self.stack_slot_size += word_size;
+        self.synth_expr(value, context)
     }
 
     fn synth_block_expr(&mut self, expr: &BlockExpr, context: &Context) -> Code {
         let BlockExpr { exprs } = expr;
+
+        let start_local_count = self.local_count;
+        let start_stack_slot_size = self.stack_slot_size;
+
         let mut code = Code::default();
         for expr in exprs {
             code.append(self.synth_expr(*expr, context));
         }
+
+        let locals_to_pop = self.local_count - start_local_count;
+        let slots_to_pop = self.stack_slot_size - start_stack_slot_size;
+
+        match slots_to_pop {
+            0 => {}
+            1 => code.push(self.synth_op(Op::Pop1, TextRange::default())),
+            2 => code.push(self.synth_op(Op::Pop2, TextRange::default())),
+            n => {
+                code.push(self.synth_op(Op::PopN, TextRange::default()));
+                code.extend_from_slice(&n.to_le_bytes());
+            }
+        }
+
+        self.local_count = start_local_count;
+        self.stack_slot_size = start_stack_slot_size;
 
         code
     }
@@ -286,6 +342,7 @@ impl Chunk {
         code.push(self.synth_op(Op::JumpIfFalse, TextRange::default()));
 
         // synth the then_branch **before** appending the operand of Op::JumpIfFalse
+        // TODO: is then_branch a BlockExpr? Otherwise we need to handle scopes
         let then_code = self.synth_expr(*then_branch, context);
 
         let mut then_length = then_code.bytes.len();
@@ -321,7 +378,7 @@ impl Chunk {
         for arg in args {
             code.append(self.synth_expr(*arg, context));
         }
-        let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of(*idx)).collect();
+        let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of_expr(*idx)).collect();
 
         // TODO: more general check for builtin
         if path == "print" {
@@ -329,6 +386,30 @@ impl Chunk {
         }
 
         code
+    }
+
+    fn synth_variable_ref(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &LocalRef,
+        context: &Context,
+    ) -> Code {
+        let expr_type = context.type_of_expr(expr_idx);
+        let word_size = word_size_of(expr_type);
+        let op = match word_size {
+            0 => todo!(), // unreachable?
+            1 => Op::GetLocal,
+            2 => Op::GetLocal2,
+
+            n => todo!(), // need GetLocalN with 2 operands for size & offset
+        };
+
+        let slot_depth = context;
+        let code = Code::from_op(op, TextRange::default());
+
+        // push u16 bytes of stack slot offset
+
+        todo!()
     }
 
     fn synth_builtin_call(&mut self, path: &str, arg_types: Vec<&Type>) -> Code {
@@ -359,11 +440,6 @@ impl Chunk {
         code.push_byte(builtin_idx);
 
         code
-    }
-
-    fn write_local_def(&mut self, local_def: &LetBinding) {
-        let name = local_def.name();
-        let value = local_def.value;
     }
 
     fn write_op(&mut self, op: Op, range: TextRange) {
@@ -421,7 +497,7 @@ impl Chunk {
     where
         T: Readable,
     {
-        assert!(offset + size_of::<T>() - 1 < self.code.bytes.len());
+        assert!(offset + mem::size_of::<T>() - 1 < self.code.bytes.len());
 
         // Safety: We checked that it is not an out-of-bounds read,
         // so this is safe.
@@ -473,7 +549,7 @@ impl Display for Chunk {
     ///
     /// This format is not stable and should not be depended on for
     /// any kind of machine parsing.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut offset = 0;
         let mut op_idx = 0;
         while offset < self.code.bytes.len() {
@@ -492,6 +568,49 @@ impl Display for Chunk {
     }
 }
 
+// TODO: move these to a shared crate (imported in vm and codegen)
+/// Representation of one "word" of the VM, or one "slot" in the stack
+type Word = [u8; 4];
+
+/// Byte size of a VM "word"
+const WORD_SIZE: usize = mem::size_of::<Word>();
+
+/// Representation of two words, alias for convenience
+type Word2 = [u8; 8];
+
+/// VM representation of a language Int
+pub type Int = i32;
+
+/// VM representation of a language Float
+pub type Float = f64;
+
+/// VM representation of a language boolean
+pub type Bool = u32;
+
+/// VM representation of a String constant (idx, len)
+///
+/// idx: index to first byte in string literals array
+/// len: byte length of the string data
+pub type StringLiteral = (u64, u64);
+
+// TODO: represent this as a static map or some other efficient form
+fn word_size_of(ty: &Type) -> u32 {
+    match ty {
+        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<Bool>() / WORD_SIZE,
+        Type::Float | Type::FloatLiteral(_) => mem::size_of::<Float>() / WORD_SIZE,
+        Type::Int | Type::IntLiteral(_) => mem::size_of::<Int>() / WORD_SIZE,
+        Type::String => todo!(),
+        Type::StringLiteral(_) => mem::size_of::<StringLiteral>() / WORD_SIZE,
+        Type::Named(_) => todo!(),
+        Type::Unit => 0,
+
+        Type::Undetermined => unreachable!(),
+        Type::Error => unreachable!(),
+    }
+    .try_into()
+    .expect("word size to not exceed u32::MAX")
+}
+
 /// Types implementing this trait may be read from the bytecode.
 ///
 /// `unsafe` could be removed after negative_impls is stabilized.
@@ -503,7 +622,8 @@ impl Display for Chunk {
 pub unsafe trait Readable {}
 
 unsafe impl Readable for u8 {}
+unsafe impl Readable for u16 {}
 unsafe impl Readable for u32 {}
-unsafe impl Readable for i64 {}
+unsafe impl Readable for i32 {}
 unsafe impl Readable for f64 {}
 unsafe impl Readable for (u64, u64) {}

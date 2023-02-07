@@ -8,11 +8,11 @@ pub enum Type {
     Bool,
     BoolLiteral(bool),
     Float,
-    FloatLiteral(f64),
+    FloatLiteral(f64), // TODO: shared definition of Float
     Int,
-    IntLiteral(i64),
+    IntLiteral(i32), // TODO: shared definition of Int
     String,
-    StringLiteral(String), // TODO: use a borrowed string instead (borrow from whom?)
+    StringLiteral(String), // TODO: use an interned string
     Named(Name),
     Unit,
     // Fun -- (Vec<Type>, Type) ? for params type and return type

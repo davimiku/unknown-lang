@@ -2,11 +2,15 @@
 //! Type inference
 
 use la_arena::Idx;
+use text_size::TextRange;
 
 use super::builtins::get_builtin_functions;
-use super::check::{check_expr, check_exprs};
+use super::check::check_expr;
 use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::{BinaryExpr, BinaryOp, Context, Expr, FunctionExpr, IfExpr};
+use crate::{
+    BinaryExpr, BinaryOp, BlockExpr, Context, Expr, FunctionExpr, IfExpr, LocalDef, LocalRef,
+    LocalRefName,
+};
 
 type InferResult = Result<Type, TypeDiagnostic>;
 
@@ -29,38 +33,15 @@ pub(crate) fn infer_expr(
             },
             range: Default::default(),
         }),
-        Expr::BoolLiteral(b) => Ok(Type::BoolLiteral(*b)),
-        Expr::FloatLiteral(f) => Ok(Type::FloatLiteral(*f)),
-        Expr::IntLiteral(i) => {
-            let inferred_type = Type::IntLiteral(*i);
-            results.set_type(expr_idx, inferred_type.clone());
-            Ok(inferred_type)
-        }
-        Expr::StringLiteral(s) => Ok(Type::StringLiteral(s.clone())),
+        Expr::BoolLiteral(b) => infer_bool_literal(*b, results, expr_idx),
+        Expr::FloatLiteral(f) => infer_float_literal(*f, results, expr_idx),
+        Expr::IntLiteral(i) => infer_int_literal(*i, results, expr_idx),
+        // TODO: intern the string in both Expr and Type, to copy the intern key instead of cloning the string
+        Expr::StringLiteral(s) => infer_string_literal(s.clone(), results, expr_idx),
         Expr::Binary(expr) => infer_binary(expr, results, context),
         Expr::Unary(expr) => todo!(),
-        Expr::Block(block) => {
-            let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
-                .exprs
-                .iter()
-                .map(|arg| infer_expr(*arg, results, context))
-                .collect();
-
-            // TODO: clean this up?
-            // logic: if expr_types is OK, set the type of this block to the tail_expr type, or Unit if
-            // the block is empty
-            expr_types.map(|expr_types| {
-                let tail_type = expr_types.last();
-                tail_type.map_or_else(
-                    || Type::Unit,
-                    |tail_type| {
-                        results.set_type(expr_idx, tail_type.clone());
-                        tail_type.clone()
-                    },
-                )
-            })
-        }
-        Expr::VariableRef { name } => todo!(),
+        Expr::Block(block) => infer_block(block, results, context, expr_idx),
+        Expr::LocalRef(local_ref) => lower_local_ref(local_ref, results),
         Expr::Call(expr) => {
             let name = &expr.path;
             let args = &expr.args;
@@ -108,19 +89,125 @@ pub(crate) fn infer_expr(
             body,
             return_type_annotation,
         }) => todo!(),
-        Expr::LetBinding(idx) => {
-            // let local_def = context.local_def(*idx);
-            // let annotation = local_def.type_annotation;
-            todo!()
-        }
+        Expr::LocalDef(local_def) => infer_local_def(local_def, results, context),
         Expr::If(if_expr) => infer_if_expr(if_expr, results, context),
     };
 
     if let Ok(ref inferred_type) = inferred_result {
-        results.set_type(expr_idx, inferred_type.clone());
+        results.set_expr_type(expr_idx, inferred_type.clone());
     }
 
     inferred_result
+}
+
+fn lower_local_ref(
+    expr: &LocalRef,
+    results: &mut TypeCheckResults,
+) -> Result<Type, TypeDiagnostic> {
+    let name = expr.name;
+    match name {
+        LocalRefName::Resolved(key) => results
+            .local_types
+            .get(&key)
+            .ok_or(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::UndefinedLocal { name },
+                range: TextRange::default(),
+            })
+            .cloned(),
+        LocalRefName::Unresolved(name) => todo!(),
+    }
+}
+
+fn infer_local_def(
+    local_def: &LocalDef,
+    results: &mut TypeCheckResults,
+    context: &Context,
+) -> Result<Type, TypeDiagnostic> {
+    let LocalDef {
+        key,
+        value,
+        type_annotation,
+    } = local_def;
+    if let Some(annotation) = type_annotation {
+        let annotation = context.expr(*annotation);
+        todo!();
+        // check_expr(*value, todo!(), results, context);
+    } else {
+        let infer_result = infer_expr(*value, results, context);
+
+        if let Ok(ref ty) = infer_result {
+            results.local_types.insert(*key, ty.clone());
+        }
+
+        infer_result
+    }
+}
+
+fn infer_block(
+    block: &BlockExpr,
+    results: &mut TypeCheckResults,
+    context: &Context,
+    expr_idx: Idx<Expr>,
+) -> Result<Type, TypeDiagnostic> {
+    let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
+        .exprs
+        .iter()
+        .map(|arg| infer_expr(*arg, results, context))
+        .collect();
+    expr_types.map(|expr_types| {
+        let tail_type = expr_types.last();
+        tail_type.map_or_else(
+            || Type::Unit,
+            |tail_type| {
+                results.set_expr_type(expr_idx, tail_type.clone());
+                tail_type.clone()
+            },
+        )
+    })
+}
+
+fn infer_bool_literal(
+    b: bool,
+    results: &mut TypeCheckResults,
+    expr_idx: Idx<Expr>,
+) -> Result<Type, TypeDiagnostic> {
+    let inferred_type = Type::BoolLiteral(b);
+    // TODO: remove clone() when Type is Copy
+    results.set_expr_type(expr_idx, inferred_type.clone());
+    Ok(inferred_type)
+}
+
+fn infer_float_literal(
+    f: f64,
+    results: &mut TypeCheckResults,
+    expr_idx: Idx<Expr>,
+) -> Result<Type, TypeDiagnostic> {
+    let inferred_type = Type::FloatLiteral(f);
+    // TODO: remove clone() when Type is Copy
+    results.set_expr_type(expr_idx, inferred_type.clone());
+    Ok(inferred_type)
+}
+
+fn infer_int_literal(
+    i: i32,
+    results: &mut TypeCheckResults,
+    expr_idx: Idx<Expr>,
+) -> Result<Type, TypeDiagnostic> {
+    let inferred_type = Type::IntLiteral(i);
+    // TODO: remove clone() when Type is Copy
+    results.set_expr_type(expr_idx, inferred_type.clone());
+    Ok(inferred_type)
+}
+
+fn infer_string_literal(
+    s: String,
+    results: &mut TypeCheckResults,
+    expr_idx: Idx<Expr>,
+) -> Result<Type, TypeDiagnostic> {
+    let inferred_type = Type::StringLiteral(s);
+    // TODO: remove clone() when Type is Copy
+    results.set_expr_type(expr_idx, inferred_type.clone());
+    Ok(inferred_type)
 }
 
 fn infer_if_expr(
@@ -217,7 +304,7 @@ mod tests {
     fn check(input: &str) -> InferResult {
         let parsed = parser::parse(input).syntax();
         let root = ast::Root::cast(parsed).expect("valid Root node");
-        let mut context = Context::new();
+        let mut context = Context::default();
 
         let exprs: Vec<Idx<Expr>> = root
             .exprs()
@@ -248,6 +335,14 @@ mod tests {
     #[test]
     fn infer_int_literal() {
         let input = "1";
+        let expected = Type::IntLiteral(1);
+
+        check_infer_type(input, expected);
+    }
+
+    #[test]
+    fn infer_let_binding() {
+        let input = "let a = 1";
         let expected = Type::IntLiteral(1);
 
         check_infer_type(input, expected);

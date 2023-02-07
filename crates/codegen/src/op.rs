@@ -3,6 +3,9 @@ use std::fmt;
 use std::mem;
 use std::mem::size_of;
 
+use crate::Float;
+use crate::Int;
+
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
@@ -25,22 +28,75 @@ pub enum Op {
     ///
     /// Operands: value: `i64`
     ///
-    /// Stack: **=>** value
+    /// Stack: **=>** i64
     PushInt,
 
     /// Push `f64` value on the stack.
     ///
     /// Operands: value: `f64`
     ///
-    /// Stack: **=>** value
+    /// Stack: **=>** f64
     PushFloat,
 
     /// Push `String` value on the stack.
     ///
     /// Operands: value: `(ptr: u64, len: i64)`
     ///
-    /// Stack: **=>** value
+    /// Stack: **=>** String
     PushString,
+
+    /// Pops 1 "slot" off the stack
+    ///
+    /// Operands:
+    ///
+    /// Stack: Word **=>**
+    Pop1,
+
+    /// Pops 2 "slots" off the stack
+    ///
+    /// Operands:
+    ///
+    /// Stack: Word2 **=>**
+    Pop2,
+
+    /// Pops N "slots" off the stack determined by the operand.
+    ///
+    /// Operands: num_slots: u16
+    ///
+    /// Stack: N*Word **=>**
+    PopN,
+
+    /// Gets a local of 1 slot size at the given offset
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: **=>** value
+    GetLocal,
+
+    /// Gets a local of 2 slot size at the given offset
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: **=>** value
+    GetLocal2,
+
+    /// Sets a local of 1 slot size to the given offset
+    /// The value to set is at the top of the stack, and
+    /// is not popped off the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: value **=>** value
+    SetLocal,
+
+    /// Sets a local of 2 slot size to the given offset
+    /// The value to set is at the top of the stack, and
+    /// is not popped off the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: value **=>** value
+    SetLocal2,
 
     /// Binary `+` operator for Int.
     ///
@@ -135,6 +191,8 @@ pub enum Op {
     /// Unconditional forwards jump by the given offset
     ///
     /// Operands: jump amount: `u32`
+    ///
+    /// Stack: **=>**
     Jump,
 
     /// Jumps forwards by the given offset if the top of
@@ -173,9 +231,12 @@ impl Op {
     /// Returns the size (in bytes) of the operand for each Op
     pub fn operand_size(&self) -> usize {
         match self {
-            Op::PushInt => size_of::<u64>(),
-            Op::PushFloat => size_of::<f64>(),
+            Op::PushInt => size_of::<Int>(),
+            Op::PushFloat => size_of::<Float>(),
             Op::PushString => size_of::<(u64, u64)>(),
+            Op::GetLocal | Op::GetLocal2 => size_of::<u16>(),
+            Op::SetLocal | Op::SetLocal2 => size_of::<u16>(),
+            Op::PopN => size_of::<u16>(),
             Op::Builtin => size_of::<u8>(),
             Op::Jump | Op::JumpIfFalse => size_of::<u32>(),
 

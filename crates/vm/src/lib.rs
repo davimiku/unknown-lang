@@ -1,5 +1,5 @@
 use builtins::{PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STR, PRINT_STR_CONSTANT};
-use codegen::{Chunk, InvalidOpError, Op, Readable};
+use codegen::{Chunk, Float, Int, InvalidOpError, Op, Readable};
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
@@ -78,11 +78,11 @@ impl<'a> VM<'a> {
             use Op::*;
             match op {
                 PushInt => {
-                    let constant = self.read::<i64>();
+                    let constant = self.read::<Int>();
                     self.stack.push_int(constant);
                 }
                 PushFloat => {
-                    let constant = self.read::<f64>();
+                    let constant = self.read::<Float>();
                     self.stack.push_float(constant);
                 }
                 PushString => {
@@ -95,6 +95,29 @@ impl<'a> VM<'a> {
                 PushFalse => {
                     self.stack.push_bool(false);
                 }
+                Pop1 => {
+                    self.stack.pop();
+                }
+                Pop2 => {
+                    self.stack.pop_two();
+                }
+                PopN => {
+                    let num_slots = self.read_byte();
+                    self.stack.pop_n(num_slots);
+                }
+                GetLocal => {
+                    let slot_index = self.read::<u16>();
+                    let val = self.stack.peek_at(slot_index as usize);
+                    self.stack.push(*val);
+                }
+                GetLocal2 => todo!(),
+                SetLocal => {
+                    let slot_index = self.read::<u16>();
+                    let val = self.stack.peek();
+                    self.stack.set(slot_index as usize, val);
+                }
+                SetLocal2 => todo!(),
+
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),
                 MulFloat => float_bin_op!(self, mul),
@@ -102,7 +125,7 @@ impl<'a> VM<'a> {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
                     if b == 0.0 {
-                        return Err(RuntimeError::RangeError);
+                        return Err(RuntimeError::DivideByZero);
                     }
 
                     let res = a / b;
@@ -110,7 +133,7 @@ impl<'a> VM<'a> {
                 }
                 NegateFloat => {
                     let top = self.stack.peek_float();
-                    self.stack.replace_top((-top).to_ne_bytes());
+                    self.stack.replace_top_two((-top).to_ne_bytes());
                 }
                 AddInt => int_bin_op!(self, add),
                 SubInt => int_bin_op!(self, sub),
@@ -125,6 +148,8 @@ impl<'a> VM<'a> {
                     let res = a / b;
                     self.stack.push_int(res);
                 }
+                RemInt => todo!(),
+                ConcatString => todo!(),
                 NegateInt => {
                     let top = self.stack.peek_int();
                     self.stack.replace_top((-top).to_ne_bytes());
@@ -135,13 +160,13 @@ impl<'a> VM<'a> {
                 }
                 Jump => {
                     let offset = self.read::<u32>();
-                    self.ip = self.ip + offset as usize;
+                    self.ip += offset as usize;
                 }
                 JumpIfFalse => {
                     let offset = self.read::<u32>();
                     let condition = self.stack.pop_bool();
                     if !condition {
-                        self.ip = self.ip + offset as usize;
+                        self.ip += offset as usize;
                     }
                 }
                 Ret => {
@@ -152,7 +177,6 @@ impl<'a> VM<'a> {
                     break Ok(());
                 }
                 Noop => {}
-                _ => unimplemented!("unimplemented Op {:?}", op),
             }
         }
     }
@@ -176,6 +200,7 @@ pub type InterpretResult = Result<(), RuntimeError>;
 pub enum RuntimeError {
     InvalidOpError(InvalidOpError),
     RangeError,
+    DivideByZero,
 }
 
 impl From<InvalidOpError> for RuntimeError {

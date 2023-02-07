@@ -32,20 +32,6 @@ pub(crate) fn check_expr(
     }
 }
 
-pub(crate) fn check_exprs<I>(
-    exprs: I,
-    results: &mut TypeCheckResults,
-    context: &Context,
-) -> Result<(), TypeDiagnostic>
-where
-    I: IntoIterator<Item = Idx<Expr>>,
-{
-    let exprs = exprs.into_iter();
-    let expr_types = exprs.map(|expr| infer_expr(expr, results, context));
-
-    todo!()
-}
-
 /// Is A a subtype of B
 ///
 /// A subtype allows for A to be used in expressions where B is expected.

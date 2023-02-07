@@ -1,8 +1,8 @@
+use crate::interner::Name;
+use crate::Expr;
 use la_arena::{Arena, ArenaMap, Idx};
-use std::fmt::{self, Write as FmtWrite};
+use std::collections::HashMap;
 use text_size::TextRange;
-
-use crate::{BinaryExpr, BlockExpr, CallExpr, Expr, FunctionExpr, LetBinding, UnaryExpr};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Database {
@@ -12,111 +12,16 @@ pub struct Database {
     /// Text ranges of the expressions from `exprs`
     /// Invariant: The indexes must be kept in sync
     pub(crate) expr_ranges: ArenaMap<Idx<Expr>, TextRange>,
-
-    /// Local (let) bindings of variable definitions
-    pub(crate) let_bindings: Arena<LetBinding>,
 }
 
 impl Database {
-    // TODO: reduce visibility after updating tests in vm::exec
-    pub fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
+    pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
 
         let range = ast.map_or(Default::default(), |ast| ast.range());
         self.expr_ranges.insert(idx, range);
 
         idx
-    }
-
-    pub(super) fn alloc_let_binding(&mut self, let_binding: LetBinding) -> Idx<LetBinding> {
-        self.let_bindings.alloc(let_binding)
-    }
-
-    fn fmt_expr(&self, s: &mut String, idx: Idx<Expr>, mut indent: usize) -> fmt::Result {
-        match &self.exprs[idx] {
-            Expr::Empty => write!(s, "{{empty}}"),
-
-            Expr::BoolLiteral(b) => write!(s, "{b}"),
-            Expr::FloatLiteral(f) => write!(s, "{f}"),
-            Expr::IntLiteral(i) => write!(s, "{i}"),
-            Expr::StringLiteral(sl) => write!(s, "{sl}"),
-
-            Expr::Call(CallExpr { path, args }) => {
-                write!(s, "{path} ")?;
-                if args.len() == 1 {
-                    self.fmt_expr(s, args[0], indent)
-                } else {
-                    write!(s, "(")?;
-                    for arg in args {
-                        self.fmt_expr(s, *arg, indent)?;
-                        write!(s, ",")?;
-                    }
-                    write!(s, ")")
-                }
-            }
-
-            Expr::Binary(BinaryExpr { op, lhs, rhs, .. }) => {
-                self.fmt_expr(s, *lhs, indent)?;
-
-                write!(s, " {} ", op)?;
-
-                self.fmt_expr(s, *rhs, indent)
-            }
-
-            Expr::Unary(UnaryExpr { op, expr, .. }) => {
-                write!(s, "{}", op)?;
-
-                self.fmt_expr(s, *expr, indent)
-            }
-
-            Expr::Block(BlockExpr { exprs, .. }) => {
-                writeln!(s, "{{")?;
-                indent += 4;
-
-                for idx in exprs {
-                    self.fmt_expr(s, *idx, indent)?;
-                }
-
-                indent -= 4;
-
-                write!(s, "{}}}", " ".repeat(indent))
-            }
-
-            Expr::VariableRef { name, .. } => write!(s, "{}", name),
-
-            Expr::Function(FunctionExpr {
-                params,
-                body,
-                return_type_annotation,
-            }) => {
-                write!(s, "fun (")?;
-
-                for param in params {
-                    self.fmt_expr(s, *param, indent)?;
-                }
-
-                write!(s, ") -> ")?;
-
-                if return_type_annotation.is_some() {
-                    let return_type = return_type_annotation.unwrap();
-                    self.fmt_expr(s, return_type, indent)?;
-                }
-
-                self.fmt_expr(s, *body, indent)
-            }
-
-            Expr::LetBinding(local_def) => {
-                // let def = &self.local_defs[*local_def];
-
-                // write!(s, "let _{:?} = ", local_def.into_raw())?;
-                // self.write_expr(s, def.value, indent);
-                todo!()
-            }
-
-            Expr::If(if_expr) => {
-                todo!()
-            }
-        }
     }
 }
 
@@ -135,7 +40,7 @@ mod tests {
     fn check_expr(input: &str, expected_hir: Expr) {
         let ast = parse_expr(input);
 
-        let mut context = Context::new();
+        let mut context = Context::default();
         let actual = context.lower_expr(Some(ast));
 
         let mut expected_database = Database::default();
@@ -147,15 +52,8 @@ mod tests {
         );
     }
 
-    fn init_arenas() -> (Arena<Expr>, ArenaMap<Idx<Expr>, TextRange>) {
-        let exprs = Arena::new();
-        let expr_ranges = ArenaMap::default();
-
-        (exprs, expr_ranges)
-    }
-
     #[test]
-    #[ignore = "TODO: revisit after finishing Stmt -> Expr for LetBinding"]
+    #[ignore = "TODO: revisit after finishing LetBinding"]
     fn experiment_lower_variable_def() {
         // let input = "let a = b";
         // let root = parse(input);
@@ -170,26 +68,25 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: revisit after finishing Stmt -> Expr for LetBinding"]
+    #[ignore = "TODO: Figure out how to test with interned strings"]
     fn lower_let_binding() {
-        let input = "let a = 1";
-        let mut exprs = Arena::new();
+        // let input = "let a = 1";
+        // let mut exprs = Arena::new();
 
-        let expected_let_binding = LetBinding {
-            ast: todo!(),
-            type_annotation: None,
-            value: exprs.alloc(Expr::IntLiteral(1)),
-        };
-        let expected_hir = Expr::LetBinding(expected_let_binding);
+        // let expected_let_binding = LocalDef {
+        //     key
+        //     name: "a".to_owned(),
+        //     type_annotation: None,
+        //     value: exprs.alloc(Expr::IntLiteral(1)),
+        //     local_idx: 0,
+        // };
+        // let expected_hir = Expr::LocalDef(expected_let_binding);
 
-        check_expr(input, expected_hir);
+        // check_expr(input, expected_hir);
     }
 
     #[test]
-    #[ignore = "not being parsed correctly"]
-    // currently being parsed as Stmt::VariableDef.value == Empty
-    // should parse the expression still (IntLiteral 10)
-    // but the identifier (pattern) is missing
+    #[ignore = "TODO: Figure out how to test with interned strings"]
     fn lower_variable_def_without_name() {
         // let root = parse("let = 10");
         // let ast = root.stmts().next().unwrap();
@@ -209,20 +106,20 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: revisit after finishing Stmt -> Expr for LetBinding"]
-
+    #[ignore = "TODO: Figure out how to test with interned strings"]
     fn lower_variable_def_without_value() {
-        let input = "let a =";
-        // let mut exprs = Arena::new();
+        // let input = "let a =";
+        // // let mut exprs = Arena::new();
 
-        let expected_let_binding = LetBinding {
-            ast: todo!(),
-            type_annotation: None,
-            value: todo!(),
-        };
-        let expected_hir = Expr::LetBinding(expected_let_binding);
+        // let expected_let_binding = LocalDef {
+        //     name: todo!(),
+        //     type_annotation: None,
+        //     value: todo!(),
+        //     local_idx: todo!(),
+        // };
+        // let expected_hir = Expr::LocalDef(expected_let_binding);
 
-        check_expr(input, expected_hir);
+        // check_expr(input, expected_hir);
     }
 
     #[test]
@@ -268,22 +165,6 @@ mod tests {
     fn lower_string_literal() {
         let input = r#""hello""#;
         let expected_hir = Expr::StringLiteral("hello".to_string());
-
-        check_expr(input, expected_hir)
-    }
-
-    #[test]
-    fn lower_variable_ref() {
-        let input = "foo";
-        let expected_hir = Expr::VariableRef { name: "foo".into() };
-
-        check_expr(input, expected_hir)
-    }
-
-    #[test]
-    fn lower_paren_expr() {
-        let input = "((((((abc))))))";
-        let expected_hir = Expr::VariableRef { name: "abc".into() };
 
         check_expr(input, expected_hir)
     }

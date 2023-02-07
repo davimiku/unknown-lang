@@ -10,13 +10,13 @@ mod builtins;
 mod check;
 mod infer;
 mod types;
-use std::ops::Index;
+use std::collections::HashMap;
 
 use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::Type;
 
-use crate::{Context, Expr};
+use crate::{Context, Expr, LocalDefKey, LocalRefName};
 
 use self::check::check_expr;
 
@@ -33,24 +33,34 @@ pub struct TypeCheckResults {
     /// Correctly resolved types (inferred or checked)
     /// mapped to the corresponding `Expr` index.
     expr_types: ArenaMap<Idx<Expr>, Type>,
-}
 
-impl Index<Idx<Expr>> for TypeCheckResults {
-    type Output = Type;
-
-    fn index(&self, idx: Idx<Expr>) -> &Self::Output {
-        &self.expr_types[idx]
-    }
+    local_types: HashMap<LocalDefKey, Type>,
 }
 
 impl TypeCheckResults {
-    pub(super) fn set_type(&mut self, idx: Idx<Expr>, r#type: Type) {
-        self.expr_types.insert(idx, r#type)
+    pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Option<&Type> {
+        self.expr_types.get(idx)
     }
+
+    pub(super) fn set_expr_type(&mut self, idx: Idx<Expr>, ty: Type) {
+        self.expr_types.insert(idx, ty);
+    }
+
+    // pub(super) fn get_local_type(&self, key: &LocalDefKey) -> Option<&Type> {
+    //     dbg!(&self.local_types);
+    //     self.local_types.get(key)
+    // }
+
+    // pub(super) fn set_local_type(&mut self, key: LocalDefKey, ty: Type) {
+    //     self.local_types.insert(key, ty);
+    // }
 
     #[cfg(test)]
     pub(super) fn with_expr_types(expr_types: ArenaMap<Idx<Expr>, Type>) -> Self {
-        Self { expr_types }
+        Self {
+            expr_types,
+            ..Default::default()
+        }
     }
 }
 
@@ -78,6 +88,9 @@ pub enum TypeDiagnosticVariant {
     TypeMismatch {
         expected: Type,
         actual: Type,
+    },
+    UndefinedLocal {
+        name: LocalRefName,
     },
     Undefined {
         name: String,

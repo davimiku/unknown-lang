@@ -1,6 +1,3 @@
-#[cfg(not(test))]
-use std::fs;
-
 use std::io;
 
 fn main() -> io::Result<()> {
@@ -23,6 +20,7 @@ fn main() -> io::Result<()> {
 
 #[cfg(test)]
 #[test]
+#[ignore = "not a real unit test"]
 fn test_main() {
     let main_result = main();
 
@@ -31,7 +29,6 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    // TODO: not working
     let program = r#"if false { print "then branch" } else { print "else branch" }"#;
 
     Ok(program.to_owned())
@@ -39,5 +36,5 @@ fn get_program_input() -> io::Result<String> {
 
 #[cfg(not(test))]
 fn get_program_input() -> io::Result<String> {
-    fs::read_to_string("test.txt")
+    std::fs::read_to_string("test.txt")
 }

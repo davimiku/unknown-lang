@@ -77,10 +77,11 @@ impl Expr {
             SyntaxKind::IfExpr => Self::If(IfExpr(node)),
             SyntaxKind::InfixExpr => Self::cast_binary(node),
             SyntaxKind::IntExpr => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
             SyntaxKind::LoopExpr => Self::Loop(LoopExpr(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
-            SyntaxKind::Path => Self::Ident(Ident(node)), // ???
+            SyntaxKind::Path => Self::Ident(Ident(node)), // is this ever constructed?
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
@@ -400,12 +401,16 @@ impl IntLiteral {
 pub struct LetBinding(SyntaxNode);
 
 impl LetBinding {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::LetBinding).then_some(Self(node))
+    }
+
     // TODO: Pattern rather than name (Ident)
     pub fn name(&self) -> Option<SyntaxToken> {
         self.0
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .find(|token| token.kind() == SyntaxKind::Ident)
+            .children()
+            .find(|child| child.kind() == SyntaxKind::Ident)
+            .and_then(|ident| ident.first_token())
     }
 
     pub fn type_annotation(&self) -> Option<TypeExpr> {

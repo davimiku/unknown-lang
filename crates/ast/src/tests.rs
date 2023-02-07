@@ -226,3 +226,13 @@ fn if_else_if_expr() {
     let else_branch = assert_some!(if_expr.else_branch());
     assert_matches!(else_branch, Expr::If);
 }
+
+#[test]
+fn int_let_binding() {
+    let input = "let a = 1";
+
+    let parsed = parse_expr(input);
+
+    let let_binding = assert_matches!(parsed, Expr::LetBinding);
+    assert_eq!(let_binding.name().unwrap().text(), "a");
+}

@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use crate::{Chunk, Op};
+use crate::{Chunk, Float, Int, Op};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in codegen and vm
@@ -24,14 +24,14 @@ impl Op {
         let mut offset = offset + size_of::<Op>();
         match self {
             Op::PushInt => {
-                let int = chunk.read::<i64>(offset);
-                offset += size_of::<i64>();
+                let int = chunk.read::<Int>(offset);
+                offset += size_of::<Int>();
 
                 print!("{int}");
             }
             Op::PushFloat => {
-                let float = chunk.read::<f64>(offset);
-                offset += size_of::<f64>();
+                let float = chunk.read::<Float>(offset);
+                offset += size_of::<Float>();
 
                 print!("{float}");
             }
