@@ -1,36 +1,30 @@
-//! Takes an HIR node + maps of valuesfield1& types, produces a bytecode Chunk.
+//! Takes an HIR node + maps of values & types, produces a bytecode Chunk.
 //!
 //! The bytecode chunk contains:
-//! - The bytecode itself, including opcode and operands
+//! - The bytecode itself, including opcodes and operands
 //! - Text ranges corresponding to opcodes for debug information and errors
 //! - Constants pool for constants not encoded into operands, ex. strings
 //!
-//! This code generation is **not** a traditional single-pass compiler. For
+//! This code generation is not really a single pass through the HIR. For
 //! example, the jump offsets for if/else operations are not [back patched][backpatching].
 //! Functions that synthesize (synth) the bytecode return their values rather than directly
 //! writing to the chunk. That allows us to synth the "then branch" of an if/else and get its
 //! byte length to write the jump offset before writing the "then branch". This allows me to
 //! write correct code because I am horrible at manually dealing with byte offsets and bitwise
-//! operations.
-//!
-//! Overall, I'm not entirely pleased with the style of code in this module, but it's working
-//! for now. Open to better abstractions to express some of this in a cleaner way. Also, need
-//! to study some of the performance trade-offs of the Vec allocations with this strategy
-//! vs. some other possible ways of doing it.
+//! operations. There may be a performance impact of this that can be evaluated later.
 //!
 //! [backpatching]: https://stackoverflow.com/questions/15984671/what-does-backpatching-mean
 use la_arena::Idx;
 pub use op::{InvalidOpError, Op};
 use text_size::TextRange;
 
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{self, Debug, Display};
-use std::{default, mem};
+use std::mem;
 
-use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, LocalDef,
-    LocalRef, Type, UnaryExpr, UnaryOp,
-};
+use hir::{BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr};
+use hir::{IfExpr, LocalDefKey, LocalRef, LocalRefName, Type, UnaryExpr, UnaryOp};
 
 mod disassemble;
 mod op;
@@ -91,9 +85,17 @@ impl Code {
     }
 
     #[inline]
-    fn push_byte_2(&mut self, source: (u8, u8)) {
+    fn push_byte_pair(&mut self, source: (u8, u8)) {
         self.bytes.push(source.0);
         self.bytes.push(source.1);
+    }
+
+    #[inline]
+    fn push_u16(&mut self, source: u16) {
+        let source: [u8; 2] = source.to_le_bytes();
+
+        self.bytes.push(source[0]);
+        self.bytes.push(source[1]);
     }
 
     #[inline]
@@ -125,13 +127,11 @@ pub struct Chunk {
     /// constants pool that are not encoded as operands, ex. strings
     constants: Vec<u8>,
 
-    // TODO: temp?
-    // this works in Crafting Interpreters because of the assumption that
-    // all locals are the same size.
-    // Could use a Vec instead, mapping the index to the size?
-    local_count: u32,
+    /// Running total of the stack slots that have been allocated for locals
+    current_stack_slots: u16,
 
-    stack_slot_size: u32,
+    /// Map from a unique LocalDef to its slot in the stack (and its slot size??)
+    stack_slots: HashMap<LocalDefKey, u16>,
 }
 
 // TODO: make all pub(crate)
@@ -156,7 +156,7 @@ impl Chunk {
 
 // Functions to write to the Chunk
 impl Chunk {
-    pub fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
+    fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
         let code = self.synth_expr(expr, context);
 
         self.code.append(code);
@@ -179,9 +179,9 @@ impl Chunk {
             Binary(expr) => self.synth_binary_expr(expr, context),
             Unary(expr) => self.synth_unary_expr(expr, context),
             Function(expr) => self.synth_function_expr(expr, context),
-            LocalDef(expr) => self.synth_local_def(expr.value, context),
+            LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
             Call(expr) => self.synth_call_expr(expr, context),
-            LocalRef(expr) => self.synth_variable_ref(expr_idx, expr, context),
+            LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
             Block(expr) => self.synth_block_expr(expr, context),
             If(expr) => self.synth_if_expr(expr, context),
 
@@ -292,28 +292,42 @@ impl Chunk {
         todo!()
     }
 
-    fn synth_local_def(&mut self, value: Idx<Expr>, context: &Context) -> Code {
+    fn synth_local_def(&mut self, key: LocalDefKey, value: Idx<Expr>, context: &Context) -> Code {
+        let mut code = self.synth_expr(value, context);
+
         let expr_type = context.type_of_expr(value);
         let word_size = word_size_of(expr_type);
 
-        self.local_count += 1;
-        self.stack_slot_size += word_size;
-        self.synth_expr(value, context)
+        let set_op = match word_size {
+            0 => unreachable!(),
+            1 => Op::SetLocal,
+            2 => Op::SetLocal2,
+
+            _ => Op::SetLocalN,
+        };
+        code.append(Code::from_op(set_op, TextRange::default()));
+        code.extend_from_slice(&self.current_stack_slots.to_le_bytes());
+        if set_op == Op::SetLocalN {
+            code.extend_from_slice(&word_size.to_le_bytes());
+        }
+
+        self.stack_slots.insert(key, self.current_stack_slots);
+        self.current_stack_slots += word_size;
+
+        code
     }
 
     fn synth_block_expr(&mut self, expr: &BlockExpr, context: &Context) -> Code {
         let BlockExpr { exprs } = expr;
 
-        let start_local_count = self.local_count;
-        let start_stack_slot_size = self.stack_slot_size;
+        let start_stack_slot_size = self.current_stack_slots;
 
         let mut code = Code::default();
         for expr in exprs {
             code.append(self.synth_expr(*expr, context));
         }
 
-        let locals_to_pop = self.local_count - start_local_count;
-        let slots_to_pop = self.stack_slot_size - start_stack_slot_size;
+        let slots_to_pop = self.current_stack_slots - start_stack_slot_size;
 
         match slots_to_pop {
             0 => {}
@@ -325,8 +339,7 @@ impl Chunk {
             }
         }
 
-        self.local_count = start_local_count;
-        self.stack_slot_size = start_stack_slot_size;
+        self.current_stack_slots = start_stack_slot_size;
 
         code
     }
@@ -388,28 +401,33 @@ impl Chunk {
         code
     }
 
-    fn synth_variable_ref(
-        &mut self,
-        expr_idx: Idx<Expr>,
-        expr: &LocalRef,
-        context: &Context,
-    ) -> Code {
+    fn synth_local_ref(&mut self, expr_idx: Idx<Expr>, expr: &LocalRef, context: &Context) -> Code {
         let expr_type = context.type_of_expr(expr_idx);
         let word_size = word_size_of(expr_type);
         let op = match word_size {
-            0 => todo!(), // unreachable?
+            0 => unreachable!(),
             1 => Op::GetLocal,
             2 => Op::GetLocal2,
 
-            n => todo!(), // need GetLocalN with 2 operands for size & offset
+            _ => Op::GetLocalN,
         };
 
-        let slot_depth = context;
-        let code = Code::from_op(op, TextRange::default());
+        let mut code = Code::from_op(op, TextRange::default());
 
-        // push u16 bytes of stack slot offset
+        let name = expr.name;
 
-        todo!()
+        if let LocalRefName::Resolved(key) = name {
+            let stack_slot_offset = self.stack_slots[&key];
+            code.extend_from_slice(&stack_slot_offset.to_le_bytes());
+
+            if op == Op::GetLocalN {
+                code.extend_from_slice(&word_size.to_le_bytes());
+            }
+        } else {
+            unreachable!()
+        }
+
+        code
     }
 
     fn synth_builtin_call(&mut self, path: &str, arg_types: Vec<&Type>) -> Code {
@@ -594,7 +612,7 @@ pub type Bool = u32;
 pub type StringLiteral = (u64, u64);
 
 // TODO: represent this as a static map or some other efficient form
-fn word_size_of(ty: &Type) -> u32 {
+fn word_size_of(ty: &Type) -> u16 {
     match ty {
         Type::Bool | Type::BoolLiteral(_) => mem::size_of::<Bool>() / WORD_SIZE,
         Type::Float | Type::FloatLiteral(_) => mem::size_of::<Float>() / WORD_SIZE,
@@ -608,7 +626,7 @@ fn word_size_of(ty: &Type) -> u32 {
         Type::Error => unreachable!(),
     }
     .try_into()
-    .expect("word size to not exceed u32::MAX")
+    .expect("word size to not exceed u16::MAX")
 }
 
 /// Types implementing this trait may be read from the bytecode.

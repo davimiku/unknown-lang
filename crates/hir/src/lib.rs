@@ -76,6 +76,7 @@ pub enum Expr {
 
     LocalDef(LocalDef),
 
+    // TODO: should If be a special case of Match?
     If(IfExpr),
 }
 
@@ -84,7 +85,7 @@ pub enum Expr {
 /// Defines a new variable in a given scope.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LocalDef {
-    key: LocalDefKey,
+    pub key: LocalDefKey,
 
     /// Expression value assigned to the variable
     pub value: Idx<Expr>,
@@ -412,27 +413,6 @@ mod tests {
         check_fmt(input, expected);
     }
 
-    fn debug(input: &str) -> (Idx<Expr>, Context) {
-        let parsed = parser::parse(input).syntax();
-        let root = ast::Root::cast(parsed).expect("valid Root node");
-        let mut context = Context::default();
-
-        let exprs: Vec<Idx<Expr>> = root
-            .exprs()
-            .map(|expr| context.lower_expr(Some(expr)))
-            .collect();
-
-        // wrap everything in a block
-        // TODO: instead wrap in a pseudo `main` function?
-        // or wrap in a "Module" kind of structure?
-        let root = Expr::Block(BlockExpr { exprs });
-        let root = context.alloc_expr(root, None);
-
-        dbg!(&context);
-
-        (root, context)
-    }
-
     // TODO: would be better if this checked the type of the tail expression
     // So input of `123` checks IntLiteral(123) -- the only expression
     // input of
@@ -477,14 +457,6 @@ mod tests {
             Expr::StringLiteral("Hello".to_string()),
             Type::StringLiteral("Hello".to_string()),
         )
-    }
-
-    #[test]
-    #[ignore = "Not a real test"]
-    fn debug_let_binding() {
-        let input = "let x = 1";
-
-        debug(input);
     }
 
     #[test]

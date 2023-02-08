@@ -111,12 +111,14 @@ impl<'a> VM<'a> {
                     self.stack.push(*val);
                 }
                 GetLocal2 => todo!(),
+                GetLocalN => todo!(),
                 SetLocal => {
                     let slot_index = self.read::<u16>();
                     let val = self.stack.peek();
                     self.stack.set(slot_index as usize, val);
                 }
                 SetLocal2 => todo!(),
+                SetLocalN => todo!(),
 
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),

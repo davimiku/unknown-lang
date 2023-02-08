@@ -29,7 +29,9 @@ fn test_if_else() {
 #[test]
 fn test_local_defs() {
     let input = r#"
-let a = 1
+let a = 5
+let b = 8
+print b
 print a"#;
 
     let chunk = generate_chunk(input);

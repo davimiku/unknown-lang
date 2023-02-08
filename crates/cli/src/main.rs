@@ -29,7 +29,21 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"if false { print "then branch" } else { print "else branch" }"#;
+    let program = r#"
+        let a = 10
+        print a
+        {
+            print a
+            let a = 20
+            {
+                print a
+                let a = 30
+                print a
+            }
+            print a
+        }
+        print a
+"#;
 
     Ok(program.to_owned())
 }

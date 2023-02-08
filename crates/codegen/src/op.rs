@@ -67,6 +67,7 @@ pub enum Op {
     PopN,
 
     /// Gets a local of 1 slot size at the given offset
+    /// and pushes it onto the stack.
     ///
     /// Operands: slot_offset: u16
     ///
@@ -74,15 +75,25 @@ pub enum Op {
     GetLocal,
 
     /// Gets a local of 2 slot size at the given offset
+    /// and pushes it onto the stack.
     ///
     /// Operands: slot_offset: u16
     ///
     /// Stack: **=>** value
     GetLocal2,
 
-    /// Sets a local of 1 slot size to the given offset
-    /// The value to set is at the top of the stack, and
-    /// is not popped off the stack.
+    /// Gets a local of N slot size at the given offset
+    /// and pushes it onto the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///           slot_size  : u16
+    ///
+    /// Stack: **=>** value
+    GetLocalN,
+
+    /// Peeks the top 1 slot size from the stack and sets
+    /// that value into the stack at the given offset.
+    /// The peeked value is not popped off the stack?
     ///
     /// Operands: slot_offset: u16
     ///
@@ -97,6 +108,16 @@ pub enum Op {
     ///
     /// Stack: value **=>** value
     SetLocal2,
+
+    /// Sets a local of N slot size to the given offset
+    /// The value to set is at the top of the stack, and
+    /// is not popped off the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///           slot_size  : u16
+    ///
+    /// Stack: value **=>** value
+    SetLocalN,
 
     /// Binary `+` operator for Int.
     ///

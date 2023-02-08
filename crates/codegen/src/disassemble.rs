@@ -42,6 +42,14 @@ impl Op {
                 let s = chunk.get_str_constant(idx, len);
                 print!("\"{s}\"");
             }
+            Op::GetLocal | Op::GetLocal2 | Op::SetLocal | Op::SetLocal2 => {
+                let slot_offset = chunk.read::<u16>(offset);
+                offset += size_of::<u16>();
+
+                print!("{slot_offset}");
+            }
+            Op::GetLocalN => todo!(),
+            Op::SetLocalN => todo!(),
             Op::ConcatString => {
                 //
             }
