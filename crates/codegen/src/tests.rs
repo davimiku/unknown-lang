@@ -14,8 +14,11 @@ fn test_print_call() {
 }
 
 #[test]
-fn test_print_input() {
-    //
+fn test_string_concatenation() {
+    let input = r#""Hello, " + "World!"#;
+
+    let chunk = generate_chunk(input);
+    println!("{chunk}")
 }
 
 #[test]

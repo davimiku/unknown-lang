@@ -1,6 +1,9 @@
 use std::mem::size_of;
 
-use crate::{Chunk, Float, Int, Op};
+use crate::{
+    string::{AllocationStrategy, XString},
+    Chunk, Op, Readable, XFloat, XInt,
+};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in codegen and vm
@@ -11,6 +14,14 @@ pub const BUILTIN_NAMES: [&str; 5] = [
     "print_float",
     "print_bool",
 ];
+
+fn read<T: Readable>(chunk: &Chunk, offset: &mut usize) -> T {
+    let val = chunk.read::<T>(*offset);
+
+    *offset += size_of::<T>();
+
+    val
+}
 
 impl Op {
     /// Prints a dissassembled form of the instruction.
@@ -24,46 +35,67 @@ impl Op {
         let mut offset = offset + size_of::<Op>();
         match self {
             Op::PushInt => {
-                let int = chunk.read::<Int>(offset);
-                offset += size_of::<Int>();
+                let int = read::<XInt>(chunk, &mut offset);
 
                 print!("{int}");
             }
             Op::PushFloat => {
-                let float = chunk.read::<Float>(offset);
-                offset += size_of::<Float>();
+                let float = read::<XFloat>(chunk, &mut offset);
 
                 print!("{float}");
             }
             Op::PushString => {
-                let (idx, len) = chunk.read_str(offset);
-                offset += size_of::<(u64, u64)>();
+                let s = read::<XString>(chunk, &mut offset);
 
-                let s = chunk.get_str_constant(idx, len);
-                print!("\"{s}\"");
-            }
-            Op::GetLocal | Op::GetLocal2 | Op::SetLocal | Op::SetLocal2 => {
-                let slot_offset = chunk.read::<u16>(offset);
-                offset += size_of::<u16>();
+                match s.tag {
+                    AllocationStrategy::Heap => print!("[heap-allocated String]"),
+                    AllocationStrategy::ConstantsPool => {
+                        let start = s.loc as usize;
+                        let end = (s.loc + (s.len as u64)) as usize;
 
-                print!("{slot_offset}");
+                        let string_bytes = chunk.constants_slice(start..end);
+                        let s =
+                            std::str::from_utf8(string_bytes).expect("bytes should be valid UTF-8");
+
+                        print!("\"{s}\"")
+                    }
+                }
             }
-            Op::GetLocalN => todo!(),
-            Op::SetLocalN => todo!(),
+
+            Op::GetLocal
+            | Op::GetLocal2
+            | Op::GetLocal4
+            | Op::SetLocal
+            | Op::SetLocal2
+            | Op::SetLocal4 => {
+                let slot_offset = read::<u16>(chunk, &mut offset);
+
+                print!("offset: {slot_offset}");
+            }
+            Op::GetLocalN | Op::SetLocalN => {
+                let slot_offset = read::<u16>(chunk, &mut offset);
+                let slot_size = read::<u16>(chunk, &mut offset);
+
+                print!("offset: {slot_offset}, size:{slot_size}");
+            }
             Op::ConcatString => {
                 //
             }
             Op::Builtin => {
-                let builtin_idx = chunk.read::<u8>(offset);
-                offset += size_of::<u8>();
+                let builtin_idx = read::<u8>(chunk, &mut offset);
 
                 print!("{}", BUILTIN_NAMES[builtin_idx as usize])
             }
             Op::Jump | Op::JumpIfFalse => {
-                let jump_offset = chunk.read::<u32>(offset);
-                offset += size_of::<i32>();
+                let jump_offset = read::<u32>(chunk, &mut offset);
 
                 print!("{jump_offset}")
+            }
+
+            Op::PopN => {
+                let num_slots = read::<u16>(chunk, &mut offset);
+
+                print!("{num_slots}")
             }
             _ => {}
         };

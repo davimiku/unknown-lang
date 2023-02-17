@@ -1,4 +1,4 @@
-use crate::Name;
+use crate::{interner::Interner, Name};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -16,6 +16,25 @@ pub enum Type {
     Named(Name),
     Unit,
     // Fun -- (Vec<Type>, Type) ? for params type and return type
+}
+
+impl Type {
+    pub(crate) fn display(&self, interner: &Interner) -> String {
+        match self {
+            Type::Undetermined => "Undetermined".to_string(),
+            Type::Error => "Error".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::BoolLiteral(b) => b.to_string(),
+            Type::Float => "Float".to_string(),
+            Type::FloatLiteral(f) => f.to_string(),
+            Type::Int => "Int".to_string(),
+            Type::IntLiteral(i) => i.to_string(),
+            Type::String => "String".to_string(),
+            Type::StringLiteral(s) => format!("\"{s}\""),
+            Type::Named(name) => interner.lookup(*name).to_string(),
+            Type::Unit => "Unit".to_string(),
+        }
+    }
 }
 
 impl Default for Type {

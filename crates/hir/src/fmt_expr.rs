@@ -1,8 +1,8 @@
 use la_arena::Idx;
 
 use crate::{
-    interner::Interner, BinaryExpr, BlockExpr, CallExpr, Context, Expr, FunctionExpr, LocalDef,
-    LocalRef, LocalRefName, Type, UnaryExpr,
+    interner::Interner, typecheck::fmt_local_types, BinaryExpr, BlockExpr, CallExpr, Context, Expr,
+    FunctionExpr, LocalDef, LocalRef, LocalRefName, Type, UnaryExpr,
 };
 
 const DEFAULT_INDENT: usize = 4;
@@ -11,7 +11,16 @@ const DEFAULT_INDENT: usize = 4;
 ///
 /// This format is not stable and should not be used in machine parsing. It is
 /// meant to be read and understood by humans, and may be used in some test cases.
-pub(super) fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
+pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
+    let mut s = String::new();
+    fmt_expr(&mut s, idx, context, 0);
+
+    fmt_local_types(&mut s, &context.typecheck_results, &context.interner);
+
+    s
+}
+
+pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
     let mut indent = indent;
     let expr = context.expr(idx);
     match expr {
@@ -119,7 +128,7 @@ pub(super) fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent
 
 // TODO: need a fmt_type_expr ?
 
-fn fmt_type(ty: &Type, interner: &Interner) -> String {
+pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
     match ty {
         Type::Undetermined => "~Undetermined~".to_owned(),
         Type::Error => "~Error~".to_owned(),

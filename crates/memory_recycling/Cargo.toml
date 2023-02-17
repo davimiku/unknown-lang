@@ -1,5 +1,5 @@
 [package]
-name = "garbage_collection"
+name = "memory_recycling"
 version = "0.1.0"
 edition = "2021"
 

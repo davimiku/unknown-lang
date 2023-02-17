@@ -3,8 +3,9 @@ use std::fmt;
 use std::mem;
 use std::mem::size_of;
 
-use crate::Float;
-use crate::Int;
+use crate::XFloat;
+use crate::XInt;
+use crate::XString;
 
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -40,7 +41,9 @@ pub enum Op {
 
     /// Push `String` value on the stack.
     ///
-    /// Operands: value: `(ptr: u64, len: i64)`
+    /// Operands: value: `(idx: u64, len: u64)`
+    /// or
+    /// Operands: value: `(ptr: u64, len: u64)`
     ///
     /// Stack: **=>** String
     PushString,
@@ -58,6 +61,13 @@ pub enum Op {
     ///
     /// Stack: Word2 **=>**
     Pop2,
+
+    /// Pops 4 "slots" off the stack
+    ///
+    /// Operands:
+    ///
+    /// Stack: Word4 **=>**
+    Pop4,
 
     /// Pops N "slots" off the stack determined by the operand.
     ///
@@ -82,11 +92,19 @@ pub enum Op {
     /// Stack: **=>** value
     GetLocal2,
 
-    /// Gets a local of N slot size at the given offset
+    /// Gets a local of 4 slot size at the given offset
     /// and pushes it onto the stack.
     ///
     /// Operands: slot_offset: u16
-    ///           slot_size  : u16
+    ///
+    /// Stack: **=>** value
+    GetLocal4,
+
+    /// Gets a local of N slots at the given offset
+    /// and pushes it onto the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///           num_slots  : u16
     ///
     /// Stack: **=>** value
     GetLocalN,
@@ -109,12 +127,21 @@ pub enum Op {
     /// Stack: value **=>** value
     SetLocal2,
 
-    /// Sets a local of N slot size to the given offset
+    /// Sets a local of 4 slot size to the given offset
     /// The value to set is at the top of the stack, and
     /// is not popped off the stack.
     ///
     /// Operands: slot_offset: u16
-    ///           slot_size  : u16
+    ///
+    /// Stack: value **=>** value
+    SetLocal4,
+
+    /// Sets a local of N slots to the given offset.
+    /// The value to set is at the top of the stack, and
+    /// is not popped off the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///           num_slots  : u16
     ///
     /// Stack: value **=>** value
     SetLocalN,
@@ -250,13 +277,14 @@ impl Op {
     }
 
     /// Returns the size (in bytes) of the operand for each Op
-    pub fn operand_size(&self) -> usize {
+    pub(crate) fn operand_size(&self) -> usize {
         match self {
-            Op::PushInt => size_of::<Int>(),
-            Op::PushFloat => size_of::<Float>(),
-            Op::PushString => size_of::<(u64, u64)>(),
-            Op::GetLocal | Op::GetLocal2 => size_of::<u16>(),
-            Op::SetLocal | Op::SetLocal2 => size_of::<u16>(),
+            Op::PushInt => size_of::<XInt>(),
+            Op::PushFloat => size_of::<XFloat>(),
+            Op::PushString => size_of::<XString>(),
+            Op::GetLocal | Op::GetLocal2 | Op::GetLocal4 => size_of::<u16>(),
+            Op::SetLocal | Op::SetLocal2 | Op::SetLocal4 => size_of::<u16>(),
+            Op::GetLocalN | Op::SetLocalN => size_of::<(u16, u16)>(),
             Op::PopN => size_of::<u16>(),
             Op::Builtin => size_of::<u8>(),
             Op::Jump | Op::JumpIfFalse => size_of::<u32>(),

@@ -1,3 +1,4 @@
+/// Implements arithmetic operations for integers
 #[macro_export]
 macro_rules! int_bin_op {
     ($self: ident, $f: ident) => {{
@@ -10,6 +11,7 @@ macro_rules! int_bin_op {
     }};
 }
 
+/// Implements arithmetic operations for floats
 #[macro_export]
 macro_rules! float_bin_op {
     ($self: ident, $f: ident) => {{

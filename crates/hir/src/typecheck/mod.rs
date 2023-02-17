@@ -16,7 +16,7 @@ use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::Type;
 
-use crate::{Context, Expr, LocalDefKey, LocalRefName};
+use crate::{interner::Interner, BinaryOp, Context, Expr, LocalDefKey, LocalRefName};
 
 use self::check::check_expr;
 
@@ -54,13 +54,16 @@ impl TypeCheckResults {
     // pub(super) fn set_local_type(&mut self, key: LocalDefKey, ty: Type) {
     //     self.local_types.insert(key, ty);
     // }
+}
 
-    #[cfg(test)]
-    pub(super) fn with_expr_types(expr_types: ArenaMap<Idx<Expr>, Type>) -> Self {
-        Self {
-            expr_types,
-            ..Default::default()
-        }
+pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, interner: &Interner) {
+    if !results.local_types.is_empty() {
+        s.push('\n');
+    }
+    for (key, ty) in results.local_types.iter() {
+        s.push_str(&key.display(interner));
+        s.push_str(" : ");
+        s.push_str(&format!("{}\n", ty.display(interner)));
     }
 }
 
@@ -84,6 +87,11 @@ pub enum TypeDiagnosticVariant {
         name: String,
         expected: u32,
         actual: u32,
+    },
+    BinaryMismatch {
+        op: BinaryOp,
+        lhs: Type,
+        rhs: Type,
     },
     TypeMismatch {
         expected: Type,

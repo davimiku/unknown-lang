@@ -48,8 +48,6 @@ pub(crate) struct Scopes {
 
     current_node_id: id_tree::NodeId,
 
-    // scopes: Vec<Scope>,
-    // pub(crate) current_idx: usize,
     /// Local definition counts
     pub(crate) local_counts: HashMap<Name, u32>,
 }

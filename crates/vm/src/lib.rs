@@ -1,5 +1,5 @@
-use builtins::{PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STR, PRINT_STR_CONSTANT};
-use codegen::{Chunk, Float, Int, InvalidOpError, Op, Readable};
+use builtins::{PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STRING};
+use codegen::{AllocationStrategy, Chunk, InvalidOpError, Op, Readable, XFloat, XInt, XString};
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
@@ -8,15 +8,25 @@ mod builtins;
 mod macros;
 mod stack;
 
-pub fn run(chunk: &Chunk) -> InterpretResult {
+pub fn run(chunk: Chunk) -> InterpretResult {
     let mut vm = VM::new(chunk);
     vm.interpret()
 }
 
-#[derive(Debug)]
-pub(crate) struct VM<'a> {
+/// Raw bytes representation of one "word" of the VM
+// TODO: these should be newtypes, not aliases. The type signature of other functions
+// becomes confusing and there are too many ad-hoc conversions.
+// Consolidate all bytemuck::cast into newtype constructors and From traits
+type Word = [u8; 4];
+type DWord = [u8; 8];
+type QWord = [u8; 16];
+
+// type Word6 = [u8; 24]; // ex. List ?
+
+#[derive(Debug, Default)]
+pub struct VM {
     /// Chunk of bytecode to run
-    chunk: &'a Chunk,
+    chunk: Chunk,
 
     /// Instruction Pointer
     ip: usize, // TODO: review what the book says about a pointer being faster, needs unsafe?
@@ -25,8 +35,8 @@ pub(crate) struct VM<'a> {
     stack: Stack,
 }
 
-impl<'a> VM<'a> {
-    pub(crate) fn new(chunk: &'a Chunk) -> Self {
+impl VM {
+    pub(crate) fn new(chunk: Chunk) -> Self {
         VM {
             chunk,
             ip: 0,
@@ -57,37 +67,26 @@ impl<'a> VM<'a> {
         self.read::<u8>()
     }
 
-    /// Reads the stack representation of a string from the
-    /// current offset in the bytecode and increments the
-    /// instruction pointer.
-    ///
-    /// Returns the bytes read from the bytecode as (u64, u64)
-    #[inline]
-    fn read_str(&mut self) -> (u64, u64) {
-        self.read::<(u64, u64)>()
-    }
-
     fn run(&mut self) -> InterpretResult {
         loop {
             let op = self.chunk.get_op(self.ip)?;
             self.ip += 1;
 
-            // #[cfg(test)]
-            // self.debug_print(op);
-
             use Op::*;
             match op {
                 PushInt => {
-                    let constant = self.read::<Int>();
+                    let constant = self.read::<XInt>();
                     self.stack.push_int(constant);
                 }
                 PushFloat => {
-                    let constant = self.read::<Float>();
+                    let constant = self.read::<XFloat>();
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let (idx, len) = self.read_str();
-                    self.stack.push_str_constant(idx, len);
+                    let s = self.read::<XString>();
+                    self.stack.push_string(s);
+
+                    // dbg!(&self.stack);
                 }
                 PushTrue => {
                     self.stack.push_bool(true);
@@ -99,26 +98,64 @@ impl<'a> VM<'a> {
                     self.stack.pop();
                 }
                 Pop2 => {
-                    self.stack.pop_two();
+                    self.stack.pop_dword();
+                }
+                Pop4 => {
+                    self.stack.pop_qword();
                 }
                 PopN => {
                     let num_slots = self.read_byte();
                     self.stack.pop_n(num_slots);
                 }
                 GetLocal => {
-                    let slot_index = self.read::<u16>();
-                    let val = self.stack.peek_at(slot_index as usize);
-                    self.stack.push(*val);
+                    let slot_offset = self.read::<u16>() as usize;
+                    let val = self.stack.peek_word_at(slot_offset);
+                    self.stack.push_word(*val);
                 }
-                GetLocal2 => todo!(),
+                GetLocal2 => {
+                    let slot_offset = self.read::<u16>() as usize;
+                    let vals = self.stack.peek_dword_at(slot_offset);
+
+                    self.stack.push_dword(*vals);
+                }
+                GetLocal4 => {
+                    let slot_offset = self.read::<u16>() as usize;
+                    let vals = self.stack.peek_qword_at(slot_offset);
+
+                    self.stack.push_qword(*vals);
+                }
                 GetLocalN => todo!(),
                 SetLocal => {
-                    let slot_index = self.read::<u16>();
-                    let val = self.stack.peek();
-                    self.stack.set(slot_index as usize, val);
+                    let slot_offset = self.read::<u16>() as usize;
+                    let word = self.stack.peek_word();
+                    self.stack.set_word_at(word, slot_offset);
                 }
-                SetLocal2 => todo!(),
-                SetLocalN => todo!(),
+                SetLocal2 => {
+                    let slot_offset = self.read::<u16>() as usize;
+                    let val = self.stack.peek_dword();
+                    let words: [Word; 2] = bytemuck::cast(*val);
+
+                    for (i, word) in words.iter().enumerate() {
+                        self.stack.set_word_at(*word, slot_offset + i);
+                    }
+                }
+                SetLocal4 => {
+                    let slot_offset = self.read::<u16>() as usize;
+                    let val = self.stack.peek_qword();
+                    let words: [Word; 4] = bytemuck::cast(*val);
+
+                    for (i, word) in words.iter().enumerate() {
+                        self.stack.set_word_at(*word, slot_offset + i);
+                    }
+                }
+                SetLocalN => {
+                    let slot_offset = self.read::<u16>();
+                    let num_slots = self.read::<u16>();
+
+                    // let val = self.stack.peek_n(num_slots.into());
+
+                    todo!()
+                }
 
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),
@@ -135,7 +172,7 @@ impl<'a> VM<'a> {
                 }
                 NegateFloat => {
                     let top = self.stack.peek_float();
-                    self.stack.replace_top_two((-top).to_ne_bytes());
+                    self.stack.replace_top_dword((-top).to_le_bytes());
                 }
                 AddInt => int_bin_op!(self, add),
                 SubInt => int_bin_op!(self, sub),
@@ -150,12 +187,12 @@ impl<'a> VM<'a> {
                     let res = a / b;
                     self.stack.push_int(res);
                 }
-                RemInt => todo!(),
-                ConcatString => todo!(),
                 NegateInt => {
                     let top = self.stack.peek_int();
-                    self.stack.replace_top((-top).to_ne_bytes());
+                    self.stack.replace_top_word((-top).to_le_bytes());
                 }
+                RemInt => todo!(),
+                ConcatString => todo!(),
                 Builtin => {
                     let builtin_idx = self.read_byte();
                     self.exec_builtin(builtin_idx);
@@ -183,11 +220,71 @@ impl<'a> VM<'a> {
         }
     }
 
+    /// Allocates memory for a string and returns a raw pointer
+    ///
+    /// It is the caller's responsibility to free the memory for this string
+    pub fn alloc_string(&self, s: &str) -> (*const u8, usize) {
+        let count = s.len();
+        let src = s.as_ptr();
+
+        let layout = std::alloc::Layout::array::<u8>(count).expect("valid layout");
+        unsafe {
+            let dst = std::alloc::alloc(layout);
+            std::ptr::copy_nonoverlapping(src, dst, count);
+
+            (dst, count)
+        }
+    }
+
+    /// Dereferences the UTF-8 string contents from the allocation
+    pub fn deref_string(&self, s: XString) -> &str {
+        let string_bytes = match s.tag {
+            AllocationStrategy::Heap => {
+                let data = s.loc as *const u8;
+
+                unsafe { std::slice::from_raw_parts(data, s.len as usize) }
+            }
+            AllocationStrategy::ConstantsPool => {
+                let start = s.loc as usize;
+                let end = (s.loc + (s.len as u64)) as usize;
+
+                // Safety: The compiler must have correctly allocated valid UTF-8
+                // bytes and correctly generated the bytecode string during codegen
+                #[cfg(not(debug_assertions))]
+                {
+                    self.chunk.constants_slice_unchecked(start..end)
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    self.chunk.constants_slice(start..end)
+                }
+            }
+        };
+
+        #[cfg(not(debug_assertions))]
+        {
+            std::str::from_utf8_unchecked(string_bytes)
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            std::str::from_utf8(string_bytes).expect("bytes should be valid UTF-8")
+        }
+    }
+
     fn exec_builtin(&mut self, i: u8) {
         // TODO: move builtins to an array/map or something to not hard-code
+        // TODO: define builtins as an enum, convert the u8 to the enum and match
+        // Potentially define as "metadata":
+        //  - num slots to pop from the stack and pass to the builtin
+        //  - num slots to expect returned by the builtin to push back to the stack
+        //
+        // So builtins shouldn't need access to the stack at all but they will need
+        // shared access to the chunk to deref constants (ex. strings)?
         match i {
-            PRINT_STR_CONSTANT => self.print_str_constant(),
-            PRINT_STR => {} // self.print_str
+            0 => unreachable!("no builtin at the zero byte"),
+            PRINT_STRING => self.print_string(),
             PRINT_INT => self.print_int(),
             PRINT_FLOAT => self.print_float(),
             PRINT_BOOL => self.print_bool(),

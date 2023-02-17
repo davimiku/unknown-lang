@@ -14,25 +14,28 @@
 //! operations. There may be a performance impact of this that can be evaluated later.
 //!
 //! [backpatching]: https://stackoverflow.com/questions/15984671/what-does-backpatching-mean
-use la_arena::Idx;
 pub use op::{InvalidOpError, Op};
+pub use string::{AllocationStrategy, XString};
+
+use la_arena::Idx;
 use text_size::TextRange;
 
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::{self, Debug, Display};
 use std::mem;
+use std::ops::Range;
 
 use hir::{BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr};
 use hir::{IfExpr, LocalDefKey, LocalRef, LocalRefName, Type, UnaryExpr, UnaryOp};
 
 mod disassemble;
 mod op;
+mod string;
 #[cfg(test)]
 mod tests;
 
 // TODO: extract to a shared "builtins" crate
-pub const PRINT_STR_CONSTANT: u8 = 0;
 pub const PRINT_STR: u8 = 1;
 pub const PRINT_INT: u8 = 2;
 pub const PRINT_FLOAT: u8 = 3;
@@ -99,6 +102,18 @@ impl Code {
     }
 
     #[inline]
+    fn push_word(&mut self, source: Word) {
+        self.bytes.extend_from_slice(&source);
+    }
+
+    #[inline]
+    fn extend<T: IntoIterator<Item = Word>>(&mut self, iter: T) {
+        for word in iter {
+            self.push_word(word);
+        }
+    }
+
+    #[inline]
     fn extend_from_slice(&mut self, source: &[u8]) {
         self.bytes.extend_from_slice(source);
     }
@@ -134,27 +149,14 @@ pub struct Chunk {
     stack_slots: HashMap<LocalDefKey, u16>,
 }
 
-// TODO: make all pub(crate)
+// Constructors
 impl Chunk {
     fn new() -> Self {
         Default::default()
     }
-
-    #[cfg(test)]
-    pub fn new_with(bytecode: Vec<u8>, ranges: Vec<TextRange>, constants: Vec<u8>) -> Self {
-        let code = Code {
-            bytes: bytecode,
-            ranges,
-        };
-        Self {
-            code,
-            constants,
-            ..Default::default()
-        }
-    }
 }
 
-// Functions to write to the Chunk
+// Mutating functions
 impl Chunk {
     fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
         let code = self.synth_expr(expr, context);
@@ -187,7 +189,7 @@ impl Chunk {
 
             // This should be unreachable, codegen should never start if lowering failed
             // TODO: add some machinery for some debug output and gracefully abort
-            Empty => unreachable!(),
+            Empty => unreachable!("encountered Empty expression during codegen"),
         }
     }
 
@@ -205,27 +207,32 @@ impl Chunk {
 
     fn synth_float_constant(&self, value: f64, range: TextRange) -> Code {
         let mut code: Code = self.synth_op(Op::PushFloat, range).into();
-        code.extend_from_slice(&value.to_ne_bytes());
+        code.extend_from_slice(&value.to_le_bytes());
 
         code
     }
 
-    fn synth_int_constant(&self, value: Int, range: TextRange) -> Code {
+    fn synth_int_constant(&self, value: XInt, range: TextRange) -> Code {
         let mut code: Code = self.synth_op(Op::PushInt, range).into();
-        code.extend_from_slice(&value.to_ne_bytes());
+        code.extend_from_slice(&value.to_le_bytes());
 
         code
     }
 
     fn synth_string_constant(&mut self, value: &str, range: TextRange) -> Code {
         let idx = self.constants.len();
-        let len = value.len();
+        let len = value.len() as u32;
         self.constants.extend(value.as_bytes());
 
         let mut code = Code::default();
         code.push(self.synth_op(Op::PushString, range));
-        code.extend_from_slice(&idx.to_ne_bytes());
-        code.extend_from_slice(&len.to_ne_bytes());
+
+        let s = XString {
+            loc: idx as u64,
+            len,
+            tag: AllocationStrategy::ConstantsPool,
+        };
+        code.extend(s.to_words());
 
         code
     }
@@ -302,6 +309,7 @@ impl Chunk {
             0 => unreachable!(),
             1 => Op::SetLocal,
             2 => Op::SetLocal2,
+            4 => Op::SetLocal4,
 
             _ => Op::SetLocalN,
         };
@@ -333,6 +341,7 @@ impl Chunk {
             0 => {}
             1 => code.push(self.synth_op(Op::Pop1, TextRange::default())),
             2 => code.push(self.synth_op(Op::Pop2, TextRange::default())),
+            4 => code.push(self.synth_op(Op::Pop4, TextRange::default())),
             n => {
                 code.push(self.synth_op(Op::PopN, TextRange::default()));
                 code.extend_from_slice(&n.to_le_bytes());
@@ -362,7 +371,7 @@ impl Chunk {
         if else_branch.is_some() {
             then_length += JUMP_WITH_OFFSET_SIZE;
         }
-        let jump_iff_operand = (then_length as i32).to_ne_bytes();
+        let jump_iff_operand = (then_length as i32).to_le_bytes();
         code.extend_from_slice(&jump_iff_operand);
 
         // **now** append the then_branch after the JumpIfFalse offset was added
@@ -374,7 +383,7 @@ impl Chunk {
             // synth the else_branch first, to calculate Op::Jump offset
             let else_code = self.synth_expr(*else_branch, context);
 
-            let jump_operand = (else_code.bytes.len() as i32).to_ne_bytes();
+            let jump_operand = (else_code.bytes.len() as i32).to_le_bytes();
             code.extend_from_slice(&jump_operand);
 
             code.append(else_code);
@@ -393,7 +402,7 @@ impl Chunk {
         }
         let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of_expr(*idx)).collect();
 
-        // TODO: more general check for builtin
+        // TODO: putting builtins into a "core" library and loading them into a "prelude" for name resolution
         if path == "print" {
             code.append(self.synth_builtin_call(path, arg_types));
         }
@@ -408,6 +417,7 @@ impl Chunk {
             0 => unreachable!(),
             1 => Op::GetLocal,
             2 => Op::GetLocal2,
+            4 => Op::GetLocal4,
 
             _ => Op::GetLocalN,
         };
@@ -424,6 +434,8 @@ impl Chunk {
                 code.extend_from_slice(&word_size.to_le_bytes());
             }
         } else {
+            // TODO: this should go away when a MIR (control flow graph) is added after the HIR
+            // we would only have resolved names in codegen
             unreachable!()
         }
 
@@ -437,8 +449,7 @@ impl Chunk {
                 Type::Bool | Type::BoolLiteral(_) => PRINT_BOOL,
                 Type::Float | Type::FloatLiteral(_) => PRINT_FLOAT,
                 Type::Int | Type::IntLiteral(_) => PRINT_INT,
-                Type::String => PRINT_STR,
-                Type::StringLiteral(_) => PRINT_STR_CONSTANT,
+                Type::String | Type::StringLiteral(_) => PRINT_STR,
 
                 Type::Named(_) => todo!(),
 
@@ -510,6 +521,8 @@ impl Chunk {
     /// Reads bytes from the bytecode and returns as T.
     ///
     /// Panics if there are not enough bytes to read.
+    // TODO: mutate `offset` in this function so the caller
+    // doesn't need to remember to mutate it
     #[inline]
     pub fn read<T>(&self, offset: usize) -> T
     where
@@ -522,41 +535,27 @@ impl Chunk {
         unsafe { self.read_unchecked(offset) }
     }
 
-    /// Reads the stack representation of a String `(u64, u64)`
-    /// from the bytecode starting at the given offset.
+    /// Gets a slice of bytes from the constants pool at the given index
     ///
-    /// String constants: represents (idx, len) in the string
-    /// constants vector (`Vec<u8>`).
-    ///
-    /// Dynamic strings: represents (ptr, len) for the heap-allocated
-    /// bytes.
-    ///
-    /// Panics if there are not enough bytes to read from the offset.
-    pub fn read_str(&self, offset: usize) -> (u64, u64) {
-        let (first, second) = self.read::<(u64, u64)>(offset);
-
-        (first, second)
+    /// Panics: if the index is out-of-bounds
+    pub fn constants_slice(&self, index: Range<usize>) -> &[u8] {
+        let result = self.constants.get(index.clone());
+        match result {
+            Some(s) => s,
+            None => {
+                println!("\n\n{index:?}");
+                panic!("Invalid slice index")
+            }
+        }
     }
 
-    /// Given the stack representation of a String constant,
-    /// return the corresponding String from the constants pool.
-    pub fn get_str_constant(&self, idx: u64, len: u64) -> &str {
-        let start = idx as usize;
-        let end = (idx + len) as usize;
-        let bytes = self
-            .constants
-            .get(start..end)
-            .expect("should be enough bytes to slice");
-
-        // Safety: The compiler must have only allocated valid UTF-8
-        // bytes during codegen.
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            str::from_utf8_unchecked(bytes)
-        }
-
-        #[cfg(debug_assertions)]
-        std::str::from_utf8(bytes).expect("bytes should be valid UTF-8")
+    /// Gets a slice of bytes from the constants pool at the given index
+    ///
+    /// # Safety
+    ///
+    /// Triggers undefined behavior if the index is out-of-bounds
+    pub unsafe fn constants_slice_unchecked(&self, index: Range<usize>) -> &[u8] {
+        self.constants.get_unchecked(index)
     }
 }
 
@@ -596,37 +595,45 @@ const WORD_SIZE: usize = mem::size_of::<Word>();
 /// Representation of two words, alias for convenience
 type Word2 = [u8; 8];
 
+// TODO: Prepend these with a prefix indicating that this is a `T` in the (currently unnamed) language.
+// for now, a prefix of `X` is used.
+
 /// VM representation of a language Int
-pub type Int = i32;
+pub type XInt = i32;
 
 /// VM representation of a language Float
-pub type Float = f64;
+pub type XFloat = f64;
 
 /// VM representation of a language boolean
-pub type Bool = u32;
-
-/// VM representation of a String constant (idx, len)
-///
-/// idx: index to first byte in string literals array
-/// len: byte length of the string data
-pub type StringLiteral = (u64, u64);
+pub type XBool = u32;
 
 // TODO: represent this as a static map or some other efficient form
+// or use once_cell if merged into std
+// lazy_static!{
+//     static ref MAP: HashMap<char, &'static str> = [
+//         ('a', "apple"),
+//         ('b', "bear"),
+//         ('c', "cat"),
+//     ].iter().copied().collect();
+// }
+
+/// Returns the size of the type in units of "words" or "slots"
+///
+/// Assumption: A type will fit within u16::MAX words
+/// In reality it will be way smaller than that, as large structs will be
+/// transparently heap-allocated.
 fn word_size_of(ty: &Type) -> u16 {
-    match ty {
-        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<Bool>() / WORD_SIZE,
-        Type::Float | Type::FloatLiteral(_) => mem::size_of::<Float>() / WORD_SIZE,
-        Type::Int | Type::IntLiteral(_) => mem::size_of::<Int>() / WORD_SIZE,
-        Type::String => todo!(),
-        Type::StringLiteral(_) => mem::size_of::<StringLiteral>() / WORD_SIZE,
+    (match ty {
+        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<XBool>() / WORD_SIZE,
+        Type::Float | Type::FloatLiteral(_) => mem::size_of::<XFloat>() / WORD_SIZE,
+        Type::Int | Type::IntLiteral(_) => mem::size_of::<XInt>() / WORD_SIZE,
+        Type::String | Type::StringLiteral(_) => mem::size_of::<XString>() / WORD_SIZE,
         Type::Named(_) => todo!(),
         Type::Unit => 0,
 
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),
-    }
-    .try_into()
-    .expect("word size to not exceed u16::MAX")
+    } as u16)
 }
 
 /// Types implementing this trait may be read from the bytecode.
@@ -642,6 +649,6 @@ pub unsafe trait Readable {}
 unsafe impl Readable for u8 {}
 unsafe impl Readable for u16 {}
 unsafe impl Readable for u32 {}
-unsafe impl Readable for i32 {}
-unsafe impl Readable for f64 {}
-unsafe impl Readable for (u64, u64) {}
+unsafe impl Readable for XInt {}
+unsafe impl Readable for XFloat {}
+unsafe impl Readable for XString {}

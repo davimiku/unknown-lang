@@ -9,3 +9,4 @@ edition = "2021"
 bytemuck = "1.12.3"
 codegen = { path = "../codegen" }
 hir = { path = "../hir" }
+memory_recycling = { path = "../memory_recycling" }

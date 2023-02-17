@@ -10,7 +10,7 @@ fn main() -> io::Result<()> {
     println!("Begin execution:");
     println!("===== =====");
 
-    let result = vm::run(&chunk);
+    let result = vm::run(chunk);
 
     println!("===== =====");
     println!("result: {result:?}");
@@ -24,25 +24,33 @@ fn main() -> io::Result<()> {
 fn test_main() {
     let main_result = main();
 
+    if let Err(ref error) = main_result {
+        eprintln!("{error}")
+    }
+
     assert!(main_result.is_ok());
 }
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
     let program = r#"
-        let a = 10
+print 1.1
+
+let a = 2.2
+print a
+
+{
+    let a = 3.3
+    print a
+    {
         print a
-        {
-            print a
-            let a = 20
-            {
-                print a
-                let a = 30
-                print a
-            }
-            print a
-        }
+        let a = 4.4
         print a
+    }
+    print a
+}
+print a
+
 "#;
 
     Ok(program.to_owned())
