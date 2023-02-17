@@ -189,8 +189,8 @@ impl Default for Scopes {
 //     }
 // }
 
-/// An iterator for scopes that walks upwards through
-/// each parent until it reaches the top.
+// An iterator for scopes that walks upwards through
+// each parent until it reaches the top.
 // pub(crate) struct ScopesIter<'a> {
 //     curr: usize,
 //     scopes: &'a Scopes,
@@ -211,53 +211,3 @@ impl Default for Scopes {
 //         Some(scope)
 //     }
 // }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_scopes() -> Scopes {
-        let mut scopes = Scopes::default();
-
-        // 0 (sentinel)
-        // 1 (module)
-        // | -> 2 -> 3
-        // | -> 4
-        // | -> 5 -> 6 -> 7
-        scopes.push(); // 1
-        scopes.push(); // 2
-        scopes.push(); // 3
-        scopes.pop();
-        scopes.pop();
-
-        scopes.push(); // 4
-        scopes.pop();
-
-        scopes.push(); // 5
-        scopes.push(); // 6
-        scopes.push(); // 7
-        dbg!(scopes)
-    }
-
-    // #[test]
-    // fn scopes_iter() {
-    //     let scopes = make_scopes();
-
-    //     // (starting index, expected parent indexes)
-    //     let cases: Vec<(usize, Vec<usize>)> = vec![
-    //         //
-    //         (3, vec![2, 1, 0]),
-    //         (4, vec![1, 0]),
-    //         (7, vec![6, 5, 1, 0]),
-    //     ];
-
-    //     for (start, expected) in cases {
-    //         let actual: Vec<_> = scopes
-    //             .iter_from(start)
-    //             .map(|scope| scope.parent_idx)
-    //             .collect();
-
-    //         assert_eq!(expected, actual);
-    //     }
-    // }
-}

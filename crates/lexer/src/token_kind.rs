@@ -143,6 +143,10 @@ pub enum TokenKind {
     #[token("+")]
     Plus,
 
+    /// ‘++’
+    #[token("++")]
+    PlusPlus,
+
     /// ‘-’
     #[token("-")]
     Dash,
@@ -275,6 +279,7 @@ impl fmt::Display for TokenKind {
 
             // Operators
             Self::Plus => "‘+’",
+            Self::PlusPlus => "‘++’",
             Self::Dash => "‘-’",
             Self::Star => "‘*’",
             Self::Slash => "‘/’",
@@ -438,6 +443,11 @@ mod tests {
     #[test]
     fn lex_plus() {
         check("+", TokenKind::Plus);
+    }
+
+    #[test]
+    fn lex_plusplus() {
+        check("++", TokenKind::PlusPlus);
     }
 
     #[test]

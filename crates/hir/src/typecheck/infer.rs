@@ -252,10 +252,8 @@ fn infer_binary(
     let rhs = context.expr(expr.rhs);
     let rhs_type = infer_expr(expr.rhs, results, context)?;
     match expr.op {
-        BinaryOp::Add => infer_binary_add(&lhs_type, &rhs_type).map_err(|variant| TypeDiagnostic {
-            variant,
-            range: TextRange::default(),
-        }),
+        BinaryOp::Add => infer_binary_add(&lhs_type, &rhs_type),
+        BinaryOp::Concat => infer_binary_concat(&lhs_type, &rhs_type),
         BinaryOp::Sub => todo!(),
         BinaryOp::Mul => todo!(),
         BinaryOp::Div => todo!(),
@@ -263,6 +261,10 @@ fn infer_binary(
         BinaryOp::Exp => todo!(),
         BinaryOp::Path => todo!(),
     }
+    .map_err(|variant| TypeDiagnostic {
+        variant,
+        range: TextRange::default(),
+    })
 }
 
 fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
@@ -271,14 +273,27 @@ fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagno
         (IntLiteral(a), IntLiteral(b)) => IntLiteral(a + b),
         (IntLiteral(_), Int) | (Int, IntLiteral(_)) | (Int, Int) => Int,
         (FloatLiteral(_), Float) | (Float, FloatLiteral(_)) | (Float, Float) => Float,
-        (StringLiteral(_), String) | (String, StringLiteral(_)) | (String, String) => String,
-
-        // TODO: concatenate these, it's like this now to test heap-allocated strings
-        (StringLiteral(a), StringLiteral(b)) => String,
 
         _ => {
             return Err(TypeDiagnosticVariant::BinaryMismatch {
                 op: BinaryOp::Add,
+                lhs: lhs_type.clone(),
+                rhs: lhs_type.clone(),
+            })
+        }
+    })
+}
+
+fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
+    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    Ok(match (lhs_type, rhs_type) {
+        (StringLiteral(_), String) | (String, StringLiteral(_)) | (String, String) => String,
+        // TODO: constant folding before type checking
+        (StringLiteral(a), StringLiteral(b)) => String,
+
+        _ => {
+            return Err(TypeDiagnosticVariant::BinaryMismatch {
+                op: BinaryOp::Concat,
                 lhs: lhs_type.clone(),
                 rhs: lhs_type.clone(),
             })

@@ -85,8 +85,6 @@ impl VM {
                 PushString => {
                     let s = self.read::<XString>();
                     self.stack.push_string(s);
-
-                    // dbg!(&self.stack);
                 }
                 PushTrue => {
                     self.stack.push_bool(true);
@@ -192,7 +190,25 @@ impl VM {
                     self.stack.replace_top_word((-top).to_le_bytes());
                 }
                 RemInt => todo!(),
-                ConcatString => todo!(),
+                ConcatString => {
+                    let b = self.stack.pop_string();
+                    let a = self.stack.pop_string();
+
+                    let b = self.deref_string(b);
+                    let a = self.deref_string(a);
+
+                    // TODO: optimize out extra heap allocation, create function that
+                    // copies both slices of bytes to a new pointer without intermediate Rust String
+                    let c = a.to_owned() + b;
+                    let (ptr, len) = self.alloc_string(&c);
+
+                    let c = XString {
+                        loc: ptr as u64,
+                        len: len as u32,
+                        tag: AllocationStrategy::Heap,
+                    };
+                    self.stack.push_string(c);
+                }
                 Builtin => {
                     let builtin_idx = self.read_byte();
                     self.exec_builtin(builtin_idx);
@@ -210,7 +226,6 @@ impl VM {
                 }
                 Ret => {
                     // TODO: better output for debugging?
-                    // dbg!(self.stack.pop::<[u8; 8]>());
 
                     // TODO: return the top value of the stack maybe?
                     break Ok(());
@@ -260,6 +275,7 @@ impl VM {
                     self.chunk.constants_slice(start..end)
                 }
             }
+            AllocationStrategy::Embedded => todo!(),
         };
 
         #[cfg(not(debug_assertions))]

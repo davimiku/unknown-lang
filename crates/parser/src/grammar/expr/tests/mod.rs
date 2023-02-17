@@ -31,6 +31,22 @@ InfixExpr@0..3
 }
 
 #[test]
+fn parse_binary_concat_expression() {
+    check_expr(
+        "\"Hello \" ++ \"World!\"",
+        expect![[r#"
+InfixExpr@0..20
+  StringExpr@0..9
+    StringExpr@0..8 "\"Hello \""
+    Emptyspace@8..9 " "
+  PlusPlus@9..11 "++"
+  Emptyspace@11..12 " "
+  StringExpr@12..20
+    StringExpr@12..20 "\"World!\"""#]],
+    )
+}
+
+#[test]
 fn parse_left_associative_infix_expression() {
     check_expr(
         "1+2+3+4",

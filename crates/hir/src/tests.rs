@@ -50,6 +50,17 @@ fn int_addition() {
 }
 
 #[test]
+fn string_concatenation() {
+    let input = r#""Hello " ++ "World!""#;
+    let expected = expect![[r#"
+{
+    "Hello " ++ "World!"
+}"#]];
+
+    check(input, expected)
+}
+
+#[test]
 fn local_def() {
     let input = "let a = 10";
     let expected = expect![[r#"

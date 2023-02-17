@@ -59,6 +59,7 @@ impl Op {
 
                         print!("\"{s}\"")
                     }
+                    AllocationStrategy::Embedded => todo!(),
                 }
             }
 
@@ -77,9 +78,6 @@ impl Op {
                 let slot_size = read::<u16>(chunk, &mut offset);
 
                 print!("offset: {slot_offset}, size:{slot_size}");
-            }
-            Op::ConcatString => {
-                //
             }
             Op::Builtin => {
                 let builtin_idx = read::<u8>(chunk, &mut offset);

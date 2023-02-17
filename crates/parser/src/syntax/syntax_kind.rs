@@ -51,6 +51,7 @@ pub enum SyntaxKind {
 
     // Operators
     Plus,
+    PlusPlus,
     Dash,
     Star,
     Slash,
@@ -165,6 +166,7 @@ impl From<TokenKind> for SyntaxKind {
 
             // Operators
             TokenKind::Plus => Self::Plus,
+            TokenKind::PlusPlus => Self::PlusPlus,
             TokenKind::Dash => Self::Dash,
             TokenKind::Star => Self::Star,
             TokenKind::Slash => Self::Slash,
@@ -212,6 +214,7 @@ impl fmt::Display for SyntaxKind {
 
             // Operators
             SyntaxKind::Plus => "‘+’",
+            SyntaxKind::PlusPlus => "‘++’",
             SyntaxKind::Dash => "‘-’",
             SyntaxKind::Star => "‘*’",
             SyntaxKind::Slash => "‘/’",

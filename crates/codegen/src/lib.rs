@@ -267,6 +267,10 @@ impl Chunk {
                 Int | IntLiteral(_) => self.synth_op(Op::DivInt, TextRange::default()),
                 _ => unreachable!(),
             },
+            Concat => match lhs_type {
+                String | StringLiteral(_) => self.synth_op(Op::ConcatString, TextRange::default()),
+                _ => unreachable!(),
+            },
             Rem => todo!(),
             Exp => todo!(),
             Path => todo!(),

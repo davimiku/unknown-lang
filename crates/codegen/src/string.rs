@@ -28,6 +28,9 @@ pub enum AllocationStrategy {
     /// section of the bytecode. The lifetime of the string data is static
     /// for the duration of the program and is owned by the bytecode itself.
     ConstantsPool,
+
+    /// The bytes of the String are embedded within this struct itself
+    Embedded,
 }
 
 impl TryFrom<u32> for AllocationStrategy {

@@ -196,6 +196,7 @@ impl Context {
             SyntaxKind::Dash => BinaryOp::Sub,
             SyntaxKind::Star => BinaryOp::Mul,
             SyntaxKind::Slash => BinaryOp::Div,
+            SyntaxKind::PlusPlus => BinaryOp::Concat,
             SyntaxKind::Dot => BinaryOp::Path,
             SyntaxKind::Caret => BinaryOp::Exp,
             SyntaxKind::Percent => BinaryOp::Rem,
@@ -234,8 +235,6 @@ impl Context {
     }
 
     fn lower_loop(&mut self, ast: ast::LoopExpr) -> Expr {
-        dbg!(&ast);
-
         self.push_scope();
         // identify break expressions
         // lower statements/expressions

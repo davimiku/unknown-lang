@@ -47,7 +47,6 @@ impl TypeCheckResults {
     }
 
     // pub(super) fn get_local_type(&self, key: &LocalDefKey) -> Option<&Type> {
-    //     dbg!(&self.local_types);
     //     self.local_types.get(key)
     // }
 

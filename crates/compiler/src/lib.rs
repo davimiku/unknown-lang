@@ -7,15 +7,3 @@ pub fn compile(input: &str) -> Chunk {
 
     codegen::codegen(&exprs, &context)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn int_literal() {
-        let actual = compile("123");
-
-        dbg!(actual);
-    }
-}

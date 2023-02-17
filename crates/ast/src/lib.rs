@@ -143,7 +143,12 @@ impl Binary {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), Plus | Dash | Star | Slash | Dot | Caret))
+            .find(|token| {
+                matches!(
+                    token.kind(),
+                    Plus | PlusPlus | Dash | Star | Slash | Dot | Caret
+                )
+            })
     }
 
     pub fn range(&self) -> TextRange {

@@ -74,6 +74,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         let curr = curr.unwrap();
         let op = match curr {
             Plus => BinaryOp::Add,
+            PlusPlus => BinaryOp::Concat,
             Dash => BinaryOp::Sub,
             Star => BinaryOp::Mul,
             Slash => BinaryOp::Div,
@@ -435,6 +436,9 @@ enum BinaryOp {
     /// `/`
     Div,
 
+    /// `++`
+    Concat,
+
     /// `%`
     Rem,
 
@@ -461,7 +465,7 @@ impl BinaryOp {
             Self::Function => (1, 1),
             Self::Or => (3, 4),
             Self::And => (5, 6),
-            Self::Add | Self::Sub => (7, 8),
+            Self::Add | Self::Sub | Self::Concat => (7, 8),
             Self::Mul | Self::Div | Self::Rem => (9, 10),
             Self::Exp => (12, 11),
             Self::Path => (13, 14),

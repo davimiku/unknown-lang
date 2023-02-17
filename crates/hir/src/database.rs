@@ -63,8 +63,6 @@ mod tests {
         // let hir = context.lower_stmt(ast).unwrap();
 
         // let s = context.database.debug_string();
-
-        // dbg!(s);
     }
 
     #[test]
@@ -93,12 +91,10 @@ mod tests {
 
         // let mut context = Context::new();
         // let stmt = context.lower_stmt(ast);
-        // dbg!(stmt);
         // let x = &context.database.stmts[stmt.unwrap()];
         // match x {
         //     Stmt::VariableDef(d) => {
         //         let v = &context.database.local_defs[*d];
-        //         dbg!(&context.database.exprs[v.value]);
         //     }
         //     Stmt::Expr(_) => unreachable!(),
         // }
