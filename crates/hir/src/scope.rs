@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use id_tree::{InsertBehavior::*, Node, Tree};
 
-use crate::interner::Name;
+use crate::interner::Key;
 use crate::LocalDefKey;
 
 #[derive(Debug, Default)]
@@ -32,11 +32,11 @@ pub struct Scope {
     /// Associates a Name with the unique key for that local definition within the context
     ///
     /// TODO: handle multiple of the same Name in the same Scope (shadowed locals)
-    name_counts: HashMap<Name, LocalDefKey>,
+    name_counts: HashMap<Key, LocalDefKey>,
 }
 
 impl Scope {
-    pub(crate) fn get_local(&self, key: Name) -> Option<LocalDefKey> {
+    pub(crate) fn get_local(&self, key: Key) -> Option<LocalDefKey> {
         self.name_counts.get(&key).copied()
     }
 }
@@ -49,12 +49,12 @@ pub(crate) struct Scopes {
     current_node_id: id_tree::NodeId,
 
     /// Local definition counts
-    pub(crate) local_counts: HashMap<Name, u32>,
+    pub(crate) local_counts: HashMap<Key, u32>,
 }
 
 // Non-Mutating functions
 impl Scopes {
-    pub(crate) fn find_local(&self, name: Name) -> Option<LocalDefKey> {
+    pub(crate) fn find_local(&self, name: Key) -> Option<LocalDefKey> {
         self.current().get_local(name).or(self
             .tree
             .ancestors(&self.current_node_id)
@@ -139,7 +139,7 @@ impl Scopes {
 
     /// Inserts a Name for a local def into the current scope and returns
     /// a key that uniquely identifies that particular local.
-    pub(crate) fn insert_local_def(&mut self, name: Name) -> LocalDefKey {
+    pub(crate) fn insert_local_def(&mut self, name: Key) -> LocalDefKey {
         let new_count = self.increment_count(name);
 
         let key: LocalDefKey = (name, new_count - 1).into();
@@ -149,7 +149,7 @@ impl Scopes {
     }
 
     /// Adds one to the count for a local and returns the **new** count.
-    fn increment_count(&mut self, name: Name) -> u32 {
+    fn increment_count(&mut self, name: Key) -> u32 {
         let new_count = self
             .local_counts
             .entry(name)

@@ -13,7 +13,7 @@ use std::fmt;
 
 pub use context::{Context, Diagnostic};
 use database::Database;
-use interner::{Interner, Name};
+use interner::{Interner, Key};
 use la_arena::Idx;
 pub use typecheck::Type;
 
@@ -31,7 +31,7 @@ pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
     let root = Expr::Block(BlockExpr { exprs });
     let root = context.alloc_expr(root, None);
 
-    let typecheck_results = typecheck::check(root, &context);
+    let typecheck_results = typecheck::check(root, &context.database, &mut context.interner);
     context.typecheck_results = typecheck_results;
 
     (root, context)
@@ -59,7 +59,7 @@ pub enum Expr {
     IntLiteral(i32), // TODO: shared definition of Int
 
     /// String literal value, ex. `"hello"`, `"world"`
-    StringLiteral(String),
+    StringLiteral(Key),
 
     /// Binary expression, ex. `a + b`, `c ** d`
     Binary(BinaryExpr),
@@ -83,6 +83,12 @@ pub enum Expr {
     If(IfExpr),
 }
 
+impl Default for Expr {
+    fn default() -> Self {
+        Expr::Empty
+    }
+}
+
 /// Local definition
 ///
 /// Defines a new variable in a given scope.
@@ -99,14 +105,14 @@ pub struct LocalDef {
 }
 
 impl LocalDef {
-    pub(crate) fn name(&self) -> Name {
+    pub(crate) fn name(&self) -> Key {
         self.key.name
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalDefKey {
-    name: Name,
+    name: Key,
 
     /// Unique number for this Name within this Context
     idx: u32,
@@ -118,8 +124,8 @@ impl LocalDefKey {
     }
 }
 
-impl From<(Name, u32)> for LocalDefKey {
-    fn from(value: (Name, u32)) -> Self {
+impl From<(Key, u32)> for LocalDefKey {
+    fn from(value: (Key, u32)) -> Self {
         Self {
             name: value.0,
             idx: value.1,
@@ -187,7 +193,7 @@ pub struct LocalRef {
 pub enum LocalRefName {
     // TODO: handle `a`, `a.b`, `a.b.c`, etc.
     Resolved(LocalDefKey),
-    Unresolved(Name),
+    Unresolved(Key),
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

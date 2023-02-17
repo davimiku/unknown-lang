@@ -1,6 +1,6 @@
-use crate::{interner::Interner, Name};
+use crate::{interner::Interner, Key};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Type {
     Undetermined,
     Error,
@@ -12,8 +12,8 @@ pub enum Type {
     Int,
     IntLiteral(i32), // TODO: shared definition of Int
     String,
-    StringLiteral(String), // TODO: use an interned string
-    Named(Name),
+    StringLiteral(Key),
+    Named(Key),
     Unit,
     // Fun -- (Vec<Type>, Type) ? for params type and return type
 }
@@ -30,7 +30,7 @@ impl Type {
             Type::Int => "Int".to_string(),
             Type::IntLiteral(i) => i.to_string(),
             Type::String => "String".to_string(),
-            Type::StringLiteral(s) => format!("\"{s}\""),
+            Type::StringLiteral(s) => format!("\"{}\"", interner.lookup(*s)),
             Type::Named(name) => interner.lookup(*name).to_string(),
             Type::Unit => "Unit".to_string(),
         }

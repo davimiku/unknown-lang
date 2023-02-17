@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use text_size::TextRange;
 
-use crate::{interner::Name, Type};
+use crate::{interner::Key, Type};
 
 pub(crate) enum Definition {
     Function(Function),
@@ -35,12 +35,12 @@ pub enum TysRangeInfo {
 }
 
 pub(crate) struct Param {
-    pub name: Option<Name>,
+    pub name: Option<Key>,
     pub ty: Type,
 }
 
 pub(crate) struct Field {
-    pub name: Option<Name>,
+    pub name: Option<Key>,
     pub ty: Type,
 }
 
@@ -52,18 +52,18 @@ struct Docs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Fqn {
-    pub module: Name,
-    pub name: Name,
+    pub module: Key,
+    pub name: Key,
 }
 
 pub(crate) enum Path {
-    ThisModule(Name),
+    ThisModule(Key),
     OtherModule(Fqn),
 }
 
 pub(crate) enum PathWithRange {
     ThisModule {
-        name: Name,
+        name: Key,
         range: TextRange,
     },
     OtherModule {
@@ -79,18 +79,18 @@ pub(crate) struct NameResDiagnostic {
 }
 
 pub(crate) enum NameResDiagnosticKind {
-    Undefined(Name),
+    Undefined(Key),
 }
 
 pub struct Index {
-    pub(crate) definitions: HashMap<Name, Definition>,
-    pub(crate) range_info: HashMap<Name, RangeInfo>,
-    docs: HashMap<Name, Docs>,
+    pub(crate) definitions: HashMap<Key, Definition>,
+    pub(crate) range_info: HashMap<Key, RangeInfo>,
+    docs: HashMap<Key, Docs>,
     tys: HashSet<ast::Ident>,
 }
 
 impl Index {
-    pub(crate) fn functions(&self) -> impl Iterator<Item = (Name, &Function)> {
+    pub(crate) fn functions(&self) -> impl Iterator<Item = (Key, &Function)> {
         self.definitions
             .iter()
             .filter_map(|(name, definition)| match definition {
@@ -99,26 +99,26 @@ impl Index {
             })
     }
 
-    pub(crate) fn get_definition(&self, name: Name) -> Option<&Definition> {
+    pub(crate) fn get_definition(&self, name: Key) -> Option<&Definition> {
         self.definitions.get(&name)
     }
 
-    pub(crate) fn range_info(&self, name: Name) -> &RangeInfo {
+    pub(crate) fn range_info(&self, name: Key) -> &RangeInfo {
         &self.range_info[&name]
     }
 
-    pub(crate) fn definition_names(&self) -> impl Iterator<Item = Name> + '_ {
+    pub(crate) fn definition_names(&self) -> impl Iterator<Item = Key> + '_ {
         self.definitions.keys().copied()
     }
 
-    pub(crate) fn function_names(&self) -> impl Iterator<Item = Name> + '_ {
+    pub(crate) fn function_names(&self) -> impl Iterator<Item = Key> + '_ {
         self.definitions.iter().filter_map(|(name, def)| match def {
             Definition::Function(_) => Some(*name),
             Definition::Record(_) => None,
         })
     }
 
-    pub(crate) fn ranges(&self) -> impl Iterator<Item = (Name, &RangeInfo)> + '_ {
+    pub(crate) fn ranges(&self) -> impl Iterator<Item = (Key, &RangeInfo)> + '_ {
         self.range_info.iter().map(|(n, r)| (*n, r))
     }
 
@@ -191,7 +191,7 @@ impl PathWithRange {
     }
 }
 
-pub struct WorldIndex(HashMap<Name, Index>);
+pub struct WorldIndex(HashMap<Key, Index>);
 
 impl WorldIndex {
     pub(crate) fn get_definition(&self, fqn: Fqn) -> Result<&Definition, GetDefinitionError> {
@@ -208,11 +208,11 @@ impl WorldIndex {
         &self.0[&fqn.module].range_info[&fqn.name]
     }
 
-    pub(crate) fn add_module(&mut self, module: Name, index: Index) {
+    pub(crate) fn add_module(&mut self, module: Key, index: Index) {
         assert!(self.0.insert(module, index).is_none());
     }
 
-    pub(crate) fn update_module(&mut self, module: Name, index: Index) {
+    pub(crate) fn update_module(&mut self, module: Key, index: Index) {
         *self.0.get_mut(&module).unwrap() = index;
     }
 

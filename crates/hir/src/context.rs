@@ -4,7 +4,7 @@ use la_arena::Idx;
 use parser::SyntaxKind;
 use text_size::TextRange;
 
-use crate::interner::Interner;
+use crate::interner::{Interner, Key};
 use crate::scope::Scopes;
 use crate::typecheck::TypeCheckResults;
 use crate::{
@@ -39,6 +39,10 @@ impl Context {
     /// Returns the expression at the given index
     pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
         &self.database.exprs[idx]
+    }
+
+    pub fn lookup(&self, key: Key) -> &str {
+        self.interner.lookup(key)
     }
 
     // pub fn local_def(&self, idx: Idx<LetBinding>) -> &LetBinding {
@@ -183,8 +187,8 @@ impl Context {
         if let Some(s) = value {
             let s = &s[1..s.len() - 1]; // remove leading and trailing quotes
 
-            // TODO: intern the string here
-            Expr::StringLiteral(s.to_string())
+            let key = self.interner.intern(s);
+            Expr::StringLiteral(key)
         } else {
             Expr::Empty
         }

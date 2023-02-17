@@ -176,7 +176,10 @@ impl Chunk {
             BoolLiteral(b) => self.synth_bool_constant(*b, TextRange::default()),
             FloatLiteral(f) => self.synth_float_constant(*f, TextRange::default()),
             IntLiteral(i) => self.synth_int_constant(*i, TextRange::default()),
-            StringLiteral(s) => self.synth_string_constant(s, TextRange::default()),
+            StringLiteral(key) => {
+                let s = context.lookup(*key);
+                self.synth_string_constant(s, TextRange::default())
+            }
 
             Binary(expr) => self.synth_binary_expr(expr, context),
             Unary(expr) => self.synth_unary_expr(expr, context),

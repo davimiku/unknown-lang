@@ -8,25 +8,25 @@ use text_size::TextRange;
 
 use super::infer::infer_expr;
 use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::{Context, Expr};
+use crate::database::Database;
+use crate::interner::Interner;
+use crate::Expr;
 
 pub(crate) fn check_expr(
     expr: Idx<Expr>,
-    expected: &Type,
+    expected: Type,
     results: &mut TypeCheckResults,
-    context: &Context,
+    database: &Database,
+    interner: &mut Interner,
 ) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(expr, results, context)?;
+    let actual = infer_expr(expr, results, database, interner)?;
 
-    if is_subtype(&actual, expected) {
+    if is_subtype(actual, expected) {
         Ok(())
     } else {
         Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::TypeMismatch {
-                expected: expected.clone(),
-                actual,
-            },
-            // TODO: get a real TextRange (from context.database ?)
+            variant: TypeDiagnosticVariant::TypeMismatch { expected, actual },
+            // TODO: get a real TextRange from database
             range: TextRange::default(),
         })
     }
@@ -39,7 +39,7 @@ pub(crate) fn check_expr(
 /// For example:
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
-fn is_subtype(a: &Type, b: &Type) -> bool {
+fn is_subtype(a: Type, b: Type) -> bool {
     use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
 
     if a == b {

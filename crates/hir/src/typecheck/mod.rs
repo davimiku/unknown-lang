@@ -16,14 +16,20 @@ use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::Type;
 
-use crate::{interner::Interner, BinaryOp, Context, Expr, LocalDefKey, LocalRefName};
+use crate::database::Database;
+use crate::interner::Interner;
+use crate::{BinaryOp, Expr, LocalDefKey, LocalRefName};
 
 use self::check::check_expr;
 
 // returns diagnostics
-pub fn check(expr: Idx<Expr>, context: &Context) -> TypeCheckResults {
+pub(crate) fn check(
+    expr: Idx<Expr>,
+    database: &Database,
+    interner: &mut Interner,
+) -> TypeCheckResults {
     let mut results = TypeCheckResults::default();
-    check_expr(expr, &Type::Unit, &mut results, context);
+    check_expr(expr, Type::Unit, &mut results, database, interner);
 
     results
 }
@@ -59,8 +65,15 @@ pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, intern
     if !results.local_types.is_empty() {
         s.push('\n');
     }
-    for (key, ty) in results.local_types.iter() {
-        s.push_str(&key.display(interner));
+    let mut locals: Vec<_> = results
+        .local_types
+        .iter()
+        .map(|(key, ty)| (key.display(interner), *ty))
+        .collect();
+    locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
+
+    for (name, ty) in locals.iter() {
+        s.push_str(name);
         s.push_str(" : ");
         s.push_str(&format!("{}\n", ty.display(interner)));
     }

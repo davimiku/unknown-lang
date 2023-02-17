@@ -29,7 +29,7 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::BoolLiteral(b) => s.push_str(&b.to_string()),
         Expr::FloatLiteral(f) => s.push_str(&f.to_string()),
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
-        Expr::StringLiteral(sl) => s.push_str(&format!(r#""{sl}""#)),
+        Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.interner.lookup(*key))),
 
         Expr::Call(CallExpr { path, args }) => {
             s.push_str(&format!("{path} "));
@@ -136,7 +136,7 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
         Type::BoolLiteral(b) => format!("{b}"),
         Type::FloatLiteral(f) => format!("{f}"),
         Type::IntLiteral(i) => format!("{i}"),
-        Type::StringLiteral(s) => s.to_owned(),
+        Type::StringLiteral(key) => interner.lookup(*key).to_owned(),
 
         Type::Bool => "Bool".to_owned(),
         Type::Float => "Float".to_owned(),
