@@ -126,8 +126,6 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
     }
 }
 
-// TODO: need a fmt_type_expr ?
-
 pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
     match ty {
         Type::Undetermined => "~Undetermined~".to_owned(),
@@ -138,7 +136,7 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
         Type::BoolLiteral(b) => format!("{b}"),
         Type::FloatLiteral(f) => format!("{f}"),
         Type::IntLiteral(i) => format!("{i}"),
-        Type::StringLiteral(s) => format!("{s}"),
+        Type::StringLiteral(s) => s.to_owned(),
 
         Type::Bool => "Bool".to_owned(),
         Type::Float => "Float".to_owned(),
