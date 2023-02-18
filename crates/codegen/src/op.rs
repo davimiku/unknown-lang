@@ -3,9 +3,9 @@ use std::fmt;
 use std::mem;
 use std::mem::size_of;
 
-use crate::XFloat;
-use crate::XInt;
-use crate::XString;
+use vm_types::xstring::XString;
+use vm_types::XFloat;
+use vm_types::XInt;
 
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -145,6 +145,13 @@ pub enum Op {
     ///
     /// Stack: value **=>** value
     SetLocalN,
+
+    /// Unary `!` operator for Bool.
+    ///
+    /// Operands:
+    ///
+    /// Stack: **=>**
+    NotBool,
 
     /// Binary `+` operator for Int.
     ///

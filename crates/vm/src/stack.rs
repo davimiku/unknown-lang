@@ -4,18 +4,18 @@
 //! This `stack` module provides an abstraction over a
 //! `Vec` to limit it to stack-like operations.
 //!
-//! The "slots" of the stack are a base size of 4 bytes (32 bits).
-//! However, it is common for values to reside in more than
-//! one slot. For example, a 64-bit float uses 2 slots.
+//! The "slots" of the stack are a base size of 1 Word, which
+//! is an opaque type.
+//!
+//! It is possible and common for values to reside in more than
+//! one slot. For example, a Float uses 2 slots.
 
-use codegen::{XBool, XFloat, XInt, XString};
-
-use crate::{DWord, QWord, Word};
+use vm_types::words::{DWord, QWord, Word};
+use vm_types::xstring::XString;
+use vm_types::{XBool, XFloat, XInt};
 
 /// Maximum size of the stack in Slots
 const STACK_MAX: usize = 256;
-
-const WORD_SIZE: usize = std::mem::size_of::<Word>();
 
 #[derive(Debug)]
 pub struct Stack {
@@ -23,70 +23,73 @@ pub struct Stack {
 }
 
 impl Stack {
+    #[inline]
+    fn extend<I: IntoIterator<Item = Word>>(&mut self, iter: I) {
+        self.data.extend(iter)
+    }
+
     /// Pushes one Word to the top of the stack
     #[inline]
-    pub(crate) fn push_word(&mut self, val: Word) {
-        self.data.push(val);
-    }
-
-    /// Pushes N Words to the top of the stack in the order
-    /// of the provided array.
-    ///
-    /// ```text
-    /// push_n [A, B, C]
-    /// - Push A
-    /// - Push B
-    /// - Push C
-    /// ```
-    #[inline]
-    pub(crate) fn push_n_words<const N: usize>(&mut self, words: [Word; N]) {
-        for word in words {
-            self.data.push(word);
-        }
+    pub(crate) fn push_word<T: Into<Word>>(&mut self, val: T) {
+        self.extend([val.into()])
     }
 
     #[inline]
-    pub(crate) fn push_dword(&mut self, dword: DWord) {
-        let words = bytemuck::cast(dword);
-        self.push_n_words::<2>(words);
+    pub(crate) fn push_dword<T: Into<DWord>>(&mut self, value: T) {
+        let dword: DWord = value.into();
+        self.extend(dword.into_iter());
     }
 
     #[inline]
-    pub(crate) fn push_qword(&mut self, qword: QWord) {
-        let words = bytemuck::cast(qword);
-        self.push_n_words::<4>(words);
+    pub(crate) fn push_qword<T: Into<QWord>>(&mut self, value: T) {
+        let qword: QWord = value.into();
+        self.extend(qword.into_iter());
     }
 
     #[inline]
     pub(crate) fn push_int<I: Into<XInt>>(&mut self, val: I) {
-        self.push_word(val.into().to_le_bytes())
+        self.push_word(val.into());
     }
 
     #[inline]
     pub(crate) fn push_float<F: Into<XFloat>>(&mut self, val: F) {
-        let dword = bytemuck::cast(val.into().to_le_bytes());
-        self.push_dword(dword)
+        self.push_dword(val.into());
     }
 
     #[inline]
-    pub(crate) fn push_bool(&mut self, val: bool) {
-        self.push_word(XBool::from(val).to_le_bytes())
+    pub(crate) fn push_bool<B: Into<XBool>>(&mut self, val: B) {
+        self.push_word(val.into());
     }
 
     /// Pushes the stack representation of a String to the stack.
     #[inline]
     pub(crate) fn push_string(&mut self, s: XString) {
-        let words = s.to_bytes();
-        let qword = bytemuck::cast(words);
+        let q: QWord = s.into();
+        self.push_qword(q);
+    }
 
-        self.push_qword(qword);
+    /// Removes the top `n` slots of the stack and returns it as an array
+    /// with length `N` and elements of `Word`.
+    ///
+    /// Slots are returned in FIFO order, i.e. reversed from the "popping" order.
+    /// This ensures that multi-Word values are returned as expected.
+    #[inline]
+    pub(crate) fn pop_n<const N: usize>(&mut self, n: usize) -> [Word; N] {
+        let start = self.data.len() - n;
+
+        let mut output: [Word; N] = [Default::default(); N];
+        for (i, word) in self.data.drain(start..).enumerate() {
+            output[i] = word;
+        }
+
+        output
     }
 
     /// Removes the top Word of the stack
     ///
     /// Panics if the stack is empty.
     #[inline]
-    pub(crate) fn pop(&mut self) -> Word {
+    pub(crate) fn pop_word(&mut self) -> Word {
         // consider unsafe `get_unchecked` and `set_len` if it makes a difference
         // in this hot loop
         self.data.pop().unwrap()
@@ -95,15 +98,13 @@ impl Stack {
     /// Removes the top DWord (2 Words) of the stack.
     #[inline]
     pub(crate) fn pop_dword(&mut self) -> DWord {
-        let words = self.pop_n_static::<2>(2);
-        bytemuck::cast(words)
+        self.pop_n::<2>(2).into()
     }
 
     /// Removes the top QWord (4 Words) of the stack.
     #[inline]
     pub(crate) fn pop_qword(&mut self) -> QWord {
-        let words = self.pop_n_static::<4>(4);
-        bytemuck::cast(words)
+        self.pop_n::<4>(4).into()
     }
 
     /// Removes the top `n` slots of the stack.
@@ -111,67 +112,45 @@ impl Stack {
     /// Does not return the values.
     // TODO: return the words as a slice?
     // may not be possible because who owns the slice now?
-    pub(crate) fn pop_n(&mut self, n: u8) {
+    pub(crate) fn pop_n_dynamic(&mut self, n: u8) {
         for _ in 0..n {
-            self.pop();
+            self.pop_word();
         }
-    }
-
-    /// Removes the top `n` slots of the stack and returns it as an array
-    /// with length `N` and elements of `Word`.
-    #[inline]
-    pub(crate) fn pop_n_static<const N: usize>(&mut self, n: usize) -> [Word; N] {
-        let start = self.data.len() - n;
-
-        let mut output: [Word; N] = [[0; 4]; N];
-        for (i, byte) in self.data.drain(start..).enumerate() {
-            output[i] = byte;
-        }
-
-        output
-    }
-
-    /// Removes the top slot of the stack and returns it as an i32
-    #[inline]
-    pub fn pop_int(&mut self) -> i32 {
-        i32::from_le_bytes(self.pop())
-    }
-
-    /// Removes the top slot of the stack and returns it as a u32
-    #[inline]
-    pub fn pop_uint(&mut self) -> u32 {
-        u32::from_le_bytes(self.pop())
-    }
-
-    /// Removes the top two slots of the stack and returns it as an f64
-    #[inline]
-    pub fn pop_float(&mut self) -> f64 {
-        f64::from_le_bytes(self.pop_dword())
     }
 
     /// Removes the top value of the stack and returns it as a bool
     #[inline]
-    pub fn pop_bool(&mut self) -> bool {
-        let int = self.pop_uint();
+    pub fn pop_bool(&mut self) -> XBool {
+        self.pop_word().into()
+    }
 
-        int != 0
+    /// Removes the top slot of the stack and returns it as an XInt
+    #[inline]
+    pub fn pop_int(&mut self) -> XInt {
+        self.pop_word().into()
+    }
+
+    /// Removes the top two slots of the stack and returns it as an f64
+    #[inline]
+    pub fn pop_float(&mut self) -> XFloat {
+        self.pop_dword().into()
     }
 
     #[inline]
     pub(crate) fn pop_string(&mut self) -> XString {
-        let bytes = self.pop_qword();
-        XString::from_bytes(bytes)
+        self.pop_qword().into()
     }
 
     /// Mutates the top value of the stack in-place.
     #[inline]
-    pub(super) fn replace_top_word(&mut self, val: Word) {
-        self.data[0] = val;
+    pub(super) fn replace_top_word<T: Into<Word>>(&mut self, val: T) {
+        self.data[0] = val.into();
     }
 
     #[inline]
-    pub(crate) fn replace_top_dword(&mut self, val: DWord) {
-        let words: [Word; 2] = bytemuck::cast(val);
+    pub(crate) fn replace_top_dword<T: Into<DWord>>(&mut self, val: T) {
+        let dword: DWord = val.into();
+        let words: [Word; 2] = dword.into();
         self.data[1] = words[0];
         self.data[0] = words[1];
     }
@@ -197,8 +176,8 @@ impl Stack {
     ///
     /// Panics if there is not 1 item in the stack.
     #[inline]
-    pub(crate) fn peek_word(&self) -> Word {
-        self.data.last().copied().unwrap()
+    pub(crate) fn peek_word(&self) -> &Word {
+        self.peek_word_at(self.data.len() - 1)
     }
 
     /// Peeks the DWord (2 Words) from the top of the stack
@@ -219,18 +198,23 @@ impl Stack {
     // }
 
     #[inline]
+    pub(crate) fn peek_bool(&self) -> XBool {
+        (*self.peek_word()).into()
+    }
+
+    #[inline]
     pub(crate) fn peek_int(&self) -> XInt {
-        XInt::from_le_bytes(self.peek_word())
+        (*self.peek_word()).into()
     }
 
     #[inline]
     pub(crate) fn peek_float(&self) -> XFloat {
-        XFloat::from_le_bytes(*self.peek_dword())
+        (*self.peek_dword()).into()
     }
 
     #[inline]
     pub(crate) fn peek_string(&self) -> XString {
-        XString::from_bytes(*self.peek_qword())
+        (*self.peek_qword()).into()
     }
 
     #[inline]
@@ -315,8 +299,8 @@ mod tests {
         stack.push_bool(true);
         stack.push_bool(false);
 
-        assert_eq!(false, stack.pop_bool());
-        assert_eq!(true, stack.pop_bool());
+        assert_eq!(0, stack.pop_bool());
+        assert_eq!(1, stack.pop_bool());
     }
 
     #[test]
@@ -339,20 +323,14 @@ mod tests {
     fn pop_n_times() {
         let mut stack = Stack::default();
 
-        let word_1: Word = 1_i32.to_le_bytes();
-        let word_2: Word = 2_i32.to_le_bytes();
-        let word_3: Word = 3_i32.to_le_bytes();
-        let word_4: Word = 4_i32.to_le_bytes();
-        let word_5: Word = 5_i32.to_le_bytes();
+        stack.push_word(1_i32);
+        stack.push_word(2_i32);
+        stack.push_word(3_i32);
+        stack.push_word(4_i32);
+        stack.push_word(5_i32);
 
-        stack.push_word(word_1);
-        stack.push_word(word_2);
-        stack.push_word(word_3);
-        stack.push_word(word_4);
-        stack.push_word(word_5);
+        let popped = stack.pop_n::<2>(2);
 
-        let popped = stack.pop_n_static::<2>(2);
-
-        assert_eq!([word_4, word_5], popped);
+        assert_eq!(popped, [4_i32.into(), 5_i32.into()]);
     }
 }

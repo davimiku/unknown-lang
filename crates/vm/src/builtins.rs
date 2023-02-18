@@ -1,4 +1,4 @@
-use codegen::XInt;
+use vm_types::XInt;
 
 use crate::VM;
 

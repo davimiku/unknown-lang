@@ -1,9 +1,8 @@
 use std::mem::size_of;
 
-use crate::{
-    string::{AllocationStrategy, XString},
-    Chunk, Op, Readable, XFloat, XInt,
-};
+use vm_types::xstring::{DisassembledXString, XString};
+
+use crate::{Chunk, Op, Readable, XFloat, XInt};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in codegen and vm
@@ -47,20 +46,19 @@ impl Op {
             Op::PushString => {
                 let s = read::<XString>(chunk, &mut offset);
 
-                match s.tag {
-                    AllocationStrategy::Heap => print!("[heap-allocated String]"),
-                    AllocationStrategy::ConstantsPool => {
-                        let start = s.loc as usize;
-                        let end = (s.loc + (s.len as u64)) as usize;
+                let s = s.disassemble();
+                let s = match s {
+                    DisassembledXString::Heap { .. } => "[heap-allocated string]",
+                    DisassembledXString::ConstantsPool { len, start } => {
+                        let end = start + (len as usize);
 
-                        let string_bytes = chunk.constants_slice(start..end);
-                        let s =
-                            std::str::from_utf8(string_bytes).expect("bytes should be valid UTF-8");
+                        let bytes = chunk.constants_slice(start..end);
 
-                        print!("\"{s}\"")
+                        std::str::from_utf8(bytes).expect("bytes should be valid UTF-8")
                     }
-                    AllocationStrategy::Embedded => todo!(),
-                }
+                };
+
+                print!("\"{s}\"");
             }
 
             Op::GetLocal

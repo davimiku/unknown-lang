@@ -1,8 +1,11 @@
 use builtins::{PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STRING};
-use codegen::{AllocationStrategy, Chunk, InvalidOpError, Op, Readable, XFloat, XInt, XString};
+use codegen::{Chunk, InvalidOpError, Op, Readable};
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
+use vm_types::words::Word;
+use vm_types::xstring::{DisassembledXString, XString};
+use vm_types::{XFloat, XInt};
 
 mod builtins;
 mod macros;
@@ -12,16 +15,6 @@ pub fn run(chunk: Chunk) -> InterpretResult {
     let mut vm = VM::new(chunk);
     vm.interpret()
 }
-
-/// Raw bytes representation of one "word" of the VM
-// TODO: these should be newtypes, not aliases. The type signature of other functions
-// becomes confusing and there are too many ad-hoc conversions.
-// Consolidate all bytemuck::cast into newtype constructors and From traits
-type Word = [u8; 4];
-type DWord = [u8; 8];
-type QWord = [u8; 16];
-
-// type Word6 = [u8; 24]; // ex. List ?
 
 #[derive(Debug, Default)]
 pub struct VM {
@@ -93,7 +86,7 @@ impl VM {
                     self.stack.push_bool(false);
                 }
                 Pop1 => {
-                    self.stack.pop();
+                    self.stack.pop_word();
                 }
                 Pop2 => {
                     self.stack.pop_dword();
@@ -103,7 +96,7 @@ impl VM {
                 }
                 PopN => {
                     let num_slots = self.read_byte();
-                    self.stack.pop_n(num_slots);
+                    self.stack.pop_n_dynamic(num_slots);
                 }
                 GetLocal => {
                     let slot_offset = self.read::<u16>() as usize;
@@ -126,12 +119,12 @@ impl VM {
                 SetLocal => {
                     let slot_offset = self.read::<u16>() as usize;
                     let word = self.stack.peek_word();
-                    self.stack.set_word_at(word, slot_offset);
+                    self.stack.set_word_at(*word, slot_offset);
                 }
                 SetLocal2 => {
                     let slot_offset = self.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
-                    let words: [Word; 2] = bytemuck::cast(*val);
+                    let words: [Word; 2] = (*val).into();
 
                     for (i, word) in words.iter().enumerate() {
                         self.stack.set_word_at(*word, slot_offset + i);
@@ -140,7 +133,7 @@ impl VM {
                 SetLocal4 => {
                     let slot_offset = self.read::<u16>() as usize;
                     let val = self.stack.peek_qword();
-                    let words: [Word; 4] = bytemuck::cast(*val);
+                    let words: [Word; 4] = (*val).into();
 
                     for (i, word) in words.iter().enumerate() {
                         self.stack.set_word_at(*word, slot_offset + i);
@@ -154,23 +147,13 @@ impl VM {
 
                     todo!()
                 }
-
-                AddFloat => float_bin_op!(self, add),
-                SubFloat => float_bin_op!(self, sub),
-                MulFloat => float_bin_op!(self, mul),
-                DivFloat => {
-                    let b = self.stack.pop_float();
-                    let a = self.stack.pop_float();
-                    if b == 0.0 {
-                        return Err(RuntimeError::DivideByZero);
+                NotBool => {
+                    let top = self.stack.peek_bool();
+                    if top == 0 {
+                        self.stack.replace_top_word(1)
+                    } else {
+                        self.stack.replace_top_word(0)
                     }
-
-                    let res = a / b;
-                    self.stack.push_float(res);
-                }
-                NegateFloat => {
-                    let top = self.stack.peek_float();
-                    self.stack.replace_top_dword((-top).to_le_bytes());
                 }
                 AddInt => int_bin_op!(self, add),
                 SubInt => int_bin_op!(self, sub),
@@ -187,9 +170,26 @@ impl VM {
                 }
                 NegateInt => {
                     let top = self.stack.peek_int();
-                    self.stack.replace_top_word((-top).to_le_bytes());
+                    self.stack.replace_top_word(-top);
                 }
                 RemInt => todo!(),
+                AddFloat => float_bin_op!(self, add),
+                SubFloat => float_bin_op!(self, sub),
+                MulFloat => float_bin_op!(self, mul),
+                DivFloat => {
+                    let b = self.stack.pop_float();
+                    let a = self.stack.pop_float();
+                    if b == 0.0 {
+                        return Err(RuntimeError::DivideByZero);
+                    }
+
+                    let res = a / b;
+                    self.stack.push_float(res);
+                }
+                NegateFloat => {
+                    let top = self.stack.peek_float();
+                    self.stack.replace_top_dword(-top);
+                }
                 ConcatString => {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
@@ -202,11 +202,8 @@ impl VM {
                     let c = a.to_owned() + b;
                     let (ptr, len) = self.alloc_string(&c);
 
-                    let c = XString {
-                        loc: ptr as u64,
-                        len: len as u32,
-                        tag: AllocationStrategy::Heap,
-                    };
+                    let c = XString::new_allocated(len as u32, ptr);
+
                     self.stack.push_string(c);
                 }
                 Builtin => {
@@ -220,7 +217,7 @@ impl VM {
                 JumpIfFalse => {
                     let offset = self.read::<u32>();
                     let condition = self.stack.pop_bool();
-                    if !condition {
+                    if condition == 0 {
                         self.ip += offset as usize;
                     }
                 }
@@ -253,15 +250,13 @@ impl VM {
 
     /// Dereferences the UTF-8 string contents from the allocation
     pub fn deref_string(&self, s: XString) -> &str {
-        let string_bytes = match s.tag {
-            AllocationStrategy::Heap => {
-                let data = s.loc as *const u8;
-
-                unsafe { std::slice::from_raw_parts(data, s.len as usize) }
-            }
-            AllocationStrategy::ConstantsPool => {
-                let start = s.loc as usize;
-                let end = (s.loc + (s.len as u64)) as usize;
+        let d = s.disassemble();
+        let string_bytes: &[u8] = match d {
+            DisassembledXString::Heap { len, ptr } => unsafe {
+                std::slice::from_raw_parts(ptr, len as usize)
+            },
+            DisassembledXString::ConstantsPool { len, start } => {
+                let end = start + (len as usize);
 
                 // Safety: The compiler must have correctly allocated valid UTF-8
                 // bytes and correctly generated the bytecode string during codegen
@@ -275,7 +270,6 @@ impl VM {
                     self.chunk.constants_slice(start..end)
                 }
             }
-            AllocationStrategy::Embedded => todo!(),
         };
 
         #[cfg(not(debug_assertions))]

@@ -58,11 +58,11 @@ dependencies = [
 name = "codegen"
 version = "0.1.0"
 dependencies = [
- "bytemuck",
  "hir",
  "la-arena",
  "memory_recycling",
  "text-size",
+ "vm-types",
 ]
 
 [[package]]
@@ -385,10 +385,17 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vm"
 version = "0.1.0"
 dependencies = [
- "bytemuck",
  "codegen",
  "hir",
  "memory_recycling",
+ "vm-types",
+]
+
+[[package]]
+name = "vm-types"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]

@@ -33,7 +33,7 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"print ("Hello, " ++ "World!")"#;
+    let program = r#"print ("Hello, " ++ "Caitie!")"#;
 
     Ok(program.to_owned())
 }

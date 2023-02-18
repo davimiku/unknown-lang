@@ -15,10 +15,12 @@
 //!
 //! [backpatching]: https://stackoverflow.com/questions/15984671/what-does-backpatching-mean
 pub use op::{InvalidOpError, Op};
-pub use string::{AllocationStrategy, XString};
 
 use la_arena::Idx;
 use text_size::TextRange;
+use vm_types::words::{Word, WORD_SIZE};
+use vm_types::xstring::XString;
+use vm_types::{XBool, XFloat, XInt};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -31,7 +33,6 @@ use hir::{IfExpr, LocalDefKey, LocalRef, LocalRefName, Type, UnaryExpr, UnaryOp}
 
 mod disassemble;
 mod op;
-mod string;
 #[cfg(test)]
 mod tests;
 
@@ -54,10 +55,31 @@ pub fn codegen(idx: &Idx<Expr>, context: &Context) -> Chunk {
 }
 
 // TODO: better name
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq)]
 struct Code {
     bytes: Vec<u8>,
     ranges: Vec<TextRange>,
+}
+
+impl Debug for Code {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Code")
+            .field("bytes", &debug_bytes(&self.bytes))
+            .field("ranges", &self.ranges)
+            .finish()
+    }
+}
+
+fn debug_bytes(bytes: &[u8]) -> impl fmt::Debug {
+    let bytes: Vec<_> = bytes
+        .chunks_exact(4)
+        .map(|s| {
+            let q: [u8; 4] = s.try_into().expect("slice with length 4");
+            u32::from_le_bytes(q)
+        })
+        .collect();
+
+    bytes
 }
 
 impl Code {
@@ -102,15 +124,8 @@ impl Code {
     }
 
     #[inline]
-    fn push_word(&mut self, source: Word) {
-        self.bytes.extend_from_slice(&source);
-    }
-
-    #[inline]
-    fn extend<T: IntoIterator<Item = Word>>(&mut self, iter: T) {
-        for word in iter {
-            self.push_word(word);
-        }
+    fn extend<I: IntoIterator<Item = u8>>(&mut self, source: I) {
+        self.bytes.extend(source.into_iter());
     }
 
     #[inline]
@@ -230,12 +245,8 @@ impl Chunk {
         let mut code = Code::default();
         code.push(self.synth_op(Op::PushString, range));
 
-        let s = XString {
-            loc: idx as u64,
-            len,
-            tag: AllocationStrategy::ConstantsPool,
-        };
-        code.extend(s.to_words());
+        let s = XString::new_constant(len, idx);
+        code.extend(s.to_bytes().into_iter());
 
         code
     }
@@ -591,28 +602,6 @@ impl Display for Chunk {
         writeln!(f)
     }
 }
-
-// TODO: move these to a shared crate (imported in vm and codegen)
-/// Representation of one "word" of the VM, or one "slot" in the stack
-type Word = [u8; 4];
-
-/// Byte size of a VM "word"
-const WORD_SIZE: usize = mem::size_of::<Word>();
-
-/// Representation of two words, alias for convenience
-type Word2 = [u8; 8];
-
-// TODO: Prepend these with a prefix indicating that this is a `T` in the (currently unnamed) language.
-// for now, a prefix of `X` is used.
-
-/// VM representation of a language Int
-pub type XInt = i32;
-
-/// VM representation of a language Float
-pub type XFloat = f64;
-
-/// VM representation of a language boolean
-pub type XBool = u32;
 
 // TODO: represent this as a static map or some other efficient form
 // or use once_cell if merged into std

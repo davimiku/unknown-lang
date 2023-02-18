@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.12.3"
 hir = { path = "../hir" }
 memory_recycling = { path = "../memory_recycling" }
 la-arena = "0.3.0"
 text-size = "1.1.0"
+vm-types = { path = "../vm-types" }

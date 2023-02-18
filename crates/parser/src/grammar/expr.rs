@@ -134,12 +134,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 
         Dash => parse_negation_expr(p),
         Not => parse_not_expr(p),
-        // TODO: this might also be the start of a tuple?
-        // ex.
-        // let point = (1, 2)
-        //             ^
-        // parentheses are already overloaded as a grouping expression & parameters,
-        // probably can't overload again as tuples
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
         Loop => parse_loop_expr(p),
@@ -264,6 +258,7 @@ fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
 
     // single arg may omit the parentheses
     if !p.at(LParen) {
+        // TODO: call expr_binding_power instead with the binding power of function application
         parse_expr(p);
     } else {
         p.bump();
@@ -481,8 +476,8 @@ enum UnaryOp {
 impl UnaryOp {
     fn binding_power(&self) -> ((), u8) {
         match self {
-            Self::Neg => ((), 11),
-            Self::Not => ((), 5),
+            Self::Neg => ((), 11), // TODO: should be higher than Exp but less than Path
+            Self::Not => ((), 5),  // TODO: should be higher than And?
         }
     }
 }
