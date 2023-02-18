@@ -50,6 +50,46 @@ fn int_addition() {
 }
 
 #[test]
+fn not_false() {
+    let input = "!false";
+    let expected = expect![[r#"
+{
+    !false
+}"#]];
+
+    check(input, expected)
+}
+
+#[test]
+fn not_true() {
+    let input = "!true";
+    let expected = expect![[r#"
+{
+    !true
+}"#]];
+
+    check(input, expected)
+}
+
+#[test]
+fn not_variable_ref() {
+    let input = r#"
+    let a = true
+    let b = !a
+"#;
+    let expected = expect![[r#"
+{
+    a~0 : true = true
+    b~0 : false = !a~0
+}
+a~0 : true
+b~0 : false
+"#]];
+
+    check(input, expected)
+}
+
+#[test]
 fn string_concatenation() {
     let input = r#""Hello " ++ "World!""#;
     let expected = expect![[r#"

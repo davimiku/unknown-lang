@@ -301,13 +301,14 @@ impl Chunk {
 
         use Type::*;
         use UnaryOp::*;
-        code.push(match op {
-            Neg => match expr_type {
-                Float => self.synth_op(Op::NegateFloat, TextRange::default()),
-                Int => self.synth_op(Op::NegateInt, TextRange::default()),
-                _ => unreachable!(),
-            },
-            Not => todo!(),
+        code.push(match (op, expr_type) {
+            (Neg, Int) | (Neg, IntLiteral(_)) => self.synth_op(Op::NegateInt, TextRange::default()),
+            (Neg, Float) | (Neg, FloatLiteral(_)) => {
+                self.synth_op(Op::NegateFloat, TextRange::default())
+            }
+            (Not, Bool) | (Not, BoolLiteral(_)) => self.synth_op(Op::NotBool, TextRange::default()),
+
+            _ => unreachable!(),
         });
 
         code

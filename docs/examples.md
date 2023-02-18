@@ -15,7 +15,7 @@ The `print` function is currently a hard-coded builtin that only accepts a Strin
 
 **Scalar/Primitive** data types:
 
-- `Int`: integer (64-bit)
+- `Int`: integer (32-bit)
 - `Float`: floating point number (64-bit)
 - `Bool`: boolean value (true or false)
 - `String`: UTF-8 encoded text
@@ -90,13 +90,15 @@ type Example = struct { a: A, b: B, c: C }
 Practical example:
 
 ```txt
-type Event = union {
-    login: LoginEvent,
-    logout: LogoutEvent,
-    cart_add: CartAddEvent,
-    checkout: CheckoutEvent,
+type CartAddEvent = struct {
+    user: User,
+    product: Product,
+    quantity: Int,
+    added_at: DateTime,
 }
 ```
+
+As shown in this example, unions and structs can be freely composed with each other. A union may have a struct as the data type for one or more of its variants, and a struct may have a union as one of its fields.
 
 ## Variables
 

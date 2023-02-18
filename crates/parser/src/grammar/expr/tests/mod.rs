@@ -1,5 +1,6 @@
 mod functions;
 mod literals;
+mod unary;
 
 use crate::check_expr;
 use expect_test::expect;

@@ -51,10 +51,6 @@ pub enum TokenKind {
     #[token("module")]
     Module,
 
-    /// ‘not’
-    #[token("not")]
-    Not,
-
     /// ‘or’
     #[token("or")]
     Or,
@@ -167,6 +163,10 @@ pub enum TokenKind {
     #[token("%")]
     Percent,
 
+    /// ‘!’
+    #[token("!")]
+    Bang,
+
     /// ‘<’
     #[token("<")]
     LAngle,
@@ -248,7 +248,6 @@ impl fmt::Display for TokenKind {
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
             Self::Module => "‘module’",
-            Self::Not => "‘not’",
             Self::Or => "‘or’",
             Self::Return => "‘return’",
             Self::Struct => "‘struct’",
@@ -285,6 +284,7 @@ impl fmt::Display for TokenKind {
             Self::Slash => "‘/’",
             Self::Caret => "‘^’",
             Self::Percent => "‘%’",
+            Self::Bang => "‘!’",
 
             Self::LAngle => "‘<’",
             Self::LAngleEquals => "‘<=’",
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn lex_not_keyword() {
-        check("not", TokenKind::Not);
+        check("not", TokenKind::Bang);
     }
 
     #[test]

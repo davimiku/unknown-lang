@@ -61,7 +61,7 @@ pub enum Expr {
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
 
-    /// Binary expression, ex. `a + b`, `c ** d`
+    /// Binary expression, ex. `a + b`, `c ^ d`
     Binary(BinaryExpr),
 
     /// Unary expression, ex. `-a`, `not b`
@@ -218,7 +218,7 @@ impl fmt::Display for BinaryOp {
             Div => write!(f, "/"),
             Concat => write!(f, "++"),
             Rem => write!(f, "%"),
-            Exp => write!(f, "**"),
+            Exp => write!(f, "^"),
             Path => write!(f, "."),
         }
     }
@@ -234,9 +234,7 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             UnaryOp::Neg => write!(f, "-"),
-
-            // TODO: "not" or "!"  ?
-            UnaryOp::Not => write!(f, "not "),
+            UnaryOp::Not => write!(f, "!"),
         }
     }
 }

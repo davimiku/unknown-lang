@@ -216,7 +216,7 @@ impl Context {
     fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Dash => UnaryOp::Neg,
-            SyntaxKind::Not => UnaryOp::Not,
+            SyntaxKind::Bang => UnaryOp::Not,
             _ => unreachable!(),
         };
 

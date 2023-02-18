@@ -35,7 +35,7 @@ impl VM {
     pub(crate) fn print_bool(&mut self) {
         let b = self.stack.pop_bool();
 
-        println!("{b}");
+        println!("{}", b != 0);
     }
 
     pub(crate) fn len_string(&mut self) {

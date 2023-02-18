@@ -534,7 +534,7 @@ impl Unary {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), Dash | Not))
+            .find(|token| matches!(token.kind(), Dash | Bang))
     }
 
     pub fn range(&self) -> TextRange {

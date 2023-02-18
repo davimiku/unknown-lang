@@ -18,12 +18,13 @@ use self::types::parse_type_expr;
 // (is the condition `a` or is the condition `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const FUNCTION_ARG_START: [TokenKind; 7] = [
+const FUNCTION_ARG_START: [TokenKind; 8] = [
     LParen,
     Ident,
     IntLiteral,
     FloatLiteral,
     StringLiteral,
+    Bang,
     False, // TODO: remove when true/false are turned into idents
     True,  // TODO: remove when true/false are turned into idents
 ];
@@ -133,7 +134,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         Ident => parse_ident(p)?,
 
         Dash => parse_negation_expr(p),
-        Not => parse_not_expr(p),
+        Bang => parse_not_expr(p),
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
         Loop => parse_loop_expr(p),
@@ -293,7 +294,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Not));
+    debug_assert!(p.at(Bang));
 
     let m = p.start();
 
@@ -437,7 +438,7 @@ enum BinaryOp {
     /// `%`
     Rem,
 
-    /// `**`
+    /// `^`
     Exp,
 
     /// `and`

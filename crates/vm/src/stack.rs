@@ -47,6 +47,11 @@ impl Stack {
     }
 
     #[inline]
+    pub(crate) fn push_bool<B: Into<XBool>>(&mut self, val: B) {
+        self.push_word(val.into());
+    }
+
+    #[inline]
     pub(crate) fn push_int<I: Into<XInt>>(&mut self, val: I) {
         self.push_word(val.into());
     }
@@ -54,11 +59,6 @@ impl Stack {
     #[inline]
     pub(crate) fn push_float<F: Into<XFloat>>(&mut self, val: F) {
         self.push_dword(val.into());
-    }
-
-    #[inline]
-    pub(crate) fn push_bool<B: Into<XBool>>(&mut self, val: B) {
-        self.push_word(val.into());
     }
 
     /// Pushes the stack representation of a String to the stack.
@@ -144,15 +144,17 @@ impl Stack {
     /// Mutates the top value of the stack in-place.
     #[inline]
     pub(super) fn replace_top_word<T: Into<Word>>(&mut self, val: T) {
-        self.data[0] = val.into();
+        let top = self.top_index();
+        self.data[top] = val.into();
     }
 
     #[inline]
     pub(crate) fn replace_top_dword<T: Into<DWord>>(&mut self, val: T) {
+        let top = self.top_index();
         let dword: DWord = val.into();
         let words: [Word; 2] = dword.into();
-        self.data[1] = words[0];
-        self.data[0] = words[1];
+        self.data[top - 1] = words[0];
+        self.data[top] = words[1];
     }
 
     /// Sets the value at a given index of the stack.
@@ -171,6 +173,11 @@ impl Stack {
 
 // Non-mutating functions
 impl Stack {
+    #[inline]
+    fn top_index(&self) -> usize {
+        self.data.len() - 1
+    }
+
     // TODO: unsafe version for non-test code?
     /// Copies the top word from the stack and returns it.
     ///

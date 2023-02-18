@@ -20,7 +20,6 @@ pub enum SyntaxKind {
     Let,
     Loop,
     Module,
-    Not,
     Or,
     Return,
     Struct,
@@ -57,6 +56,7 @@ pub enum SyntaxKind {
     Slash,
     Caret,
     Percent,
+    Bang,
 
     LAngle,
     LAngleEquals,
@@ -134,7 +134,6 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Let => Self::Let,
             TokenKind::Loop => Self::Loop,
             TokenKind::Module => Self::Module,
-            TokenKind::Not => Self::Not,
             TokenKind::Or => Self::Or,
             TokenKind::Return => Self::Return,
             TokenKind::Struct => Self::Struct,
@@ -172,9 +171,9 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Slash => Self::Slash,
             TokenKind::Caret => Self::Caret,
             TokenKind::Percent => Self::Percent,
+            TokenKind::Bang => Self::Bang,
             TokenKind::Equals => Self::Equals,
             TokenKind::Comment => Self::Comment,
-            TokenKind::Error => Self::Error,
             TokenKind::LAngle => Self::LAngle,
             TokenKind::LAngleEquals => Self::LAngleEquals,
             TokenKind::RAngle => Self::RAngle,
@@ -183,12 +182,13 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::BangEquals => Self::BangEquals,
             TokenKind::DotDot => Self::DotDot,
             TokenKind::Dot => Self::Dot,
-
             TokenKind::Arrow => Self::Arrow,
 
             TokenKind::Root => Self::Root,
             TokenKind::Emptyspace => Self::Emptyspace,
             TokenKind::Newline => Self::Newline,
+
+            TokenKind::Error => Self::Error,
         }
     }
 }

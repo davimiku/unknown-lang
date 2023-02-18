@@ -11,6 +11,7 @@ use crate::database::Database;
 use crate::interner::{Interner, Key};
 use crate::{
     BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, IfExpr, LocalDef, LocalRef, LocalRefName,
+    UnaryExpr, UnaryOp,
 };
 
 // TODO: needs to have Vec<TypeDiagnostic>
@@ -39,14 +40,17 @@ pub(crate) fn infer_expr(
             },
             range: Default::default(),
         }),
+
         Expr::BoolLiteral(b) => infer_bool_literal(*b, results, expr_idx),
         Expr::FloatLiteral(f) => infer_float_literal(*f, results, expr_idx),
         Expr::IntLiteral(i) => infer_int_literal(*i, results, expr_idx),
         Expr::StringLiteral(key) => infer_string_literal(*key, results, expr_idx),
-        Expr::Binary(expr) => infer_binary(expr, results, database, interner),
-        Expr::Unary(expr) => todo!(),
-        Expr::Block(block) => infer_block(expr_idx, block, results, database, interner),
+
         Expr::LocalRef(local_ref) => lower_local_ref(local_ref, results),
+
+        Expr::Binary(expr) => infer_binary(expr, results, database, interner),
+        Expr::Unary(expr) => infer_unary(expr, results, database, interner),
+        Expr::Block(block) => infer_block(expr_idx, block, results, database, interner),
         Expr::Call(expr) => {
             let name = &expr.path;
             let args = &expr.args;
@@ -239,6 +243,36 @@ fn infer_if_expr(
         })
     } else {
         Ok(Type::Unit)
+    }
+}
+
+fn infer_unary(
+    expr: &UnaryExpr,
+    results: &mut TypeCheckResults,
+    database: &Database,
+    interner: &mut Interner,
+) -> InferResult {
+    let UnaryExpr {
+        op,
+        expr: inner_idx,
+    } = expr;
+
+    match op {
+        UnaryOp::Neg => todo!(),
+        UnaryOp::Not => {
+            let inner_type = infer_expr(*inner_idx, results, database, interner);
+            match inner_type {
+                Ok(ty) => check_expr(*inner_idx, Type::Bool, results, database, interner).map(
+                    |_| match ty {
+                        Type::Bool => Type::Bool,
+                        Type::BoolLiteral(b) => Type::BoolLiteral(!b),
+                        _ => unreachable!(),
+                    },
+                ),
+                Err(diag) => Err(diag),
+            }
+            //
+        }
     }
 }
 
