@@ -19,8 +19,8 @@ pub use op::{InvalidOpError, Op};
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_types::words::{Word, WORD_SIZE};
-use vm_types::xstring::XString;
-use vm_types::{XBool, XFloat, XInt};
+use vm_types::xstring::VMString;
+use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -230,7 +230,7 @@ impl Chunk {
         code
     }
 
-    fn synth_int_constant(&self, value: XInt, range: TextRange) -> Code {
+    fn synth_int_constant(&self, value: VMInt, range: TextRange) -> Code {
         let mut code: Code = self.synth_op(Op::PushInt, range).into();
         code.extend_from_slice(&value.to_le_bytes());
 
@@ -245,7 +245,7 @@ impl Chunk {
         let mut code = Code::default();
         code.push(self.synth_op(Op::PushString, range));
 
-        let s = XString::new_constant(len, idx);
+        let s = VMString::new_constant(len, idx);
         code.extend(s.to_bytes().into_iter());
 
         code
@@ -621,10 +621,10 @@ impl Display for Chunk {
 /// transparently heap-allocated.
 fn word_size_of(ty: &Type) -> u16 {
     (match ty {
-        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<XBool>() / WORD_SIZE,
-        Type::Float | Type::FloatLiteral(_) => mem::size_of::<XFloat>() / WORD_SIZE,
-        Type::Int | Type::IntLiteral(_) => mem::size_of::<XInt>() / WORD_SIZE,
-        Type::String | Type::StringLiteral(_) => mem::size_of::<XString>() / WORD_SIZE,
+        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<VMBool>() / WORD_SIZE,
+        Type::Float | Type::FloatLiteral(_) => mem::size_of::<VMFloat>() / WORD_SIZE,
+        Type::Int | Type::IntLiteral(_) => mem::size_of::<VMInt>() / WORD_SIZE,
+        Type::String | Type::StringLiteral(_) => mem::size_of::<VMString>() / WORD_SIZE,
         Type::Named(_) => todo!(),
         Type::Unit => 0,
 
@@ -646,6 +646,6 @@ pub unsafe trait Readable {}
 unsafe impl Readable for u8 {}
 unsafe impl Readable for u16 {}
 unsafe impl Readable for u32 {}
-unsafe impl Readable for XInt {}
-unsafe impl Readable for XFloat {}
-unsafe impl Readable for XString {}
+unsafe impl Readable for VMInt {}
+unsafe impl Readable for VMFloat {}
+unsafe impl Readable for VMString {}

@@ -6,6 +6,11 @@ mod tests;
 pub mod words;
 pub mod xstring;
 
-pub type XBool = u32;
-pub type XInt = i32;
-pub type XFloat = f64;
+/// VM representation of a language Bool
+pub type VMBool = u32;
+
+/// VM representation of a language Int
+pub type VMInt = i32;
+
+/// VM representation of a language Float
+pub type VMFloat = f64;

@@ -4,8 +4,8 @@ use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
 use vm_types::words::Word;
-use vm_types::xstring::{DisassembledXString, XString};
-use vm_types::{XFloat, XInt};
+use vm_types::xstring::{DisassembledVMString, VMString};
+use vm_types::{VMFloat, VMInt};
 
 mod builtins;
 mod macros;
@@ -68,15 +68,15 @@ impl VM {
             use Op::*;
             match op {
                 PushInt => {
-                    let constant = self.read::<XInt>();
+                    let constant = self.read::<VMInt>();
                     self.stack.push_int(constant);
                 }
                 PushFloat => {
-                    let constant = self.read::<XFloat>();
+                    let constant = self.read::<VMFloat>();
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let s = self.read::<XString>();
+                    let s = self.read::<VMString>();
                     self.stack.push_string(s);
                 }
                 PushTrue => {
@@ -202,7 +202,7 @@ impl VM {
                     let c = a.to_owned() + b;
                     let (ptr, len) = self.alloc_string(&c);
 
-                    let c = XString::new_allocated(len as u32, ptr);
+                    let c = VMString::new_allocated(len as u32, ptr);
 
                     self.stack.push_string(c);
                 }
@@ -249,13 +249,13 @@ impl VM {
     }
 
     /// Dereferences the UTF-8 string contents from the allocation
-    pub fn deref_string(&self, s: XString) -> &str {
+    pub fn deref_string(&self, s: VMString) -> &str {
         let d = s.disassemble();
         let string_bytes: &[u8] = match d {
-            DisassembledXString::Heap { len, ptr } => unsafe {
+            DisassembledVMString::Heap { len, ptr } => unsafe {
                 std::slice::from_raw_parts(ptr, len as usize)
             },
-            DisassembledXString::ConstantsPool { len, start } => {
+            DisassembledVMString::ConstantsPool { len, start } => {
                 let end = start + (len as usize);
 
                 // Safety: The compiler must have correctly allocated valid UTF-8

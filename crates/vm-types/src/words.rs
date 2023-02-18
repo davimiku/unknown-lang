@@ -3,7 +3,7 @@
 use bytemuck::cast;
 use std::array;
 
-use crate::{XBool, XFloat, XInt};
+use crate::{VMBool, VMFloat, VMInt};
 
 /// Represents 1 "word", or the base size of values in the VM
 /// No values are smaller than 1 word.
@@ -24,16 +24,16 @@ impl From<WordBytes> for Word {
     }
 }
 
-impl From<XBool> for Word {
-    fn from(value: XBool) -> Self {
+impl From<VMBool> for Word {
+    fn from(value: VMBool) -> Self {
         Self {
             bytes: value.to_le_bytes(),
         }
     }
 }
 
-impl From<XInt> for Word {
-    fn from(value: XInt) -> Self {
+impl From<VMInt> for Word {
+    fn from(value: VMInt) -> Self {
         Self {
             bytes: value.to_le_bytes(),
         }
@@ -48,9 +48,9 @@ impl From<Word> for WordBytes {
     }
 }
 
-impl From<Word> for XBool {
+impl From<Word> for VMBool {
     fn from(word: Word) -> Self {
-        XBool::from_le_bytes(word.bytes)
+        VMBool::from_le_bytes(word.bytes)
     }
 }
 
@@ -60,9 +60,9 @@ impl From<Word> for Vec<u8> {
     }
 }
 
-impl From<Word> for XInt {
+impl From<Word> for VMInt {
     fn from(word: Word) -> Self {
-        XInt::from_le_bytes(word.bytes)
+        VMInt::from_le_bytes(word.bytes)
     }
 }
 
@@ -110,8 +110,8 @@ impl From<u64> for DWord {
     }
 }
 
-impl From<XFloat> for DWord {
-    fn from(value: XFloat) -> Self {
+impl From<VMFloat> for DWord {
+    fn from(value: VMFloat) -> Self {
         Self {
             bytes: value.to_le_bytes(),
         }
@@ -139,9 +139,9 @@ impl From<DWord> for Vec<u8> {
     }
 }
 
-impl From<DWord> for XFloat {
+impl From<DWord> for VMFloat {
     fn from(word: DWord) -> Self {
-        XFloat::from_le_bytes(word.bytes)
+        VMFloat::from_le_bytes(word.bytes)
     }
 }
 

@@ -3,9 +3,9 @@ use std::fmt;
 use std::mem;
 use std::mem::size_of;
 
-use vm_types::xstring::XString;
-use vm_types::XFloat;
-use vm_types::XInt;
+use vm_types::xstring::VMString;
+use vm_types::VMFloat;
+use vm_types::VMInt;
 
 /// The opcodes of the virtual machine (VM)
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -286,9 +286,9 @@ impl Op {
     /// Returns the size (in bytes) of the operand for each Op
     pub(crate) fn operand_size(&self) -> usize {
         match self {
-            Op::PushInt => size_of::<XInt>(),
-            Op::PushFloat => size_of::<XFloat>(),
-            Op::PushString => size_of::<XString>(),
+            Op::PushInt => size_of::<VMInt>(),
+            Op::PushFloat => size_of::<VMFloat>(),
+            Op::PushString => size_of::<VMString>(),
             Op::GetLocal | Op::GetLocal2 | Op::GetLocal4 => size_of::<u16>(),
             Op::SetLocal | Op::SetLocal2 | Op::SetLocal4 => size_of::<u16>(),
             Op::GetLocalN | Op::SetLocalN => size_of::<(u16, u16)>(),

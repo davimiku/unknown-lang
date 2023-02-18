@@ -1,8 +1,8 @@
 use std::mem::size_of;
 
-use vm_types::xstring::{DisassembledXString, XString};
+use vm_types::xstring::{DisassembledVMString, VMString};
 
-use crate::{Chunk, Op, Readable, XFloat, XInt};
+use crate::{Chunk, Op, Readable, VMFloat, VMInt};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in codegen and vm
@@ -34,22 +34,22 @@ impl Op {
         let mut offset = offset + size_of::<Op>();
         match self {
             Op::PushInt => {
-                let int = read::<XInt>(chunk, &mut offset);
+                let int = read::<VMInt>(chunk, &mut offset);
 
                 print!("{int}");
             }
             Op::PushFloat => {
-                let float = read::<XFloat>(chunk, &mut offset);
+                let float = read::<VMFloat>(chunk, &mut offset);
 
                 print!("{float}");
             }
             Op::PushString => {
-                let s = read::<XString>(chunk, &mut offset);
+                let s = read::<VMString>(chunk, &mut offset);
 
                 let s = s.disassemble();
                 let s = match s {
-                    DisassembledXString::Heap { .. } => "[heap-allocated string]",
-                    DisassembledXString::ConstantsPool { len, start } => {
+                    DisassembledVMString::Heap { .. } => "[heap-allocated string]",
+                    DisassembledVMString::ConstantsPool { len, start } => {
                         let end = start + (len as usize);
 
                         let bytes = chunk.constants_slice(start..end);

@@ -1,4 +1,4 @@
-use vm_types::XInt;
+use vm_types::VMInt;
 
 use crate::VM;
 
@@ -44,6 +44,6 @@ impl VM {
         let len = s.length();
 
         // TODO: should length be u32 or i32?
-        self.stack.push_int(len as XInt);
+        self.stack.push_int(len as VMInt);
     }
 }

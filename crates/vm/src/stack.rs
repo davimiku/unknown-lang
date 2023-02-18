@@ -11,8 +11,8 @@
 //! one slot. For example, a Float uses 2 slots.
 
 use vm_types::words::{DWord, QWord, Word};
-use vm_types::xstring::XString;
-use vm_types::{XBool, XFloat, XInt};
+use vm_types::xstring::VMString;
+use vm_types::{VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots
 const STACK_MAX: usize = 256;
@@ -47,23 +47,23 @@ impl Stack {
     }
 
     #[inline]
-    pub(crate) fn push_bool<B: Into<XBool>>(&mut self, val: B) {
+    pub(crate) fn push_bool<B: Into<VMBool>>(&mut self, val: B) {
         self.push_word(val.into());
     }
 
     #[inline]
-    pub(crate) fn push_int<I: Into<XInt>>(&mut self, val: I) {
+    pub(crate) fn push_int<I: Into<VMInt>>(&mut self, val: I) {
         self.push_word(val.into());
     }
 
     #[inline]
-    pub(crate) fn push_float<F: Into<XFloat>>(&mut self, val: F) {
+    pub(crate) fn push_float<F: Into<VMFloat>>(&mut self, val: F) {
         self.push_dword(val.into());
     }
 
     /// Pushes the stack representation of a String to the stack.
     #[inline]
-    pub(crate) fn push_string(&mut self, s: XString) {
+    pub(crate) fn push_string(&mut self, s: VMString) {
         let q: QWord = s.into();
         self.push_qword(q);
     }
@@ -120,24 +120,24 @@ impl Stack {
 
     /// Removes the top value of the stack and returns it as a bool
     #[inline]
-    pub fn pop_bool(&mut self) -> XBool {
+    pub fn pop_bool(&mut self) -> VMBool {
         self.pop_word().into()
     }
 
     /// Removes the top slot of the stack and returns it as an XInt
     #[inline]
-    pub fn pop_int(&mut self) -> XInt {
+    pub fn pop_int(&mut self) -> VMInt {
         self.pop_word().into()
     }
 
     /// Removes the top two slots of the stack and returns it as an f64
     #[inline]
-    pub fn pop_float(&mut self) -> XFloat {
+    pub fn pop_float(&mut self) -> VMFloat {
         self.pop_dword().into()
     }
 
     #[inline]
-    pub(crate) fn pop_string(&mut self) -> XString {
+    pub(crate) fn pop_string(&mut self) -> VMString {
         self.pop_qword().into()
     }
 
@@ -205,22 +205,22 @@ impl Stack {
     // }
 
     #[inline]
-    pub(crate) fn peek_bool(&self) -> XBool {
+    pub(crate) fn peek_bool(&self) -> VMBool {
         (*self.peek_word()).into()
     }
 
     #[inline]
-    pub(crate) fn peek_int(&self) -> XInt {
+    pub(crate) fn peek_int(&self) -> VMInt {
         (*self.peek_word()).into()
     }
 
     #[inline]
-    pub(crate) fn peek_float(&self) -> XFloat {
+    pub(crate) fn peek_float(&self) -> VMFloat {
         (*self.peek_dword()).into()
     }
 
     #[inline]
-    pub(crate) fn peek_string(&self) -> XString {
+    pub(crate) fn peek_string(&self) -> VMString {
         (*self.peek_qword()).into()
     }
 

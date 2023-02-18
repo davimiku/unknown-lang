@@ -9,7 +9,7 @@ use crate::words::{QWord, Word};
 // uses 24 bytes (padding after the tag and after the len)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct XString {
+pub struct VMString {
     /// Describes how the string is allocated
     tag: AllocationStrategy, // TODO: do we want it to be pub?
 
@@ -21,7 +21,7 @@ pub struct XString {
     loc: u64,
 }
 
-impl XString {
+impl VMString {
     // TODO: Can this take a Gc pointer or how does that work?
     pub fn new_allocated(len: u32, ptr: *const u8) -> Self {
         Self {
@@ -40,7 +40,7 @@ impl XString {
     }
 }
 
-impl XString {
+impl VMString {
     // Non-Mutating functions
     #[inline]
     pub fn length(&self) -> u32 {
@@ -49,14 +49,14 @@ impl XString {
 
     // TODO: bad name?
     #[inline]
-    pub fn disassemble(&self) -> DisassembledXString {
+    pub fn disassemble(&self) -> DisassembledVMString {
         let Self { tag, len, loc } = self;
         match tag {
-            AllocationStrategy::Heap => DisassembledXString::Heap {
+            AllocationStrategy::Heap => DisassembledVMString::Heap {
                 len: *len,
                 ptr: *loc as *const u8,
             },
-            AllocationStrategy::ConstantsPool => DisassembledXString::ConstantsPool {
+            AllocationStrategy::ConstantsPool => DisassembledVMString::ConstantsPool {
                 len: *len,
                 start: *loc as usize,
             },
@@ -71,26 +71,26 @@ impl XString {
     }
 }
 
-impl From<XString> for QWord {
-    fn from(source: XString) -> Self {
+impl From<VMString> for QWord {
+    fn from(source: VMString) -> Self {
         source.to_bytes().into()
     }
 }
 
-impl From<QWord> for XString {
+impl From<QWord> for VMString {
     fn from(source: QWord) -> Self {
         // Safety: The QWord used must be created by the corresponding From trait
         unsafe { std::mem::transmute(source) }
     }
 }
 
-impl IntoIterator for XString {
+impl IntoIterator for VMString {
     type Item = Word;
     type IntoIter = array::IntoIter<Self::Item, 4>;
 
     fn into_iter(self) -> Self::IntoIter {
         // TODO: profile and add `unsafe` as needed for perf
-        let XString { tag, len, loc } = self;
+        let VMString { tag, len, loc } = self;
         let tag: Word = (tag as u32).into();
         let len: Word = len.into();
         let loc: [[u8; 4]; 2] = cast(loc.to_le_bytes());
@@ -121,7 +121,7 @@ enum AllocationStrategy {
     Embedded,
 }
 
-pub enum DisassembledXString {
+pub enum DisassembledVMString {
     Heap { len: u32, ptr: *const u8 },
 
     ConstantsPool { len: u32, start: usize },
