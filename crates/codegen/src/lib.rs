@@ -18,8 +18,8 @@ pub use op::{InvalidOpError, Op};
 
 use la_arena::Idx;
 use text_size::TextRange;
-use vm_types::words::{Word, WORD_SIZE};
-use vm_types::xstring::VMString;
+use vm_types::vm_string::VMString;
+use vm_types::words::{QWord, Word, WORD_SIZE};
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::HashMap;
@@ -245,8 +245,9 @@ impl Chunk {
         let mut code = Code::default();
         code.push(self.synth_op(Op::PushString, range));
 
-        let s = VMString::new_constant(len, idx);
-        code.extend(s.to_bytes().into_iter());
+        let string = VMString::new_constant(len, idx);
+        let string_bytes: [u8; 16] = string.into();
+        code.extend_from_slice(&string_bytes);
 
         code
     }
@@ -552,6 +553,10 @@ impl Chunk {
         // Safety: We checked that it is not an out-of-bounds read,
         // so this is safe.
         unsafe { self.read_unchecked(offset) }
+    }
+
+    pub fn borrow_constants(&self) -> &[u8] {
+        &self.constants
     }
 
     /// Gets a slice of bytes from the constants pool at the given index

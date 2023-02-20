@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod tests;
+pub mod vm_string;
 pub mod words;
-pub mod xstring;
 
 /// VM representation of a language Bool
 pub type VMBool = u32;

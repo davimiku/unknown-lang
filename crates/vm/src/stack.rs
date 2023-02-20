@@ -10,8 +10,8 @@
 //! It is possible and common for values to reside in more than
 //! one slot. For example, a Float uses 2 slots.
 
+use vm_types::vm_string::VMString;
 use vm_types::words::{DWord, QWord, Word};
-use vm_types::xstring::VMString;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots

@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use vm_types::xstring::{DisassembledVMString, VMString};
+use vm_types::vm_string::{DisassembledVMString, VMString};
 
 use crate::{Chunk, Op, Readable, VMFloat, VMInt};
 
@@ -46,17 +46,7 @@ impl Op {
             Op::PushString => {
                 let s = read::<VMString>(chunk, &mut offset);
 
-                let s = s.disassemble();
-                let s = match s {
-                    DisassembledVMString::Heap { .. } => "[heap-allocated string]",
-                    DisassembledVMString::ConstantsPool { len, start } => {
-                        let end = start + (len as usize);
-
-                        let bytes = chunk.constants_slice(start..end);
-
-                        std::str::from_utf8(bytes).expect("bytes should be valid UTF-8")
-                    }
-                };
+                let s = s.deref(&chunk.constants);
 
                 print!("\"{s}\"");
             }
@@ -67,15 +57,15 @@ impl Op {
             | Op::SetLocal
             | Op::SetLocal2
             | Op::SetLocal4 => {
-                let slot_offset = read::<u16>(chunk, &mut offset);
+                let slot_index = read::<u16>(chunk, &mut offset);
 
-                print!("offset: {slot_offset}");
+                print!("index: {slot_index}");
             }
             Op::GetLocalN | Op::SetLocalN => {
-                let slot_offset = read::<u16>(chunk, &mut offset);
+                let slot_index = read::<u16>(chunk, &mut offset);
                 let slot_size = read::<u16>(chunk, &mut offset);
 
-                print!("offset: {slot_offset}, size:{slot_size}");
+                print!("index: {slot_index}, size:{slot_size}");
             }
             Op::Builtin => {
                 let builtin_idx = read::<u8>(chunk, &mut offset);

@@ -15,7 +15,7 @@ impl VM {
     pub(crate) fn print_string(&mut self) {
         let s = self.stack.pop_string();
 
-        let s = self.deref_string(s);
+        let s = self.deref_string(&s);
 
         println!("{s}");
     }

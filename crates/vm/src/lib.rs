@@ -3,8 +3,8 @@ use codegen::{Chunk, InvalidOpError, Op, Readable};
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
+use vm_types::vm_string::{DisassembledVMString, VMString};
 use vm_types::words::Word;
-use vm_types::xstring::{DisassembledVMString, VMString};
 use vm_types::{VMFloat, VMInt};
 
 mod builtins;
@@ -194,8 +194,8 @@ impl VM {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
-                    let b = self.deref_string(b);
-                    let a = self.deref_string(a);
+                    let b = self.deref_string(&b);
+                    let a = self.deref_string(&a);
 
                     // TODO: optimize out extra heap allocation, create function that
                     // copies both slices of bytes to a new pointer without intermediate Rust String
@@ -249,38 +249,9 @@ impl VM {
     }
 
     /// Dereferences the UTF-8 string contents from the allocation
-    pub fn deref_string(&self, s: VMString) -> &str {
-        let d = s.disassemble();
-        let string_bytes: &[u8] = match d {
-            DisassembledVMString::Heap { len, ptr } => unsafe {
-                std::slice::from_raw_parts(ptr, len as usize)
-            },
-            DisassembledVMString::ConstantsPool { len, start } => {
-                let end = start + (len as usize);
-
-                // Safety: The compiler must have correctly allocated valid UTF-8
-                // bytes and correctly generated the bytecode string during codegen
-                #[cfg(not(debug_assertions))]
-                {
-                    self.chunk.constants_slice_unchecked(start..end)
-                }
-
-                #[cfg(debug_assertions)]
-                {
-                    self.chunk.constants_slice(start..end)
-                }
-            }
-        };
-
-        #[cfg(not(debug_assertions))]
-        {
-            std::str::from_utf8_unchecked(string_bytes)
-        }
-
-        #[cfg(debug_assertions)]
-        {
-            std::str::from_utf8(string_bytes).expect("bytes should be valid UTF-8")
-        }
+    pub fn deref_string<'a>(&'a self, s: &'a VMString) -> &'a str {
+        let constants = self.chunk.borrow_constants();
+        s.deref(constants)
     }
 
     fn exec_builtin(&mut self, i: u8) {
