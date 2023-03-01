@@ -23,6 +23,8 @@ union VMStringData {
     embedded: EmbeddedVMString,
 }
 
+type RawVMStringData = [u8; 12];
+
 impl VMString {
     pub fn new_allocated(len: u32, ptr: *const u8) -> Self {
         let data = VMStringData {
@@ -43,6 +45,16 @@ impl VMString {
         };
         Self {
             tag: AllocationStrategy::Constants,
+            data,
+        }
+    }
+
+    pub fn new_embedded(len: u8, data: [u8; MAX_EMBEDDED_LENGTH]) -> Self {
+        let data = VMStringData {
+            embedded: EmbeddedVMString { len, data },
+        };
+        Self {
+            tag: AllocationStrategy::Embedded,
             data,
         }
     }
@@ -96,7 +108,7 @@ impl VMString {
     fn to_bytes(self) -> [u8; 16] {
         use AllocationStrategy::*;
         let tag_bytes: [u8; 4] = cast(self.tag as u32);
-        let data_bytes: [u8; 12] = unsafe {
+        let data_bytes: RawVMStringData = unsafe {
             match self {
                 Self { tag: Heap, data } => data.heap.into(),
                 Self {
@@ -114,7 +126,7 @@ impl VMString {
             let start = uninit.as_mut_ptr() as *mut u8;
 
             (start.add(0) as *mut [u8; 4]).write(tag_bytes);
-            (start.add(tag_bytes.len()) as *mut [u8; 12]).write(data_bytes);
+            (start.add(tag_bytes.len()) as *mut RawVMStringData).write(data_bytes);
 
             uninit.assume_init()
         }
@@ -150,9 +162,10 @@ struct HeapVMString {
     ptr: *const u8,
 }
 
-impl From<HeapVMString> for [u8; 12] {
+impl From<HeapVMString> for RawVMStringData {
     fn from(value: HeapVMString) -> Self {
-        todo!()
+        let ptr_split: [u32; 2] = cast(value.ptr as usize);
+        cast([value.len, ptr_split[0], ptr_split[1]])
     }
 }
 
@@ -182,13 +195,19 @@ impl ConstantVMString {
     }
 }
 
-impl From<ConstantVMString> for [u8; 12] {
+impl From<ConstantVMString> for RawVMStringData {
     fn from(value: ConstantVMString) -> Self {
         let start_split: [u32; 2] = cast(value.start_idx);
 
         cast([value.len, start_split[0], start_split[1]])
     }
 }
+
+// TODO: make the tag u8 and this can fit 14 bytes?
+// 1 byte tag, 1 byte length, 14 bytes data
+// or use the same strategy as compact_str to pack the length
+// in the last byte
+pub const MAX_EMBEDDED_LENGTH: usize = 11;
 
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]
@@ -197,38 +216,29 @@ struct EmbeddedVMString {
     len: u8,
 
     /// Bytes of the string
-    data: [u8; 11], // TODO: make the tag u8 and this can fit 14 bytes?
+    data: [u8; MAX_EMBEDDED_LENGTH],
 }
 
 impl EmbeddedVMString {
     fn bytes(&self) -> &[u8] {
         let end = self.len as usize;
-        &self.data.get(0..end).expect("valid slice index")
+        self.data.get(0..end).expect("valid slice index")
     }
 }
 
-impl From<EmbeddedVMString> for [u8; 12] {
+impl From<EmbeddedVMString> for RawVMStringData {
     fn from(value: EmbeddedVMString) -> Self {
-        todo!()
+        unsafe {
+            let mut uninit = MaybeUninit::<RawVMStringData>::uninit();
+            let start = uninit.as_mut_ptr() as *mut u8;
+
+            (start.add(0) as *mut [u8; 1]).write([value.len]);
+            (start.add(1) as *mut [u8; MAX_EMBEDDED_LENGTH]).write(value.data);
+
+            uninit.assume_init()
+        }
     }
 }
-
-// impl IntoIterator for VMString {
-//     type Item = Word;
-//     type IntoIter = array::IntoIter<Self::Item, 4>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         // TODO: profile and add `unsafe` as needed for perf
-//         let VMString { tag, len, loc } = self;
-//         let tag: Word = (tag as u32).into();
-//         let len: Word = len.into();
-//         let loc: [[u8; 4]; 2] = cast(loc.to_le_bytes());
-//         let loc: [Word; 2] = [loc[0].into(), loc[1].into()];
-
-//         let words = [tag, len, loc[0], loc[1]];
-//         words.into_iter()
-//     }
-// }
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
