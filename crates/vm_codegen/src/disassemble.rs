@@ -1,11 +1,11 @@
 use std::mem::size_of;
 
-use vm_types::vm_string::{DisassembledVMString, VMString};
+use vm_types::string::VMString;
 
 use crate::{Chunk, Op, Readable, VMFloat, VMInt};
 
 // TODO: pull builtins out to a separate crate?
-// This kind of idx -> builtin map would be used in codegen and vm
+// This kind of idx -> builtin map would be used in vm_codegen and vm
 pub const BUILTIN_NAMES: [&str; 5] = [
     "print_str_constant",
     "print_str",

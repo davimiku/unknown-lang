@@ -3,7 +3,7 @@ use std::fmt;
 use std::mem;
 use std::mem::size_of;
 
-use vm_types::vm_string::VMString;
+use vm_types::string::VMString;
 use vm_types::VMFloat;
 use vm_types::VMInt;
 

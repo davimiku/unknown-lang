@@ -1,5 +1,5 @@
 [package]
-name = "codegen"
+name = "vm_codegen"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,4 +10,4 @@ hir = { path = "../hir" }
 memory_recycling = { path = "../memory_recycling" }
 la-arena = "0.3.0"
 text-size = "1.1.0"
-vm-types = { path = "../vm-types" }
+vm_types = { path = "../vm_types" }

@@ -5,20 +5,12 @@
 //! - Text ranges corresponding to opcodes for debug information and errors
 //! - Constants pool for constants not encoded into operands, ex. strings
 //!
-//! This code generation is not really a single pass through the HIR. For
-//! example, the jump offsets for if/else operations are not [back patched][backpatching].
-//! Functions that synthesize (synth) the bytecode return their values rather than directly
-//! writing to the chunk. That allows us to synth the "then branch" of an if/else and get its
-//! byte length to write the jump offset before writing the "then branch". This allows me to
-//! write correct code because I am horrible at manually dealing with byte offsets and bitwise
-//! operations. There may be a performance impact of this that can be evaluated later.
-//!
 //! [backpatching]: https://stackoverflow.com/questions/15984671/what-does-backpatching-mean
 pub use op::{InvalidOpError, Op};
 
 use la_arena::Idx;
 use text_size::TextRange;
-use vm_types::vm_string::VMString;
+use vm_types::string::VMString;
 use vm_types::words::{QWord, Word, WORD_SIZE};
 use vm_types::{VMBool, VMFloat, VMInt};
 
@@ -373,6 +365,14 @@ impl Chunk {
         code
     }
 
+    /// The jump offsets for if/else operations are not backpatched, they are synthesized
+    /// (synth) first rather than directly writing to the chunk. That allows us to synth
+    /// the "then branch" of an if/else and get its byte length to write the jump offset
+    /// before writing the "then branch".
+    ///
+    /// This allows me to write correct code because I am horrible at manually dealing
+    /// with byte offsets and bitwise operations. There may be a performance impact of
+    /// this that can be evaluated later.
     fn synth_if_expr(&mut self, expr: &IfExpr, context: &Context) -> Code {
         let IfExpr {
             condition,
