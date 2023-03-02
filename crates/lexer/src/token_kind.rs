@@ -376,6 +376,11 @@ mod tests {
     }
 
     #[test]
+    fn lex_bang() {
+        check("!", TokenKind::Bang);
+    }
+
+    #[test]
     fn lex_emptyspace() {
         check("   ", TokenKind::Emptyspace);
     }
@@ -403,11 +408,6 @@ mod tests {
     #[test]
     fn lex_let_keyword() {
         check("let", TokenKind::Let);
-    }
-
-    #[test]
-    fn lex_not_keyword() {
-        check("not", TokenKind::Bang);
     }
 
     #[test]
