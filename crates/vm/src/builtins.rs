@@ -3,7 +3,7 @@ use vm_types::VMInt;
 use crate::VM;
 
 // TODO: move to a shared "builtins" crate
-// remove duplication with codegen crate
+// remove duplication with vm_codegen crate
 pub const PRINT_STRING: u8 = 1;
 pub const PRINT_INT: u8 = 2;
 pub const PRINT_FLOAT: u8 = 3;
@@ -43,7 +43,7 @@ impl VM {
 
         let len = s.length();
 
-        // TODO: should length be u32 or i32?
+        // TODO: should length be a larger int?
         self.stack.push_int(len as VMInt);
     }
 }

@@ -152,6 +152,12 @@ impl From<DWord> for [Word; 2] {
     }
 }
 
+impl From<DWord> for u64 {
+    fn from(value: DWord) -> Self {
+        u64::from_le_bytes(value.bytes)
+    }
+}
+
 // Iterators
 
 impl IntoIterator for DWord {

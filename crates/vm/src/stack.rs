@@ -10,7 +10,7 @@
 //! It is possible and common for values to reside in more than
 //! one slot. For example, a Float uses 2 slots.
 
-use vm_types::vm_string::VMString;
+use vm_types::string::VMString;
 use vm_types::words::{DWord, QWord, Word};
 use vm_types::{VMBool, VMFloat, VMInt};
 
@@ -139,6 +139,12 @@ impl Stack {
     #[inline]
     pub(crate) fn pop_string(&mut self) -> VMString {
         self.pop_qword().into()
+    }
+
+    #[inline]
+    pub(crate) fn pop_ptr<T>(&mut self) -> *const T {
+        let dword = self.pop_dword();
+        u64::from(dword) as *const T
     }
 
     /// Mutates the top value of the stack in-place.

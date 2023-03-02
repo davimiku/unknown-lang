@@ -55,24 +55,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "codegen"
-version = "0.1.0"
-dependencies = [
- "hir",
- "la-arena",
- "memory_recycling",
- "text-size",
- "vm-types",
-]
-
-[[package]]
 name = "compiler"
 version = "0.1.0"
 dependencies = [
  "ast",
- "codegen",
  "hir",
  "parser",
+ "vm_codegen",
 ]
 
 [[package]]
@@ -268,9 +257,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.17.0"
+version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
+checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
 name = "parser"
@@ -287,9 +276,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef7d57beacfaf2d8aee5937dab7b7f28de3cb8b1828479bb5de2a7106f2bae2"
+checksum = "5d727cae5b39d21da60fa540906919ad737832fe0b1c165da3a34d6548c849d6"
 dependencies = [
  "unicode-ident",
 ]
@@ -385,14 +374,38 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vm"
 version = "0.1.0"
 dependencies = [
- "codegen",
- "hir",
+ "lasso",
  "memory_recycling",
- "vm-types",
+ "vm_boxed_types",
+ "vm_codegen",
+ "vm_types",
 ]
 
 [[package]]
-name = "vm-types"
+name = "vm_boxed_types"
+version = "0.1.0"
+dependencies = [
+ "lasso",
+ "vm_codegen",
+]
+
+[[package]]
+name = "vm_builtins"
+version = "0.1.0"
+
+[[package]]
+name = "vm_codegen"
+version = "0.1.0"
+dependencies = [
+ "hir",
+ "la-arena",
+ "memory_recycling",
+ "text-size",
+ "vm_types",
+]
+
+[[package]]
+name = "vm_types"
 version = "0.1.0"
 dependencies = [
  "bytemuck",

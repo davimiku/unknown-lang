@@ -1,12 +1,10 @@
 [package]
-name = "compiler"
+name = "vm_boxed_types"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ast = { path = "../ast" }
+lasso = "0.6.0"
 vm_codegen = { path = "../vm_codegen" }
-hir = { path = "../hir" }
-parser = { path = "../parser" }

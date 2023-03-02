@@ -46,7 +46,7 @@ impl Op {
             Op::PushString => {
                 let s = read::<VMString>(chunk, &mut offset);
 
-                let s = s.deref(&chunk.constants);
+                let s = s.to_string(&chunk.constants);
 
                 print!("\"{s}\"");
             }

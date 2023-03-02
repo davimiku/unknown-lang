@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-codegen = { path = "../codegen" }
-hir = { path = "../hir" }
+lasso = "0.6.0"
 memory_recycling = { path = "../memory_recycling" }
-vm-types = { path = "../vm-types" }
+vm_boxed_types = { path = "../vm_boxed_types" }
+vm_codegen = { path = "../vm_codegen" }
+vm_types = { path = "../vm_types" }

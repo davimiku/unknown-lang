@@ -76,6 +76,29 @@ pub enum Op {
     /// Stack: N*Word **=>**
     PopN,
 
+    /// Pops a VM string off the stack.
+    ///
+    /// Operands:
+    ///
+    /// Stack: VMString **=>**
+    PopString,
+
+    /// Pops an object from the stack that is memory-managed with
+    /// reference counting (Rc).
+    ///
+    /// Operands:
+    ///
+    /// Stack: Rc<T> **=>**
+    PopRc,
+
+    /// Pops an object from the stack that is memory-managed with
+    /// garbage collection (Gc).
+    ///
+    /// Operands:
+    ///
+    /// Stack: Gc<T> **=>**
+    PopGc,
+
     /// Gets a local of 1 slot size at the given offset
     /// and pushes it onto the stack.
     ///

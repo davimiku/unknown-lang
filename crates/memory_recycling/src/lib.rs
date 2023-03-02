@@ -55,8 +55,6 @@ pub unsafe fn cast_bytes_to_Gc<T: Trace>(raw_bytes: u64) -> Gc<T> {
 #[cfg(test)]
 mod tests {
 
-    use std::vec;
-
     use super::*;
 
     pub fn alloc_2_strings(s1: &str, s2: &str) -> (Gc<String>, Gc<String>) {
@@ -114,8 +112,6 @@ mod tests {
 
     #[test]
     fn store_pointers_in_bytecode() {
-        let fake_bytecode: Vec<u64> = vec![];
-
         let a = Gc::new(String::from("never"));
         let b = Gc::new(String::from("yeet"));
         let c = Gc::new(String::from("shredded"));
