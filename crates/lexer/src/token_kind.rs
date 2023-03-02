@@ -23,187 +23,187 @@ pub enum TokenKind {
     // ==========
     // Keywords
     // ==========
-    /// ‘and’
+    /// `and`
     #[token("and")]
     And,
 
-    /// ‘else’
+    /// `else`
     #[token("else")]
     Else,
 
-    /// ‘for’
+    /// `for`
     #[token("for")]
     For,
 
-    /// ‘if’
+    /// `if`
     #[token("if")]
     If,
 
-    /// ‘let’
+    /// `let`
     #[token("let")]
     Let,
 
-    /// ‘loop’
+    /// `loop`
     #[token("loop")]
     Loop,
 
-    /// ‘module’
+    /// `module`
     #[token("module")]
     Module,
 
-    /// ‘or’
+    /// `or`
     #[token("or")]
     Or,
 
-    /// ‘return’
+    /// `return`
     #[token("return")]
     Return,
 
-    /// ‘struct’
+    /// `struct`
     #[token("struct")]
     Struct,
 
-    /// ‘try’
+    /// `try`
     #[token("try")]
     Try,
 
-    /// ‘type’
+    /// `type`
     #[token("type")]
     Type,
 
-    /// ‘union’
+    /// `union`
     #[token("union")]
     Union,
 
-    /// ‘while’
+    /// `while`
     #[token("while")]
     While,
 
     // ==========
     // Well-known values
     // ==========
-    /// ‘false’
+    /// `false`
     #[token("false")]
     False,
 
-    /// ‘true’
+    /// `true`
     #[token("true")]
     True,
 
     // ==========
     // Delimiters
     // ==========
-    /// ‘{’
+    /// `{`
     #[token("{")]
     LBrace,
 
-    /// ‘}’
+    /// `}`
     #[token("}")]
     RBrace,
 
-    /// ‘(’
+    /// `(`
     #[token("(")]
     LParen,
 
-    /// ‘)’
+    /// `)`
     #[token(")")]
     RParen,
 
-    /// ‘[’
+    /// `[`
     #[token("[")]
     LBracket,
 
-    /// ‘]’
+    /// `]`
     #[token("]")]
     RBracket,
 
     // ==========
     // Separators
     // ==========
-    /// ‘:’
+    /// `:`
     #[token(":")]
     Colon,
 
-    /// ‘;’
+    /// `;`
     #[token(";")]
     Semicolon,
 
-    /// ‘,’
+    /// `,`
     #[token(",")]
     Comma,
 
     // ==========
     // Operators
     // ==========
-    /// ‘+’
+    /// `+`
     #[token("+")]
     Plus,
 
-    /// ‘++’
+    /// `++`
     #[token("++")]
     PlusPlus,
 
-    /// ‘-’
+    /// `-`
     #[token("-")]
     Dash,
 
-    /// ‘*’
+    /// `*`
     #[token("*")]
     Star,
 
-    /// ‘/’
+    /// `/`
     #[token("/")]
     Slash,
 
-    /// ‘^’
+    /// `^`
     #[token("^")]
     Caret,
 
-    /// ‘%’
+    /// `%`
     #[token("%")]
     Percent,
 
-    /// ‘!’
+    /// `!`
     #[token("!")]
     Bang,
 
-    /// ‘<’
+    /// `<`
     #[token("<")]
     LAngle,
 
-    /// ‘<=’
+    /// `<=`
     #[token("<=")]
     LAngleEquals,
 
-    /// ‘>’
+    /// `>`
     #[token(">")]
     RAngle,
 
-    /// ‘>=’
+    /// `>=`
     #[token(">=")]
     RAngleEquals,
 
-    /// ‘==’
+    /// `==`
     #[token("==")]
     EqualsEquals,
 
-    /// ‘!=’
+    /// `!=`
     #[token("!=")]
     BangEquals,
 
-    /// ‘=’
+    /// `=`
     #[token("=")]
     Equals,
 
-    /// ‘..’
+    /// `..`
     #[token("..")]
     DotDot,
 
-    /// ‘.’
+    /// `.`
     #[token(".")]
     Dot,
 
-    /// ‘->’
+    /// `->`
     #[token("->")]
     Arrow,
 
