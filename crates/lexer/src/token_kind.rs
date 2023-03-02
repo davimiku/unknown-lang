@@ -259,9 +259,9 @@ impl fmt::Display for TokenKind {
             // Literals
             Self::False => "‘false’",
             Self::True => "‘true’",
-            Self::IntLiteral => "int",
-            Self::FloatLiteral => "float",
-            Self::StringLiteral => "string",
+            Self::IntLiteral => "Int",
+            Self::FloatLiteral => "Float",
+            Self::StringLiteral => "String",
 
             // Delimiters
             Self::LBrace => "‘{’",
