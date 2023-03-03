@@ -89,6 +89,9 @@ pub enum SyntaxKind {
     TypeExpr,
     UnionTypeExpr,
 
+    // Supplemental
+    ParenExprItem,
+
     // IfExpr
     ConditionExpr,
     ThenBranchExpr,
@@ -105,7 +108,7 @@ pub enum SyntaxKind {
 
     // Function components
     FunBody,
-    FunParam,
+    // FunParam,
     FunParamList,
     Arrow,
     FunReturnType,

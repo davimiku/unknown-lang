@@ -286,7 +286,23 @@ pub struct FunParam(SyntaxNode);
 
 impl FunParam {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        (node.kind() == SyntaxKind::FunParam).then_some(Self(node))
+        use SyntaxKind::*;
+
+        match node.kind() {
+            // (a: A, b: B) ->
+            ParenExprItem => Some(Self(node)),
+
+            // a ->
+            Path => Some(Self(node)),
+
+            // (a) ->
+            Call => node
+                .children()
+                .find(|child| child.kind() == Path)
+                .map(|_| Self(node)),
+
+            _ => None,
+        }
     }
 
     // descendants() is depth-first traversal
@@ -294,7 +310,7 @@ impl FunParam {
     pub fn ident(&self) -> Option<Ident> {
         self.0
             .descendants()
-            .find_map(Call::cast)
+            .find_map(Path::cast)
             .and_then(|node| node.0.descendants().find_map(Ident::cast))
     }
 
@@ -314,7 +330,7 @@ impl FunParamList {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         use SyntaxKind::*;
 
-        matches!(node.kind(), ParenExpr | Ident).then_some(Self(node))
+        matches!(node.kind(), ParenExpr | Call | Ident).then_some(Self(node))
     }
 
     pub fn params(&self) -> impl Iterator<Item = FunParam> {

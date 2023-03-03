@@ -21,30 +21,6 @@ InfixExpr@0..9
 }
 
 #[test]
-fn parse_nullary_function_with_return_type() {
-    check_expr(
-        "() -> A { }",
-        expect![[r#"
-InfixExpr@0..11
-  ParenExpr@0..3
-    LParen@0..1 "("
-    RParen@1..2 ")"
-    Emptyspace@2..3 " "
-  Arrow@3..5 "->"
-  Emptyspace@5..6 " "
-  TypeExpr@6..8
-    Path@6..8
-      Ident@6..8
-        Ident@6..7 "A"
-        Emptyspace@7..8 " "
-  BlockExpr@8..11
-    LBrace@8..9 "{"
-    Emptyspace@9..10 " "
-    RBrace@10..11 "}""#]],
-    )
-}
-
-#[test]
 fn parse_unary_function_with_explicit_param_type() {
     check_expr(
         "(a: A) -> { }",
@@ -52,7 +28,7 @@ fn parse_unary_function_with_explicit_param_type() {
 InfixExpr@0..13
   ParenExpr@0..7
     LParen@0..1 "("
-    FunParam@1..5
+    ParenExprItem@1..5
       Call@1..2
         Path@1..2
           Ident@1..2
@@ -95,6 +71,28 @@ InfixExpr@0..9
 }
 
 #[test]
+fn parse_unary_function_with_paren() {
+    check_expr(
+        "(id) -> {}",
+        expect![[r#"
+InfixExpr@0..10
+  ParenExpr@0..5
+    LParen@0..1 "("
+    Call@1..3
+      Path@1..3
+        Ident@1..3
+          Ident@1..3 "id"
+    RParen@3..4 ")"
+    Emptyspace@4..5 " "
+  Arrow@5..7 "->"
+  Emptyspace@7..8 " "
+  BlockExpr@8..10
+    LBrace@8..9 "{"
+    RBrace@9..10 "}""#]],
+    );
+}
+
+#[test]
 fn parse_binary_function_with_inferred_param_types() {
     check_expr(
         "(a, b) -> { }",
@@ -102,16 +100,18 @@ fn parse_binary_function_with_inferred_param_types() {
 InfixExpr@0..13
   ParenExpr@0..7
     LParen@0..1 "("
-    Call@1..2
-      Path@1..2
-        Ident@1..2
-          Ident@1..2 "a"
+    ParenExprItem@1..2
+      Call@1..2
+        Path@1..2
+          Ident@1..2
+            Ident@1..2 "a"
     Comma@2..3 ","
     Emptyspace@3..4 " "
-    Call@4..5
-      Path@4..5
-        Ident@4..5
-          Ident@4..5 "b"
+    ParenExprItem@4..5
+      Call@4..5
+        Path@4..5
+          Ident@4..5
+            Ident@4..5 "b"
     RParen@5..6 ")"
     Emptyspace@6..7 " "
   Arrow@7..9 "->"
@@ -131,7 +131,7 @@ fn parse_binary_function_with_explicit_param_types() {
 InfixExpr@0..19
   ParenExpr@0..13
     LParen@0..1 "("
-    FunParam@1..5
+    ParenExprItem@1..5
       Call@1..2
         Path@1..2
           Ident@1..2
@@ -144,7 +144,7 @@ InfixExpr@0..19
             Ident@4..5 "A"
     Comma@5..6 ","
     Emptyspace@6..7 " "
-    FunParam@7..11
+    ParenExprItem@7..11
       Call@7..8
         Path@7..8
           Ident@7..8

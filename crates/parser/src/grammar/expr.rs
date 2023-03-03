@@ -30,15 +30,7 @@ const FUNCTION_ARG_START: [TokenKind; 8] = [
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
-    expr_binding_power(p, 0)
-}
-
-pub(super) fn parse_type(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Ident)); // Update for literal types?
-
-    let m = p.start();
-    parse_type_expr(p);
-    m.complete(p, SyntaxKind::TypeExpr)
+    expr_binding_power(p, 0, parse_lhs)
 }
 
 // TODO: remove this after language is more developed and switch to more opaque box tests
@@ -64,8 +56,15 @@ pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BlockExpr)
 }
 
-fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
-    let mut lhs = parse_lhs(p)?;
+fn expr_binding_power<F>(
+    p: &mut Parser,
+    minimum_binding_power: u8,
+    lhs_parser: F,
+) -> Option<CompletedMarker>
+where
+    F: Fn(&mut Parser) -> Option<CompletedMarker>,
+{
+    let mut lhs = lhs_parser(p)?;
 
     loop {
         let curr = p.peek();
@@ -104,7 +103,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         // an InfixExpr with LHS and RHS
         let m = lhs.precede(p);
 
-        let rhs = expr_binding_power(p, right_binding_power);
+        let rhs = expr_binding_power(p, right_binding_power, parse_lhs);
         lhs = m.complete(p, SyntaxKind::InfixExpr);
 
         if rhs.is_none() {
@@ -131,7 +130,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
 
-        Ident => parse_ident(p)?,
+        Ident => parse_ident(p),
 
         Dash => parse_negation_expr(p),
         Bang => parse_not_expr(p),
@@ -153,16 +152,16 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     Some(cm)
 }
 
-fn parse_ident(p: &mut Parser) -> Option<CompletedMarker> {
-    Some(if p.last_token_kind == Arrow {
-        // "-> Type { ... }"
-        //     ^^^^
-        parse_type(p);
+fn parse_ident(p: &mut Parser) -> CompletedMarker {
+    // Some(if p.last_token_kind == Arrow {
+    //     // "-> Type { ... }"
+    //     //     ^^^^
+    //     parse_type(p);
 
-        parse_expr(p)?
-    } else {
-        parse_variable_ident(p)
-    })
+    //     parse_expr(p)?
+    // } else {
+    parse_variable_ident(p)
+    // })
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
@@ -288,7 +287,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator’s token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power);
+    expr_binding_power(p, right_binding_power, parse_lhs);
 
     m.complete(p, SyntaxKind::NegationExpr)
 }
@@ -304,7 +303,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power);
+    expr_binding_power(p, right_binding_power, parse_lhs);
 
     m.complete(p, SyntaxKind::NotExpr)
 }
@@ -329,26 +328,33 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
         return m.complete(p, SyntaxKind::ParenExpr);
     }
 
-    loop {
-        let e = expr_binding_power(p, 0);
+    let mut maybe_a_parameter_list = false;
 
-        if e.is_none() {
+    loop {
+        let expr_marker = expr_binding_power(p, 0, parse_lhs);
+
+        if expr_marker.is_none() {
             break;
         }
-        let e = e.unwrap();
+        let expr_marker = expr_marker.unwrap();
 
         if p.at(Colon) {
             p.bump();
 
-            let m = e.precede(p);
-
-            parse_type(p);
-            m.complete(p, SyntaxKind::FunParam);
+            parse_type_expr(p);
+            maybe_a_parameter_list = true;
         }
 
         if p.at(Comma) {
+            let m = expr_marker.precede(p);
+            m.complete(p, SyntaxKind::ParenExprItem);
             p.bump();
+            maybe_a_parameter_list = true;
         } else {
+            if maybe_a_parameter_list {
+                let m = expr_marker.precede(p);
+                m.complete(p, SyntaxKind::ParenExprItem);
+            }
             break;
         }
     }

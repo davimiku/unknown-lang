@@ -196,7 +196,7 @@ impl<'t, 'input> Parser<'t, 'input> {
 
 #[derive(Debug)]
 pub(super) enum ParseEntryPoint {
-    Root, // should produce a Vec<Expr>
+    Root, // normal root of a file
 
     ExprTest, // test parsing single expressions
     TypeTest, // test parsing single type expressions

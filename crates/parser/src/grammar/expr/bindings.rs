@@ -15,7 +15,8 @@
 
 use lexer::TokenKind;
 
-use crate::grammar::expr::{parse_expr, parse_ident_token, parse_type};
+use crate::grammar::expr::types::parse_type_expr;
+use crate::grammar::expr::{parse_expr, parse_ident_token};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
@@ -30,7 +31,7 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
 
         if p.at(TokenKind::Colon) {
             p.bump();
-            parse_type(p);
+            parse_type_expr(p);
         }
 
         p.expect(TokenKind::Equals);
@@ -59,7 +60,7 @@ pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
         p.bump();
     }
 
-    parse_type(p);
+    parse_type_expr(p);
 
     m.complete(p, SyntaxKind::TypeBinding)
 }
@@ -164,7 +165,7 @@ error at 8..11: expected Int, identifier, ‘-’ or ‘(’, but found ‘let�
     }
 
     #[test]
-    fn parse_type_binding() {
+    fn parse_type_binding_alias() {
         let input = "type A = String";
         check(
             input,

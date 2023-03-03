@@ -105,7 +105,7 @@ mod tests {
             ],
             Some(TokenKind::Let),
             100..105,
-            "error at 100..105: expected int, identifier, ‘-’ or ‘(’, but found ‘let’",
+            "error at 100..105: expected Int, identifier, ‘-’ or ‘(’, but found ‘let’",
         );
     }
 }

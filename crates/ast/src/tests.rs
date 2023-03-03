@@ -28,6 +28,22 @@ fn parse_expr(input: &str) -> Expr {
     Expr::cast(parser::test_parse_expr(input).syntax()).unwrap()
 }
 
+fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: &[&str]) {
+    let function = assert_matches!(parsed, Expr::Function);
+    let param_list = function.param_list();
+    let params = param_list.params();
+    for (i, param) in params.enumerate() {
+        let name = assert_some!(assert_some!(param.ident()).name());
+        assert_eq!(name, expected_idents[i]);
+
+        if let Some(type_path) = param.type_expr().and_then(|t| t.as_path()) {
+            let expected_type_ident = expected_type_idents[i];
+            let actual_type_ident = assert_some!(type_path.ident_strings().next());
+            assert_eq!(actual_type_ident, expected_type_ident);
+        }
+    }
+}
+
 #[test]
 fn string_concatenation() {
     let input = r#""Hello " ++ "World!""#;
@@ -110,53 +126,56 @@ fn call_path_no_args() {
 #[test]
 fn empty_function() {
     let input = "() -> { }";
-    let expected_param_list = None;
-    let expected_return_type = None;
+    let expected_idents = [];
+    let expected_type_idents = [];
 
     let parsed = parse_expr(input);
 
-    let function = assert_matches!(parsed, Expr::Function);
-    assert_eq!(function.param_list().params().next(), expected_param_list);
-    assert_eq!(function.return_type(), expected_return_type);
+    check_function(parsed, &expected_idents, &expected_type_idents);
 }
 
 #[test]
-fn nullary_function_with_return_type() {
-    let input = "() -> Int { }";
-    let expected_param_list = None;
-    let expected_return_type = "Int";
+fn unary_function() {
+    let input = "a -> {}";
+    let expected_idents = ["a"];
+    let expected_type_idents = [];
 
     let parsed = parse_expr(input);
 
-    let function = assert_matches!(parsed, Expr::Function);
-    assert_eq!(function.param_list().params().next(), expected_param_list);
-    let return_type = assert_some!(function
-        .return_type()
-        .and_then(|type_expr| type_expr.as_path())
-        .and_then(|path| path.idents().next())
-        .and_then(|ident| ident.name_token()));
-    assert_eq!(return_type.text(), expected_return_type);
+    check_function(parsed, &expected_idents, &expected_type_idents);
 }
 
 #[test]
-fn unary_function_with_explicit_param_type() {
+fn unary_function_with_parens() {
+    let input = "(a) -> {}";
+    let expected_idents = ["a"];
+    let expected_type_idents = [];
+
+    let parsed = parse_expr(input);
+
+    check_function(parsed, &expected_idents, &expected_type_idents);
+}
+
+#[test]
+fn unary_function_with_param_type() {
+    let input = "(a: A) -> {}";
+    let expected_idents = ["a"];
+    let expected_type_idents = ["A"];
+
+    let parsed = parse_expr(input);
+
+    check_function(parsed, &expected_idents, &expected_type_idents);
+}
+
+#[test]
+fn binary_function_with_explicit_param_type() {
     let input = "(a: A, b: B) -> { }";
     let expected_idents = ["a", "b"];
     let expected_type_idents = ["A", "B"];
 
     let parsed = parse_expr(input);
 
-    let function = assert_matches!(parsed, Expr::Function);
-    let param_list = function.param_list();
-    let params = param_list.params();
-    for (i, param) in params.enumerate() {
-        let name = assert_some!(assert_some!(param.ident()).name());
-        assert_eq!(name, expected_idents[i]);
-
-        let type_path = assert_some!(param.type_expr().and_then(|t| t.as_path()));
-        let type_ident = assert_some!(type_path.ident_strings().next());
-        assert_eq!(type_ident, expected_type_idents[i]);
-    }
+    check_function(parsed, &expected_idents, &expected_type_idents);
 }
 
 #[test]

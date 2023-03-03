@@ -1,5 +1,6 @@
 mod functions;
 mod literals;
+mod types;
 mod unary;
 
 use crate::check_expr;
@@ -252,13 +253,12 @@ InfixExpr@0..13
 #[test]
 fn logical_not() {
     check_expr(
-        "not true",
+        "!true",
         expect![[r#"
-NotExpr@0..8
-  Not@0..3 "not"
-  Emptyspace@3..4 " "
-  BoolExpr@4..8
-    TrueLiteral@4..8 "true""#]],
+NotExpr@0..5
+  Bang@0..1 "!"
+  BoolExpr@1..5
+    TrueLiteral@1..5 "true""#]],
     )
 }
 
