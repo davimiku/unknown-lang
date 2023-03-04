@@ -18,8 +18,8 @@ pub use types::Type;
 
 use crate::database::Database;
 use crate::expr::LocalRefName;
+use crate::fmt_expr::fmt_type;
 use crate::interner::Interner;
-use crate::type_expr::TypeExpr;
 use crate::{BinaryOp, Expr, LocalDefKey};
 
 use self::check::check_expr;
@@ -74,14 +74,14 @@ pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, intern
     let mut locals: Vec<_> = results
         .local_types
         .iter()
-        .map(|(key, ty)| (key.display(interner), *ty))
+        .map(|(key, ty)| (key.display(interner), ty.clone()))
         .collect();
     locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
 
     for (name, ty) in locals.iter() {
         s.push_str(name);
         s.push_str(" : ");
-        s.push_str(&format!("{}\n", ty.display(interner)));
+        s.push_str(&format!("{}\n", fmt_type(ty, interner)));
     }
 }
 

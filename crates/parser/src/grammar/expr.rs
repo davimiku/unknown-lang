@@ -97,7 +97,13 @@ where
         }
 
         // Consume the operator token
+        // if op == BinaryOp::Function {
+        // let m = p.start();
         p.bump();
+        //     m.complete(p, SyntaxKind::Arrow);
+        // } else {
+        //     p.bump();
+        // }
 
         // Starts a new marker that "wraps" the already parsed LHS, so that we can have
         // an InfixExpr with LHS and RHS
@@ -425,6 +431,7 @@ fn parse_else_branch(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ElseBranchExpr)
 }
 
+#[derive(Debug, PartialEq)]
 enum BinaryOp {
     /// `+`
     Add,

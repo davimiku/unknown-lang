@@ -15,6 +15,7 @@ use crate::expr::{
     LocalRefName, UnaryExpr, UnaryOp,
 };
 use crate::interner::{Interner, Key};
+use crate::type_expr::TypeExpr;
 use crate::CallExpr;
 
 // TODO: needs to have Vec<TypeDiagnostic>
@@ -30,7 +31,7 @@ pub(crate) fn infer_expr(
     interner: &mut Interner,
 ) -> InferResult {
     if let Some(already_inferred_type) = results.expr_types.get(expr_idx) {
-        return Ok(*already_inferred_type);
+        return Ok(already_inferred_type.clone());
     }
 
     let (expr, range) = database.expr(expr_idx);
@@ -59,16 +60,37 @@ pub(crate) fn infer_expr(
             Ok(value) => value,
             Err(value) => return value,
         },
-        Expr::Function(FunctionExpr { params, body }) => todo!(),
+        Expr::Function(function) => infer_function(function, results, database, interner),
         Expr::LocalDef(local_def) => infer_local_def(local_def, results, database, interner),
         Expr::If(if_expr) => infer_if_expr(if_expr, results, database, interner),
     };
 
     if let Ok(ref inferred_type) = inferred_result {
-        results.set_expr_type(expr_idx, *inferred_type);
+        results.set_expr_type(expr_idx, inferred_type.clone());
     }
 
     inferred_result
+}
+
+fn infer_type_expr(type_expr: &TypeExpr, database: &Database) -> Type {
+    match type_expr {
+        TypeExpr::BoolLiteral(b) => Type::BoolLiteral(*b),
+        TypeExpr::FloatLiteral(f) => Type::FloatLiteral(*f),
+        TypeExpr::IntLiteral(i) => Type::IntLiteral(*i),
+        TypeExpr::StringLiteral(s) => Type::StringLiteral(*s),
+
+        TypeExpr::Binary(_) => todo!(),
+        TypeExpr::Unary(_) => todo!(),
+
+        TypeExpr::LocalRef(local_ref) => {
+            todo!()
+            // local_ref.name
+            // database
+        }
+        TypeExpr::LocalDef(_) => Type::Error,
+
+        TypeExpr::Empty => Type::Undetermined,
+    }
 }
 
 fn lower_local_ref(
@@ -84,9 +106,23 @@ fn lower_local_ref(
                 variant: TypeDiagnosticVariant::UndefinedLocal { name },
                 range: TextRange::default(),
             })
-            .copied(),
+            .cloned(),
         LocalRefName::Unresolved(name) => todo!(),
     }
+}
+
+fn infer_function(
+    function: &FunctionExpr,
+    results: &mut TypeCheckResults,
+    database: &Database,
+    interner: &mut Interner,
+) -> Result<Type, TypeDiagnostic> {
+    let FunctionExpr { params, body } = function;
+
+    Ok(Type::Function {
+        params: todo!(),
+        return_ty: todo!(),
+    })
 }
 
 fn infer_local_def(
@@ -102,12 +138,13 @@ fn infer_local_def(
     } = local_def;
     if let Some(annotation) = type_annotation {
         let (annotation, range) = database.type_expr(*annotation);
-        check_expr(*value, todo!(), results, database, interner);
+        let expected = infer_type_expr(annotation, database);
+        check_expr(*value, expected.clone(), results, database, interner).map(|_| expected)
     } else {
         let infer_result = infer_expr(*value, results, database, interner);
 
         if let Ok(ref ty) = infer_result {
-            results.local_types.insert(*key, *ty);
+            results.local_types.insert(*key, ty.clone());
         }
 
         infer_result
@@ -131,8 +168,9 @@ fn infer_block(
         tail_type.map_or_else(
             || Type::Unit,
             |tail_type| {
-                results.set_expr_type(expr_idx, *tail_type);
-                *tail_type
+                results.set_expr_type(expr_idx, tail_type.clone());
+
+                tail_type.clone()
             },
         )
     })
@@ -145,6 +183,7 @@ fn infer_call(
     database: &Database,
     interner: &mut Interner,
 ) -> Result<Result<Type, TypeDiagnostic>, Result<Type, TypeDiagnostic>> {
+    // TODO: why is this a nested Result?
     let name = &expr.path;
     let args = &expr.args;
     let builtin_signature = builtin_signatures.get(name.as_str());
@@ -159,11 +198,12 @@ fn infer_call(
                             .iter()
                             .zip(args.iter())
                             .all(|(expected, expr)| {
-                                check_expr(*expr, *expected, results, database, interner).is_ok()
+                                check_expr(*expr, expected.clone(), results, database, interner)
+                                    .is_ok()
                             });
 
                     if overload_is_match {
-                        return Err(Ok(overload.return_type));
+                        return Err(Ok(overload.return_type.clone()));
                     }
                 }
             }
@@ -190,7 +230,8 @@ fn infer_bool_literal(
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::BoolLiteral(b);
-    results.set_expr_type(expr_idx, inferred_type);
+    results.set_expr_type(expr_idx, inferred_type.clone());
+
     Ok(inferred_type)
 }
 
@@ -200,7 +241,8 @@ fn infer_float_literal(
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::FloatLiteral(f);
-    results.set_expr_type(expr_idx, inferred_type);
+    results.set_expr_type(expr_idx, inferred_type.clone());
+
     Ok(inferred_type)
 }
 
@@ -210,7 +252,8 @@ fn infer_int_literal(
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::IntLiteral(i);
-    results.set_expr_type(expr_idx, inferred_type);
+    results.set_expr_type(expr_idx, inferred_type.clone());
+
     Ok(inferred_type)
 }
 
@@ -220,7 +263,8 @@ fn infer_string_literal(
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::StringLiteral(key);
-    results.set_expr_type(expr_idx, inferred_type);
+    results.set_expr_type(expr_idx, inferred_type.clone());
+
     Ok(inferred_type)
 }
 
@@ -323,8 +367,8 @@ fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagno
         _ => {
             return Err(TypeDiagnosticVariant::BinaryMismatch {
                 op: BinaryOp::Add,
-                lhs: *lhs_type,
-                rhs: *rhs_type,
+                lhs: lhs_type.clone(),
+                rhs: rhs_type.clone(),
             })
         }
     })
@@ -343,8 +387,8 @@ fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDia
         _ => {
             return Err(TypeDiagnosticVariant::BinaryMismatch {
                 op: BinaryOp::Concat,
-                lhs: *lhs_type,
-                rhs: *rhs_type,
+                lhs: lhs_type.clone(),
+                rhs: rhs_type.clone(),
             })
         }
     })
@@ -357,7 +401,7 @@ fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDia
 fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
     use Type as T;
     if a == b {
-        return Some(*a);
+        return Some(a.clone());
     };
 
     #[rustfmt::skip]

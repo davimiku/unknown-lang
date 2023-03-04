@@ -1,8 +1,7 @@
 use la_arena::Idx;
 
-use crate::{
-    database::Database, interner::Key, BinaryOp, LocalDefExpr, LocalRefExpr, Type, UnaryOp,
-};
+use crate::interner::Key;
+use crate::{BinaryOp, LocalDefExpr, LocalRefExpr, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum TypeExpr {
@@ -28,35 +27,13 @@ pub enum TypeExpr {
     Unary(UnaryTypeExpr),
     // Block(BlockExpr),
 
-    // Call(CallExpr),
+    // TODO: these can't reuse the same structs as value expressions
     LocalRef(LocalRefExpr),
-    // Function(FunctionExpr),
     LocalDef(LocalDefExpr),
+    // Call(CallExpr),
+    // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?
     // If(IfExpr),
-}
-
-impl TypeExpr {
-    fn to_type(&self, database: &Database) -> Option<Type> {
-        match self {
-            TypeExpr::BoolLiteral(b) => Some(Type::BoolLiteral(*b)),
-            TypeExpr::FloatLiteral(f) => Some(Type::FloatLiteral(*f)),
-            TypeExpr::IntLiteral(i) => Some(Type::IntLiteral(*i)),
-            TypeExpr::StringLiteral(s) => Some(Type::StringLiteral(*s)),
-
-            TypeExpr::Binary(_) => todo!(),
-            TypeExpr::Unary(_) => todo!(),
-
-            TypeExpr::LocalRef(local_ref) => {
-                todo!()
-                // local_ref.name
-                // database
-            }
-            TypeExpr::LocalDef(_) => None,
-
-            TypeExpr::Empty => None,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

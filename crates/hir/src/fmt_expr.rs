@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::expr::{
@@ -152,21 +153,34 @@ pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Contex
 
 pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
     match ty {
-        Type::Undetermined => "~Undetermined~".to_owned(),
-        Type::Error => "~Error~".to_owned(),
+        Type::Bool => "Bool".to_string(),
+        Type::BoolLiteral(b) => b.to_string(),
+        Type::Float => "Float".to_string(),
+        Type::FloatLiteral(f) => f.to_string(),
+        Type::Int => "Int".to_string(),
+        Type::IntLiteral(i) => i.to_string(),
+        Type::String => "String".to_string(),
+        Type::StringLiteral(s) => format!("\"{}\"", interner.lookup(*s)),
 
-        Type::Unit => "Unit".to_owned(),
+        Type::Function { params, return_ty } => {
+            let mut s = String::new();
 
-        Type::BoolLiteral(b) => format!("{b}"),
-        Type::FloatLiteral(f) => format!("{f}"),
-        Type::IntLiteral(i) => format!("{i}"),
-        Type::StringLiteral(key) => interner.lookup(*key).to_owned(),
+            s.push('(');
+            let params = params
+                .iter()
+                .map(|param| fmt_type(param, interner))
+                .join(", ");
+            s.push_str(&params);
+            s.push_str(") -> ");
+            s.push_str(&fmt_type(return_ty, interner));
 
-        Type::Bool => "Bool".to_owned(),
-        Type::Float => "Float".to_owned(),
-        Type::Int => "Int".to_owned(),
-        Type::String => "String".to_owned(),
+            s
+        }
+        Type::Named(name) => interner.lookup(*name).to_string(),
 
-        Type::Named(name) => interner.lookup(*name).to_owned(),
+        Type::Unit => "Unit".to_string(),
+
+        Type::Undetermined => "Undetermined".to_string(),
+        Type::Error => "Error".to_string(),
     }
 }

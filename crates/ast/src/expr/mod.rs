@@ -226,9 +226,13 @@ impl Function {
 
     pub fn body(&self) -> Option<Expr> {
         self.0
-            .children()
-            .skip_while(|child| child.kind() != SyntaxKind::Arrow)
+            .children_with_tokens()
+            .skip_while(|child| match child.as_token() {
+                Some(token) => token.kind() != SyntaxKind::Arrow,
+                None => true,
+            })
             .skip(1) // consume the arrow
+            .filter_map(SyntaxElement::into_node)
             .find_map(Expr::cast)
     }
 

@@ -236,9 +236,25 @@ a~2 : 20
 }
 
 #[test]
+fn local_wrong_type() {
+    let input = "let a: String = 1";
+    let expected = expect![[r#""#]];
+
+    check(input, expected);
+}
+
+#[test]
 fn nullary_function() {
     let input = "() -> {}";
     let expected = expect![[r#""#]];
 
-    check(input, expected)
+    check(input, expected);
+}
+
+#[test]
+fn unary_function() {
+    let input = "a -> {}";
+    let expected = expect![[r#""#]];
+
+    check(input, expected);
 }

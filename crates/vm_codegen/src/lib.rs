@@ -641,6 +641,8 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Named(_) => todo!(),
         Type::Unit => 0,
 
+        Type::Function { .. } => todo!(),
+
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),
     } as u16)

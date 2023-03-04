@@ -20,7 +20,7 @@ pub(crate) fn check_expr(
     interner: &mut Interner,
 ) -> Result<(), TypeDiagnostic> {
     let actual = infer_expr(expr, results, database, interner)?;
-    if is_subtype(actual, expected) {
+    if is_subtype(&actual, &expected) {
         Ok(())
     } else {
         Err(TypeDiagnostic {
@@ -38,7 +38,7 @@ pub(crate) fn check_expr(
 /// For example:
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
-fn is_subtype(a: Type, b: Type) -> bool {
+fn is_subtype(a: &Type, b: &Type) -> bool {
     use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
 
     if a == b {
