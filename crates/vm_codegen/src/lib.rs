@@ -11,7 +11,7 @@ pub use op::{InvalidOpError, Op};
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_types::string::VMString;
-use vm_types::words::{QWord, Word, WORD_SIZE};
+use vm_types::words::WORD_SIZE;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::HashMap;
@@ -20,8 +20,11 @@ use std::fmt::{self, Debug, Display};
 use std::mem;
 use std::ops::Range;
 
-use hir::{BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr};
-use hir::{IfExpr, LocalDefKey, LocalRef, LocalRefName, Type, UnaryExpr, UnaryOp};
+pub use hir::COMPILER_BRAND;
+use hir::{
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, LocalDefKey,
+    LocalRefExpr, LocalRefName, Type, UnaryExpr, UnaryOp,
+};
 
 mod disassemble;
 mod op;
@@ -430,7 +433,12 @@ impl Chunk {
         code
     }
 
-    fn synth_local_ref(&mut self, expr_idx: Idx<Expr>, expr: &LocalRef, context: &Context) -> Code {
+    fn synth_local_ref(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &LocalRefExpr,
+        context: &Context,
+    ) -> Code {
         let expr_type = context.type_of_expr(expr_idx);
         let word_size = word_size_of(expr_type);
         let op = match word_size {
@@ -626,10 +634,10 @@ impl Display for Chunk {
 /// transparently heap-allocated.
 fn word_size_of(ty: &Type) -> u16 {
     (match ty {
-        Type::Bool | Type::BoolLiteral(_) => mem::size_of::<VMBool>() / WORD_SIZE,
-        Type::Float | Type::FloatLiteral(_) => mem::size_of::<VMFloat>() / WORD_SIZE,
-        Type::Int | Type::IntLiteral(_) => mem::size_of::<VMInt>() / WORD_SIZE,
-        Type::String | Type::StringLiteral(_) => mem::size_of::<VMString>() / WORD_SIZE,
+        Type::Bool | Type::BoolLiteral(_) => vm_types::word_size_of::<VMBool>(),
+        Type::Float | Type::FloatLiteral(_) => vm_types::word_size_of::<VMFloat>(),
+        Type::Int | Type::IntLiteral(_) => vm_types::word_size_of::<VMInt>(),
+        Type::String | Type::StringLiteral(_) => vm_types::word_size_of::<VMString>(),
         Type::Named(_) => todo!(),
         Type::Unit => 0,
 

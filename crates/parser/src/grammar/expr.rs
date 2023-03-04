@@ -169,7 +169,7 @@ fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::IntExpr)
+    m.complete(p, SyntaxKind::IntLiteralExpr)
 }
 
 fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
@@ -177,7 +177,7 @@ fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::FloatExpr)
+    m.complete(p, SyntaxKind::FloatLiteralExpr)
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
@@ -185,7 +185,7 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::StringExpr)
+    m.complete(p, SyntaxKind::StringLiteralExpr)
 }
 
 fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
@@ -193,7 +193,7 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
     p.bump();
-    m.complete(p, SyntaxKind::BoolExpr)
+    m.complete(p, SyntaxKind::BoolLiteralExpr)
 }
 
 /// Parses starting with an identifier from an expression context.

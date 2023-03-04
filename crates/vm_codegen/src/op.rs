@@ -287,6 +287,8 @@ pub enum Op {
     Ret,
 
     /// No operation
+    /// This must always be the last variant of this enum,
+    /// since it is a marker for valid conversion from u8.
     ///
     /// Operands:
     ///

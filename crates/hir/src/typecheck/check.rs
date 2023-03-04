@@ -20,7 +20,6 @@ pub(crate) fn check_expr(
     interner: &mut Interner,
 ) -> Result<(), TypeDiagnostic> {
     let actual = infer_expr(expr, results, database, interner)?;
-
     if is_subtype(actual, expected) {
         Ok(())
     } else {

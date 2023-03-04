@@ -5,14 +5,14 @@ mod function_arity;
 
 /// Metadata (stored on the heap) that describes
 #[derive(Debug)]
-pub struct Boxed<'a> {
-    data: BoxedData<'a>,
-    next: Option<Box<Boxed<'a>>>,
+pub struct Boxed {
+    data: BoxedData,
+    next: Option<Box<Boxed>>,
 }
 
-impl<'a> Boxed<'a> {
-    pub fn new_function(chunk: &'a Chunk, parameter_slots: u32, name: Option<Spur>) -> Self {
-        let function = BoxedFunction {
+impl Boxed {
+    pub fn new_function(chunk: Chunk, parameter_slots: u32, name: Option<Spur>) -> Self {
+        let function = VMFunction {
             parameter_slots,
             chunk,
             name,
@@ -25,12 +25,12 @@ impl<'a> Boxed<'a> {
 }
 
 #[derive(Debug)]
-pub enum BoxedData<'chunk> {
+pub enum BoxedData {
     /// Dynamically generated strings above a certain size are boxed
     String,
 
     /// Functions that cannot be proven to be static are boxed
-    Function(BoxedFunction<'chunk>),
+    Function(VMFunction),
 
     /// Closures that cannot be proven to be static and capture no boxed items are boxed
     Closure(BoxedClosure),
@@ -44,9 +44,9 @@ pub enum BoxedData<'chunk> {
 
 /// Metadata for a function, stored on the heap
 #[derive(Debug)]
-pub struct BoxedFunction<'chunk> {
-    parameter_slots: u32, // TODO: work out the encoding for arity
-    chunk: &'chunk Chunk,
+pub struct VMFunction {
+    parameter_slots: u32,
+    chunk: Chunk,
     name: Option<Spur>,
 }
 

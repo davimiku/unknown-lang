@@ -1,7 +1,11 @@
+use std::borrow::Cow;
+
 use crate::VM;
 
 // TODO: use the same COMPILER_BRAND as hir and concat at compile-time here
-// use crate::COMPILER_BRAND;
+use crate::COMPILER_BRAND;
+
+type Test = Cow<'static, str>;
 // const MAIN_NAME: &'static str = concat!("main", COMPILER_BRAND);
 
 impl VM {

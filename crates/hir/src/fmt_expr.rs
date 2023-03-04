@@ -1,9 +1,13 @@
 use la_arena::Idx;
 
-use crate::{
-    interner::Interner, typecheck::fmt_local_types, BinaryExpr, BlockExpr, CallExpr, Context, Expr,
-    FunctionExpr, LocalDef, LocalRef, LocalRefName, Type, UnaryExpr,
+use crate::expr::{
+    BinaryExpr, BlockExpr, CallExpr, FunctionExpr, LocalDefExpr, LocalRefExpr, LocalRefName,
+    UnaryExpr,
 };
+use crate::interner::Interner;
+use crate::type_expr::TypeExpr;
+use crate::typecheck::fmt_local_types;
+use crate::{Context, Expr, Type};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -31,98 +35,118 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.interner.lookup(*key))),
 
-        Expr::Call(CallExpr { path, args }) => {
-            s.push_str(&format!("{path} "));
+        Expr::Call(call) => fmt_call_expr(s, call, context, indent),
+        Expr::Binary(binary) => fmt_binary_expr(s, binary, context, indent),
+        Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
+        Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
-            s.push('(');
-            for arg in args {
-                fmt_expr(s, *arg, context, indent);
-                s.push(',');
-            }
-            s.push(')');
-        }
-
-        Expr::Binary(BinaryExpr { op, lhs, rhs, .. }) => {
-            fmt_expr(s, *lhs, context, indent);
-
-            s.push_str(&format!(" {op} "));
-
-            fmt_expr(s, *rhs, context, indent)
-        }
-
-        Expr::Unary(UnaryExpr { op, expr, .. }) => {
-            s.push_str(&format!("{op}"));
-
-            fmt_expr(s, *expr, context, indent)
-        }
-
-        Expr::Block(BlockExpr { exprs, .. }) => {
-            s.push_str("{\n");
-
-            indent += DEFAULT_INDENT;
-
-            for idx in exprs {
-                s.push_str(&" ".repeat(indent));
-                fmt_expr(s, *idx, context, indent);
-                s.push('\n');
-            }
-
-            indent -= DEFAULT_INDENT;
-
-            s.push_str(&format!("{}}}", " ".repeat(indent)));
-        }
-
-        Expr::LocalRef(LocalRef { name }) => match name {
+        Expr::LocalRef(LocalRefExpr { name }) => match name {
             LocalRefName::Resolved(key) => s.push_str(&key.display(&context.interner)),
             LocalRefName::Unresolved(name) => s.push_str(context.interner.lookup(*name)),
         },
 
-        Expr::Function(FunctionExpr {
-            params,
-            body,
-            return_type_annotation,
-        }) => {
-            s.push_str("fun (");
-
-            for param in params {
-                fmt_expr(s, *param, context, indent);
-                s.push(' ');
-            }
-
-            s.push_str(") -> ");
-
-            if let Some(return_type) = return_type_annotation {
-                fmt_expr(s, *return_type, context, indent);
-            }
-
-            fmt_expr(s, *body, context, indent)
-        }
-
-        Expr::LocalDef(LocalDef {
-            key,
-            value,
-            type_annotation,
-        }) => {
-            let mut type_buffer = String::new();
-            if let Some(type_annotation) = type_annotation {
-                fmt_expr(&mut type_buffer, *type_annotation, context, indent);
-            } else {
-                let formatted_type = fmt_type(context.type_of_expr(*value), &context.interner);
-                type_buffer.push_str(&formatted_type);
-            }
-
-            s.push_str(&format!(
-                "{} : {} = ",
-                &key.display(&context.interner),
-                type_buffer
-            ));
-
-            fmt_expr(s, *value, context, indent);
-        }
+        Expr::Function(function) => fmt_function_expr(s, function, context, indent),
+        Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
 
         Expr::If(if_expr) => {
             todo!()
         }
+    }
+}
+
+fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
+    let CallExpr { path, args } = call;
+    s.push_str(&format!("{path} "));
+    s.push('(');
+    for arg in args {
+        fmt_expr(s, *arg, context, indent);
+        s.push(',');
+    }
+    s.push(')');
+}
+
+fn fmt_binary_expr(s: &mut String, binary: &BinaryExpr, context: &Context, indent: usize) {
+    let BinaryExpr { op, lhs, rhs, .. } = binary;
+    fmt_expr(s, *lhs, context, indent);
+    s.push_str(&format!(" {op} "));
+    fmt_expr(s, *rhs, context, indent)
+}
+
+fn fmt_unary_expr(s: &mut String, unary: &UnaryExpr, context: &Context, indent: usize) {
+    let UnaryExpr { op, expr, .. } = unary;
+    s.push_str(&format!("{op}"));
+    fmt_expr(s, *expr, context, indent)
+}
+
+fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: &mut usize) {
+    let BlockExpr { exprs } = block;
+    s.push_str("{\n");
+    *indent += DEFAULT_INDENT;
+    for idx in exprs {
+        s.push_str(&" ".repeat(*indent));
+        fmt_expr(s, *idx, context, *indent);
+        s.push('\n');
+    }
+    *indent -= DEFAULT_INDENT;
+    s.push_str(&*format!("{}}}", " ".repeat(*indent)));
+}
+
+fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
+    let FunctionExpr { params, body } = function;
+    s.push_str("fun (");
+    for param in params {
+        s.push_str(&param.name.display(&context.interner));
+        s.push_str(" : ");
+        match param.ty {
+            Some(ty) => {
+                fmt_expr(s, ty, context, indent);
+            }
+            None => {}
+        }
+    }
+    s.push_str(") -> ");
+
+    fmt_expr(s, *body, context, indent)
+}
+
+fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, indent: usize) {
+    let LocalDefExpr {
+        key,
+        value,
+        type_annotation,
+    } = local_def;
+    let mut type_buffer = String::new();
+    if let Some(type_annotation) = type_annotation {
+        fmt_type_expr(&mut type_buffer, *type_annotation, context, indent);
+    } else {
+        let formatted_type = fmt_type(context.type_of_expr(*value), &context.interner);
+        type_buffer.push_str(&formatted_type);
+    }
+    s.push_str(&format!(
+        "{} : {} = ",
+        &key.display(&context.interner),
+        type_buffer
+    ));
+    fmt_expr(s, *value, context, indent);
+}
+
+pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, indent: usize) {
+    let mut indent = indent;
+    let expr = context.type_expr(idx);
+    match expr {
+        TypeExpr::Empty => todo!(),
+
+        TypeExpr::BoolLiteral(b) => s.push_str(&b.to_string()),
+        TypeExpr::FloatLiteral(f) => s.push_str(&f.to_string()),
+        TypeExpr::IntLiteral(i) => s.push_str(&i.to_string()),
+        TypeExpr::StringLiteral(key) => {
+            s.push_str(&format!(r#""{}""#, context.interner.lookup(*key)))
+        }
+
+        TypeExpr::LocalDef(_) => todo!(),
+        TypeExpr::LocalRef(_) => todo!(),
+        TypeExpr::Binary(_) => todo!(),
+        TypeExpr::Unary(_) => todo!(),
     }
 }
 

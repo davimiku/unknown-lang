@@ -86,7 +86,7 @@ pub struct Index {
     pub(crate) definitions: HashMap<Key, Definition>,
     pub(crate) range_info: HashMap<Key, RangeInfo>,
     docs: HashMap<Key, Docs>,
-    tys: HashSet<ast::Ident>,
+    // tys: HashSet<ast::Ident>,
 }
 
 impl Index {
@@ -122,21 +122,19 @@ impl Index {
         self.range_info.iter().map(|(n, r)| (*n, r))
     }
 
-    pub(crate) fn is_ident_ty(&self, ident: ast::Ident) -> bool {
-        self.tys.contains(&ident)
-    }
+    // pub(crate) fn is_ident_ty(&self, ident: ast::Ident) -> bool {
+    //     self.tys.contains(&ident)
+    // }
 
     fn shrink_to_fit(&mut self) {
         let Self {
             definitions,
             range_info,
             docs,
-            tys,
         } = self;
         definitions.shrink_to_fit();
         range_info.shrink_to_fit();
         docs.shrink_to_fit();
-        tys.shrink_to_fit();
     }
 }
 

@@ -234,3 +234,11 @@ a~2 : 20
 
     check(input, expected);
 }
+
+#[test]
+fn nullary_function() {
+    let input = "() -> {}";
+    let expected = expect![[r#""#]];
+
+    check(input, expected)
+}

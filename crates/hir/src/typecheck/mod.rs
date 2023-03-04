@@ -17,10 +17,13 @@ use text_size::TextRange;
 pub use types::Type;
 
 use crate::database::Database;
+use crate::expr::LocalRefName;
 use crate::interner::Interner;
-use crate::{BinaryOp, Expr, LocalDefKey, LocalRefName};
+use crate::type_expr::TypeExpr;
+use crate::{BinaryOp, Expr, LocalDefKey};
 
 use self::check::check_expr;
+use self::infer::infer_expr;
 
 // returns diagnostics
 pub(crate) fn check(
@@ -29,6 +32,9 @@ pub(crate) fn check(
     interner: &mut Interner,
 ) -> TypeCheckResults {
     let mut results = TypeCheckResults::default();
+
+    let inferred_result = infer_expr(expr, &mut results, database, interner);
+
     check_expr(expr, Type::Unit, &mut results, database, interner);
 
     results
@@ -52,13 +58,13 @@ impl TypeCheckResults {
         self.expr_types.insert(idx, ty);
     }
 
-    // pub(super) fn get_local_type(&self, key: &LocalDefKey) -> Option<&Type> {
-    //     self.local_types.get(key)
-    // }
+    pub(super) fn get_local_type(&self, key: &LocalDefKey) -> Option<&Type> {
+        self.local_types.get(key)
+    }
 
-    // pub(super) fn set_local_type(&mut self, key: LocalDefKey, ty: Type) {
-    //     self.local_types.insert(key, ty);
-    // }
+    pub(super) fn set_local_type(&mut self, key: LocalDefKey, ty: Type) {
+        self.local_types.insert(key, ty);
+    }
 }
 
 pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, interner: &Interner) {

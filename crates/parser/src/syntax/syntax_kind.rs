@@ -72,19 +72,19 @@ pub enum SyntaxKind {
     // Expr
     AssignmentExpr,
     BlockExpr,
-    BoolExpr,
-    FloatExpr,
+    BoolLiteralExpr,
+    FloatLiteralExpr,
     FunExpr,
     IfExpr,
     InfixExpr,
-    IntExpr,
+    IntLiteralExpr,
     LoopExpr,
     NegationExpr,
     NotExpr,
     ParenExpr,
     Path,
     PathItem,
-    StringExpr,
+    StringLiteralExpr,
     StructTypeExpr,
     TypeExpr,
     UnionTypeExpr,
@@ -151,7 +151,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::True => Self::TrueLiteral,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
-            TokenKind::StringLiteral => Self::StringExpr,
+            TokenKind::StringLiteral => Self::StringLiteralExpr,
 
             // Delimiters
             TokenKind::LBrace => Self::LBrace,
@@ -201,8 +201,8 @@ impl fmt::Display for SyntaxKind {
         f.write_str(match self {
             // Keywords
             // Literals
-            SyntaxKind::IntExpr => "int",
-            SyntaxKind::FloatExpr => "float",
+            SyntaxKind::IntLiteralExpr => "int",
+            SyntaxKind::FloatLiteralExpr => "float",
 
             // Delimiters
             SyntaxKind::LParen => "‘(’",

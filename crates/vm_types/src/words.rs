@@ -5,7 +5,11 @@ use std::array;
 
 use crate::{VMBool, VMFloat, VMInt};
 
-/// Represents 1 "word", or the base size of values in the VM
+pub fn word_size_of<T>() -> usize {
+    std::mem::size_of::<T>() / WORD_SIZE
+}
+
+/// Represents 1 "word", or the base size of values in the VM.
 /// No values are smaller than 1 word.
 ///
 /// For example, a `Bool` is 1 Word.
@@ -91,7 +95,7 @@ impl FromIterator<u8> for Word {
 pub struct DWord {
     bytes: DWordBytes,
 }
-pub const DWORD_SIZE: usize = 8;
+pub const DWORD_SIZE: usize = WORD_SIZE * 2;
 type DWordBytes = [u8; DWORD_SIZE];
 
 // Convert From
@@ -184,7 +188,7 @@ impl FromIterator<u8> for DWord {
 pub struct QWord {
     bytes: QWordBytes,
 }
-pub const QWORD_SIZE: usize = 16;
+pub const QWORD_SIZE: usize = WORD_SIZE * 4;
 type QWordBytes = [u8; QWORD_SIZE];
 
 // Convert From

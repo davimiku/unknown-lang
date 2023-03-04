@@ -121,22 +121,6 @@ impl Scopes {
         self.tree.get_mut(&self.current_node_id).unwrap().data_mut()
     }
 
-    /// Adds a new scope
-    ///
-    /// Returns the index of the added scope
-    // pub(crate) fn old_push(&mut self) {
-    //     self.scopes.push(Scope {
-    //         parent_idx: self.current_idx,
-    //         ..Default::default()
-    //     });
-
-    //     self.current_idx = self.scopes.len() - 1
-    // }
-
-    // pub(crate) fn old_pop(&mut self) {
-    //     self.current_idx = self.scopes[self.current_idx].parent_idx;
-    // }
-
     /// Inserts a Name for a local def into the current scope and returns
     /// a key that uniquely identifies that particular local.
     pub(crate) fn insert_local_def(&mut self, name: Key) -> LocalDefKey {

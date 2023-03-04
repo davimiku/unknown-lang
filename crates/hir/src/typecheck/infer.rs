@@ -1,23 +1,26 @@
 //!
 //! Type inference
 
+use std::collections::HashMap;
+
 use la_arena::Idx;
 use text_size::TextRange;
 
-use super::builtins::get_builtin_functions;
+use super::builtins::{get_builtin_functions, BuiltinFunctionSignature};
 use super::check::check_expr;
 use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::database::Database;
-use crate::interner::{Interner, Key};
-use crate::{
-    BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, IfExpr, LocalDef, LocalRef, LocalRefName,
-    UnaryExpr, UnaryOp,
+use crate::expr::{
+    BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, IfExpr, LocalDefExpr, LocalRefExpr,
+    LocalRefName, UnaryExpr, UnaryOp,
 };
+use crate::interner::{Interner, Key};
+use crate::CallExpr;
 
 // TODO: needs to have Vec<TypeDiagnostic>
 //
-// TODO: needs to be a newtype with a monadic bind ("and_then")
-// signature that concatenates the Vec<TypeDiagnostic> so it can be chained/collected
+// TODO: make a newtype with a monadic bind/chain ("and_then")
+// signature that concatenates the internal Vec<TypeDiagnostic> so it can be chained/collected
 type InferResult = Result<Type, TypeDiagnostic>;
 
 pub(crate) fn infer_expr(
@@ -51,54 +54,12 @@ pub(crate) fn infer_expr(
         Expr::Binary(expr) => infer_binary(expr, results, database, interner),
         Expr::Unary(expr) => infer_unary(expr, results, database, interner),
         Expr::Block(block) => infer_block(expr_idx, block, results, database, interner),
-        Expr::Call(expr) => {
-            let name = &expr.path;
-            let args = &expr.args;
-
-            // TODO: clean up this deep nesting
-            let builtin_signature = builtin_signatures.get(name.as_str());
-            match builtin_signature {
-                Some(overloads) => {
-                    for overload in overloads {
-                        // TODO: special-case for length 1 to provide a better diagnostic?
-                        if overload.arg_types.len() == args.len() {
-                            let overload_is_match = overload.arg_types.iter().zip(args.iter()).all(
-                                |(expected, expr)| {
-                                    check_expr(*expr, *expected, results, database, interner)
-                                        .is_ok()
-                                },
-                            );
-
-                            if overload_is_match {
-                                return Ok(overload.return_type);
-                            }
-                        }
-                    }
-                    return Err(TypeDiagnostic {
-                        variant: TypeDiagnosticVariant::NoOverloadFound {
-                            name: name.to_owned(),
-                        },
-                        range: Default::default(),
-                    });
-                }
-                // TODO: is this possible - will we already check in name resolution?
-                None => {
-                    return Err(TypeDiagnostic {
-                        variant: TypeDiagnosticVariant::Undefined {
-                            name: name.to_owned(),
-                        },
-                        range: Default::default(),
-                    })
-                }
-            }
-
-            // Ok(Type::Undetermined)
-        }
-        Expr::Function(FunctionExpr {
-            params,
-            body,
-            return_type_annotation,
-        }) => todo!(),
+        Expr::Call(expr) => match infer_call(expr, builtin_signatures, results, database, interner)
+        {
+            Ok(value) => value,
+            Err(value) => return value,
+        },
+        Expr::Function(FunctionExpr { params, body }) => todo!(),
         Expr::LocalDef(local_def) => infer_local_def(local_def, results, database, interner),
         Expr::If(if_expr) => infer_if_expr(if_expr, results, database, interner),
     };
@@ -111,7 +72,7 @@ pub(crate) fn infer_expr(
 }
 
 fn lower_local_ref(
-    expr: &LocalRef,
+    expr: &LocalRefExpr,
     results: &mut TypeCheckResults,
 ) -> Result<Type, TypeDiagnostic> {
     let name = expr.name;
@@ -129,20 +90,19 @@ fn lower_local_ref(
 }
 
 fn infer_local_def(
-    local_def: &LocalDef,
+    local_def: &LocalDefExpr,
     results: &mut TypeCheckResults,
     database: &Database,
     interner: &mut Interner,
 ) -> Result<Type, TypeDiagnostic> {
-    let LocalDef {
+    let LocalDefExpr {
         key,
         value,
         type_annotation,
     } = local_def;
     if let Some(annotation) = type_annotation {
-        let (annotation, range) = database.expr(*annotation);
-        todo!();
-        // check_expr(*value, todo!(), results, context);
+        let (annotation, range) = database.type_expr(*annotation);
+        check_expr(*value, todo!(), results, database, interner);
     } else {
         let infer_result = infer_expr(*value, results, database, interner);
 
@@ -176,6 +136,52 @@ fn infer_block(
             },
         )
     })
+}
+
+fn infer_call(
+    expr: &CallExpr,
+    builtin_signatures: HashMap<&str, Vec<BuiltinFunctionSignature>>,
+    results: &mut TypeCheckResults,
+    database: &Database,
+    interner: &mut Interner,
+) -> Result<Result<Type, TypeDiagnostic>, Result<Type, TypeDiagnostic>> {
+    let name = &expr.path;
+    let args = &expr.args;
+    let builtin_signature = builtin_signatures.get(name.as_str());
+    match builtin_signature {
+        Some(overloads) => {
+            for overload in overloads {
+                // TODO: special-case for length 1 to provide a better diagnostic?
+                if overload.arg_types.len() == args.len() {
+                    let overload_is_match =
+                        overload
+                            .arg_types
+                            .iter()
+                            .zip(args.iter())
+                            .all(|(expected, expr)| {
+                                check_expr(*expr, *expected, results, database, interner).is_ok()
+                            });
+
+                    if overload_is_match {
+                        return Err(Ok(overload.return_type));
+                    }
+                }
+            }
+            Err(Err(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::NoOverloadFound {
+                    name: name.to_owned(),
+                },
+                range: Default::default(),
+            }))
+        }
+        // TODO: is this possible - will we already check in name resolution?
+        None => Err(Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::Undefined {
+                name: name.to_owned(),
+            },
+            range: Default::default(),
+        })),
+    }
 }
 
 fn infer_bool_literal(
@@ -271,7 +277,6 @@ fn infer_unary(
                 ),
                 Err(diag) => Err(diag),
             }
-            //
         }
     }
 }
@@ -304,14 +309,16 @@ fn infer_binary(
 }
 
 fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
-    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    use Type as T;
     Ok(match (lhs_type, rhs_type) {
         // TODO: add overflow check
-        (IntLiteral(a), IntLiteral(b)) => IntLiteral(a + b),
-        (IntLiteral(_), Int) | (Int, IntLiteral(_)) | (Int, Int) => Int,
+        (T::IntLiteral(a), T::IntLiteral(b)) => T::IntLiteral(a + b),
+        (T::IntLiteral(_), T::Int) | (T::Int, T::IntLiteral(_)) | (T::Int, T::Int) => T::Int,
         // TODO: add overflow check
-        (FloatLiteral(a), FloatLiteral(b)) => FloatLiteral(a + b),
-        (FloatLiteral(_), Float) | (Float, FloatLiteral(_)) | (Float, Float) => Float,
+        (T::FloatLiteral(a), T::FloatLiteral(b)) => T::FloatLiteral(a + b),
+        (T::FloatLiteral(_), T::Float) | (T::Float, T::FloatLiteral(_)) | (T::Float, T::Float) => {
+            T::Float
+        }
 
         _ => {
             return Err(TypeDiagnosticVariant::BinaryMismatch {
@@ -324,11 +331,14 @@ fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagno
 }
 
 fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
-    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    use Type as T;
     Ok(match (lhs_type, rhs_type) {
-        (StringLiteral(_), String) | (String, StringLiteral(_)) | (String, String) => String,
+        (T::StringLiteral(_), T::String)
+        | (T::String, T::StringLiteral(_))
+        | (T::String, T::String) => T::String,
+
         // TODO: concat these as a new StringLiteral type (constant folding)
-        (StringLiteral(a), StringLiteral(b)) => String,
+        (T::StringLiteral(a), T::StringLiteral(b)) => T::String,
 
         _ => {
             return Err(TypeDiagnosticVariant::BinaryMismatch {
@@ -345,7 +355,7 @@ fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDia
 /// This is mostly to deal with the built-in subtype relationships
 /// between literals and their corresponding primitive types.
 fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
-    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    use Type as T;
     if a == b {
         return Some(*a);
     };
@@ -353,16 +363,16 @@ fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
     #[rustfmt::skip]
     let compatible_type = match (a, b) {
         // widen to the primitive type when one is a primitive
-        (BoolLiteral(_), Bool) | (Bool, BoolLiteral(_)) => Bool,
-        (IntLiteral(_), Int) | (Int, IntLiteral(_)) => Int,
-        (FloatLiteral(_), Float) | (Float, FloatLiteral(_)) => Float,
-        (StringLiteral(_), String) | (String, StringLiteral(_)) => String,
+        (T::BoolLiteral(_), T::Bool) | (T::Bool, T::BoolLiteral(_)) => T::Bool,
+        (T::IntLiteral(_), T::Int) | (T::Int, T::IntLiteral(_)) => T::Int,
+        (T::FloatLiteral(_), T::Float) | (T::Float, T::FloatLiteral(_)) => T::Float,
+        (T::StringLiteral(_), T::String) | (T::String, T::StringLiteral(_)) => T::String,
 
         // widen to the primitive type if both are literals and are not equal
-        (BoolLiteral(a), BoolLiteral(b)) => if a == b { BoolLiteral(*a) } else { Bool },
-        (IntLiteral(a), IntLiteral(b)) => if a == b { IntLiteral(*a) } else { Int },
-        (FloatLiteral(a), FloatLiteral(b)) => if a == b { FloatLiteral(*a) } else { Float },
-        (StringLiteral(a), StringLiteral(b)) => if a == b { StringLiteral(*a) } else { String },
+        (T::BoolLiteral(a), T::BoolLiteral(b)) => if a == b { T::BoolLiteral(*a) } else { T::Bool },
+        (T::IntLiteral(a), T::IntLiteral(b)) => if a == b { T::IntLiteral(*a) } else { T::Int },
+        (T::FloatLiteral(a), T::FloatLiteral(b)) => if a == b { T::FloatLiteral(*a) } else { T::Float },
+        (T::StringLiteral(a), T::StringLiteral(b)) => if a == b { T::StringLiteral(*a) } else { T::String },
 
         (_, _) => return None,
     };

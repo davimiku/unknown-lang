@@ -15,7 +15,10 @@ pub enum Type {
     StringLiteral(Key),
     Named(Key),
     Unit,
-    // Fun -- (Vec<Type>, Type) ? for params type and return type
+    // Function
+    // Struct
+    // Union
+    // Newtype
 }
 
 impl Type {

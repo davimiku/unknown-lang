@@ -118,6 +118,12 @@ impl Stack {
         }
     }
 
+    /// Pops the top `n` slots of the stack, and gives ownership
+    /// of these to the caller as VM words.
+    pub(crate) fn pop_n_as_vec(&mut self, n: usize) -> Vec<Word> {
+        (0..n).map(|_| self.pop_word()).collect()
+    }
+
     /// Removes the top value of the stack and returns it as a bool
     #[inline]
     pub fn pop_bool(&mut self) -> VMBool {

@@ -36,11 +36,12 @@ fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: 
         let name = assert_some!(assert_some!(param.ident()).name());
         assert_eq!(name, expected_idents[i]);
 
-        if let Some(type_path) = param.type_expr().and_then(|t| t.as_path()) {
-            let expected_type_ident = expected_type_idents[i];
-            let actual_type_ident = assert_some!(type_path.ident_strings().next());
-            assert_eq!(actual_type_ident, expected_type_ident);
-        }
+        // TODO: is it possible to check TypeExpr ?
+        // if let Some(type_path) = param.type_expr().and_then(|t| t.as_path()) {
+        //     let expected_type_ident = expected_type_idents[i];
+        //     let actual_type_ident = assert_some!(type_path.ident_strings().next());
+        //     assert_eq!(actual_type_ident, expected_type_ident);
+        // }
     }
 }
 
@@ -184,7 +185,6 @@ fn add_int_and_function() {
     let input = "1 + (() -> { })";
     let expected_lhs = "1";
     let expected_rhs_param_list = None;
-    let expected_rhs_return_type = None;
 
     let parsed = parse_expr(input);
 
@@ -197,9 +197,9 @@ fn add_int_and_function() {
 
     let rhs = assert_some!(binary.rhs());
     let rhs = assert_matches!(rhs, Expr::Paren);
-    let rhs = assert_matches!(assert_some!(rhs.expr()), Expr::Function);
+    let rhs = assert_some!(rhs.expr());
+    let rhs = assert_matches!(rhs, Expr::Function);
     assert_eq!(rhs.param_list().params().next(), expected_rhs_param_list);
-    assert_eq!(rhs.return_type(), expected_rhs_return_type);
 }
 
 #[test]

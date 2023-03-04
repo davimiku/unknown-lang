@@ -6,11 +6,41 @@ pub mod string;
 mod tests;
 pub mod words;
 
+pub use words::word_size_of;
+use words::{DWord, Word};
+
+pub trait FromWordVec {
+    fn from_vec(source: Vec<Word>) -> Self;
+}
+
+impl FromWordVec for () {
+    fn from_vec(_: Vec<Word>) -> Self {}
+}
+
 /// VM representation of a language Bool
 pub type VMBool = u32;
+
+impl FromWordVec for VMBool {
+    fn from_vec(source: Vec<Word>) -> Self {
+        source[0].into()
+    }
+}
 
 /// VM representation of a language Int
 pub type VMInt = i32;
 
+impl FromWordVec for VMInt {
+    fn from_vec(source: Vec<Word>) -> Self {
+        source[0].into()
+    }
+}
+
 /// VM representation of a language Float
 pub type VMFloat = f64;
+
+impl FromWordVec for VMFloat {
+    fn from_vec(source: Vec<Word>) -> Self {
+        let dword: DWord = [source[0], source[1]].into();
+        dword.into()
+    }
+}
