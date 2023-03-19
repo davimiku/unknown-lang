@@ -9,7 +9,7 @@ fn parse_not_false() {
         expect![[r#"
 NotExpr@0..6
   Bang@0..1 "!"
-  BoolExpr@1..6
+  BoolLiteralExpr@1..6
     FalseLiteral@1..6 "false""#]],
     );
 }
@@ -21,7 +21,7 @@ fn parse_not_true() {
         expect![[r#"
 NotExpr@0..5
   Bang@0..1 "!"
-  BoolExpr@1..5
+  BoolLiteralExpr@1..5
     TrueLiteral@1..5 "true""#]],
     );
 }

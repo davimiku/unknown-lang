@@ -1,11 +1,13 @@
 use lexer::TokenKind;
 
 use crate::grammar::expr::parse_ident_token;
+use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
-use crate::{grammar::expr::parse_path, parser::marker::CompletedMarker};
 
-use super::{expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal};
+use super::{
+    expr_binding_power, parse_bool_literal, parse_call, parse_int_literal, parse_string_literal,
+};
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
@@ -23,7 +25,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
-        parse_path(p)
+        parse_call(p)
     } else if p.at(TokenKind::Union) {
         parse_union(p)
     } else if p.at(TokenKind::Struct) {

@@ -12,19 +12,19 @@ use crate::SyntaxKind;
 use self::bindings::{parse_let_binding, parse_type_binding};
 use self::types::parse_type_expr;
 
-/// Tokens that may be the start of a function argument
+/// Tokens that may be the start of a call argument
 // Note that although blocks are expressions, LBrace can't be the
 // start of a function arg due to ambiguity with `if a {}`
 // (is the condition `a` or is the condition `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const FUNCTION_ARG_START: [TokenKind; 8] = [
+const CALL_ARG_START: [TokenKind; 8] = [
     LParen,
     Ident,
     IntLiteral,
     FloatLiteral,
     StringLiteral,
-    Bang,
+    Bang,  // expression is higher precedence than function application
     False, // TODO: remove when true/false are turned into idents
     True,  // TODO: remove when true/false are turned into idents
 ];
@@ -136,7 +136,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
 
-        Ident => parse_ident(p),
+        Ident => parse_call(p),
 
         Dash => parse_negation_expr(p),
         Bang => parse_not_expr(p),
@@ -156,18 +156,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     };
 
     Some(cm)
-}
-
-fn parse_ident(p: &mut Parser) -> CompletedMarker {
-    // Some(if p.last_token_kind == Arrow {
-    //     // "-> Type { ... }"
-    //     //     ^^^^
-    //     parse_type(p);
-
-    //     parse_expr(p)?
-    // } else {
-    parse_variable_ident(p)
-    // })
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
@@ -220,16 +208,19 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
 /// //            ^^^  function call one argument
 ///
 /// let example = f (b, c)
-///               ^^^^^^^^ function call multiple arguments
+/// //            ^^^^^^^^ function call multiple arguments
+///
+/// let example = f.g a
+/// //            ^^^^^ path that is a function call
 /// ```
-fn parse_variable_ident(p: &mut Parser) -> CompletedMarker {
+fn parse_call(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(Ident));
 
     let m = p.start();
     parse_path(p);
 
-    if p.at_set(&FUNCTION_ARG_START) {
-        parse_function_arguments(p);
+    if p.at_set(&CALL_ARG_START) {
+        parse_call_arguments(p);
     }
 
     m.complete(p, SyntaxKind::Call)
@@ -258,18 +249,20 @@ pub(crate) fn parse_ident_token(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::Ident)
 }
 
-fn parse_function_arguments(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at_set(&FUNCTION_ARG_START));
+fn parse_call_arguments(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at_set(&CALL_ARG_START));
     let m = p.start();
 
     // single arg may omit the parentheses
     if !p.at(LParen) {
         // TODO: call expr_binding_power instead with the binding power of function application
+        // for the situation of `f g 1`
+        // should be parsed like `(f g) 1`
         parse_expr(p);
     } else {
         p.bump();
 
-        while p.at_set(&FUNCTION_ARG_START) {
+        while p.at_set(&CALL_ARG_START) {
             parse_expr(p);
 
             if p.at(Comma) {

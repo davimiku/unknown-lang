@@ -33,15 +33,13 @@ fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: 
     let param_list = function.param_list();
     let params = param_list.params();
     for (i, param) in params.enumerate() {
-        let name = assert_some!(assert_some!(param.ident()).name());
+        let name = assert_some!(param.ident());
         assert_eq!(name, expected_idents[i]);
 
-        // TODO: is it possible to check TypeExpr ?
-        // if let Some(type_path) = param.type_expr().and_then(|t| t.as_path()) {
-        //     let expected_type_ident = expected_type_idents[i];
-        //     let actual_type_ident = assert_some!(type_path.ident_strings().next());
-        //     assert_eq!(actual_type_ident, expected_type_ident);
-        // }
+        if let Some(TypeExpr::Path(path)) = param.type_expr() {
+            let type_name = path.ident_strings().next().unwrap();
+            assert_eq!(type_name, expected_type_idents[i]);
+        }
     }
 }
 

@@ -20,12 +20,13 @@ pub use typecheck::Type;
 
 use database::Database;
 
+pub use interner::Interner;
 use interner::Key;
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
-pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
-    let mut context = Context::default();
+pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+    let mut context = Context::new(interner);
 
     let exprs: Vec<Idx<Expr>> = ast
         .exprs()
@@ -38,15 +39,14 @@ pub fn lower(ast: ast::Root) -> (Idx<Expr>, Context) {
     let root = Expr::Block(BlockExpr { exprs });
     let root = context.alloc_expr(root, None);
 
-    let typecheck_results = typecheck::check(root, &context.database, &mut context.interner);
-    context.typecheck_results = typecheck_results;
+    context.typecheck(root);
 
     (root, context)
 }
 
-pub fn lower_from_input(input: &str) -> (Idx<Expr>, Context) {
+pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
     let parsed = parser::parse(input).syntax();
     let root = ast::Root::cast(parsed).expect("valid Root node");
 
-    lower(root)
+    lower(&root, interner)
 }

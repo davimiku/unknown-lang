@@ -19,29 +19,51 @@ use std::collections::HashMap;
 
 use id_tree::{InsertBehavior::*, Node, Tree};
 
-use crate::interner::Key;
+use crate::interner::{Interner, Key};
+use crate::type_expr::LocalTypeDefKey;
 use crate::LocalDefKey;
 
 #[derive(Debug, Default)]
 pub struct Scope {
-    // module scope is the top level (child modules do not inherit scope from their parent)
-    // 0 is used as a sentinel value, the top level scope has a parent_idx of 0
-    // TODO: consider using a space-optimized Option<usize> (usize::MAX is the None value) such as
-    // https://docs.rs/optional/latest/optional/
-    // pub(crate) parent_idx: usize,
     /// Associates a Name with the unique key for that local definition within the context
     ///
     /// TODO: handle multiple of the same Name in the same Scope (shadowed locals)
-    name_counts: HashMap<Key, LocalDefKey>,
+    local_defs: HashMap<Key, LocalDefKey>,
+
+    local_type_defs: HashMap<Key, LocalTypeDefKey>,
+}
+
+impl Scope {
+    fn with_builtins(interner: &mut Interner) -> Self {
+        let mut scope = Scope::default();
+
+        let types = &mut scope.local_type_defs;
+        types.insert(interner.intern("Bool"), (interner.intern("Bool"), 0).into());
+        types.insert(
+            interner.intern("Float"),
+            (interner.intern("Float"), 0).into(),
+        );
+        types.insert(interner.intern("Int"), (interner.intern("Int"), 0).into());
+        types.insert(
+            interner.intern("String"),
+            (interner.intern("String"), 0).into(),
+        );
+
+        scope
+    }
 }
 
 impl Scope {
     pub(crate) fn get_local(&self, key: Key) -> Option<LocalDefKey> {
-        self.name_counts.get(&key).copied()
+        self.local_defs.get(&key).copied()
+    }
+
+    pub(crate) fn get_local_type(&self, key: Key) -> Option<LocalTypeDefKey> {
+        self.local_type_defs.get(&key).copied()
     }
 }
 
-/// Holds the tree of Scope structs, stored in a Vec internally.
+/// Holds the tree of Scope structs
 #[derive(Debug)]
 pub(crate) struct Scopes {
     tree: id_tree::Tree<Scope>,
@@ -62,39 +84,17 @@ impl Scopes {
             .find_map(|scope| scope.data().get_local(name)))
     }
 
+    pub(crate) fn find_local_type(&self, name: Key) -> Option<LocalTypeDefKey> {
+        self.current().get_local_type(name).or(self
+            .tree
+            .ancestors(&self.current_node_id)
+            .unwrap()
+            .find_map(|scope| scope.data().get_local_type(name)))
+    }
+
     fn current(&self) -> &Scope {
         self.tree.get(&self.current_node_id).unwrap().data()
     }
-
-    // fn old_current_mut(&mut self) -> &mut Scope {
-    //     &mut self.scopes[self.current_idx]
-    // }
-
-    // fn find_scope_of(&self, name: &Name) -> Option<&Scope> {
-    //     self.into_iter().find(|scope| scope.has_local(name))
-    // }
-
-    // fn get(&self, idx: usize) -> Option<&Scope> {
-    //     self.scopes.get(idx)
-    // }
-
-    // unsafe fn get_unchecked(&self, idx: usize) -> &Scope {
-    //     self.scopes.get_unchecked(idx)
-    // }
-
-    // pub(crate) fn get_parent_idx(&self, idx: usize) -> usize {
-    //     let scope = &self.scopes[idx];
-
-    //     scope.parent_idx
-    // }
-
-    // Creates a ScopesIter starting at the given idx.
-    // pub(crate) fn iter_from(&self, idx: usize) -> ScopesIter {
-    //     ScopesIter {
-    //         curr: idx,
-    //         scopes: self,
-    //     }
-    // }
 }
 
 // Mutating functions
@@ -127,7 +127,7 @@ impl Scopes {
         let new_count = self.increment_count(name);
 
         let key: LocalDefKey = (name, new_count - 1).into();
-        self.current_mut().name_counts.insert(name, key);
+        self.current_mut().local_defs.insert(name, key);
 
         key
     }
@@ -144,54 +144,15 @@ impl Scopes {
     }
 }
 
-impl Default for Scopes {
-    fn default() -> Self {
-        // let root =
-        let root = Node::new(Scope::default());
+impl Scopes {
+    pub(crate) fn new(interner: &mut Interner) -> Self {
+        let root = Node::new(Scope::with_builtins(interner));
         let mut tree = Tree::new();
         let root = tree.insert(root, AsRoot).unwrap();
         Self {
             tree,
             current_node_id: root,
-            // scopes: vec![Scope::default()],
-            // current_idx: 0,
             local_counts: HashMap::default(),
         }
     }
 }
-
-// impl<'a> IntoIterator for &'a Scopes {
-//     type Item = &'a Scope;
-
-//     type IntoIter = ScopesIter<'a>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         ScopesIter {
-//             curr: self.current_idx,
-//             scopes: self,
-//         }
-//     }
-// }
-
-// An iterator for scopes that walks upwards through
-// each parent until it reaches the top.
-// pub(crate) struct ScopesIter<'a> {
-//     curr: usize,
-//     scopes: &'a Scopes,
-// }
-
-// impl<'a> Iterator for ScopesIter<'a> {
-//     type Item = &'a Scope;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.curr == 0 {
-//             // sentinel value: reached the top level scope
-//             return None;
-//         }
-//         let scope = self.scopes.get(self.curr).expect("valid current index");
-
-//         self.curr = scope.parent_idx;
-
-//         Some(scope)
-//     }
-// }

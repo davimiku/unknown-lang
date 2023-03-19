@@ -113,7 +113,7 @@ Root@0..14
           Emptyspace@10..11 " "
     Equals@11..12 "="
     Emptyspace@12..13 " "
-    IntExpr@13..14
+    IntLiteralExpr@13..14
       IntLiteral@13..14 "1""#]],
         )
     }
@@ -130,7 +130,7 @@ Root@0..7
     Emptyspace@3..4 " "
     Equals@4..5 "="
     Emptyspace@5..6 " "
-    IntExpr@6..7
+    IntLiteralExpr@6..7
       IntLiteral@6..7 "1""#]],
         )
     }

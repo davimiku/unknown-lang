@@ -13,12 +13,12 @@ pub enum Expr {
     Call(Call),
     FloatLiteral(FloatLiteral),
     Function(Function),
-    Ident(Ident),
     If(If),
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
     Loop(Loop),
     Paren(ParenExpr),
+    Path(Path),
     StringLiteral(StringLiteral),
     // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     Unary(Unary),
@@ -43,7 +43,7 @@ impl Expr {
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
-            SyntaxKind::Path => Self::Ident(Ident(node)), // is this ever constructed?
+            SyntaxKind::Path => Self::Path(Path(node)), // is this ever constructed?
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
@@ -59,7 +59,7 @@ impl Expr {
             Call(e) => e.range(),
             FloatLiteral(e) => e.range(),
             Function(e) => e.range(),
-            Ident(e) => e.range(),
+            Path(e) => e.range(),
             If(e) => e.range(),
             IntLiteral(e) => e.range(),
             LetBinding(e) => e.range(),
@@ -192,6 +192,10 @@ impl CallArgs {
     pub fn args(&self) -> impl Iterator<Item = Expr> {
         self.0.children().filter_map(Expr::cast)
     }
+
+    pub fn type_args(&self) -> impl Iterator<Item = TypeExpr> {
+        self.0.children().filter_map(TypeExpr::cast)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -241,8 +245,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunParam(SyntaxNode);
 
 impl FunParam {
@@ -266,13 +269,11 @@ impl FunParam {
         }
     }
 
-    // descendants() is depth-first traversal
-    // TODO: any cleanup here? We only want the Ident that's within the Call
-    pub fn ident(&self) -> Option<Ident> {
+    pub fn ident(&self) -> Option<String> {
         self.0
             .descendants()
             .find_map(Path::cast)
-            .and_then(|node| node.0.descendants().find_map(Ident::cast))
+            .and_then(|path| path.ident_strings().next())
     }
 
     pub fn type_expr(&self) -> Option<TypeExpr> {
@@ -296,27 +297,6 @@ impl FunParamList {
 
     pub fn params(&self) -> impl Iterator<Item = FunParam> {
         self.0.children().filter_map(FunParam::cast)
-    }
-
-    pub fn range(&self) -> TextRange {
-        self.0.text_range()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ident(SyntaxNode);
-
-impl Ident {
-    pub fn cast(node: SyntaxNode) -> Option<Self> {
-        (node.kind() == SyntaxKind::Ident).then_some(Self(node))
-    }
-
-    pub fn name_token(&self) -> Option<SyntaxToken> {
-        self.0.first_token()
-    }
-
-    pub fn name(&self) -> Option<String> {
-        self.name_token().map(|token| String::from(token.text()))
     }
 
     pub fn range(&self) -> TextRange {
@@ -396,7 +376,10 @@ impl LetBinding {
     }
 
     pub fn type_annotation(&self) -> Option<TypeExpr> {
-        self.0.children().find_map(TypeExpr::cast)
+        self.0
+            .children()
+            .find(|child| child.kind() == SyntaxKind::TypeExpr)
+            .and_then(TypeExpr::cast)
     }
 
     pub fn value(&self) -> Option<Expr> {
@@ -451,12 +434,11 @@ impl Path {
         self.0.text_range()
     }
 
-    pub fn idents(&self) -> impl Iterator<Item = Ident> {
-        self.0.descendants().filter_map(Ident::cast)
-    }
-
     pub fn ident_tokens(&self) -> impl Iterator<Item = SyntaxToken> {
-        self.idents().filter_map(|ident| ident.name_token())
+        self.0
+            .children()
+            .filter(|node| node.kind() == SyntaxKind::Ident)
+            .filter_map(|ident| ident.first_token())
     }
 
     pub fn ident_strings(&self) -> impl Iterator<Item = String> {

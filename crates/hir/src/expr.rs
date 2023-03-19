@@ -5,6 +5,7 @@ use la_arena::Idx;
 use crate::{
     interner::{Interner, Key},
     type_expr::TypeExpr,
+    COMPILER_BRAND,
 };
 
 #[derive(Debug, PartialEq)]
@@ -82,7 +83,9 @@ pub struct LocalDefKey {
 
 impl LocalDefKey {
     pub(crate) fn display(&self, interner: &Interner) -> String {
-        format!("{}{}", interner.lookup(self.name), self.idx)
+        let name = interner.lookup(self.name);
+        let idx = self.idx;
+        format!("{name}{COMPILER_BRAND}{idx}",)
     }
 }
 
@@ -148,7 +151,7 @@ pub struct FunctionExpr {
 pub struct FunctionParam {
     pub name: LocalDefKey,
 
-    pub ty: Option<Idx<Expr>>,
+    pub ty: Option<Idx<TypeExpr>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

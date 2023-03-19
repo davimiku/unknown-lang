@@ -16,37 +16,37 @@ use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::Type;
 
-use crate::database::Database;
 use crate::expr::LocalRefName;
 use crate::fmt_expr::fmt_type;
 use crate::interner::Interner;
-use crate::{BinaryOp, Expr, LocalDefKey};
+use crate::type_expr::LocalTypeDefKey;
+use crate::{BinaryOp, Context, Expr, LocalDefKey};
 
 use self::check::check_expr;
 use self::infer::infer_expr;
 
 // returns diagnostics
-pub(crate) fn check(
-    expr: Idx<Expr>,
-    database: &Database,
-    interner: &mut Interner,
-) -> TypeCheckResults {
+pub(crate) fn check(expr: Idx<Expr>, context: &Context) -> TypeCheckResults {
+    let interner = &context.interner;
+    let database = &context.database;
     let mut results = TypeCheckResults::default();
 
-    let inferred_result = infer_expr(expr, &mut results, database, interner);
+    let inferred_result = infer_expr(expr, &mut results, database);
 
-    check_expr(expr, Type::Unit, &mut results, database, interner);
+    check_expr(expr, Type::Top, &mut results, database);
 
     results
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default)]
 pub struct TypeCheckResults {
     /// Correctly resolved types (inferred or checked)
     /// mapped to the corresponding `Expr` index.
     expr_types: ArenaMap<Idx<Expr>, Type>,
 
-    local_types: HashMap<LocalDefKey, Type>,
+    local_defs: HashMap<LocalDefKey, Type>,
+
+    local_type_defs: HashMap<LocalTypeDefKey, Type>,
 }
 
 impl TypeCheckResults {
@@ -58,21 +58,21 @@ impl TypeCheckResults {
         self.expr_types.insert(idx, ty);
     }
 
-    pub(super) fn get_local_type(&self, key: &LocalDefKey) -> Option<&Type> {
-        self.local_types.get(key)
+    pub(super) fn get_local_type(&self, key: &LocalTypeDefKey) -> Option<&Type> {
+        self.local_type_defs.get(key)
     }
 
-    pub(super) fn set_local_type(&mut self, key: LocalDefKey, ty: Type) {
-        self.local_types.insert(key, ty);
+    pub(super) fn set_local_type(&mut self, key: LocalTypeDefKey, ty: Type) {
+        self.local_type_defs.insert(key, ty);
     }
 }
 
 pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, interner: &Interner) {
-    if !results.local_types.is_empty() {
+    if !results.local_defs.is_empty() {
         s.push('\n');
     }
     let mut locals: Vec<_> = results
-        .local_types
+        .local_defs
         .iter()
         .map(|(key, ty)| (key.display(interner), ty.clone()))
         .collect();
@@ -119,7 +119,7 @@ pub enum TypeDiagnosticVariant {
         name: LocalRefName,
     },
     Undefined {
-        name: String,
+        name: LocalDefKey,
     },
     NoOverloadFound {
         name: String,

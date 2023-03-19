@@ -645,6 +645,8 @@ fn word_size_of(ty: &Type) -> u16 {
 
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),
+        Type::Top => 0,
+        Type::Bottom => 0,
     } as u16)
 }
 

@@ -9,6 +9,57 @@ fn check(input: &str, expected_tree: expect_test::Expect) {
 }
 
 #[test]
+fn plain_type() {
+    let input = "A";
+    check(
+        input,
+        expect![[r#"
+TypeExpr@0..1
+  Call@0..1
+    Path@0..1
+      Ident@0..1
+        Ident@0..1 "A""#]],
+    )
+}
+
+#[test]
+fn path_type() {
+    let input = "A.B";
+    check(
+        input,
+        expect![[r#"
+TypeExpr@0..3
+  Call@0..3
+    Path@0..3
+      Ident@0..1
+        Ident@0..1 "A"
+      Dot@1..2 "."
+      Ident@2..3
+        Ident@2..3 "B""#]],
+    )
+}
+
+#[test]
+fn parameterized_type() {
+    let input = "Option Int";
+    check(
+        input,
+        expect![[r#"
+TypeExpr@0..10
+  Call@0..10
+    Path@0..7
+      Ident@0..7
+        Ident@0..6 "Option"
+        Emptyspace@6..7 " "
+    CallArgs@7..10
+      Call@7..10
+        Path@7..10
+          Ident@7..10
+            Ident@7..10 "Int""#]],
+    )
+}
+
+#[test]
 fn type_function_no_params() {
     let input = "() -> A";
     check(

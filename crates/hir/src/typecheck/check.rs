@@ -9,7 +9,6 @@ use text_size::TextRange;
 use super::infer::infer_expr;
 use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::database::Database;
-use crate::interner::Interner;
 use crate::Expr;
 
 pub(crate) fn check_expr(
@@ -17,9 +16,8 @@ pub(crate) fn check_expr(
     expected: Type,
     results: &mut TypeCheckResults,
     database: &Database,
-    interner: &mut Interner,
 ) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(expr, results, database, interner)?;
+    let actual = infer_expr(expr, results, database)?;
     if is_subtype(&actual, &expected) {
         Ok(())
     } else {
@@ -39,40 +37,43 @@ pub(crate) fn check_expr(
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
 fn is_subtype(a: &Type, b: &Type) -> bool {
-    use Type::*; // TODO: this shadows std::string::String, decide if the tradeoffs are worth
+    use Type as T;
 
     if a == b {
         return true;
     }
 
     match (a, b) {
-        (Bool, Named(_)) => todo!(),
-        (BoolLiteral(_), Bool) => true,
-        (BoolLiteral(a), BoolLiteral(b)) => a == b,
-        (BoolLiteral(_), Named(_)) => todo!(),
+        (_, T::Top) => true,
+        (_, T::Bottom) => false,
 
-        (Float, Named(_)) => todo!(),
-        (FloatLiteral(_), Float) => true,
-        (FloatLiteral(a), FloatLiteral(b)) => a == b,
-        (FloatLiteral(_), Named(_)) => todo!(),
+        (T::Bool, T::Named(_)) => todo!(),
+        (T::BoolLiteral(_), T::Bool) => true,
+        (T::BoolLiteral(a), T::BoolLiteral(b)) => a == b,
+        (T::BoolLiteral(_), T::Named(_)) => todo!(),
 
-        (Int, Named(_)) => todo!(),
-        (IntLiteral(_), Int) => true,
-        (IntLiteral(a), IntLiteral(b)) => a == b,
-        (IntLiteral(_), Named(_)) => todo!(),
+        (T::Float, T::Named(_)) => todo!(),
+        (T::FloatLiteral(_), T::Float) => true,
+        (T::FloatLiteral(a), T::FloatLiteral(b)) => a == b,
+        (T::FloatLiteral(_), T::Named(_)) => todo!(),
 
-        (String, Named(_)) => todo!(),
-        (StringLiteral(_), String) => true,
-        (StringLiteral(a), StringLiteral(b)) => a == b,
+        (T::Int, T::Named(_)) => todo!(),
+        (T::IntLiteral(_), T::Int) => true,
+        (T::IntLiteral(a), T::IntLiteral(b)) => a == b,
+        (T::IntLiteral(_), T::Named(_)) => todo!(),
 
-        (Named(_), Bool) => todo!(),
-        (Named(_), BoolLiteral(_)) => todo!(),
-        (Named(_), Float) => todo!(),
-        (Named(_), FloatLiteral(_)) => todo!(),
-        (Named(_), Int) => todo!(),
-        (Named(_), IntLiteral(_)) => todo!(),
-        (Named(_), String) => todo!(),
-        (Named(_), Named(_)) => todo!(),
+        (T::String, T::Named(_)) => todo!(),
+        (T::StringLiteral(_), T::String) => true,
+        (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
+
+        (T::Named(_), T::Bool) => todo!(),
+        (T::Named(_), T::BoolLiteral(_)) => todo!(),
+        (T::Named(_), T::Float) => todo!(),
+        (T::Named(_), T::FloatLiteral(_)) => todo!(),
+        (T::Named(_), T::Int) => todo!(),
+        (T::Named(_), T::IntLiteral(_)) => todo!(),
+        (T::Named(_), T::String) => todo!(),
+        (T::Named(_), T::Named(_)) => todo!(),
 
         _ => false,
     }

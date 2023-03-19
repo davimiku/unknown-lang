@@ -10,7 +10,7 @@ use crate::expr::{
 };
 use crate::interner::{Interner, Key};
 use crate::scope::Scopes;
-use crate::type_expr::TypeExpr;
+use crate::type_expr::{self, LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
 use crate::typecheck::TypeCheckResults;
 use crate::{BinaryOp, BlockExpr, Database, Expr, Type, UnaryOp};
 
@@ -20,8 +20,8 @@ pub const COMPILER_BRAND: char = '~';
 // temp
 pub type Diagnostic = ();
 
-#[derive(Debug, Default)]
-pub struct Context {
+#[derive(Debug)]
+pub struct Context<'a> {
     /// Database holding the lowered expressions and associated data
     pub(crate) database: Database,
 
@@ -33,11 +33,38 @@ pub struct Context {
 
     pub(crate) scopes: Scopes,
 
-    pub(crate) interner: Interner,
+    pub(crate) interner: &'a mut Interner,
+}
+
+impl<'a> Context<'a> {
+    pub(crate) fn new(interner: &'a mut Interner) -> Self {
+        let bool_key = interner.intern("Bool");
+        let int_key = interner.intern("Int");
+        let float_key = interner.intern("Float");
+        let string_key = interner.intern("String");
+
+        let scopes = Scopes::new(interner);
+
+        let mut typecheck_results = TypeCheckResults::default();
+        typecheck_results.set_local_type((bool_key, 0).into(), Type::Bool);
+        typecheck_results.set_local_type((int_key, 0).into(), Type::Int);
+        typecheck_results.set_local_type((float_key, 0).into(), Type::Float);
+        typecheck_results.set_local_type((string_key, 0).into(), Type::String);
+
+        Self {
+            database: Default::default(),
+            typecheck_results,
+            diagnostics: Default::default(),
+            scopes,
+            interner,
+        }
+    }
 }
 
 // Public functions
-impl Context {
+impl<'a> Context<'a> {
+    pub(crate) fn typecheck(&mut self, root: Idx<Expr>) {}
+
     /// Returns the expression at the given index
     pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
         &self.database.exprs[idx]
@@ -63,37 +90,14 @@ impl Context {
     }
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         self.database.alloc_expr(expr, ast)
     }
 
-    // TODO: pattern, not name - possibly reworking the whole thing for pattern matching
-    // ex.
-    // `let [a, b] = some_func ()`
-    // do we desugar first to:
-    // ```
-    // let temp = some_func ()
-    // let a = temp.0    // give 'a' the stack slot of temp.0 directly?
-    // let b = temp.1    // give 'b' the stack slot of temp.1 directly?
-    // ```
-    // pub(crate) fn add_let_binding(
-    //     &mut self,
-    //     name: String,
-    //     let_binding: LetBinding,
-    // ) -> Idx<LetBinding> {
-    //     // let idx = self.database.alloc_let_binding(let_binding);
-
-    //     // self.scopes.insert_local_binding(name, idx);
-
-    //     idx
-    // }
-
-    // pub(crate) fn lookup_name(&self, name: &str) -> Option<Idx<LetBinding>> {
-    //     self.scopes
-    //         .into_iter()
-    //         .find_map(|scope| scope.get_local(name))
-    // }
+    pub(crate) fn alloc_type_expr(&mut self, expr: TypeExpr, range: TextRange) -> Idx<TypeExpr> {
+        self.database.alloc_type_expr(expr, range)
+    }
 
     pub(crate) fn push_scope(&mut self) {
         self.scopes.push();
@@ -104,8 +108,8 @@ impl Context {
     }
 }
 
-// Lowering functions
-impl Context {
+// Lowering functions - Expr
+impl<'a> Context<'a> {
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
@@ -116,7 +120,7 @@ impl Context {
                 Call(ast) => self.lower_call(ast),
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_expr(ast),
-                Ident(ast) => self.lower_ident(ast),
+                Path(ast) => self.lower_path(ast),
                 If(ast) => self.lower_if_expr(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
                 LetBinding(ast) => self.lower_let_binding(ast),
@@ -134,26 +138,22 @@ impl Context {
 
     fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
         // TODO: desugar patterns into separate LocalDef
-        let mut name = ast.name().unwrap().text().to_string();
-        name.push(COMPILER_BRAND);
+        let name = ast.name().unwrap().text().to_string();
         let name = self.interner.intern(&name);
 
         let key = self.scopes.insert_local_def(name);
 
         let value = self.lower_expr(ast.value());
 
-        // TODO: lower type_annotation from ast
-        let type_annotation = None;
+        let type_annotation = ast
+            .type_annotation()
+            .map(|type_expr| self.lower_type_expr(type_expr.into()));
 
         Expr::LocalDef(LocalDefExpr {
             key,
             value,
             type_annotation,
         })
-    }
-
-    fn lower_type_expr(&mut self, ast: ast::TypeExpr) -> TypeExpr {
-        TypeExpr::Empty
     }
 
     fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {
@@ -181,7 +181,6 @@ impl Context {
     fn lower_string_literal(&mut self, ast: ast::StringLiteral) -> Expr {
         let value: Option<String> = ast.value().map(|token| token.text().to_owned());
 
-        // TODO: extract trimming to a separate function and use value.map_or
         if let Some(s) = value {
             let s = &s[1..s.len() - 1]; // remove leading and trailing quotes
 
@@ -247,7 +246,7 @@ impl Context {
     }
 
     // TODO: rather than Ident, Local? Call? local_or_call?
-    fn lower_ident(&mut self, ast: ast::Ident) -> Expr {
+    fn lower_path(&mut self, ast: ast::Path) -> Expr {
         // if ast::Call doesn't have ast::Path, return Empty
         // if ast::Path doesn't have top-level-name, return Empty
 
@@ -260,6 +259,7 @@ impl Context {
         // if it is in current scope (as a non-function variable - DIFFERENT THAN MINE)
         // // check if it's trying to call a non-function as a function, add diagnostic
         // // update symbol map
+        // Different - for me this is the type checker's job
         // // (return Expr::Local)
 
         // if it is a param of the current function
@@ -284,9 +284,8 @@ impl Context {
 
         // TODO: handle multiple idents in a Path
         let name = idents.next().unwrap();
-        let call_args = ast.args();
 
-        if let Some(call_args) = call_args {
+        if let Some(call_args) = ast.args() {
             let args = call_args
                 .args()
                 .map(|expr| self.lower_expr(Some(expr)))
@@ -301,7 +300,7 @@ impl Context {
 
     fn lower_name_ref(&mut self, name: String) -> Expr {
         let mut name = name;
-        name.push(COMPILER_BRAND);
+        // name.push(COMPILER_BRAND);
 
         let name = self.interner.intern(&name);
         let local_key = self.scopes.find_local(name);
@@ -324,17 +323,17 @@ impl Context {
             .param_list()
             .params()
             .map(|param| {
-                let ident = param.ident().expect("function parameter to have ident");
-                let mut name = ident.name().unwrap();
-                name.push(COMPILER_BRAND);
+                let mut ident = param.ident().expect("function parameter to have ident");
+                // ident.push(COMPILER_BRAND);
 
-                let key = self.interner.intern(&name);
+                let key = self.interner.intern(&ident);
                 let key = self.scopes.insert_local_def(key);
 
-                FunctionParam {
-                    name: key,
-                    ty: None,
-                }
+                let ty = param
+                    .type_expr()
+                    .map(|type_expr| self.lower_type_expr(Some(type_expr)));
+
+                FunctionParam { name: key, ty }
             })
             .collect();
 
@@ -368,6 +367,105 @@ impl Context {
             then_branch,
             else_branch,
         })
+    }
+}
+
+// Lowering functions - TypeExpr
+impl<'a> Context<'a> {
+    fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>) -> Idx<TypeExpr> {
+        use ast::TypeExpr::*;
+        if let Some(ast) = ast {
+            let range = ast.range();
+            let type_expr = match ast {
+                BoolLiteral(ast) => self.lower_type_bool_literal(ast),
+                FloatLiteral(ast) => self.lower_type_float_literal(ast),
+                IntLiteral(ast) => self.lower_type_int_literal(ast),
+                StringLiteral(ast) => self.lower_type_string_literal(ast),
+
+                Function(_) => todo!(),
+                Path(_) => {
+                    panic!("TODO: maybe Path should never be lowered directly, always via Call")
+                }
+                Call(ast) => self.lower_type_call(ast),
+            };
+            self.alloc_type_expr(type_expr, range)
+        } else {
+            self.alloc_type_expr(TypeExpr::Empty, TextRange::default())
+        }
+    }
+
+    fn lower_type_bool_literal(&mut self, ast: ast::BoolLiteral) -> TypeExpr {
+        let value: Option<bool> = ast.value().and_then(|token| token.text().parse().ok());
+
+        value.map_or(TypeExpr::Empty, TypeExpr::BoolLiteral)
+    }
+
+    fn lower_type_float_literal(&mut self, ast: ast::FloatLiteral) -> TypeExpr {
+        let value: Option<f64> = ast
+            .value()
+            .and_then(|token| parse_ignore_underscore(token.text()));
+
+        value.map_or(TypeExpr::Empty, TypeExpr::FloatLiteral)
+    }
+
+    fn lower_type_int_literal(&mut self, ast: ast::IntLiteral) -> TypeExpr {
+        let value: Option<i32> = ast
+            .value()
+            .and_then(|token| parse_ignore_underscore(token.text()));
+
+        value.map_or(TypeExpr::Empty, TypeExpr::IntLiteral)
+    }
+
+    fn lower_type_string_literal(&mut self, ast: ast::StringLiteral) -> TypeExpr {
+        let value: Option<String> = ast.value().map(|token| token.text().to_owned());
+
+        if let Some(s) = value {
+            let s = &s[1..s.len() - 1]; // remove leading and trailing quotes
+
+            let key = self.interner.intern(s);
+            TypeExpr::StringLiteral(key)
+        } else {
+            TypeExpr::Empty
+        }
+    }
+
+    fn lower_type_call(&mut self, ast: ast::Call) -> TypeExpr {
+        let path = ast.path().unwrap();
+        let mut idents = path.ident_strings();
+
+        // TODO: handle multiple idents in a Path
+        let name = idents.next().unwrap();
+
+        if let Some(call_args) = ast.args() {
+            let args = call_args
+                .type_args()
+                .map(|expr| self.lower_type_expr(Some(expr)))
+                .collect();
+
+            TypeExpr::Call(type_expr::CallExpr { path: name, args })
+        } else {
+            self.lower_type_name_ref(name)
+        }
+    }
+
+    fn lower_type_name_ref(&mut self, name: String) -> TypeExpr {
+        let mut name = name;
+        // name.push(COMPILER_BRAND);
+
+        let name = self.interner.intern(&name);
+        let local_key = self.scopes.find_local_type(name);
+
+        let local_ref = if let Some(local_key) = local_key {
+            LocalTypeRefExpr {
+                name: LocalTypeRefName::Resolved(local_key),
+            }
+        } else {
+            LocalTypeRefExpr {
+                name: LocalTypeRefName::Unresolved(name),
+            }
+        };
+
+        TypeExpr::LocalRef(local_ref)
     }
 }
 

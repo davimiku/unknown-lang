@@ -4,7 +4,7 @@ use lasso::{Rodeo, Spur};
 pub struct Key(Spur);
 
 #[derive(Default, Debug)]
-pub(crate) struct Interner(Rodeo);
+pub struct Interner(Rodeo);
 
 impl Interner {
     pub fn intern(&mut self, s: &str) -> Key {

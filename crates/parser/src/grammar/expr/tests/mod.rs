@@ -24,10 +24,10 @@ fn parse_simple_infix_expression() {
         "1+2",
         expect![[r#"
 InfixExpr@0..3
-  IntExpr@0..1
+  IntLiteralExpr@0..1
     IntLiteral@0..1 "1"
   Plus@1..2 "+"
-  IntExpr@2..3
+  IntLiteralExpr@2..3
     IntLiteral@2..3 "2""#]],
     );
 }
@@ -38,13 +38,13 @@ fn parse_binary_concat_expression() {
         "\"Hello \" ++ \"World!\"",
         expect![[r#"
 InfixExpr@0..20
-  StringExpr@0..9
-    StringExpr@0..8 "\"Hello \""
+  StringLiteralExpr@0..9
+    StringLiteralExpr@0..8 "\"Hello \""
     Emptyspace@8..9 " "
   PlusPlus@9..11 "++"
   Emptyspace@11..12 " "
-  StringExpr@12..20
-    StringExpr@12..20 "\"World!\"""#]],
+  StringLiteralExpr@12..20
+    StringLiteralExpr@12..20 "\"World!\"""#]],
     )
 }
 
@@ -56,16 +56,16 @@ fn parse_left_associative_infix_expression() {
 InfixExpr@0..7
   InfixExpr@0..5
     InfixExpr@0..3
-      IntExpr@0..1
+      IntLiteralExpr@0..1
         IntLiteral@0..1 "1"
       Plus@1..2 "+"
-      IntExpr@2..3
+      IntLiteralExpr@2..3
         IntLiteral@2..3 "2"
     Plus@3..4 "+"
-    IntExpr@4..5
+    IntLiteralExpr@4..5
       IntLiteral@4..5 "3"
   Plus@5..6 "+"
-  IntExpr@6..7
+  IntLiteralExpr@6..7
     IntLiteral@6..7 "4""#]],
     );
 }
@@ -76,18 +76,18 @@ fn parse_right_associative_infix_expression() {
         "1^2^3^4",
         expect![[r#"
 InfixExpr@0..7
-  IntExpr@0..1
+  IntLiteralExpr@0..1
     IntLiteral@0..1 "1"
   Caret@1..2 "^"
   InfixExpr@2..7
-    IntExpr@2..3
+    IntLiteralExpr@2..3
       IntLiteral@2..3 "2"
     Caret@3..4 "^"
     InfixExpr@4..7
-      IntExpr@4..5
+      IntLiteralExpr@4..5
         IntLiteral@4..5 "3"
       Caret@5..6 "^"
-      IntExpr@6..7
+      IntLiteralExpr@6..7
         IntLiteral@6..7 "4""#]],
     );
 }
@@ -99,17 +99,17 @@ fn parse_infix_expression_with_mixed_binding_power() {
         expect![[r#"
 InfixExpr@0..7
   InfixExpr@0..5
-    IntExpr@0..1
+    IntLiteralExpr@0..1
       IntLiteral@0..1 "1"
     Plus@1..2 "+"
     InfixExpr@2..5
-      IntExpr@2..3
+      IntLiteralExpr@2..3
         IntLiteral@2..3 "2"
       Star@3..4 "*"
-      IntExpr@4..5
+      IntLiteralExpr@4..5
         IntLiteral@4..5 "3"
   Dash@5..6 "-"
-  IntExpr@6..7
+  IntLiteralExpr@6..7
     IntLiteral@6..7 "4""#]],
     );
 }
@@ -121,13 +121,13 @@ fn remainder_same_as_multiply() {
         expect![[r#"
 InfixExpr@0..5
   InfixExpr@0..3
-    IntExpr@0..1
+    IntLiteralExpr@0..1
       IntLiteral@0..1 "2"
     Star@1..2 "*"
-    IntExpr@2..3
+    IntLiteralExpr@2..3
       IntLiteral@2..3 "8"
   Percent@3..4 "%"
-  IntExpr@4..5
+  IntLiteralExpr@4..5
     IntLiteral@4..5 "3""#]],
     )
 }
@@ -138,18 +138,18 @@ fn parse_infix_expression_with_emptyspace() {
         " 1 +   2* 3 ",
         expect![[r#"
 InfixExpr@0..12
-  IntExpr@0..3
+  IntLiteralExpr@0..3
     Emptyspace@0..1 " "
     IntLiteral@1..2 "1"
     Emptyspace@2..3 " "
   Plus@3..4 "+"
   Emptyspace@4..7 "   "
   InfixExpr@7..12
-    IntExpr@7..8
+    IntLiteralExpr@7..8
       IntLiteral@7..8 "2"
     Star@8..9 "*"
     Emptyspace@9..10 " "
-    IntExpr@10..12
+    IntLiteralExpr@10..12
       IntLiteral@10..11 "3"
       Emptyspace@11..12 " ""#]],
     );
@@ -164,7 +164,7 @@ fn do_not_parse_operator_if_getting_rhs_failed() {
 ParenExpr@0..3
   LParen@0..1 "("
   InfixExpr@1..3
-    IntExpr@1..2
+    IntLiteralExpr@1..2
       IntLiteral@1..2 "1"
     Plus@2..3 "+"
 error at 2..3: expected 
@@ -179,7 +179,7 @@ fn parse_negation() {
         expect![[r#"
 NegationExpr@0..2
   Dash@0..1 "-"
-  IntExpr@1..2
+  IntLiteralExpr@1..2
     IntLiteral@1..2 "1""#]],
     );
 }
@@ -192,10 +192,10 @@ fn negation_has_higher_binding_power_than_binary_operators() {
 InfixExpr@0..4
   NegationExpr@0..2
     Dash@0..1 "-"
-    IntExpr@1..2
+    IntLiteralExpr@1..2
       IntLiteral@1..2 "1"
   Plus@2..3 "+"
-  IntExpr@3..4
+  IntLiteralExpr@3..4
     IntLiteral@3..4 "1""#]],
     );
 }
@@ -208,12 +208,12 @@ fn negation_following_binary_operator() {
 InfixExpr@0..5
   NegationExpr@0..2
     Dash@0..1 "-"
-    IntExpr@1..2
+    IntLiteralExpr@1..2
       IntLiteral@1..2 "1"
   Plus@2..3 "+"
   NegationExpr@3..5
     Dash@3..4 "-"
-    IntExpr@4..5
+    IntLiteralExpr@4..5
       IntLiteral@4..5 "1""#]],
     )
 }
@@ -224,12 +224,12 @@ fn logical_and() {
         "true and false",
         expect![[r#"
 InfixExpr@0..14
-  BoolExpr@0..5
+  BoolLiteralExpr@0..5
     TrueLiteral@0..4 "true"
     Emptyspace@4..5 " "
   And@5..8 "and"
   Emptyspace@8..9 " "
-  BoolExpr@9..14
+  BoolLiteralExpr@9..14
     FalseLiteral@9..14 "false""#]],
     )
 }
@@ -240,12 +240,12 @@ fn logical_or() {
         "true or false",
         expect![[r#"
 InfixExpr@0..13
-  BoolExpr@0..5
+  BoolLiteralExpr@0..5
     TrueLiteral@0..4 "true"
     Emptyspace@4..5 " "
   Or@5..7 "or"
   Emptyspace@7..8 " "
-  BoolExpr@8..13
+  BoolLiteralExpr@8..13
     FalseLiteral@8..13 "false""#]],
     )
 }
@@ -257,7 +257,7 @@ fn logical_not() {
         expect![[r#"
 NotExpr@0..5
   Bang@0..1 "!"
-  BoolExpr@1..5
+  BoolLiteralExpr@1..5
     TrueLiteral@1..5 "true""#]],
     )
 }
@@ -279,7 +279,7 @@ ParenExpr@0..13
           LParen@4..5 "("
           ParenExpr@5..8
             LParen@5..6 "("
-            IntExpr@6..7
+            IntLiteralExpr@6..7
               IntLiteral@6..7 "1"
             RParen@7..8 ")"
           RParen@8..9 ")"
@@ -296,16 +296,16 @@ fn parentheses_affect_precedence() {
         "3*(2+1)",
         expect![[r#"
 InfixExpr@0..7
-  IntExpr@0..1
+  IntLiteralExpr@0..1
     IntLiteral@0..1 "3"
   Star@1..2 "*"
   ParenExpr@2..7
     LParen@2..3 "("
     InfixExpr@3..6
-      IntExpr@3..4
+      IntLiteralExpr@3..4
         IntLiteral@3..4 "2"
       Plus@4..5 "+"
-      IntExpr@5..6
+      IntLiteralExpr@5..6
         IntLiteral@5..6 "1"
     RParen@6..7 ")""#]],
     );
@@ -421,7 +421,7 @@ Call@0..7
       Ident@0..5 "print"
       Emptyspace@5..6 " "
   CallArgs@6..7
-    IntExpr@6..7
+    IntLiteralExpr@6..7
       IntLiteral@6..7 "1""#]],
     )
 }
@@ -480,11 +480,11 @@ Call@0..10
       Emptyspace@3..4 " "
   CallArgs@4..10
     LParen@4..5 "("
-    IntExpr@5..6
+    IntLiteralExpr@5..6
       IntLiteral@5..6 "1"
     Comma@6..7 ","
     Emptyspace@7..8 " "
-    IntExpr@8..9
+    IntLiteralExpr@8..9
       IntLiteral@8..9 "2"
     RParen@9..10 ")""#]],
     )
@@ -497,7 +497,7 @@ fn parse_block_with_one_expr() {
         expect![[r#"
 BlockExpr@0..3
   LBrace@0..1 "{"
-  IntExpr@1..2
+  IntLiteralExpr@1..2
     IntLiteral@1..2 "1"
   RBrace@2..3 "}""#]],
     )
@@ -514,7 +514,7 @@ BlockExpr@0..7
   LBrace@0..1 "{"
   Newline@1..2 "\n"
   Emptyspace@2..4 "  "
-  IntExpr@4..5
+  IntLiteralExpr@4..5
     IntLiteral@4..5 "1"
   Newline@5..6 "\n"
   RBrace@6..7 "}""#]],
@@ -542,7 +542,7 @@ BlockExpr@0..35
       Emptyspace@9..10 " "
     Equals@10..11 "="
     Emptyspace@11..12 " "
-    IntExpr@12..13
+    IntLiteralExpr@12..13
       IntLiteral@12..13 "1"
   Newline@13..14 "\n"
   Emptyspace@14..16 "  "
@@ -554,7 +554,7 @@ BlockExpr@0..35
       Emptyspace@21..22 " "
     Equals@22..23 "="
     Emptyspace@23..24 " "
-    IntExpr@24..25
+    IntLiteralExpr@24..25
       IntLiteral@24..25 "2"
   Newline@25..26 "\n"
   Emptyspace@26..28 "  "

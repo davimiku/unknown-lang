@@ -1,29 +1,40 @@
-use itertools::Itertools;
-
-use crate::{interner::Interner, Key};
+use crate::Key;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Undetermined,
     Error,
 
-    Bool,
+    // Literals
     BoolLiteral(bool),
-    Float,
     FloatLiteral(f64), // TODO: shared alias of Float
-    Int,
-    IntLiteral(i32), // TODO: shared alias of Int
-    String,
+    IntLiteral(i32),   // TODO: shared alias of Int
     StringLiteral(Key),
-    Named(Key),
+
+    // Unit
     Unit,
+
+    // Scalars
+    Bool,
+    Float,
+    Int,
+    String,
+
+    Top,
+    Bottom,
+
+    // TODO: why is this a type?
+    Named(Key),
+
+    // Compound
+    // TODO: arena allocate Type so that recursive types can be Copy?
+    // Struct
+    // Union
+    // Newtype
     Function {
         params: Vec<Type>,
         return_ty: Box<Type>,
     },
-    // Struct
-    // Union
-    // Newtype
 }
 
 impl Default for Type {

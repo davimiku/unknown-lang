@@ -9,7 +9,9 @@ use super::*;
 fn check(input: &str, expected: expect_test::Expect) {
     let root: Root = parser::parse(input).into();
 
-    let (root_expr, context) = lower(root);
+    let mut interner = Interner::default();
+
+    let (root_expr, context) = lower(&root, &mut interner);
 
     let actual = fmt_expr::fmt_root(root_expr, &context);
 
@@ -111,6 +113,19 @@ a~0 : 10
 "#]];
 
     check(input, expected);
+}
+
+#[test]
+fn local_def_annotation() {
+    let input = "let a: Int = 10";
+    let expected = expect![[r#"
+{
+    a~0 : Int~0 = 10
+}
+a~0 : Int
+"#]];
+
+    check(input, expected)
 }
 
 #[test]
@@ -246,14 +261,42 @@ fn local_wrong_type() {
 #[test]
 fn nullary_function() {
     let input = "() -> {}";
-    let expected = expect![[r#""#]];
+    let expected = expect![[r#"
+{
+    fun () -> {
+    }
+}"#]];
+
+    check(input, expected);
+}
+
+#[test]
+fn unary_function_no_param_type() {
+    let input = "a -> {}";
+    let expected = expect![[r#"
+{
+    fun (a~0 : {{empty}}) -> {
+    }
+}"#]];
 
     check(input, expected);
 }
 
 #[test]
 fn unary_function() {
-    let input = "a -> {}";
+    let input = "(a: Int) -> {}";
+    let expected = expect![[r#"
+{
+    fun (a~0 : Int) -> {
+    }
+}"#]];
+
+    check(input, expected);
+}
+
+#[test]
+fn print_param() {
+    let input = "(a: String) -> print a";
     let expected = expect![[r#""#]];
 
     check(input, expected);

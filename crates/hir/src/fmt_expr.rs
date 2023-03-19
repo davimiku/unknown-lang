@@ -6,7 +6,7 @@ use crate::expr::{
     UnaryExpr,
 };
 use crate::interner::Interner;
-use crate::type_expr::TypeExpr;
+use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
 use crate::typecheck::fmt_local_types;
 use crate::{Context, Expr, Type};
 
@@ -100,9 +100,9 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
         s.push_str(" : ");
         match param.ty {
             Some(ty) => {
-                fmt_expr(s, ty, context, indent);
+                fmt_type_expr(s, ty, context, indent);
             }
-            None => {}
+            None => s.push_str("~empty~"),
         }
     }
     s.push_str(") -> ");
@@ -135,7 +135,7 @@ pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Contex
     let mut indent = indent;
     let expr = context.type_expr(idx);
     match expr {
-        TypeExpr::Empty => todo!(),
+        TypeExpr::Empty => s.push_str("{{empty}}"),
 
         TypeExpr::BoolLiteral(b) => s.push_str(&b.to_string()),
         TypeExpr::FloatLiteral(f) => s.push_str(&f.to_string()),
@@ -143,9 +143,19 @@ pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Contex
         TypeExpr::StringLiteral(key) => {
             s.push_str(&format!(r#""{}""#, context.interner.lookup(*key)))
         }
+        TypeExpr::Call(_) => todo!(),
 
         TypeExpr::LocalDef(_) => todo!(),
-        TypeExpr::LocalRef(_) => todo!(),
+        TypeExpr::LocalRef(local_ref) => {
+            let LocalTypeRefExpr { name } = local_ref;
+            let type_name = match name {
+                // TODO: wrong interner?
+                LocalTypeRefName::Resolved(name) => name.display(&context.interner),
+                LocalTypeRefName::Unresolved(name) => context.interner.lookup(*name).to_owned(),
+            };
+
+            s.push_str(&type_name);
+        }
         TypeExpr::Binary(_) => todo!(),
         TypeExpr::Unary(_) => todo!(),
     }
@@ -179,6 +189,8 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
         Type::Named(name) => interner.lookup(*name).to_string(),
 
         Type::Unit => "Unit".to_string(),
+        Type::Top => "Top".to_string(),
+        Type::Bottom => "Bottom".to_string(),
 
         Type::Undetermined => "Undetermined".to_string(),
         Type::Error => "Error".to_string(),
