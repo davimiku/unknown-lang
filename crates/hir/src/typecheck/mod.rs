@@ -19,43 +19,40 @@ pub use types::Type;
 use crate::expr::LocalRefName;
 use crate::fmt_expr::fmt_type;
 use crate::interner::Interner;
-use crate::type_expr::LocalTypeDefKey;
-use crate::{BinaryOp, Context, Expr, LocalDefKey};
+use crate::type_expr::{LocalTypeDefKey, TypeExpr};
+use crate::{BinaryOp, Diagnostic, Expr, LocalDefKey};
 
-use self::check::check_expr;
-use self::infer::infer_expr;
-
-// returns diagnostics
-pub(crate) fn check(expr: Idx<Expr>, context: &Context) -> TypeCheckResults {
-    let interner = &context.interner;
-    let database = &context.database;
-    let mut results = TypeCheckResults::default();
-
-    let inferred_result = infer_expr(expr, &mut results, database);
-
-    check_expr(expr, Type::Top, &mut results, database);
-
-    results
-}
+pub(crate) use self::check::check_expr;
+pub(crate) use self::infer::infer_expr;
 
 #[derive(Debug, Default)]
-pub struct TypeCheckResults {
+pub struct TypeDatabase {
     /// Correctly resolved types (inferred or checked)
     /// mapped to the corresponding `Expr` index.
     expr_types: ArenaMap<Idx<Expr>, Type>,
+
+    type_expr_types: ArenaMap<Idx<TypeExpr>, Type>,
 
     local_defs: HashMap<LocalDefKey, Type>,
 
     local_type_defs: HashMap<LocalTypeDefKey, Type>,
 }
 
-impl TypeCheckResults {
+impl TypeDatabase {
     pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Option<&Type> {
         self.expr_types.get(idx)
     }
 
     pub(super) fn set_expr_type(&mut self, idx: Idx<Expr>, ty: Type) {
         self.expr_types.insert(idx, ty);
+    }
+
+    pub(super) fn get_type_expr_type(&self, idx: Idx<TypeExpr>) -> Option<&Type> {
+        self.type_expr_types.get(idx)
+    }
+
+    pub(super) fn set_type_expr_type(&mut self, idx: Idx<TypeExpr>, ty: Type) {
+        self.type_expr_types.insert(idx, ty);
     }
 
     pub(super) fn get_local_type(&self, key: &LocalTypeDefKey) -> Option<&Type> {
@@ -67,7 +64,7 @@ impl TypeCheckResults {
     }
 }
 
-pub(crate) fn fmt_local_types(s: &mut String, results: &TypeCheckResults, interner: &Interner) {
+pub(crate) fn fmt_local_types(s: &mut String, results: &TypeDatabase, interner: &Interner) {
     if !results.local_defs.is_empty() {
         s.push('\n');
     }
@@ -97,6 +94,12 @@ pub struct FunctionSignature {
 pub struct TypeDiagnostic {
     pub variant: TypeDiagnosticVariant,
     pub range: TextRange,
+}
+
+impl From<TypeDiagnostic> for Diagnostic {
+    fn from(value: TypeDiagnostic) -> Self {
+        Diagnostic::Type(value)
+    }
 }
 
 #[derive(Debug, PartialEq)]

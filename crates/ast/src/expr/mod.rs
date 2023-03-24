@@ -277,7 +277,10 @@ impl FunParam {
     }
 
     pub fn type_expr(&self) -> Option<TypeExpr> {
-        self.0.descendants().find_map(TypeExpr::cast)
+        self.0
+            .children()
+            .find(|child| child.kind() == SyntaxKind::TypeExpr)
+            .and_then(TypeExpr::cast)
     }
 
     pub fn range(&self) -> TextRange {

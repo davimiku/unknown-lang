@@ -4,27 +4,28 @@
 //!
 
 use la_arena::Idx;
-use text_size::TextRange;
 
 use super::infer::infer_expr;
-use super::{Type, TypeCheckResults, TypeDiagnostic, TypeDiagnosticVariant};
+use super::{Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::database::Database;
 use crate::Expr;
 
 pub(crate) fn check_expr(
-    expr: Idx<Expr>,
-    expected: Type,
-    results: &mut TypeCheckResults,
+    idx: Idx<Expr>,
+    expected: &Type,
+    results: &mut TypeDatabase,
     database: &Database,
 ) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(expr, results, database)?;
-    if is_subtype(&actual, &expected) {
+    let actual = infer_expr(idx, results, database)?;
+    if is_subtype(&actual, expected) {
         Ok(())
     } else {
         Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::TypeMismatch { expected, actual },
-            // TODO: get a real TextRange from database
-            range: TextRange::default(),
+            variant: TypeDiagnosticVariant::TypeMismatch {
+                expected: expected.clone(),
+                actual,
+            },
+            range: database.expr_ranges.get(idx).copied().unwrap_or_default(),
         })
     }
 }

@@ -24,7 +24,8 @@ impl Database {
     /// Returns the expression at the given index
     ///
     /// Panics if the index doesn't exist, but this is not a problem
-    /// in practice because it's not possible to create an arbitrary index.
+    /// in practice because it shouldn't be possible to create an arbitrary index
+    /// in safe code.
     pub(crate) fn expr(&self, idx: Idx<Expr>) -> (&Expr, &TextRange) {
         (&self.exprs[idx], &self.expr_ranges[idx])
     }
@@ -32,7 +33,8 @@ impl Database {
     /// Returns the type expression at the given index
     ///
     /// Panics if the index doesn't exist, but this is not a problem
-    /// in practice because it's not possible to create an arbitrary index.
+    /// in practice because it shouldn't be possible to create an arbitrary index
+    /// in safe code.
     pub(crate) fn type_expr(&self, idx: Idx<TypeExpr>) -> (&TypeExpr, &TextRange) {
         (&self.type_exprs[idx], &self.type_expr_ranges[idx])
     }

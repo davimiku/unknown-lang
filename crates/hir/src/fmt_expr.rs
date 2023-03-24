@@ -20,7 +20,7 @@ pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
     let mut s = String::new();
     fmt_expr(&mut s, idx, context, 0);
 
-    fmt_local_types(&mut s, &context.typecheck_results, &context.interner);
+    fmt_local_types(&mut s, &context.type_database, &context.interner);
 
     s
 }
@@ -89,18 +89,22 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
         s.push('\n');
     }
     *indent -= DEFAULT_INDENT;
-    s.push_str(&*format!("{}}}", " ".repeat(*indent)));
+    s.push_str(&format!("{}}}", " ".repeat(*indent)));
 }
 
 fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
     let FunctionExpr { params, body } = function;
     s.push_str("fun (");
     for param in params {
-        s.push_str(&param.name.display(&context.interner));
+        s.push_str(&param.name.display(context.interner));
         s.push_str(" : ");
         match param.ty {
             Some(ty) => {
-                fmt_type_expr(s, ty, context, indent);
+                let ty = context
+                    .type_database
+                    .get_type_expr_type(ty)
+                    .expect("TODO: is this possible?");
+                s.push_str(&fmt_type(ty, context.interner));
             }
             None => s.push_str("~empty~"),
         }
@@ -149,8 +153,7 @@ pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Contex
         TypeExpr::LocalRef(local_ref) => {
             let LocalTypeRefExpr { name } = local_ref;
             let type_name = match name {
-                // TODO: wrong interner?
-                LocalTypeRefName::Resolved(name) => name.display(&context.interner),
+                LocalTypeRefName::Resolved(name) => name.display(context.interner),
                 LocalTypeRefName::Unresolved(name) => context.interner.lookup(*name).to_owned(),
             };
 

@@ -1,5 +1,8 @@
 use ast::Root;
 use expect_test::expect;
+use text_size::TextRange;
+
+use crate::typecheck::{TypeDiagnostic, TypeDiagnosticVariant};
 
 use super::*;
 
@@ -7,15 +10,23 @@ use super::*;
 ///
 /// Compares the fmt version of the lowered expression to the expected value.
 fn check(input: &str, expected: expect_test::Expect) {
-    let root: Root = parser::parse(input).into();
-
     let mut interner = Interner::default();
 
+    let root: Root = parser::parse(input).into();
     let (root_expr, context) = lower(&root, &mut interner);
-
     let actual = fmt_expr::fmt_root(root_expr, &context);
 
     expected.assert_eq(&actual);
+}
+
+/// Checks that the input lowered with an error
+fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner>) {
+    let mut interner = interner.unwrap_or(Interner::default());
+    let root: Root = parser::parse(input).into();
+    let (root_expr, context) = lower(&root, &mut interner);
+
+    assert!(!context.diagnostics.is_empty());
+    assert_eq!(context.diagnostics, expected);
 }
 
 #[test]
@@ -251,11 +262,38 @@ a~2 : 20
 }
 
 #[test]
-fn local_wrong_type() {
-    let input = "let a: String = 1";
-    let expected = expect![[r#""#]];
+fn local_wrong_type_int_literal() {
+    let input = "let a: String = 100";
+    //                               16^ ^19
+    let expected = vec![TypeDiagnostic {
+        range: TextRange::new(16.into(), 19.into()),
+        variant: TypeDiagnosticVariant::TypeMismatch {
+            expected: Type::String,
+            actual: Type::IntLiteral(100),
+        },
+    }
+    .into()];
 
-    check(input, expected);
+    check_error(input, expected, None);
+}
+
+#[test]
+fn local_wrong_type_string_literal() {
+    let mut interner = Interner::default();
+    let key = interner.intern("Hello World!");
+
+    let input = r#"let a: Int = "Hello World!""#;
+    //                              13^            ^27
+    let expected = vec![TypeDiagnostic {
+        range: TextRange::new(13.into(), 27.into()),
+        variant: TypeDiagnosticVariant::TypeMismatch {
+            expected: Type::Int,
+            actual: Type::StringLiteral(key),
+        },
+    }
+    .into()];
+
+    check_error(input, expected, Some(interner));
 }
 
 #[test]
@@ -275,7 +313,7 @@ fn unary_function_no_param_type() {
     let input = "a -> {}";
     let expected = expect![[r#"
 {
-    fun (a~0 : {{empty}}) -> {
+    fun (a~0 : ~empty~) -> {
     }
 }"#]];
 
@@ -297,7 +335,10 @@ fn unary_function() {
 #[test]
 fn print_param() {
     let input = "(a: String) -> print a";
-    let expected = expect![[r#""#]];
+    let expected = expect![[r#"
+{
+    fun (a~0 : String) -> print (a~0,)
+}"#]];
 
     check(input, expected);
 }

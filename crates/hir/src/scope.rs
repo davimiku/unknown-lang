@@ -123,11 +123,20 @@ impl Scopes {
 
     /// Inserts a Name for a local def into the current scope and returns
     /// a key that uniquely identifies that particular local.
-    pub(crate) fn insert_local_def(&mut self, name: Key) -> LocalDefKey {
+    pub(crate) fn insert_local(&mut self, name: Key) -> LocalDefKey {
         let new_count = self.increment_count(name);
 
         let key: LocalDefKey = (name, new_count - 1).into();
         self.current_mut().local_defs.insert(name, key);
+
+        key
+    }
+
+    pub(crate) fn insert_local_type(&mut self, name: Key) -> LocalTypeDefKey {
+        let new_count = self.increment_count(name);
+
+        let key: LocalTypeDefKey = (name, new_count - 1).into();
+        self.current_mut().local_type_defs.insert(name, key);
 
         key
     }

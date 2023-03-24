@@ -39,7 +39,7 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
     let root = Expr::Block(BlockExpr { exprs });
     let root = context.alloc_expr(root, None);
 
-    context.typecheck(root);
+    context.type_check(root, &Type::Top);
 
     (root, context)
 }
