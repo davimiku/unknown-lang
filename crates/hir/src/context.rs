@@ -36,7 +36,7 @@ pub struct Context<'a> {
 
     pub(crate) scopes: Scopes,
 
-    pub(crate) interner: &'a mut Interner,
+    pub interner: &'a mut Interner,
 }
 
 impl<'a> Context<'a> {
@@ -46,11 +46,16 @@ impl<'a> Context<'a> {
         let float_key = interner.intern("Float");
         let string_key = interner.intern("String");
 
+        let print_key = interner.intern("print");
+
         let mut scopes = Scopes::new(interner);
+
         let bool_key = scopes.insert_local_type(bool_key);
         let int_key = scopes.insert_local_type(int_key);
         let float_key = scopes.insert_local_type(float_key);
         let string_key = scopes.insert_local_type(string_key);
+
+        let print_key = scopes.insert_local(print_key);
 
         let mut typecheck_results = TypeDatabase::default();
         typecheck_results.set_local_type(bool_key, Type::Bool);
@@ -81,6 +86,9 @@ impl<'a> Context<'a> {
                     &mut self.type_database,
                     &self.database,
                 );
+                if let Err(err) = check_result {
+                    self.diagnostics.push(err.into())
+                }
             }
             Err(err) => self.diagnostics.push(err.into()),
         }
@@ -305,6 +313,7 @@ impl<'a> Context<'a> {
 
         // TODO: handle multiple idents in a Path
         let name = idents.next().unwrap();
+        let key = self.interner.intern(&name);
 
         if let Some(call_args) = ast.args() {
             let args = call_args
@@ -312,18 +321,24 @@ impl<'a> Context<'a> {
                 .map(|expr| self.lower_expr(Some(expr)))
                 .collect();
 
+            println!("{}", self.scopes.display_from_current(self.interner));
+
+            let local_key = self.scopes.find_local(key);
+            // FIXME: handle None scenario
+            let local_key = local_key.unwrap();
+
             // TODO: check for mismatched arg count?
-            Expr::Call(CallExpr { path: name, args })
+            Expr::Call(CallExpr {
+                callee: local_key,
+                callee_path: name,
+                args,
+            })
         } else {
-            self.lower_name_ref(name)
+            self.lower_name_ref(key)
         }
     }
 
-    fn lower_name_ref(&mut self, name: String) -> Expr {
-        let mut name = name;
-        // name.push(COMPILER_BRAND);
-
-        let name = self.interner.intern(&name);
+    fn lower_name_ref(&mut self, name: Key) -> Expr {
         let local_key = self.scopes.find_local(name);
 
         let local_ref = if let Some(local_key) = local_key {
@@ -340,6 +355,7 @@ impl<'a> Context<'a> {
     }
 
     fn lower_function_expr(&mut self, function_ast: ast::Function) -> Expr {
+        self.push_scope();
         let params = function_ast
             .param_list()
             .params()
@@ -357,13 +373,9 @@ impl<'a> Context<'a> {
             })
             .collect();
 
-        let body = function_ast.body().map(|body| {
-            self.push_scope();
-            let lowered = self.lower_expr(Some(body));
-            self.pop_scope();
-            lowered
-        });
+        let body = function_ast.body().map(|body| self.lower_expr(Some(body)));
         let body = body.expect("TODO: handle missing function body");
+        self.pop_scope();
 
         Expr::Function(FunctionExpr { params, body })
     }

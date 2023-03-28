@@ -34,6 +34,29 @@ pub struct Scope {
 }
 
 impl Scope {
+    fn display(&self, interner: &Interner) -> String {
+        let mut s = String::new();
+        s.push_str("local_defs: {\n");
+        for (key, local_key) in &self.local_defs {
+            s.push_str(&format!(
+                "  {}: {}\n",
+                interner.lookup(*key),
+                local_key.display(interner)
+            ));
+        }
+        s.push_str("}\n");
+        s.push_str("local_type_defs: {\n");
+        for (key, local_key) in &self.local_type_defs {
+            s.push_str(&format!(
+                "  {}: {}\n",
+                interner.lookup(*key),
+                local_key.display(interner)
+            ));
+        }
+        s.push_str("}\n");
+
+        s
+    }
     fn with_builtins(interner: &mut Interner) -> Self {
         let mut scope = Scope::default();
 
@@ -71,7 +94,22 @@ pub(crate) struct Scopes {
     current_node_id: id_tree::NodeId,
 
     /// Local definition counts
-    pub(crate) local_counts: HashMap<Key, u32>,
+    // TODO: separate map for terms and types?
+    local_counts: HashMap<Key, u32>,
+}
+
+impl Scopes {
+    pub fn display_from_current(&self, interner: &Interner) -> String {
+        let mut s = String::new();
+        s.push_str(&format!("===scope {:?}===\n", self.current_node_id));
+        s.push_str(&self.current().display(interner));
+
+        for node in self.tree.ancestors(&self.current_node_id).unwrap() {
+            s.push_str(&node.data().display(interner));
+        }
+
+        s
+    }
 }
 
 // Non-Mutating functions
@@ -155,7 +193,7 @@ impl Scopes {
 
 impl Scopes {
     pub(crate) fn new(interner: &mut Interner) -> Self {
-        let root = Node::new(Scope::with_builtins(interner));
+        let root = Node::new(Scope::default());
         let mut tree = Tree::new();
         let root = tree.insert(root, AsRoot).unwrap();
         Self {

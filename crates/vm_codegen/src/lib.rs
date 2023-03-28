@@ -416,7 +416,7 @@ impl Chunk {
     }
 
     fn synth_call_expr(&mut self, expr: &CallExpr, context: &Context) -> Code {
-        let CallExpr { path, args } = expr;
+        let CallExpr { callee, args, .. } = expr;
 
         let mut code = Code::default();
 
@@ -425,9 +425,10 @@ impl Chunk {
         }
         let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of_expr(*idx)).collect();
 
+        let callee_path = callee.display(context.interner);
         // TODO: putting builtins into a "core" library and loading them into a "prelude" for name resolution
-        if path == "print" {
-            code.append(self.synth_builtin_call(path, arg_types));
+        if callee_path == "print" {
+            code.append(self.synth_builtin_call(&callee_path, arg_types));
         }
 
         code
@@ -479,8 +480,7 @@ impl Chunk {
                 Type::Int | Type::IntLiteral(_) => PRINT_INT,
                 Type::String | Type::StringLiteral(_) => PRINT_STR,
 
-                Type::Named(_) => todo!(),
-
+                // Type::Named(_) => todo!(),
                 _ => unreachable!(),
             };
 
@@ -638,7 +638,7 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Float | Type::FloatLiteral(_) => vm_types::word_size_of::<VMFloat>(),
         Type::Int | Type::IntLiteral(_) => vm_types::word_size_of::<VMInt>(),
         Type::String | Type::StringLiteral(_) => vm_types::word_size_of::<VMString>(),
-        Type::Named(_) => todo!(),
+        // Type::Named(_) => todo!(),
         Type::Unit => 0,
 
         Type::Function { .. } => todo!(),

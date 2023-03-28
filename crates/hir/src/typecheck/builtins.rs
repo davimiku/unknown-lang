@@ -10,6 +10,7 @@ use crate::Type;
 
 pub(super) type BuiltinFunctions = HashMap<&'static str, Vec<BuiltinFunctionSignature>>;
 
+#[derive(Debug)]
 pub(super) struct BuiltinFunctionSignature {
     pub(super) arg_types: Vec<Type>,
     pub(super) return_type: Type,

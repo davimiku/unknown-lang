@@ -24,7 +24,7 @@ pub enum Type {
     Bottom,
 
     // TODO: why is this a type?
-    Named(Key),
+    // Named(Key),
 
     // Compound
     // TODO: arena allocate Type so that recursive types can be Copy?

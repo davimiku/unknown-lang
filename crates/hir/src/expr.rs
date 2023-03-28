@@ -82,7 +82,7 @@ pub struct LocalDefKey {
 }
 
 impl LocalDefKey {
-    pub(crate) fn display(&self, interner: &Interner) -> String {
+    pub fn display(&self, interner: &Interner) -> String {
         let name = interner.lookup(self.name);
         let idx = self.idx;
         format!("{name}{COMPILER_BRAND}{idx}",)
@@ -134,8 +134,13 @@ pub struct BlockExpr {
 pub struct CallExpr {
     // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
     // so that it can handle `a`, `a.b`, `a.b.c`, etc.
+    // should be `LocalRefName` and have that handle paths?
+    // Or go all the way and have it be a full `LocalRefExpr`?
     /// Qualified path that the function is bound to
-    pub path: String,
+    pub callee: LocalDefKey,
+
+    // FIXME: this is temporary until builtins are applied like other functions
+    pub callee_path: String,
 
     /// Arguments that the function are applied to
     pub args: Vec<Idx<Expr>>,

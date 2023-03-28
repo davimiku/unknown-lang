@@ -13,10 +13,10 @@ use crate::Expr;
 pub(crate) fn check_expr(
     idx: Idx<Expr>,
     expected: &Type,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(idx, results, database)?;
+    let actual = infer_expr(idx, type_database, database)?;
     if is_subtype(&actual, expected) {
         Ok(())
     } else {
@@ -25,7 +25,7 @@ pub(crate) fn check_expr(
                 expected: expected.clone(),
                 actual,
             },
-            range: database.expr_ranges.get(idx).copied().unwrap_or_default(),
+            range: database.range_of_expr(idx),
         })
     }
 }
@@ -37,7 +37,7 @@ pub(crate) fn check_expr(
 /// For example:
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
-fn is_subtype(a: &Type, b: &Type) -> bool {
+pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
     use Type as T;
 
     if a == b {
@@ -48,34 +48,33 @@ fn is_subtype(a: &Type, b: &Type) -> bool {
         (_, T::Top) => true,
         (_, T::Bottom) => false,
 
-        (T::Bool, T::Named(_)) => todo!(),
+        // (T::Bool, T::Named(_)) => todo!(),
         (T::BoolLiteral(_), T::Bool) => true,
         (T::BoolLiteral(a), T::BoolLiteral(b)) => a == b,
-        (T::BoolLiteral(_), T::Named(_)) => todo!(),
+        // (T::BoolLiteral(_), T::Named(_)) => todo!(),
 
-        (T::Float, T::Named(_)) => todo!(),
+        // (T::Float, T::Named(_)) => todo!(),
         (T::FloatLiteral(_), T::Float) => true,
         (T::FloatLiteral(a), T::FloatLiteral(b)) => a == b,
-        (T::FloatLiteral(_), T::Named(_)) => todo!(),
+        // (T::FloatLiteral(_), T::Named(_)) => todo!(),
 
-        (T::Int, T::Named(_)) => todo!(),
+        // (T::Int, T::Named(_)) => todo!(),
         (T::IntLiteral(_), T::Int) => true,
         (T::IntLiteral(a), T::IntLiteral(b)) => a == b,
-        (T::IntLiteral(_), T::Named(_)) => todo!(),
+        // (T::IntLiteral(_), T::Named(_)) => todo!(),
 
-        (T::String, T::Named(_)) => todo!(),
+        // (T::String, T::Named(_)) => todo!(),
         (T::StringLiteral(_), T::String) => true,
         (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
 
-        (T::Named(_), T::Bool) => todo!(),
-        (T::Named(_), T::BoolLiteral(_)) => todo!(),
-        (T::Named(_), T::Float) => todo!(),
-        (T::Named(_), T::FloatLiteral(_)) => todo!(),
-        (T::Named(_), T::Int) => todo!(),
-        (T::Named(_), T::IntLiteral(_)) => todo!(),
-        (T::Named(_), T::String) => todo!(),
-        (T::Named(_), T::Named(_)) => todo!(),
-
+        // (T::Named(_), T::Bool) => todo!(),
+        // (T::Named(_), T::BoolLiteral(_)) => todo!(),
+        // (T::Named(_), T::Float) => todo!(),
+        // (T::Named(_), T::FloatLiteral(_)) => todo!(),
+        // (T::Named(_), T::Int) => todo!(),
+        // (T::Named(_), T::IntLiteral(_)) => todo!(),
+        // (T::Named(_), T::String) => todo!(),
+        // (T::Named(_), T::Named(_)) => todo!(),
         _ => false,
     }
 }

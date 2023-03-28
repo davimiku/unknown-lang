@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
 
@@ -16,6 +17,7 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
+use crate::typecheck::check::is_subtype;
 use crate::CallExpr;
 
 // TODO: needs to have Vec<TypeDiagnostic>
@@ -26,10 +28,10 @@ type InferResult = Result<Type, TypeDiagnostic>;
 
 pub(crate) fn infer_expr(
     expr_idx: Idx<Expr>,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> InferResult {
-    if let Some(already_inferred_type) = results.expr_types.get(expr_idx) {
+    if let Some(already_inferred_type) = type_database.expr_types.get(expr_idx) {
         return Ok(already_inferred_type.clone());
     }
 
@@ -39,36 +41,37 @@ pub(crate) fn infer_expr(
     let inferred_result = match expr {
         Expr::Empty => Err(TypeDiagnostic {
             variant: TypeDiagnosticVariant::Undefined { name: todo!() },
-            range: Default::default(),
+            range: database.range_of_expr(expr_idx),
         }),
 
-        Expr::BoolLiteral(b) => infer_bool_literal(*b, results, expr_idx),
-        Expr::FloatLiteral(f) => infer_float_literal(*f, results, expr_idx),
-        Expr::IntLiteral(i) => infer_int_literal(*i, results, expr_idx),
-        Expr::StringLiteral(key) => infer_string_literal(*key, results, expr_idx),
+        Expr::BoolLiteral(b) => infer_bool_literal(*b, type_database, expr_idx),
+        Expr::FloatLiteral(f) => infer_float_literal(*f, type_database, expr_idx),
+        Expr::IntLiteral(i) => infer_int_literal(*i, type_database, expr_idx),
+        Expr::StringLiteral(key) => infer_string_literal(*key, type_database, expr_idx),
 
-        Expr::LocalRef(local_ref) => lower_local_ref(local_ref, results),
+        Expr::LocalRef(local_ref) => infer_local_ref(local_ref, type_database),
 
-        Expr::Binary(expr) => infer_binary(expr, results, database),
-        Expr::Unary(expr) => infer_unary(expr, results, database),
-        Expr::Block(block) => infer_block(expr_idx, block, results, database),
-        Expr::Call(expr) => match infer_call(expr, builtin_signatures, results, database) {
-            Ok(value) => value,
-            Err(value) => return value,
-        },
-        Expr::Function(function) => infer_function(function, results, database),
-        Expr::LocalDef(local_def) => infer_local_def(local_def, results, database),
-        Expr::If(if_expr) => infer_if_expr(if_expr, results, database),
+        Expr::Binary(expr) => infer_binary(expr, type_database, database),
+        Expr::Unary(expr) => infer_unary(expr, type_database, database),
+        Expr::Block(block) => infer_block(expr_idx, block, type_database, database),
+        Expr::Call(expr) => infer_call(expr_idx, expr, builtin_signatures, type_database, database),
+        Expr::Function(function) => infer_function(function, type_database, database),
+        Expr::LocalDef(local_def) => infer_local_def(local_def, type_database, database),
+        Expr::If(if_expr) => infer_if_expr(if_expr, type_database, database),
     };
 
     if let Ok(ref inferred_type) = inferred_result {
-        results.set_expr_type(expr_idx, inferred_type.clone());
+        type_database.set_expr_type(expr_idx, inferred_type.clone());
     }
 
     inferred_result
 }
 
-fn infer_type_expr(idx: Idx<TypeExpr>, type_expr: &TypeExpr, results: &mut TypeDatabase) -> Type {
+fn infer_type_expr(
+    idx: Idx<TypeExpr>,
+    type_expr: &TypeExpr,
+    type_database: &mut TypeDatabase,
+) -> Type {
     let inferred_type = match type_expr {
         TypeExpr::BoolLiteral(b) => Type::BoolLiteral(*b),
         TypeExpr::FloatLiteral(f) => Type::FloatLiteral(*f),
@@ -82,9 +85,10 @@ fn infer_type_expr(idx: Idx<TypeExpr>, type_expr: &TypeExpr, results: &mut TypeD
         TypeExpr::LocalRef(local_ref) => {
             let LocalTypeRefExpr { name } = local_ref;
             match name {
-                LocalTypeRefName::Resolved(key) => {
-                    results.get_local_type(key).cloned().unwrap_or(Type::Error)
-                }
+                LocalTypeRefName::Resolved(key) => type_database
+                    .get_local_type(key)
+                    .cloned()
+                    .unwrap_or(Type::Error),
                 LocalTypeRefName::Unresolved(_) => Type::Error,
             }
         }
@@ -92,18 +96,18 @@ fn infer_type_expr(idx: Idx<TypeExpr>, type_expr: &TypeExpr, results: &mut TypeD
 
         TypeExpr::Empty => Type::Undetermined,
     };
-    results.set_type_expr_type(idx, inferred_type.clone());
+    type_database.set_type_expr_type(idx, inferred_type.clone());
 
     inferred_type
 }
 
-fn lower_local_ref(
+fn infer_local_ref(
     expr: &LocalRefExpr,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
 ) -> Result<Type, TypeDiagnostic> {
     let name = expr.name;
     match name {
-        LocalRefName::Resolved(key) => results
+        LocalRefName::Resolved(key) => type_database
             .local_defs
             .get(&key)
             .ok_or(TypeDiagnostic {
@@ -117,7 +121,7 @@ fn lower_local_ref(
 
 fn infer_function(
     function: &FunctionExpr,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
     let FunctionExpr { params, body } = function;
@@ -125,10 +129,10 @@ fn infer_function(
     // TODO: this really needs to collect the Err(s) into a Vec
     let params: Result<Vec<Type>, TypeDiagnostic> = params
         .iter()
-        .map(|param| infer_function_param(param, results, database))
+        .map(|param| infer_function_param(param, type_database, database))
         .collect();
 
-    let return_ty = infer_expr(*body, results, database);
+    let return_ty = infer_expr(*body, type_database, database);
 
     match (params, return_ty) {
         (Ok(params), Ok(return_ty)) => Ok(Type::Function {
@@ -144,15 +148,25 @@ fn infer_function(
 
 fn infer_function_param(
     param: &FunctionParam,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
     let FunctionParam { name, ty } = param;
 
     ty.map(|idx| {
         let (type_expr, range) = database.type_expr(idx);
-        infer_type_expr(idx, type_expr, results)
+        let ty = infer_type_expr(idx, type_expr, type_database);
+
+        type_database.local_defs.insert(*name, ty.clone());
+        ty
     })
+    // TODO: parameter types can be omitted when they could be inferred in another way
+    // ex.
+    // ```
+    // type MyFuncType = String -> Int
+    // let f: MyFuncType = s -> { /* ... */ }
+    // ```
+    // here, `s` can be inferred as `String` and the explicit annotation is not needed
     .ok_or(TypeDiagnostic {
         variant: TypeDiagnosticVariant::Undefined { name: *name },
         range: Default::default(),
@@ -161,7 +175,7 @@ fn infer_function_param(
 
 fn infer_local_def(
     local_def: &LocalDefExpr,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
     let LocalDefExpr {
@@ -171,14 +185,14 @@ fn infer_local_def(
     } = local_def;
     if let Some(idx) = type_annotation {
         let (annotation, range) = database.type_expr(*idx);
-        let expected = infer_type_expr(*idx, annotation, results);
-        check_expr(*value, &expected, results, database).map(|_| {
-            results.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
+        let expected = infer_type_expr(*idx, annotation, type_database);
+        check_expr(*value, &expected, type_database, database).map(|_| {
+            type_database.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
             expected
         })
     } else {
-        infer_expr(*value, results, database).map(|inferred| {
-            results.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
+        infer_expr(*value, type_database, database).map(|inferred| {
+            type_database.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
             inferred
         })
     }
@@ -187,20 +201,20 @@ fn infer_local_def(
 fn infer_block(
     expr_idx: Idx<Expr>,
     block: &BlockExpr,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
     let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
         .exprs
         .iter()
-        .map(|arg| infer_expr(*arg, results, database))
+        .map(|arg| infer_expr(*arg, type_database, database))
         .collect();
     expr_types.map(|expr_types| {
         let tail_type = expr_types.last();
         tail_type.map_or_else(
             || Type::Unit,
             |tail_type| {
-                results.set_expr_type(expr_idx, tail_type.clone());
+                type_database.set_expr_type(expr_idx, tail_type.clone());
 
                 tail_type.clone()
             },
@@ -209,94 +223,128 @@ fn infer_block(
 }
 
 fn infer_call(
+    expr_idx: Idx<Expr>,
     expr: &CallExpr,
     builtin_signatures: HashMap<&str, Vec<BuiltinFunctionSignature>>,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     database: &Database,
-) -> Result<Result<Type, TypeDiagnostic>, Result<Type, TypeDiagnostic>> {
-    // TODO: why is this a nested Result?
-    let name = &expr.path;
-    let args = &expr.args;
-    let builtin_signature = builtin_signatures.get(name.as_str());
-    match builtin_signature {
-        Some(overloads) => {
-            for overload in overloads {
-                // TODO: special-case for length 1 to provide a better diagnostic?
-                if overload.arg_types.len() == args.len() {
-                    let overload_is_match =
-                        overload
-                            .arg_types
-                            .iter()
-                            .zip(args.iter())
-                            .all(|(expected, expr)| {
-                                check_expr(*expr, &expected, results, database).is_ok()
-                            });
+) -> Result<Type, TypeDiagnostic> {
+    let CallExpr {
+        callee,
+        callee_path,
+        args,
+    } = expr;
 
-                    if overload_is_match {
-                        return Err(Ok(overload.return_type.clone()));
-                    }
-                }
-            }
-            Err(Err(TypeDiagnostic {
-                variant: TypeDiagnosticVariant::NoOverloadFound {
-                    name: name.to_owned(),
-                },
-                range: Default::default(),
-            }))
+    let resolved_callee = type_database
+        .local_defs
+        .get(callee)
+        .ok_or(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::UndefinedFunction {
+                name: callee_path.to_owned(),
+            },
+            range: database.range_of_expr(expr_idx),
+        })
+        .cloned();
+
+    if resolved_callee.is_ok() {
+        return resolved_callee;
+    }
+
+    // TODO: homogenize this by injecting builtins into the primordial scope
+    let builtin_signature = builtin_signatures.get(callee_path.as_str());
+    match builtin_signature {
+        Some(signatures) => {
+            infer_builtin_call(callee_path, args, signatures, type_database, database)
         }
         // TODO: is this possible - will we already check in name resolution?
-        None => Err(Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::Undefined { name: todo!() },
+        None => Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::Undefined { name: *callee },
             range: Default::default(),
-        })),
+        }),
     }
+}
+
+fn infer_builtin_call(
+    name: &str,
+    call_args: &Vec<Idx<Expr>>,
+    overloads: &Vec<BuiltinFunctionSignature>,
+    type_database: &mut TypeDatabase,
+    database: &Database,
+) -> Result<Type, TypeDiagnostic> {
+    let call_arg_types = call_args
+        .iter()
+        .map(|arg| infer_expr(*arg, type_database, database).unwrap())
+        .collect_vec();
+    for overload in overloads {
+        // TODO: special-case for length 1 to provide a better diagnostic?
+        if overload.arg_types.len() == call_args.len() {
+            let overload_is_match = overload
+                .arg_types
+                .iter()
+                .zip(&call_arg_types)
+                .all(|(expected, actual)| is_subtype(actual, expected));
+
+            if overload_is_match {
+                return Ok(overload.return_type.clone());
+            }
+        }
+    }
+    let name = name.to_owned();
+    Err(TypeDiagnostic {
+        variant: TypeDiagnosticVariant::NoOverloadFound { name },
+        range: Default::default(),
+    })
 }
 
 fn infer_bool_literal(
     b: bool,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::BoolLiteral(b);
-    results.set_expr_type(expr_idx, inferred_type.clone());
+    type_database.set_expr_type(expr_idx, inferred_type.clone());
 
     Ok(inferred_type)
 }
 
 fn infer_float_literal(
     f: f64,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::FloatLiteral(f);
-    results.set_expr_type(expr_idx, inferred_type.clone());
+    type_database.set_expr_type(expr_idx, inferred_type.clone());
 
     Ok(inferred_type)
 }
 
 fn infer_int_literal(
     i: i32,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::IntLiteral(i);
-    results.set_expr_type(expr_idx, inferred_type.clone());
+    type_database.set_expr_type(expr_idx, inferred_type.clone());
 
     Ok(inferred_type)
 }
 
 fn infer_string_literal(
     key: Key,
-    results: &mut TypeDatabase,
+    type_database: &mut TypeDatabase,
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {
     let inferred_type = Type::StringLiteral(key);
-    results.set_expr_type(expr_idx, inferred_type.clone());
+    type_database.set_expr_type(expr_idx, inferred_type.clone());
 
     Ok(inferred_type)
 }
 
-fn infer_if_expr(if_expr: &IfExpr, results: &mut TypeDatabase, database: &Database) -> InferResult {
+fn infer_if_expr(
+    if_expr: &IfExpr,
+    type_database: &mut TypeDatabase,
+    database: &Database,
+) -> InferResult {
     let IfExpr {
         then_branch,
         else_branch,
@@ -304,8 +352,8 @@ fn infer_if_expr(if_expr: &IfExpr, results: &mut TypeDatabase, database: &Databa
     } = if_expr;
 
     if let Some(else_branch) = else_branch {
-        let then_type = infer_expr(*then_branch, results, database)?;
-        let else_type = infer_expr(*else_branch, results, database)?;
+        let then_type = infer_expr(*then_branch, type_database, database)?;
+        let else_type = infer_expr(*else_branch, type_database, database)?;
 
         infer_compatible_type(&then_type, &else_type).ok_or(TypeDiagnostic {
             variant: TypeDiagnosticVariant::Incompatible {
@@ -319,7 +367,11 @@ fn infer_if_expr(if_expr: &IfExpr, results: &mut TypeDatabase, database: &Databa
     }
 }
 
-fn infer_unary(expr: &UnaryExpr, results: &mut TypeDatabase, database: &Database) -> InferResult {
+fn infer_unary(
+    expr: &UnaryExpr,
+    type_database: &mut TypeDatabase,
+    database: &Database,
+) -> InferResult {
     let UnaryExpr {
         op,
         expr: inner_idx,
@@ -328,10 +380,10 @@ fn infer_unary(expr: &UnaryExpr, results: &mut TypeDatabase, database: &Database
     match op {
         UnaryOp::Neg => todo!(),
         UnaryOp::Not => {
-            let inner_type = infer_expr(*inner_idx, results, database);
+            let inner_type = infer_expr(*inner_idx, type_database, database);
             match inner_type {
                 Ok(ty) => {
-                    check_expr(*inner_idx, &Type::Bool, results, database).map(|_| match ty {
+                    check_expr(*inner_idx, &Type::Bool, type_database, database).map(|_| match ty {
                         Type::Bool => Type::Bool,
                         Type::BoolLiteral(b) => Type::BoolLiteral(!b),
                         _ => unreachable!(),
@@ -343,12 +395,16 @@ fn infer_unary(expr: &UnaryExpr, results: &mut TypeDatabase, database: &Database
     }
 }
 
-fn infer_binary(expr: &BinaryExpr, results: &mut TypeDatabase, database: &Database) -> InferResult {
+fn infer_binary(
+    expr: &BinaryExpr,
+    type_database: &mut TypeDatabase,
+    database: &Database,
+) -> InferResult {
     // TODO: collect both errors, not early return
     let (lhs, lhs_range) = database.expr(expr.lhs);
-    let lhs_type = infer_expr(expr.lhs, results, database)?;
+    let lhs_type = infer_expr(expr.lhs, type_database, database)?;
     let (rhs, rhs_range) = database.expr(expr.rhs);
-    let rhs_type = infer_expr(expr.rhs, results, database)?;
+    let rhs_type = infer_expr(expr.rhs, type_database, database)?;
     match expr.op {
         BinaryOp::Add => infer_binary_add(&lhs_type, &rhs_type),
         BinaryOp::Concat => infer_binary_concat(&lhs_type, &rhs_type),

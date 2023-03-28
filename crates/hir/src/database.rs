@@ -38,6 +38,14 @@ impl Database {
     pub(crate) fn type_expr(&self, idx: Idx<TypeExpr>) -> (&TypeExpr, &TextRange) {
         (&self.type_exprs[idx], &self.type_expr_ranges[idx])
     }
+
+    pub(crate) fn range_of_expr(&self, idx: Idx<Expr>) -> TextRange {
+        self.expr_ranges.get(idx).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn range_of_type_expr(&self, idx: Idx<TypeExpr>) -> TextRange {
+        self.type_expr_ranges.get(idx).copied().unwrap_or_default()
+    }
 }
 
 // Mutating functions

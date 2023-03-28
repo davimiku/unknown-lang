@@ -14,6 +14,9 @@ fn check(input: &str, expected: expect_test::Expect) {
 
     let root: Root = parser::parse(input).into();
     let (root_expr, context) = lower(&root, &mut interner);
+
+    assert!(context.diagnostics.is_empty());
+
     let actual = fmt_expr::fmt_root(root_expr, &context);
 
     expected.assert_eq(&actual);
@@ -309,15 +312,33 @@ fn nullary_function() {
 }
 
 #[test]
-fn unary_function_no_param_type() {
-    let input = "a -> {}";
+fn nullary_function_assignment() {
+    let input = "let f = () -> {}";
     let expected = expect![[r#"
 {
-    fun (a~0 : ~empty~) -> {
+    f~0 : () -> Unit = fun () -> {
     }
-}"#]];
+}
+f~0 : () -> Unit
+"#]];
 
     check(input, expected);
+}
+
+#[test]
+fn unary_function_no_param_type() {
+    let mut interner = Interner::default();
+    let key = interner.intern("a");
+    let input = "a -> {}";
+    let expected = vec![TypeDiagnostic {
+        variant: TypeDiagnosticVariant::Undefined {
+            name: (key, 0).into(),
+        },
+        range: Default::default(),
+    }
+    .into()];
+
+    check_error(input, expected, Some(interner));
 }
 
 #[test]
@@ -333,12 +354,60 @@ fn unary_function() {
 }
 
 #[test]
-fn print_param() {
+fn unary_function_assignment() {
+    let input = "let f = (a: Int) -> {}";
+    let expected = expect![[r#"
+{
+    f~0 : (Int) -> Unit = fun (a~0 : Int) -> {
+    }
+}
+f~0 : (Int) -> Unit
+"#]];
+
+    check(input, expected);
+}
+
+#[test]
+fn print_param_function() {
     let input = "(a: String) -> print a";
     let expected = expect![[r#"
 {
-    fun (a~0 : String) -> print (a~0,)
-}"#]];
+    fun (a~0 : String) -> print~0 (a~0,)
+}
+a~0 : String
+"#]];
+
+    check(input, expected);
+}
+
+#[test]
+fn print_param_function_assignment() {
+    let input = "let f = (a: String) -> print a";
+    let expected = expect![[r#"
+{
+    f~0 : (String) -> Unit = fun (a~0 : String) -> print~0 (a~0,)
+}
+a~0 : String
+f~0 : (String) -> Unit
+"#]];
+
+    check(input, expected);
+}
+
+#[test]
+fn print_param_with_call() {
+    let input = r#"
+let print_param = (a: String) -> print a
+print_param "Hello!"
+"#;
+    let expected = expect![[r#"
+{
+    print_param~0 : (String) -> Unit = fun (a~0 : String) -> print~0 (a~0,)
+    print_param~0 ("Hello!",)
+}
+a~0 : String
+print_param~0 : (String) -> Unit
+"#]];
 
     check(input, expected);
 }

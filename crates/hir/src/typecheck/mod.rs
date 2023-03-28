@@ -82,14 +82,6 @@ pub(crate) fn fmt_local_types(s: &mut String, results: &TypeDatabase, interner: 
     }
 }
 
-pub struct FunctionSignature {
-    /// Types of the function parameters, in order
-    parameter_types: Vec<Type>,
-
-    /// Return type of the function (inferred or checked)
-    return_type: Type,
-}
-
 #[derive(Debug, PartialEq)]
 pub struct TypeDiagnostic {
     pub variant: TypeDiagnosticVariant,
@@ -120,6 +112,9 @@ pub enum TypeDiagnosticVariant {
     },
     UndefinedLocal {
         name: LocalRefName,
+    },
+    UndefinedFunction {
+        name: String,
     },
     Undefined {
         name: LocalDefKey,

@@ -56,8 +56,12 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 }
 
 fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
-    let CallExpr { path, args } = call;
-    s.push_str(&format!("{path} "));
+    let CallExpr {
+        callee: caller,
+        args,
+        ..
+    } = call;
+    s.push_str(&format!("{} ", caller.display(context.interner)));
     s.push('(');
     for arg in args {
         fmt_expr(s, *arg, context, indent);
@@ -124,12 +128,12 @@ fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, in
     if let Some(type_annotation) = type_annotation {
         fmt_type_expr(&mut type_buffer, *type_annotation, context, indent);
     } else {
-        let formatted_type = fmt_type(context.type_of_expr(*value), &context.interner);
+        let formatted_type = fmt_type(context.type_of_expr(*value), context.interner);
         type_buffer.push_str(&formatted_type);
     }
     s.push_str(&format!(
         "{} : {} = ",
-        &key.display(&context.interner),
+        &key.display(context.interner),
         type_buffer
     ));
     fmt_expr(s, *value, context, indent);
@@ -189,8 +193,7 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
 
             s
         }
-        Type::Named(name) => interner.lookup(*name).to_string(),
-
+        // Type::Named(name) => interner.lookup(*name).to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Top => "Top".to_string(),
         Type::Bottom => "Bottom".to_string(),
