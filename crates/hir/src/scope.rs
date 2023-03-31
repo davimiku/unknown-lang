@@ -57,23 +57,6 @@ impl Scope {
 
         s
     }
-    fn with_builtins(interner: &mut Interner) -> Self {
-        let mut scope = Scope::default();
-
-        let types = &mut scope.local_type_defs;
-        types.insert(interner.intern("Bool"), (interner.intern("Bool"), 0).into());
-        types.insert(
-            interner.intern("Float"),
-            (interner.intern("Float"), 0).into(),
-        );
-        types.insert(interner.intern("Int"), (interner.intern("Int"), 0).into());
-        types.insert(
-            interner.intern("String"),
-            (interner.intern("String"), 0).into(),
-        );
-
-        scope
-    }
 }
 
 impl Scope {
@@ -192,7 +175,7 @@ impl Scopes {
 }
 
 impl Scopes {
-    pub(crate) fn new(interner: &mut Interner) -> Self {
+    pub(crate) fn new() -> Self {
         let root = Node::new(Scope::default());
         let mut tree = Tree::new();
         let root = tree.insert(root, AsRoot).unwrap();

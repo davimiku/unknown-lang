@@ -48,33 +48,18 @@ pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
         (_, T::Top) => true,
         (_, T::Bottom) => false,
 
-        // (T::Bool, T::Named(_)) => todo!(),
         (T::BoolLiteral(_), T::Bool) => true,
         (T::BoolLiteral(a), T::BoolLiteral(b)) => a == b,
-        // (T::BoolLiteral(_), T::Named(_)) => todo!(),
 
-        // (T::Float, T::Named(_)) => todo!(),
         (T::FloatLiteral(_), T::Float) => true,
         (T::FloatLiteral(a), T::FloatLiteral(b)) => a == b,
-        // (T::FloatLiteral(_), T::Named(_)) => todo!(),
 
-        // (T::Int, T::Named(_)) => todo!(),
         (T::IntLiteral(_), T::Int) => true,
         (T::IntLiteral(a), T::IntLiteral(b)) => a == b,
-        // (T::IntLiteral(_), T::Named(_)) => todo!(),
 
-        // (T::String, T::Named(_)) => todo!(),
         (T::StringLiteral(_), T::String) => true,
         (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
 
-        // (T::Named(_), T::Bool) => todo!(),
-        // (T::Named(_), T::BoolLiteral(_)) => todo!(),
-        // (T::Named(_), T::Float) => todo!(),
-        // (T::Named(_), T::FloatLiteral(_)) => todo!(),
-        // (T::Named(_), T::Int) => todo!(),
-        // (T::Named(_), T::IntLiteral(_)) => todo!(),
-        // (T::Named(_), T::String) => todo!(),
-        // (T::Named(_), T::Named(_)) => todo!(),
         _ => false,
     }
 }

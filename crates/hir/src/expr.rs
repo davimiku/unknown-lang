@@ -67,12 +67,6 @@ pub struct LocalDefExpr {
     pub type_annotation: Option<Idx<TypeExpr>>,
 }
 
-impl LocalDefExpr {
-    pub(crate) fn name(&self) -> Key {
-        self.key.name
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalDefKey {
     name: Key,

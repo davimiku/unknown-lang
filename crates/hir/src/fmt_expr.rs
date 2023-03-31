@@ -20,7 +20,7 @@ pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
     let mut s = String::new();
     fmt_expr(&mut s, idx, context, 0);
 
-    fmt_local_types(&mut s, &context.type_database, &context.interner);
+    fmt_local_types(&mut s, &context.type_database, context.interner);
 
     s
 }
@@ -42,14 +42,14 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
         Expr::LocalRef(LocalRefExpr { name }) => match name {
-            LocalRefName::Resolved(key) => s.push_str(&key.display(&context.interner)),
+            LocalRefName::Resolved(key) => s.push_str(&key.display(context.interner)),
             LocalRefName::Unresolved(name) => s.push_str(context.interner.lookup(*name)),
         },
 
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
         Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
 
-        Expr::If(if_expr) => {
+        Expr::If(_if_expr) => {
             todo!()
         }
     }
@@ -139,8 +139,7 @@ fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, in
     fmt_expr(s, *value, context, indent);
 }
 
-pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, indent: usize) {
-    let mut indent = indent;
+pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, _indent: usize) {
     let expr = context.type_expr(idx);
     match expr {
         TypeExpr::Empty => s.push_str("{{empty}}"),

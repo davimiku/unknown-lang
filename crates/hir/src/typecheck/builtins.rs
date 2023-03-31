@@ -16,6 +16,7 @@ pub(super) struct BuiltinFunctionSignature {
     pub(super) return_type: Type,
 }
 
+// TODO: compile-time HashMap
 pub(super) fn get_builtin_functions() -> BuiltinFunctions {
     let mut types = HashMap::new();
 

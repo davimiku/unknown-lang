@@ -18,7 +18,6 @@ pub enum Expr {
     LetBinding(LetBinding),
     Loop(Loop),
     Paren(ParenExpr),
-    Path(Path),
     StringLiteral(StringLiteral),
     // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     Unary(Unary),
@@ -43,7 +42,6 @@ impl Expr {
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
-            SyntaxKind::Path => Self::Path(Path(node)), // is this ever constructed?
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
@@ -59,7 +57,6 @@ impl Expr {
             Call(e) => e.range(),
             FloatLiteral(e) => e.range(),
             Function(e) => e.range(),
-            Path(e) => e.range(),
             If(e) => e.range(),
             IntLiteral(e) => e.range(),
             LetBinding(e) => e.range(),

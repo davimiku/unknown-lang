@@ -26,9 +26,8 @@ fn check(input: &str, expected: expect_test::Expect) {
 fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner>) {
     let mut interner = interner.unwrap_or(Interner::default());
     let root: Root = parser::parse(input).into();
-    let (root_expr, context) = lower(&root, &mut interner);
+    let (_, context) = lower(&root, &mut interner);
 
-    assert!(!context.diagnostics.is_empty());
     assert_eq!(context.diagnostics, expected);
 }
 

@@ -16,6 +16,7 @@ pub use expr::{
     BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, LocalDefExpr,
     LocalDefKey, LocalRefExpr, LocalRefName, UnaryExpr, UnaryOp,
 };
+use fmt_expr::fmt_root;
 pub use typecheck::Type;
 
 use database::Database;
@@ -49,4 +50,10 @@ pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Exp
     let root = ast::Root::cast(parsed).expect("valid Root node");
 
     lower(&root, interner)
+}
+
+pub fn fmt(ast: &ast::Root, interner: &'_ mut Interner) -> String {
+    let (root, context) = lower(ast, interner);
+
+    fmt_root(root, &context)
 }

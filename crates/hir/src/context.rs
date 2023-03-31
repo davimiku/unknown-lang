@@ -48,14 +48,14 @@ impl<'a> Context<'a> {
 
         let print_key = interner.intern("print");
 
-        let mut scopes = Scopes::new(interner);
+        let mut scopes = Scopes::new();
 
         let bool_key = scopes.insert_local_type(bool_key);
         let int_key = scopes.insert_local_type(int_key);
         let float_key = scopes.insert_local_type(float_key);
         let string_key = scopes.insert_local_type(string_key);
 
-        let print_key = scopes.insert_local(print_key);
+        let _print_key = scopes.insert_local(print_key);
 
         let mut typecheck_results = TypeDatabase::default();
         typecheck_results.set_local_type(bool_key, Type::Bool);
@@ -79,7 +79,7 @@ impl<'a> Context<'a> {
         let inferred_result = typecheck::infer_expr(root, &mut self.type_database, &self.database);
 
         match inferred_result {
-            Ok(inferred_type) => {
+            Ok(_) => {
                 let check_result = typecheck::check_expr(
                     root,
                     expected_type,
@@ -149,7 +149,6 @@ impl<'a> Context<'a> {
                 Call(ast) => self.lower_call(ast),
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_expr(ast),
-                Path(ast) => self.lower_path(ast),
                 If(ast) => self.lower_if_expr(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
                 LetBinding(ast) => self.lower_let_binding(ast),
@@ -264,7 +263,7 @@ impl<'a> Context<'a> {
         Expr::Block(BlockExpr { exprs })
     }
 
-    fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
+    fn lower_loop(&mut self, _ast: ast::Loop) -> Expr {
         self.push_scope();
         // identify break expressions
         // lower statements/expressions
@@ -272,39 +271,6 @@ impl<'a> Context<'a> {
 
         // break value?
         todo!()
-    }
-
-    // TODO: rather than Ident, Local? Call? local_or_call?
-    fn lower_path(&mut self, ast: ast::Path) -> Expr {
-        // if ast::Call doesn't have ast::Path, return Empty
-        // if ast::Path doesn't have top-level-name, return Empty
-
-        // if it has a nested name (?)  (it uses "module.function" for paths, like "io.write")
-        // // Make a FullyQualifiedName (FQN) with module name + function name
-        // // Look up function in world index
-        // // OK (return lower_call) => update context state with other module reference, update symbol map, lower call
-        // // Err (return Expr::Empty) => update symbol map, add diagnostic
-
-        // if it is in current scope (as a non-function variable - DIFFERENT THAN MINE)
-        // // check if it's trying to call a non-function as a function, add diagnostic
-        // // update symbol map
-        // Different - for me this is the type checker's job
-        // // (return Expr::Local)
-
-        // if it is a param of the current function
-        // // update symbol map
-        // // (return Expr::Param)
-
-        // if it is a "definition" (a function or record)
-        // // update symbol map
-        // // (return lower_call)
-
-        panic!("which tests are running this function?");
-
-        // Expr::LocalRef(LocalRef {
-        //     name: ast.name_token().unwrap().text().into(),
-        //     local_idx: Some(0),
-        // })
     }
 
     fn lower_call(&mut self, ast: ast::Call) -> Expr {

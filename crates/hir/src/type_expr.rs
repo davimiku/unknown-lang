@@ -1,7 +1,7 @@
 use la_arena::Idx;
 
 use crate::interner::{Interner, Key};
-use crate::{BinaryOp, LocalDefExpr, LocalRefExpr, UnaryOp, COMPILER_BRAND};
+use crate::{BinaryOp, UnaryOp, COMPILER_BRAND};
 
 #[derive(Debug, PartialEq)]
 pub enum TypeExpr {
@@ -68,12 +68,6 @@ pub struct LocalTypeDefExpr {
 
     /// Expression value assigned to the type
     pub value: Idx<TypeExpr>,
-}
-
-impl LocalTypeDefExpr {
-    pub(crate) fn name(&self) -> Key {
-        self.key.name
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
