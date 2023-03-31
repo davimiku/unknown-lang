@@ -166,7 +166,7 @@ fn infer_function_param(
     // type MyFuncType = String -> Int
     // let f: MyFuncType = s -> { /* ... */ }
     // ```
-    // here, `s` can be inferred as `String` and the explicit annotation is not needed
+    // here, `s` can be inferred as `String` because we know the type of `f`
     .ok_or(TypeDiagnostic {
         variant: TypeDiagnosticVariant::Undefined { name: *name },
         range: Default::default(),
