@@ -1,7 +1,7 @@
 use super::*;
 use hir::Interner;
 
-fn generate_chunk(input: &str) -> Chunk {
+fn generate_chunk(input: &str) -> FunctionChunk {
     let mut interner = Interner::default();
     let (root, context) = hir::lower_from_input(input, &mut interner);
     codegen(&root, &context)

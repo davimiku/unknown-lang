@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use vm_types::string::VMString;
 
-use crate::{Chunk, Op, Readable, VMFloat, VMInt};
+use crate::{FunctionChunk, Op, Readable, VMFloat, VMInt};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in vm_codegen and vm
@@ -14,7 +14,7 @@ pub const BUILTIN_NAMES: [&str; 5] = [
     "print_bool",
 ];
 
-fn read<T: Readable>(chunk: &Chunk, offset: &mut usize) -> T {
+fn read<T: Readable>(chunk: &FunctionChunk, offset: &mut usize) -> T {
     let val = chunk.read::<T>(*offset);
 
     *offset += size_of::<T>();
@@ -28,7 +28,7 @@ impl Op {
     /// Any variant with an operand in the bytecode must add an implementation here.
     ///
     /// Returns the new offset to use for the next instruction.
-    pub fn disassemble(&self, chunk: &Chunk, offset: usize) -> usize {
+    pub fn disassemble(&self, chunk: &FunctionChunk, offset: usize) -> usize {
         print!("{self:?}      ");
 
         let mut offset = offset + size_of::<Op>();

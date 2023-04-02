@@ -17,7 +17,7 @@ pub use expr::{
     LocalDefKey, LocalRefExpr, LocalRefName, UnaryExpr, UnaryOp,
 };
 use fmt_expr::fmt_root;
-pub use typecheck::Type;
+pub use typecheck::{FunctionType, Type};
 
 use database::Database;
 
@@ -34,15 +34,24 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
         .map(|expr| context.lower_expr(Some(expr)))
         .collect();
 
-    // wrap everything in a block
-    // TODO: instead wrap in a pseudo `main` function?
-    // or wrap in a "Module" kind of structure?
-    let root = Expr::Block(BlockExpr { exprs });
-    let root = context.alloc_expr(root, None);
+    let main_body = Expr::Block(BlockExpr { exprs });
+    let main_body = context.alloc_expr(main_body, None);
 
-    context.type_check(root, &Type::Top);
+    let main = Expr::Function(FunctionExpr {
+        params: vec![],
+        body: main_body,
+    });
+    let main = context.alloc_expr(main, None);
 
-    (root, context)
+    context.type_check(
+        main,
+        &Type::Function(FunctionType {
+            params: vec![],
+            return_ty: Box::new(Type::Top),
+        }),
+    );
+
+    (main, context)
 }
 
 pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {

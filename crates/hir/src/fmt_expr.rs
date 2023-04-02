@@ -7,7 +7,7 @@ use crate::expr::{
 };
 use crate::interner::Interner;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::typecheck::fmt_local_types;
+use crate::typecheck::{fmt_local_types, FunctionType};
 use crate::{Context, Expr, Type};
 
 const DEFAULT_INDENT: usize = 4;
@@ -178,7 +178,7 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
         Type::String => "String".to_string(),
         Type::StringLiteral(s) => format!("\"{}\"", interner.lookup(*s)),
 
-        Type::Function { params, return_ty } => {
+        Type::Function(FunctionType { params, return_ty }) => {
             let mut s = String::new();
 
             s.push('(');

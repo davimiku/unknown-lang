@@ -1,5 +1,5 @@
 use lasso::Spur;
-use vm_codegen::Chunk;
+use vm_codegen::FunctionChunk;
 
 mod function_arity;
 
@@ -11,7 +11,7 @@ pub struct Boxed {
 }
 
 impl Boxed {
-    pub fn new_function(chunk: Chunk, parameter_slots: u32, name: Option<Spur>) -> Self {
+    pub fn new_function(chunk: FunctionChunk, parameter_slots: u32, name: Option<Spur>) -> Self {
         let function = VMFunction {
             parameter_slots,
             chunk,
@@ -46,7 +46,7 @@ pub enum BoxedData {
 #[derive(Debug)]
 pub struct VMFunction {
     parameter_slots: u32,
-    chunk: Chunk,
+    chunk: FunctionChunk,
     name: Option<Spur>,
 }
 

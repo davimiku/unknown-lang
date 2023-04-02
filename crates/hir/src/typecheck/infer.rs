@@ -18,6 +18,7 @@ use crate::expr::{
 use crate::interner::Key;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
 use crate::typecheck::check::is_subtype;
+use crate::typecheck::FunctionType;
 use crate::CallExpr;
 
 // TODO: needs to have Vec<TypeDiagnostic>
@@ -135,10 +136,10 @@ fn infer_function(
     let return_ty = infer_expr(*body, type_database, database);
 
     match (params, return_ty) {
-        (Ok(params), Ok(return_ty)) => Ok(Type::Function {
+        (Ok(params), Ok(return_ty)) => Ok(Type::Function(FunctionType {
             params,
             return_ty: Box::new(return_ty),
-        }),
+        })),
         (Ok(_), Err(err)) | (Err(err), Ok(_)) => Err(err),
         (Err(param_err), Err(body_err)) => {
             todo!();

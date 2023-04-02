@@ -1,7 +1,7 @@
 use hir::Interner;
-use vm_codegen::Chunk;
+use vm_codegen::FunctionChunk;
 
-pub fn compile(input: &str) -> Chunk {
+pub fn compile(input: &str) -> FunctionChunk {
     let parse_tree = parser::parse(input);
     let ast: ast::Root = parse_tree.into();
     let mut interner = Interner::default();

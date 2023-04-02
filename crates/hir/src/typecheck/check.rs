@@ -8,7 +8,7 @@ use la_arena::Idx;
 use super::infer::infer_expr;
 use super::{Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::database::Database;
-use crate::Expr;
+use crate::{Expr, FunctionType};
 
 pub(crate) fn check_expr(
     idx: Idx<Expr>,
@@ -60,6 +60,36 @@ pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
         (T::StringLiteral(_), T::String) => true,
         (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
 
+        (T::Function(a), T::Function(b)) => is_function_subtype(a, b),
+
         _ => false,
     }
+}
+
+/// Is function A a subtype of function B
+///
+/// `Int -> String` is a subtype of `42 -> String` because parameters are contravariant.
+///
+/// `Int -> "hello"` is a subtype of `Int -> String` because return types are covariant.
+///
+/// ```ignore
+/// // OK because `42` is a subtype of Int and parameters are contravariant
+/// let param_contravariance: 42 -> String = (a: Int) -> {
+///     let s: String = "hello"
+///     s
+/// }
+///
+/// // OK because `"hello"` is a subtype of String and return types are covariant
+/// let return_covariance: Int -> String = (a: Int) -> "hello"
+/// ```
+fn is_function_subtype(a: &FunctionType, b: &FunctionType) -> bool {
+    let params_check = a
+        .params
+        .iter()
+        .zip(b.params.iter())
+        .all(|(a_param, b_param)| is_subtype(b_param, a_param));
+
+    let return_check = is_subtype(&a.return_ty, &b.return_ty);
+
+    params_check && return_check
 }

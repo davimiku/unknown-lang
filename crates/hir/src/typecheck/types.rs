@@ -23,18 +23,18 @@ pub enum Type {
     Top,
     Bottom,
 
-    // TODO: why is this a type?
-    // Named(Key),
-
     // Compound
     // TODO: arena allocate Type so that recursive types can be Copy?
     // Struct
     // Union
     // Newtype
-    Function {
-        params: Vec<Type>,
-        return_ty: Box<Type>,
-    },
+    Function(FunctionType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionType {
+    pub params: Vec<Type>,
+    pub return_ty: Box<Type>,
 }
 
 impl Default for Type {

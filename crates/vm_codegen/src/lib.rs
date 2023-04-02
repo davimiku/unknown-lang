@@ -21,8 +21,8 @@ use std::ops::Range;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, LocalDefKey,
-    LocalRefExpr, LocalRefName, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, FunctionType, IfExpr,
+    LocalDefKey, LocalRefExpr, LocalRefName, Type, UnaryExpr, UnaryOp,
 };
 
 mod disassemble;
@@ -39,8 +39,8 @@ pub const PRINT_BOOL: u8 = 4;
 /// Byte size of an Op::Jump or Op::JumpIfFalse with their u32 operand
 const JUMP_WITH_OFFSET_SIZE: usize = 5;
 
-pub fn codegen(idx: &Idx<Expr>, context: &Context) -> Chunk {
-    let mut chunk = Chunk::new();
+pub fn codegen(idx: &Idx<Expr>, context: &Context) -> FunctionChunk {
+    let mut chunk = FunctionChunk::new();
 
     chunk.write_expr(*idx, context);
     chunk.write_ret(TextRange::default());
@@ -144,7 +144,7 @@ impl From<(u8, TextRange)> for Code {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct Chunk {
+pub struct FunctionChunk {
     /// bytecode (ops and operands) with text ranges corresponding to those ops
     code: Code,
 
@@ -159,14 +159,14 @@ pub struct Chunk {
 }
 
 // Constructors
-impl Chunk {
+impl FunctionChunk {
     fn new() -> Self {
         Default::default()
     }
 }
 
 // Mutating functions
-impl Chunk {
+impl FunctionChunk {
     fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
         let code = self.synth_expr(expr, context);
 
@@ -527,7 +527,7 @@ impl Chunk {
 }
 
 // Functions to read from the Chunk.
-impl Chunk {
+impl FunctionChunk {
     /// Gets the Op at the given index.
     #[inline]
     pub fn get_op(&self, i: usize) -> Result<Op, InvalidOpError> {
@@ -593,7 +593,7 @@ impl Chunk {
 
 // Functions for debugging the Chunk
 #[cfg(debug_assertions)]
-impl Display for Chunk {
+impl Display for FunctionChunk {
     /// Prints the Chunk in a disassembled format for human-reading.
     ///
     /// This format is not stable and should not be depended on for
@@ -641,7 +641,7 @@ fn word_size_of(ty: &Type) -> u16 {
         // Type::Named(_) => todo!(),
         Type::Unit => 0,
 
-        Type::Function { .. } => todo!(),
+        Type::Function(FunctionType { .. }) => todo!(),
 
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),

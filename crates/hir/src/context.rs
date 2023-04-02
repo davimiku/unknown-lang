@@ -287,8 +287,6 @@ impl<'a> Context<'a> {
                 .map(|expr| self.lower_expr(Some(expr)))
                 .collect();
 
-            println!("{}", self.scopes.display_from_current(self.interner));
-
             let local_key = self.scopes.find_local(key);
             // FIXME: handle None scenario
             let local_key = local_key.unwrap();

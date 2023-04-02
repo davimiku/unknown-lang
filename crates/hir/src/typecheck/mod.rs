@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
-pub use types::Type;
+pub use types::{FunctionType, Type};
 
 use crate::expr::LocalRefName;
 use crate::fmt_expr::fmt_type;
@@ -65,9 +65,7 @@ impl TypeDatabase {
 }
 
 pub(crate) fn fmt_local_types(s: &mut String, results: &TypeDatabase, interner: &Interner) {
-    if !results.local_defs.is_empty() {
-        s.push('\n');
-    }
+    s.push('\n');
     let mut locals: Vec<_> = results
         .local_defs
         .iter()
