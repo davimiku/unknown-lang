@@ -11,7 +11,6 @@ pub use op::{InvalidOpError, Op};
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_types::string::VMString;
-use vm_types::words::WORD_SIZE;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::HashMap;
@@ -182,13 +181,14 @@ impl Chunk {
         use Expr::*;
 
         let expr = context.expr(expr_idx);
+        let range = context.range_of(expr_idx);
         match expr {
-            BoolLiteral(b) => self.synth_bool_constant(*b, TextRange::default()),
-            FloatLiteral(f) => self.synth_float_constant(*f, TextRange::default()),
-            IntLiteral(i) => self.synth_int_constant(*i, TextRange::default()),
+            BoolLiteral(b) => self.synth_bool_constant(*b, range),
+            FloatLiteral(f) => self.synth_float_constant(*f, range),
+            IntLiteral(i) => self.synth_int_constant(*i, range),
             StringLiteral(key) => {
                 let s = context.lookup(*key);
-                self.synth_string_constant(s, TextRange::default())
+                self.synth_string_constant(s, range)
             }
 
             Binary(expr) => self.synth_binary_expr(expr, context),
