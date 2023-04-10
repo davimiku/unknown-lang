@@ -16,13 +16,12 @@ use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
 pub use types::{FunctionType, Type};
 
-use crate::expr::LocalRefName;
 use crate::fmt_expr::fmt_type;
-use crate::interner::Interner;
+use crate::interner::{Interner, Key};
 use crate::type_expr::{LocalTypeDefKey, TypeExpr};
 use crate::{BinaryOp, Diagnostic, Expr, LocalDefKey};
 
-pub(crate) use self::check::check_expr;
+pub(crate) use self::check::{check_expr, is_subtype};
 pub(crate) use self::infer::infer_expr;
 
 #[derive(Debug, Default)]
@@ -31,10 +30,44 @@ pub struct TypeDatabase {
     /// mapped to the corresponding `Expr` index.
     expr_types: ArenaMap<Idx<Expr>, Type>,
 
+    /// Resolved and inferred `TypeExpr` with their corresponding
+    /// `Type`
+    /// For example in the following code:
+    /// ```ignore
+    /// let square = (a: Int) -> a * a
+    /// //               ^^^
+    /// type Point = struct { x: Float, y: Float }
+    /// //           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// ```
+    /// The `Int` is a type expression that would be mapped to
+    /// `Type::Int`.
+    ///
+    /// The `struct ...` is a type expression that is mapped to
+    /// `Type::Struct { ... }`
     type_expr_types: ArenaMap<Idx<TypeExpr>, Type>,
 
+    /// Types that have been inferred for local variables
+    ///
+    /// For example:
+    /// ```ignore
+    /// let abc: Int = 42
+    /// //  ^^^
+    /// let def = some_func ()
+    /// //  ^^^
+    /// ```
+    /// The `abc` is mapped here to Type::Int and the `def` is
+    /// mapped here to the Type variant returned by `some_func`.
     local_defs: HashMap<LocalDefKey, Type>,
 
+    /// Types that have been assigned for local type variables.
+    ///
+    /// For example:
+    /// ```ignore
+    /// type Point = struct { x: Float, y: Float }
+    /// //   ^^^^^
+    /// ```
+    ///
+    /// `Point` local type definition is mapped here to `Type::Struct { ... }`
     local_type_defs: HashMap<LocalTypeDefKey, Type>,
 }
 
@@ -53,6 +86,14 @@ impl TypeDatabase {
 
     pub(super) fn set_type_expr_type(&mut self, idx: Idx<TypeExpr>, ty: Type) {
         self.type_expr_types.insert(idx, ty);
+    }
+
+    pub(super) fn get_local(&self, key: &LocalDefKey) -> Option<&Type> {
+        self.local_defs.get(key)
+    }
+
+    pub(super) fn set_local(&mut self, key: LocalDefKey, ty: Type) {
+        self.local_defs.insert(key, ty);
     }
 
     pub(super) fn get_local_type(&self, key: &LocalTypeDefKey) -> Option<&Type> {
@@ -94,34 +135,14 @@ impl From<TypeDiagnostic> for Diagnostic {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeDiagnosticVariant {
-    ArgsMismatch {
-        name: String,
-        expected: u32,
-        actual: u32,
-    },
-    BinaryMismatch {
-        op: BinaryOp,
-        lhs: Type,
-        rhs: Type,
-    },
-    TypeMismatch {
-        expected: Type,
-        actual: Type,
-    },
-    UndefinedLocal {
-        name: LocalRefName,
-    },
-    UndefinedFunction {
-        name: String,
-    },
-    Undefined {
-        name: LocalDefKey,
-    },
-    NoOverloadFound {
-        name: String,
-    },
-    Incompatible {
-        a: Type,
-        b: Type,
-    },
+    ArgsMismatch { expected: u32, actual: u32 },
+    BinaryMismatch { op: BinaryOp, lhs: Type, rhs: Type },
+    // TODO: better name "tried to call something that was not a function"
+    CalleeNotFunction { actual: Type },
+    Incompatible { a: Type, b: Type },
+    NoOverloadFound { name: String },
+    TypeMismatch { expected: Type, actual: Type },
+    UndefinedLocal { name: Key },
+    UndefinedFunction { name: String },
+    Undefined { name: LocalDefKey },
 }

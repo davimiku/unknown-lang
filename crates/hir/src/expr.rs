@@ -39,6 +39,10 @@ pub enum Expr {
 
     LocalRef(LocalRefExpr),
 
+    UnresolvedLocalRef {
+        key: Key,
+    },
+
     Function(FunctionExpr),
 
     LocalDef(LocalDefExpr),
@@ -81,6 +85,10 @@ impl LocalDefKey {
         let idx = self.idx;
         format!("{name}{COMPILER_BRAND}{idx}",)
     }
+
+    pub(crate) fn name(&self) -> Key {
+        self.name
+    }
 }
 
 impl From<(Key, u32)> for LocalDefKey {
@@ -94,14 +102,7 @@ impl From<(Key, u32)> for LocalDefKey {
 
 #[derive(Debug, PartialEq)]
 pub struct LocalRefExpr {
-    pub name: LocalRefName,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LocalRefName {
-    // TODO: handle `a`, `a.b`, `a.b.c`, etc.
-    Resolved(LocalDefKey),
-    Unresolved(Key),
+    pub key: LocalDefKey,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,12 +127,8 @@ pub struct BlockExpr {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CallExpr {
-    // TODO: make this a Path instead with Vec<Segment> (Vec<String> or w/e)
-    // so that it can handle `a`, `a.b`, `a.b.c`, etc.
-    // should be `LocalRefName` and have that handle paths?
-    // Or go all the way and have it be a full `LocalRefExpr`?
-    /// Qualified path that the function is bound to
-    pub callee: LocalDefKey,
+    /// Expression that is being called as a function
+    pub callee: Idx<Expr>,
 
     // FIXME: this is temporary until builtins are applied like other functions
     pub callee_path: String,
@@ -142,8 +139,8 @@ pub struct CallExpr {
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionExpr {
-    pub params: Vec<FunctionParam>, // names (or empty?)
-    pub body: Idx<Expr>,            // Expr::Block ?
+    pub params: Vec<FunctionParam>,
+    pub body: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq)]

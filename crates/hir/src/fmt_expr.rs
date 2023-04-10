@@ -2,8 +2,7 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::expr::{
-    BinaryExpr, BlockExpr, CallExpr, FunctionExpr, LocalDefExpr, LocalRefExpr, LocalRefName,
-    UnaryExpr,
+    BinaryExpr, BlockExpr, CallExpr, FunctionExpr, LocalDefExpr, LocalRefExpr, UnaryExpr,
 };
 use crate::interner::Interner;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
@@ -41,10 +40,9 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
         Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
-        Expr::LocalRef(LocalRefExpr { name }) => match name {
-            LocalRefName::Resolved(key) => s.push_str(&key.display(context.interner)),
-            LocalRefName::Unresolved(name) => s.push_str(context.interner.lookup(*name)),
-        },
+        Expr::LocalRef(LocalRefExpr { key }) => s.push_str(&key.display(context.interner)),
+
+        Expr::UnresolvedLocalRef { key } => todo!(),
 
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
         Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
@@ -56,12 +54,9 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 }
 
 fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
-    let CallExpr {
-        callee: caller,
-        args,
-        ..
-    } = call;
-    s.push_str(&format!("{} ", caller.display(context.interner)));
+    let CallExpr { callee, args, .. } = call;
+    fmt_expr(s, *callee, context, indent);
+    s.push(' ');
     s.push('(');
     for arg in args {
         fmt_expr(s, *arg, context, indent);

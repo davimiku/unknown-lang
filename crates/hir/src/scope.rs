@@ -6,18 +6,10 @@
 //!
 //! Scopes are defined by the user, with the top-level scope being the
 //! module scope. A module boundary is always an encapsulation boundary.
-//!
-//! Scopes are composed of definitions for variables and types. Conceptually,
-//! scopes exist as a tree, but for performance the internal implementation is
-//! a "flattened" tree in the form of a Vec with indexes to point to the parent.
-//!
-//! TODO: Find a crate that implements this as a general
-//! solution, which is likely to be more efficient and ergonomic than this.
-//! ex. https://lib.rs/crates/id_tree or https://lib.rs/crates/indextree
 
 use std::collections::HashMap;
 
-use id_tree::{InsertBehavior::*, Node, Tree};
+use id_tree::{InsertBehavior, Node, Tree};
 
 use crate::interner::{Interner, Key};
 use crate::type_expr::LocalTypeDefKey;
@@ -124,7 +116,7 @@ impl Scopes {
         let new_node = Node::new(Scope::default());
         let new_id = self
             .tree
-            .insert(new_node, UnderNode(&self.current_node_id))
+            .insert(new_node, InsertBehavior::UnderNode(&self.current_node_id))
             .unwrap();
 
         self.current_node_id = new_id;
@@ -178,7 +170,7 @@ impl Scopes {
     pub(crate) fn new() -> Self {
         let root = Node::new(Scope::default());
         let mut tree = Tree::new();
-        let root = tree.insert(root, AsRoot).unwrap();
+        let root = tree.insert(root, InsertBehavior::AsRoot).unwrap();
         Self {
             tree,
             current_node_id: root,

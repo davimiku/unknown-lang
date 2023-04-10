@@ -14,7 +14,7 @@ mod tests;
 pub use context::{Context, Diagnostic, COMPILER_BRAND};
 pub use expr::{
     BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, LocalDefExpr,
-    LocalDefKey, LocalRefExpr, LocalRefName, UnaryExpr, UnaryOp,
+    LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
 };
 use fmt_expr::fmt_root;
 pub use typecheck::{FunctionType, Type};
@@ -37,21 +37,22 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
     let main_body = Expr::Block(BlockExpr { exprs });
     let main_body = context.alloc_expr(main_body, None);
 
-    let main = Expr::Function(FunctionExpr {
+    let main_func = Expr::Function(FunctionExpr {
         params: vec![],
         body: main_body,
     });
-    let main = context.alloc_expr(main, None);
+    let main_func = context.alloc_expr(main_func, None);
 
-    context.type_check(
-        main,
-        &Type::Function(FunctionType {
-            params: vec![],
-            return_ty: Box::new(Type::Top),
-        }),
-    );
+    let program = Expr::Call(CallExpr {
+        callee: main_func,
+        callee_path: "~main".into(),
+        args: vec![],
+    });
+    let program = context.alloc_expr(program, None);
 
-    (main, context)
+    context.type_check(program, &Type::Top);
+
+    (program, context)
 }
 
 pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {

@@ -8,17 +8,16 @@ use la_arena::Idx;
 use text_size::TextRange;
 
 use super::builtins::{get_builtin_functions, BuiltinFunctionSignature};
-use super::check::check_expr;
-use super::{Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant};
+use super::{
+    check_expr, is_subtype, FunctionType, Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant,
+};
 use crate::database::Database;
 use crate::expr::{
     BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, FunctionParam, IfExpr, LocalDefExpr,
-    LocalRefExpr, LocalRefName, UnaryExpr, UnaryOp,
+    LocalRefExpr, UnaryExpr, UnaryOp,
 };
 use crate::interner::Key;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::typecheck::check::is_subtype;
-use crate::typecheck::FunctionType;
 use crate::CallExpr;
 
 // TODO: needs to have Vec<TypeDiagnostic>
@@ -51,6 +50,7 @@ pub(crate) fn infer_expr(
         Expr::StringLiteral(key) => infer_string_literal(*key, type_database, expr_idx),
 
         Expr::LocalRef(local_ref) => infer_local_ref(local_ref, type_database),
+        Expr::UnresolvedLocalRef { key } => todo!(),
 
         Expr::Binary(expr) => infer_binary(expr, type_database, database),
         Expr::Unary(expr) => infer_unary(expr, type_database, database),
@@ -106,18 +106,15 @@ fn infer_local_ref(
     expr: &LocalRefExpr,
     type_database: &mut TypeDatabase,
 ) -> Result<Type, TypeDiagnostic> {
-    let name = expr.name;
-    match name {
-        LocalRefName::Resolved(key) => type_database
-            .local_defs
-            .get(&key)
-            .ok_or(TypeDiagnostic {
-                variant: TypeDiagnosticVariant::UndefinedLocal { name },
-                range: TextRange::default(),
-            })
-            .cloned(),
-        LocalRefName::Unresolved(name) => todo!(),
-    }
+    let key = expr.key;
+    type_database
+        .local_defs
+        .get(&key)
+        .ok_or(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::UndefinedLocal { name: key.name() },
+            range: TextRange::default(),
+        })
+        .cloned()
 }
 
 fn infer_function(
@@ -152,13 +149,14 @@ fn infer_function_param(
     type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
-    let FunctionParam { name, ty } = param;
+    let name = param.name;
+    let ty = param.ty;
 
     ty.map(|idx| {
         let (type_expr, range) = database.type_expr(idx);
         let ty = infer_type_expr(idx, type_expr, type_database);
 
-        type_database.local_defs.insert(*name, ty.clone());
+        type_database.local_defs.insert(name, ty.clone());
         ty
     })
     // TODO: parameter types can be omitted when they could be inferred in another way
@@ -168,8 +166,9 @@ fn infer_function_param(
     // let f: MyFuncType = s -> { /* ... */ }
     // ```
     // here, `s` can be inferred as `String` because we know the type of `f`
+    // or is this not handled here, and should be handled in "check"?
     .ok_or(TypeDiagnostic {
-        variant: TypeDiagnosticVariant::Undefined { name: *name },
+        variant: TypeDiagnosticVariant::Undefined { name },
         range: Default::default(),
     })
 }
@@ -230,39 +229,53 @@ fn infer_call(
     type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
+    // TODO: code clean-up - logic is too long, duplication
     let CallExpr {
         callee,
         callee_path,
         args,
     } = expr;
 
-    let resolved_callee = type_database
-        .local_defs
-        .get(callee)
-        .ok_or(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::UndefinedFunction {
-                name: callee_path.to_owned(),
-            },
-            range: database.range_of_expr(expr_idx),
-        })
-        .cloned();
+    let (callee_expr, callee_range) = database.expr(*callee);
+    let callee_type = infer_expr(*callee, type_database, database)?;
 
-    if resolved_callee.is_ok() {
-        return resolved_callee;
+    if let Type::Function(func_type) = callee_type {
+        let params = func_type.params;
+        if args.len() != params.len() {
+            return Err(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::ArgsMismatch {
+                    expected: params.len() as u32,
+                    actual: args.len() as u32,
+                },
+                range: *callee_range,
+            });
+        }
+        for (arg, param) in args.iter().zip(params) {
+            check_expr(*arg, &param, type_database, database)?
+        }
+
+        return Ok(*func_type.return_ty);
+    } else {
+        return Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::CalleeNotFunction {
+                actual: callee_type,
+            },
+            range: database.range_of_expr(*callee),
+        });
     }
 
     // TODO: homogenize this by injecting builtins into the primordial scope
-    let builtin_signature = builtin_signatures.get(callee_path.as_str());
-    match builtin_signature {
-        Some(signatures) => {
-            infer_builtin_call(callee_path, args, signatures, type_database, database)
-        }
-        // TODO: is this possible - will we already check in name resolution?
-        None => Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::Undefined { name: *callee },
-            range: Default::default(),
-        }),
-    }
+    // let builtin_signature = builtin_signatures.get(callee_path.as_str());
+    // match builtin_signature {
+    //     Some(signatures) => {
+    //         infer_builtin_call(callee_path, args, signatures, type_database, database)
+    //     }
+    //     // TODO: is this possible - will we already check in name resolution?
+    //     None => Err(TypeDiagnostic {
+    //         variant: TypeDiagnosticVariant::Undefined { name: *callee_expr },
+    //         range: Default::default(),
+    //     }),
+    // }
 }
 
 fn infer_builtin_call(

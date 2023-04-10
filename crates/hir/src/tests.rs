@@ -8,6 +8,17 @@ use crate::typecheck::{TypeDiagnostic, TypeDiagnosticVariant};
 
 use super::*;
 
+macro_rules! cast {
+    ($target: expr, $pat: path) => {{
+        if let $pat(a) = $target {
+            // #1
+            a
+        } else {
+            panic!("mismatch variant when cast to {}", stringify!($pat)); // #2
+        }
+    }};
+}
+
 fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
     let mut interner = Interner::default();
 
@@ -23,6 +34,7 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
 
     let mut expected_vars = expected_vars
         .iter()
+        .chain(&[("print~0", "(String) -> Unit")])
         .map(|(name, ty)| format!("{name} : {ty}"))
         .join("\n");
     if !expected_vars.is_empty() {
@@ -32,7 +44,7 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
     let expected = format!(
         "fun () -> {{
 {expected_expr}
-}}
+}} ()
 {expected_vars}"
     );
     let actual = fmt_expr::fmt_root(root_expr, &context);
@@ -44,7 +56,17 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
 fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner>) {
     let mut interner = interner.unwrap_or(Interner::default());
     let root: Root = parser::parse(input).into();
-    let (_, context) = lower(&root, &mut interner);
+    let (root, context) = lower(&root, &mut interner);
+
+    let root_expr = context.expr(root);
+    let root_expr = cast!(root_expr, Expr::Call);
+    let callee = root_expr.callee;
+    let callee = context.expr(callee);
+    let callee = cast!(callee, Expr::Function);
+    let body = context.expr(callee.body);
+    let body = cast!(body, Expr::Block);
+    let func = body.exprs[0];
+    let func = context.expr(func);
 
     assert_eq!(context.diagnostics, expected);
 }
