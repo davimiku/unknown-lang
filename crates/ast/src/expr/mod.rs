@@ -10,7 +10,7 @@ pub enum Expr {
     Block(Block),
     Binary(Binary),
     BoolLiteral(BoolLiteral),
-    Call(Call),
+    Call(CallExpr),
     FloatLiteral(FloatLiteral),
     Function(Function),
     If(If),
@@ -18,6 +18,7 @@ pub enum Expr {
     LetBinding(LetBinding),
     Loop(Loop),
     Paren(ParenExpr),
+    Path(PathExpr),
     StringLiteral(StringLiteral),
     // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     Unary(Unary),
@@ -28,21 +29,23 @@ impl Expr {
         Some(match node.kind() {
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
-            SyntaxKind::Call => Self::Call(Call(node)),
+            SyntaxKind::Call => Self::Call(CallExpr(node)),
             // TODO: clean up code here
             SyntaxKind::ConditionExpr | SyntaxKind::ThenBranchExpr | SyntaxKind::ElseBranchExpr => {
                 Expr::cast(node.first_child().expect("TODO: handle missing case?"))
                     .expect("contained castable expression")
             }
             SyntaxKind::FloatLiteralExpr => Self::FloatLiteral(FloatLiteral(node)),
+            SyntaxKind::FunExpr => Self::Function(Function(node)),
             SyntaxKind::IfExpr => Self::If(If(node)),
-            SyntaxKind::InfixExpr => Self::cast_binary(node),
+            SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
+            SyntaxKind::Path => Self::Path(PathExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
         })
@@ -62,21 +65,9 @@ impl Expr {
             LetBinding(e) => e.range(),
             Loop(e) => e.range(),
             Paren(e) => e.range(),
+            Path(e) => e.range(),
             StringLiteral(e) => e.range(),
             Unary(e) => e.range(),
-        }
-    }
-
-    fn cast_binary(node: SyntaxNode) -> Self {
-        let is_function = node
-            .children_with_tokens()
-            .filter_map(SyntaxElement::into_token)
-            .any(|token| token.kind() == SyntaxKind::Arrow);
-
-        if is_function {
-            Self::Function(Function(node))
-        } else {
-            Self::Binary(Binary(node))
         }
     }
 }
@@ -158,9 +149,9 @@ impl BoolLiteral {
 }
 
 #[derive(Debug, Clone)]
-pub struct Call(SyntaxNode);
+pub struct CallExpr(SyntaxNode);
 
-impl Call {
+impl CallExpr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::Call).then_some(Self(node))
     }
@@ -169,8 +160,8 @@ impl Call {
         self.0.text_range()
     }
 
-    pub fn path(&self) -> Option<Path> {
-        self.0.children().find_map(Path::cast)
+    pub fn callee(&self) -> Option<Expr> {
+        self.0.children().find_map(Expr::cast)
     }
 
     pub fn args(&self) -> Option<CallArgs> {
@@ -269,7 +260,7 @@ impl FunParam {
     pub fn ident(&self) -> Option<String> {
         self.0
             .descendants()
-            .find_map(Path::cast)
+            .find_map(PathExpr::cast)
             .and_then(|path| path.ident_strings().next())
     }
 
@@ -292,11 +283,23 @@ impl FunParamList {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         use SyntaxKind::*;
 
-        matches!(node.kind(), ParenExpr | Call | Ident).then_some(Self(node))
+        matches!(node.kind(), ParenExpr | Path).then_some(Self(node))
     }
 
-    pub fn params(&self) -> impl Iterator<Item = FunParam> {
-        self.0.children().filter_map(FunParam::cast)
+    pub fn params(&self) -> Box<dyn Iterator<Item = FunParam>> {
+        if self.0.kind() == SyntaxKind::Path {
+            let iter = self
+                .0
+                .parent()
+                .unwrap()
+                .children()
+                .filter_map(FunParam::cast)
+                .take(1);
+            Box::new(iter)
+        } else {
+            let iter = self.0.children().filter_map(FunParam::cast);
+            Box::new(iter)
+        }
     }
 
     pub fn range(&self) -> TextRange {
@@ -423,9 +426,9 @@ impl ParenExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct Path(SyntaxNode);
+pub struct PathExpr(SyntaxNode);
 
-impl Path {
+impl PathExpr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::Path).then_some(Self(node))
     }

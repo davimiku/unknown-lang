@@ -61,13 +61,13 @@ fn string_concatenation() {
 }
 
 #[test]
-fn call_no_arguments() {
+fn simple_path() {
     let input = "my_func";
 
     let parsed = parse_expr(input);
 
-    let call = assert_matches!(parsed, Expr::Call);
-    assert!(call.args().is_none());
+    let path = assert_matches!(parsed, Expr::Path);
+    assert_eq!(path.ident_strings().next(), Some(String::from("my_func")));
 }
 
 #[test]
@@ -77,7 +77,8 @@ fn call_empty_arg() {
     let parsed = parse_expr(input);
 
     let call = assert_matches!(parsed, Expr::Call);
-    let path = assert_some!(call.path());
+    let callee = assert_some!(call.callee());
+    let path = assert_matches!(callee, Expr::Path);
     let ident_string = assert_some!(path.ident_strings().next());
     assert_eq!(ident_string, "my_func");
     let call_args = assert_some!(call.args());
@@ -113,13 +114,11 @@ fn call_path_no_args() {
 
     let parsed = parse_expr(input);
 
-    let call = assert_matches!(parsed, Expr::Call);
-    let path = assert_some!(call.path());
+    let path = assert_matches!(parsed, Expr::Path);
     let idents = path.ident_strings();
     for (i, ident) in idents.enumerate() {
         assert_eq!(ident, expected_ident_strings[i])
     }
-    assert!(call.args().is_none());
 }
 
 #[test]
@@ -219,7 +218,7 @@ fn if_expr_empty() {
 
     let if_expr = assert_matches!(parsed, Expr::If);
     let condition = assert_some!(if_expr.condition_expr());
-    assert_matches!(condition, Expr::Call);
+    assert_matches!(condition, Expr::Path);
 
     let then_branch = assert_some!(if_expr.then_branch());
     assert_matches!(then_branch, Expr::Block);
@@ -235,7 +234,7 @@ fn if_else_expr() {
 
     let if_expr = assert_matches!(parsed, Expr::If);
     let condition = assert_some!(if_expr.condition_expr());
-    assert_matches!(condition, Expr::Call);
+    assert_matches!(condition, Expr::Path);
 
     let then_branch = assert_some!(if_expr.then_branch());
     assert_matches!(then_branch, Expr::Block);
@@ -252,7 +251,7 @@ fn if_else_if_expr() {
 
     let if_expr = assert_matches!(parsed, Expr::If);
     let condition = assert_some!(if_expr.condition_expr());
-    assert_matches!(condition, Expr::Call);
+    assert_matches!(condition, Expr::Path);
 
     let then_branch = assert_some!(if_expr.then_branch());
     assert_matches!(then_branch, Expr::Block);
