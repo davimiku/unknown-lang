@@ -33,9 +33,8 @@ fn parse_not_variable_ref() {
         expect![[r#"
 NotExpr@0..2
   Bang@0..1 "!"
-  Call@1..2
-    Path@1..2
-      Ident@1..2
-        Ident@1..2 "a""#]],
+  Path@1..2
+    Ident@1..2
+      Ident@1..2 "a""#]],
     );
 }

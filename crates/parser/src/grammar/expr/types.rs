@@ -6,7 +6,7 @@ use crate::parser::Parser;
 use crate::SyntaxKind;
 
 use super::{
-    expr_binding_power, parse_bool_literal, parse_call, parse_int_literal, parse_string_literal,
+    expr_binding_power, parse_bool_literal, parse_int_literal, parse_path, parse_string_literal,
 };
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -25,7 +25,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
         parse_bool_literal(p)
     } else if p.at(TokenKind::Ident) {
-        parse_call(p)
+        parse_path(p)
     } else if p.at(TokenKind::Union) {
         parse_union(p)
     } else if p.at(TokenKind::Struct) {

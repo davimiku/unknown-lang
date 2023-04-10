@@ -15,10 +15,9 @@ fn plain_type() {
         input,
         expect![[r#"
 TypeExpr@0..1
-  Call@0..1
-    Path@0..1
-      Ident@0..1
-        Ident@0..1 "A""#]],
+  Path@0..1
+    Ident@0..1
+      Ident@0..1 "A""#]],
     )
 }
 
@@ -29,13 +28,12 @@ fn path_type() {
         input,
         expect![[r#"
 TypeExpr@0..3
-  Call@0..3
-    Path@0..3
-      Ident@0..1
-        Ident@0..1 "A"
-      Dot@1..2 "."
-      Ident@2..3
-        Ident@2..3 "B""#]],
+  Path@0..3
+    Ident@0..1
+      Ident@0..1 "A"
+    Dot@1..2 "."
+    Ident@2..3
+      Ident@2..3 "B""#]],
     )
 }
 
@@ -52,10 +50,9 @@ TypeExpr@0..10
         Ident@0..6 "Option"
         Emptyspace@6..7 " "
     CallArgs@7..10
-      Call@7..10
-        Path@7..10
-          Ident@7..10
-            Ident@7..10 "Int""#]],
+      Path@7..10
+        Ident@7..10
+          Ident@7..10 "Int""#]],
     )
 }
 
@@ -66,17 +63,16 @@ fn type_function_no_params() {
         input,
         expect![[r#"
 TypeExpr@0..7
-  InfixExpr@0..7
+  FunExpr@0..7
     ParenExpr@0..3
       LParen@0..1 "("
       RParen@1..2 ")"
       Emptyspace@2..3 " "
     Arrow@3..5 "->"
     Emptyspace@5..6 " "
-    Call@6..7
-      Path@6..7
-        Ident@6..7
-          Ident@6..7 "A""#]],
+    Path@6..7
+      Ident@6..7
+        Ident@6..7 "A""#]],
     );
 }
 
@@ -87,17 +83,16 @@ fn type_function_one_param() {
         input,
         expect![[r#"
 TypeExpr@0..6
-  InfixExpr@0..6
+  FunExpr@0..6
     Path@0..2
       Ident@0..2
         Ident@0..1 "A"
         Emptyspace@1..2 " "
     Arrow@2..4 "->"
     Emptyspace@4..5 " "
-    Call@5..6
-      Path@5..6
-        Ident@5..6
-          Ident@5..6 "B""#]],
+    Path@5..6
+      Ident@5..6
+        Ident@5..6 "B""#]],
     );
 }
 
@@ -108,7 +103,7 @@ fn type_function_one_param_with_paren() {
         input,
         expect![[r#"
 TypeExpr@0..8
-  InfixExpr@0..8
+  FunExpr@0..8
     ParenExpr@0..4
       LParen@0..1 "("
       Path@1..2
@@ -118,10 +113,9 @@ TypeExpr@0..8
       Emptyspace@3..4 " "
     Arrow@4..6 "->"
     Emptyspace@6..7 " "
-    Call@7..8
-      Path@7..8
-        Ident@7..8
-          Ident@7..8 "B""#]],
+    Path@7..8
+      Ident@7..8
+        Ident@7..8 "B""#]],
     );
 }
 
@@ -132,7 +126,7 @@ fn type_function_two_params() {
         input,
         expect![[r#"
 TypeExpr@0..11
-  InfixExpr@0..11
+  FunExpr@0..11
     ParenExpr@0..7
       LParen@0..1 "("
       Path@1..2
@@ -147,10 +141,9 @@ TypeExpr@0..11
       Emptyspace@6..7 " "
     Arrow@7..9 "->"
     Emptyspace@9..10 " "
-    Call@10..11
-      Path@10..11
-        Ident@10..11
-          Ident@10..11 "C""#]],
+    Path@10..11
+      Ident@10..11
+        Ident@10..11 "C""#]],
     );
 }
 

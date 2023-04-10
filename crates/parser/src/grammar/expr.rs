@@ -85,8 +85,8 @@ where
             Dot => BinaryOp::Path,
             Arrow => BinaryOp::Function,
 
-            // Not at an operator, so is not a binary expression, so break having
-            // just parsed the "lhs"
+            // Not at an operator, so is not a binary expression, so break
+            // The "lhs" in this case is really the entire expression
             _ => break,
         };
 
@@ -97,25 +97,36 @@ where
         }
 
         // Consume the operator token
-        // if op == BinaryOp::Function {
-        // let m = p.start();
         p.bump();
-        //     m.complete(p, SyntaxKind::Arrow);
-        // } else {
-        //     p.bump();
-        // }
 
         // Starts a new marker that "wraps" the already parsed LHS, so that we can have
-        // an InfixExpr with LHS and RHS
+        // an expression surrounding the LHS and RHS
         let m = lhs.precede(p);
 
         let rhs = expr_binding_power(p, right_binding_power, parse_lhs);
-        lhs = m.complete(p, SyntaxKind::InfixExpr);
+        if op == BinaryOp::Function {
+            lhs = m.complete(p, SyntaxKind::FunExpr);
+        } else {
+            lhs = m.complete(p, SyntaxKind::InfixExpr);
+        }
 
         if rhs.is_none() {
             // TODO: add error like "expected expression on RHS"
             break;
         }
+    }
+
+    // Having just finished parsing an expression, check if the next token
+    // could be the start of function arguments, thereby making this just-parsed
+    // expression the callee of a Call expression.
+    if p.at_set(&CALL_ARG_START) {
+        // Starts a new marker that "wraps" the already parsed callee, so that we
+        // can have a CallExpr with callee and args
+        let m = lhs.precede(p);
+
+        parse_call_arguments(p);
+
+        lhs = m.complete(p, SyntaxKind::Call);
     }
 
     Some(lhs)
@@ -136,7 +147,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
 
-        Ident => parse_call(p),
+        Ident => parse_path(p),
 
         Dash => parse_negation_expr(p),
         Bang => parse_not_expr(p),
@@ -190,42 +201,6 @@ fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BoolLiteralExpr)
 }
 
-/// Parses starting with an identifier from an expression context.
-///
-/// This could take a few forms:
-///
-/// ```txt
-/// let example = b
-/// //            ^   simple identifier
-///
-/// let example = b.c
-/// //            ^^^ path
-///
-/// let example = f ()
-/// //            ^^^^ function call no arguments
-///
-/// let example = f b
-/// //            ^^^  function call one argument
-///
-/// let example = f (b, c)
-/// //            ^^^^^^^^ function call multiple arguments
-///
-/// let example = f.g a
-/// //            ^^^^^ path that is a function call
-/// ```
-fn parse_call(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Ident));
-
-    let m = p.start();
-    parse_path(p);
-
-    if p.at_set(&CALL_ARG_START) {
-        parse_call_arguments(p);
-    }
-
-    m.complete(p, SyntaxKind::Call)
-}
-
 fn parse_path(p: &mut Parser) -> CompletedMarker {
     debug_assert!(p.at(Ident));
     let m = p.start();
@@ -235,9 +210,13 @@ fn parse_path(p: &mut Parser) -> CompletedMarker {
     while p.at(Dot) {
         p.bump(); // eat Dot
 
-        // TODO: would be better with recovery here, at least to the next newline or '}'
-        // or potentially recover right away and continue to parse the next thing
+        // TODO: need immediate recovery here if not an ident
+        // because it's common that the user just typed the dot
         parse_ident_token(p);
+
+        // TODO: parse integer too? like for tuple member
+        // `let x = point.0`
+        //          ^^^^^^^
     }
 
     m.complete(p, SyntaxKind::Path)

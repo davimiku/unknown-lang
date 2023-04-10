@@ -11,10 +11,9 @@ fn parse_variable_ref() {
     check_expr(
         "a",
         expect![[r#"
-Call@0..1
-  Path@0..1
-    Ident@0..1
-      Ident@0..1 "a""#]],
+Path@0..1
+  Ident@0..1
+    Ident@0..1 "a""#]],
     );
 }
 
@@ -318,10 +317,9 @@ fn parse_unclosed_parentheses() {
         expect![[r#"
 ParenExpr@0..6
   LParen@0..1 "("
-  Call@1..6
-    Path@1..6
-      Ident@1..6
-        Ident@1..6 "hello"
+  Path@1..6
+    Ident@1..6
+      Ident@1..6 "hello"
 error at 1..6: expected ‘.’, ‘:’, ‘,’ or ‘)’"#]],
     );
 }
@@ -331,10 +329,9 @@ fn parse_single_ident() {
     check_expr(
         "a",
         expect![[r#"
-Call@0..1
-  Path@0..1
-    Ident@0..1
-      Ident@0..1 "a""#]],
+Path@0..1
+  Ident@0..1
+    Ident@0..1 "a""#]],
     )
 }
 
@@ -343,13 +340,12 @@ fn parse_one_path() {
     check_expr(
         "a.b",
         expect![[r#"
-Call@0..3
-  Path@0..3
-    Ident@0..1
-      Ident@0..1 "a"
-    Dot@1..2 "."
-    Ident@2..3
-      Ident@2..3 "b""#]],
+Path@0..3
+  Ident@0..1
+    Ident@0..1 "a"
+  Dot@1..2 "."
+  Ident@2..3
+    Ident@2..3 "b""#]],
     )
 }
 
@@ -358,16 +354,15 @@ fn parse_two_nested_path() {
     check_expr(
         "a.b.c",
         expect![[r#"
-Call@0..5
-  Path@0..5
-    Ident@0..1
-      Ident@0..1 "a"
-    Dot@1..2 "."
-    Ident@2..3
-      Ident@2..3 "b"
-    Dot@3..4 "."
-    Ident@4..5
-      Ident@4..5 "c""#]],
+Path@0..5
+  Ident@0..1
+    Ident@0..1 "a"
+  Dot@1..2 "."
+  Ident@2..3
+    Ident@2..3 "b"
+  Dot@3..4 "."
+  Ident@4..5
+    Ident@4..5 "c""#]],
     )
 }
 
@@ -377,20 +372,18 @@ fn parse_path_higher_precedence_than_arithmetic() {
         "a.b * c",
         expect![[r#"
 InfixExpr@0..7
-  Call@0..4
-    Path@0..4
-      Ident@0..1
-        Ident@0..1 "a"
-      Dot@1..2 "."
-      Ident@2..4
-        Ident@2..3 "b"
-        Emptyspace@3..4 " "
+  Path@0..4
+    Ident@0..1
+      Ident@0..1 "a"
+    Dot@1..2 "."
+    Ident@2..4
+      Ident@2..3 "b"
+      Emptyspace@3..4 " "
   Star@4..5 "*"
   Emptyspace@5..6 " "
-  Call@6..7
-    Path@6..7
-      Ident@6..7
-        Ident@6..7 "c""#]],
+  Path@6..7
+    Ident@6..7
+      Ident@6..7 "c""#]],
     )
 }
 
@@ -437,10 +430,9 @@ Call@0..7
       Ident@0..5 "print"
       Emptyspace@5..6 " "
   CallArgs@6..7
-    Call@6..7
-      Path@6..7
-        Ident@6..7
-          Ident@6..7 "a""#]],
+    Path@6..7
+      Ident@6..7
+        Ident@6..7 "a""#]],
     )
 }
 
@@ -455,16 +447,15 @@ Call@0..11
       Ident@0..5 "print"
       Emptyspace@5..6 " "
   CallArgs@6..11
-    Call@6..11
-      Path@6..11
-        Ident@6..7
-          Ident@6..7 "a"
-        Dot@7..8 "."
-        Ident@8..9
-          Ident@8..9 "b"
-        Dot@9..10 "."
-        Ident@10..11
-          Ident@10..11 "c""#]],
+    Path@6..11
+      Ident@6..7
+        Ident@6..7 "a"
+      Dot@7..8 "."
+      Ident@8..9
+        Ident@8..9 "b"
+      Dot@9..10 "."
+      Ident@10..11
+        Ident@10..11 "c""#]],
     )
 }
 
@@ -559,17 +550,15 @@ BlockExpr@0..35
   Newline@25..26 "\n"
   Emptyspace@26..28 "  "
   InfixExpr@28..33
-    Call@28..30
-      Path@28..30
-        Ident@28..30
-          Ident@28..29 "x"
-          Emptyspace@29..30 " "
+    Path@28..30
+      Ident@28..30
+        Ident@28..29 "x"
+        Emptyspace@29..30 " "
     Plus@30..31 "+"
     Emptyspace@31..32 " "
-    Call@32..33
-      Path@32..33
-        Ident@32..33
-          Ident@32..33 "y"
+    Path@32..33
+      Ident@32..33
+        Ident@32..33 "y"
   Newline@33..34 "\n"
   RBrace@34..35 "}""#]],
     )
@@ -598,11 +587,10 @@ IfExpr@0..7
   If@0..2 "if"
   Emptyspace@2..3 " "
   ConditionExpr@3..5
-    Call@3..5
-      Path@3..5
-        Ident@3..5
-          Ident@3..4 "a"
-          Emptyspace@4..5 " "
+    Path@3..5
+      Ident@3..5
+        Ident@3..4 "a"
+        Emptyspace@4..5 " "
   ThenBranchExpr@5..7
     BlockExpr@5..7
       LBrace@5..6 "{"
@@ -619,11 +607,10 @@ IfExpr@0..15
   If@0..2 "if"
   Emptyspace@2..3 " "
   ConditionExpr@3..5
-    Call@3..5
-      Path@3..5
-        Ident@3..5
-          Ident@3..4 "a"
-          Emptyspace@4..5 " "
+    Path@3..5
+      Ident@3..5
+        Ident@3..4 "a"
+        Emptyspace@4..5 " "
   ThenBranchExpr@5..8
     BlockExpr@5..8
       LBrace@5..6 "{"
@@ -647,11 +634,10 @@ IfExpr@0..28
   If@0..2 "if"
   Emptyspace@2..3 " "
   ConditionExpr@3..5
-    Call@3..5
-      Path@3..5
-        Ident@3..5
-          Ident@3..4 "a"
-          Emptyspace@4..5 " "
+    Path@3..5
+      Ident@3..5
+        Ident@3..4 "a"
+        Emptyspace@4..5 " "
   ThenBranchExpr@5..8
     BlockExpr@5..8
       LBrace@5..6 "{"
@@ -664,11 +650,10 @@ IfExpr@0..28
       If@13..15 "if"
       Emptyspace@15..16 " "
       ConditionExpr@16..18
-        Call@16..18
-          Path@16..18
-            Ident@16..18
-              Ident@16..17 "b"
-              Emptyspace@17..18 " "
+        Path@16..18
+          Ident@16..18
+            Ident@16..17 "b"
+            Emptyspace@17..18 " "
       ThenBranchExpr@18..21
         BlockExpr@18..21
           LBrace@18..19 "{"
