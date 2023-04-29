@@ -208,7 +208,7 @@ impl<'a> Context<'a> {
     }
 
     fn lower_int_literal(&mut self, ast: ast::IntLiteral) -> Expr {
-        let value: Option<i32> = ast
+        let value: Option<i64> = ast
             .value()
             .and_then(|token| parse_ignore_underscore(token.text()));
 
@@ -409,7 +409,7 @@ impl<'a> Context<'a> {
     }
 
     fn lower_type_int_literal(&mut self, ast: ast::IntLiteral) -> TypeExpr {
-        let value: Option<i32> = ast
+        let value: Option<i64> = ast
             .value()
             .and_then(|token| parse_ignore_underscore(token.text()));
 

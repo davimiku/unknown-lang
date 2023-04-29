@@ -17,7 +17,7 @@ pub fn word_size_of<T>() -> usize {
 pub struct Word {
     bytes: WordBytes,
 }
-pub const WORD_SIZE: usize = 4;
+pub const WORD_SIZE: usize = 8;
 type WordBytes = [u8; WORD_SIZE];
 
 // Convert From
@@ -38,6 +38,14 @@ impl From<VMBool> for Word {
 
 impl From<VMInt> for Word {
     fn from(value: VMInt) -> Self {
+        Self {
+            bytes: value.to_le_bytes(),
+        }
+    }
+}
+
+impl From<VMFloat> for Word {
+    fn from(value: VMFloat) -> Self {
         Self {
             bytes: value.to_le_bytes(),
         }
@@ -67,6 +75,12 @@ impl From<Word> for Vec<u8> {
 impl From<Word> for VMInt {
     fn from(word: Word) -> Self {
         VMInt::from_le_bytes(word.bytes)
+    }
+}
+
+impl From<Word> for VMFloat {
+    fn from(word: Word) -> Self {
+        VMFloat::from_le_bytes(word.bytes)
     }
 }
 
@@ -106,22 +120,6 @@ impl From<DWordBytes> for DWord {
     }
 }
 
-impl From<u64> for DWord {
-    fn from(value: u64) -> Self {
-        Self {
-            bytes: value.to_le_bytes(),
-        }
-    }
-}
-
-impl From<VMFloat> for DWord {
-    fn from(value: VMFloat) -> Self {
-        Self {
-            bytes: value.to_le_bytes(),
-        }
-    }
-}
-
 impl From<[Word; 2]> for DWord {
     fn from(words: [Word; 2]) -> Self {
         let bytes: DWordBytes = cast([words[0].bytes, words[1].bytes]);
@@ -143,22 +141,10 @@ impl From<DWord> for Vec<u8> {
     }
 }
 
-impl From<DWord> for VMFloat {
-    fn from(word: DWord) -> Self {
-        VMFloat::from_le_bytes(word.bytes)
-    }
-}
-
 impl From<DWord> for [Word; 2] {
     fn from(value: DWord) -> Self {
         let bytes: [WordBytes; 2] = cast(value.bytes);
         [bytes[0].into(), bytes[1].into()]
-    }
-}
-
-impl From<DWord> for u64 {
-    fn from(value: DWord) -> Self {
-        u64::from_le_bytes(value.bytes)
     }
 }
 
@@ -182,8 +168,6 @@ impl FromIterator<u8> for DWord {
 }
 
 /// Represents a "quad word", or the size of 4 base values.
-///
-/// For example, the stack representation of a `String` is a QWord.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QWord {
     bytes: QWordBytes,

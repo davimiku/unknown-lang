@@ -1,4 +1,4 @@
-use crate::words::QWord;
+use crate::words::DWord;
 use bytemuck::cast;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
@@ -119,7 +119,7 @@ impl VMString {
     // }
 }
 
-impl From<VMString> for QWord {
+impl From<VMString> for DWord {
     fn from(source: VMString) -> Self {
         let bytes: [u8; 16] = source.into();
         bytes.into()
@@ -144,8 +144,8 @@ impl From<VMString> for [u8; 16] {
     }
 }
 
-impl From<QWord> for VMString {
-    fn from(source: QWord) -> Self {
+impl From<DWord> for VMString {
+    fn from(source: DWord) -> Self {
         let bytes: [u8; 16] = source.into();
 
         bytes.into()

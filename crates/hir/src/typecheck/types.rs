@@ -8,7 +8,7 @@ pub enum Type {
     // Literals
     BoolLiteral(bool),
     FloatLiteral(f64), // TODO: shared alias of Float
-    IntLiteral(i32),   // TODO: shared alias of Int
+    IntLiteral(i64),   // TODO: shared alias of Int
     StringLiteral(Key),
 
     // Unit

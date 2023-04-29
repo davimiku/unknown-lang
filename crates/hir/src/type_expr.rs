@@ -15,7 +15,7 @@ pub enum TypeExpr {
     FloatLiteral(f64), // TODO: shared definition of Float
 
     /// 32-bit Integer literal value, ex. `0`, `12345`, `-98765`
-    IntLiteral(i32), // TODO: shared definition of Int
+    IntLiteral(i64), // TODO: shared definition of Int
 
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),

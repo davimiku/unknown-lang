@@ -333,7 +333,7 @@ fn infer_float_literal(
 }
 
 fn infer_int_literal(
-    i: i32,
+    i: i64,
     type_database: &mut TypeDatabase,
     expr_idx: Idx<Expr>,
 ) -> Result<Type, TypeDiagnostic> {

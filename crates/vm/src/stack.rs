@@ -58,14 +58,14 @@ impl Stack {
 
     #[inline]
     pub(crate) fn push_float<F: Into<VMFloat>>(&mut self, val: F) {
-        self.push_dword(val.into());
+        self.push_word(val.into());
     }
 
     /// Pushes the stack representation of a String to the stack.
     #[inline]
     pub(crate) fn push_string(&mut self, s: VMString) {
-        let q: QWord = s.into();
-        self.push_qword(q);
+        let q: DWord = s.into();
+        self.push_dword(q);
     }
 
     /// Removes the top `n` slots of the stack and returns it as an array
@@ -139,18 +139,18 @@ impl Stack {
     /// Removes the top two slots of the stack and returns it as an f64
     #[inline]
     pub fn pop_float(&mut self) -> VMFloat {
-        self.pop_dword().into()
+        self.pop_word().into()
     }
 
     #[inline]
     pub(crate) fn pop_string(&mut self) -> VMString {
-        self.pop_qword().into()
+        self.pop_dword().into()
     }
 
     #[inline]
     pub(crate) fn pop_ptr<T>(&mut self) -> *const T {
-        let dword = self.pop_dword();
-        u64::from(dword) as *const T
+        let word = self.pop_word();
+        u64::from(word) as *const T
     }
 
     /// Mutates the top value of the stack in-place.
@@ -228,12 +228,12 @@ impl Stack {
 
     #[inline]
     pub(crate) fn peek_float(&self) -> VMFloat {
-        (*self.peek_dword()).into()
+        (*self.peek_word()).into()
     }
 
     #[inline]
     pub(crate) fn peek_string(&self) -> VMString {
-        (*self.peek_qword()).into()
+        (*self.peek_dword()).into()
     }
 
     #[inline]
@@ -342,14 +342,14 @@ mod tests {
     fn pop_n_times() {
         let mut stack = Stack::default();
 
-        stack.push_word(1_i32);
-        stack.push_word(2_i32);
-        stack.push_word(3_i32);
-        stack.push_word(4_i32);
-        stack.push_word(5_i32);
+        stack.push_word(1_i64);
+        stack.push_word(2_i64);
+        stack.push_word(3_i64);
+        stack.push_word(4_i64);
+        stack.push_word(5_i64);
 
         let popped = stack.pop_n::<2>(2);
 
-        assert_eq!(popped, [4_i32.into(), 5_i32.into()]);
+        assert_eq!(popped, [4_i64.into(), 5_i64.into()]);
     }
 }
