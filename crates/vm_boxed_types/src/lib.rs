@@ -1,53 +1,55 @@
 use lasso::Spur;
 use vm_codegen::FunctionChunk;
+use vm_types::words::Word;
 
 mod function_arity;
 
 /// Metadata (stored on the heap) that describes
-#[derive(Debug)]
-pub struct Boxed {
-    data: BoxedData,
-    next: Option<Box<Boxed>>,
-}
+// #[derive(Debug)]
+// pub struct Boxed {
+//     data: BoxedData,
+//     next: Option<Box<Boxed>>,
+// }
 
-impl Boxed {
-    pub fn new_function(chunk: FunctionChunk, parameter_slots: u32, name: Option<Spur>) -> Self {
-        let function = VMFunction {
-            parameter_slots,
-            chunk,
-            name,
-        };
-        Self {
-            data: BoxedData::Function(function),
-            next: None,
-        }
-    }
-}
+// impl Boxed {
+//     pub fn new_function(chunk: FunctionChunk, parameter_slots: u32, name: Option<Spur>) -> Self {
+//         let function = VMFunction {
+//             parameter_slots,
+//             chunk,
+//             name,
+//         };
+//         Self {
+//             data: BoxedData::Function(function),
+//             next: None,
+//         }
+//     }
+// }
 
-#[derive(Debug)]
-pub enum BoxedData {
-    /// Dynamically generated strings above a certain size are boxed
-    String,
+// #[derive(Debug)]
+// pub enum BoxedData {
+//     /// Dynamically generated strings above a certain size are boxed
+//     String,
 
-    /// Functions that cannot be proven to be static are boxed
-    Function(VMFunction),
+//     /// Functions that cannot be proven to be static are boxed
+//     Function(VMFunction),
 
-    /// Closures that cannot be proven to be static and capture no boxed items are boxed
-    Closure(BoxedClosure),
+//     /// Closures that cannot be proven to be static and capture no boxed items are boxed
+//     Closure(BoxedClosure),
 
-    /// User defined `union` above a certain size are boxed
-    Union(BoxedUnion),
+//     /// User defined `union` above a certain size are boxed
+//     Union(BoxedUnion),
 
-    /// User defined `struct` above a certain size are boxed
-    Struct(BoxedStruct),
-}
+//     /// User defined `struct` above a certain size are boxed
+//     Struct(BoxedStruct),
+// }
 
 /// Metadata for a function, stored on the heap
 #[derive(Debug)]
-pub struct VMFunction {
-    parameter_slots: u32,
-    chunk: FunctionChunk,
-    name: Option<Spur>,
+pub struct VMFunction<'a> {
+    /// Total number of "slots" / VM words are used by parameters
+    pub parameter_slots: u32,
+    pub chunk: &'a FunctionChunk,
+    pub name: Option<Spur>,
 }
 
 #[derive(Debug)]

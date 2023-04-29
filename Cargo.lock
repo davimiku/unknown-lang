@@ -426,6 +426,7 @@ version = "0.1.0"
 dependencies = [
  "lasso",
  "vm_codegen",
+ "vm_types",
 ]
 
 [[package]]

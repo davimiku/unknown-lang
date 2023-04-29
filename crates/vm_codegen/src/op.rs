@@ -253,12 +253,17 @@ pub enum Op {
     /// Stack: **=>**
     NegateFloat,
 
-    /// Binary `+` operator for String.
+    /// Binary `++` operator for String.
     ///
     /// Operands: mode: `u8`
     ///
     /// Stack: lhs, rhs **=>** "{lhs}{rhs}"
     ConcatString,
+
+    /// Call a user-defined function
+    ///
+    /// Operands: ???
+    Call,
 
     /// Call to a built-in function
     ///

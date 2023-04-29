@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use vm_types::string::VMString;
 
-use crate::{FunctionChunk, Op, Readable, VMFloat, VMInt};
+use crate::{BytecodeRead, FunctionChunk, Op, VMFloat, VMInt};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in vm_codegen and vm
@@ -14,7 +14,7 @@ pub const BUILTIN_NAMES: [&str; 5] = [
     "print_bool",
 ];
 
-fn read<T: Readable>(chunk: &FunctionChunk, offset: &mut usize) -> T {
+fn read<T: BytecodeRead>(chunk: &FunctionChunk, offset: &mut usize) -> T {
     let val = chunk.read::<T>(*offset);
 
     *offset += size_of::<T>();

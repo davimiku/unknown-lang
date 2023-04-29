@@ -4,8 +4,7 @@
 //! - The bytecode itself, including opcodes and operands
 //! - Text ranges corresponding to opcodes for debug information and errors
 //! - Constants pool for constants not encoded into operands, ex. strings
-//!
-//! [backpatching]: https://stackoverflow.com/questions/15984671/what-does-backpatching-mean
+use code::Code;
 pub use op::{InvalidOpError, Op};
 
 use la_arena::Idx;
@@ -14,17 +13,17 @@ use vm_types::string::VMString;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fmt::{self, Debug, Display};
 use std::mem;
 use std::ops::Range;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Context, Expr, FunctionExpr, FunctionType, IfExpr,
-    LocalDefKey, LocalRefExpr, LocalRefName, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionType, IfExpr, LocalDefKey,
+    LocalRefExpr, Type, UnaryExpr, UnaryOp,
 };
 
+mod code;
 mod disassemble;
 mod op;
 #[cfg(test)]
@@ -39,164 +38,116 @@ pub const PRINT_BOOL: u8 = 4;
 /// Byte size of an Op::Jump or Op::JumpIfFalse with their u32 operand
 const JUMP_WITH_OFFSET_SIZE: usize = 5;
 
-pub fn codegen(idx: &Idx<Expr>, context: &Context) -> FunctionChunk {
-    let mut chunk = FunctionChunk::new();
+pub fn codegen(idx: &Idx<Expr>, context: &hir::Context) -> ProgramChunk {
+    let mut codegen = Codegen::new();
+    codegen.push_func();
 
-    chunk.write_expr(*idx, context);
-    chunk.write_ret(TextRange::default());
+    // TODO: set curr.current_stack_slots to account for CLI args?
 
-    chunk
+    codegen.write_expr(*idx, context);
+    codegen.append_ret();
+
+    codegen.take_chunk()
 }
 
-// TODO: better name
-#[derive(Default, PartialEq, Eq)]
-struct Code {
-    bytes: Vec<u8>,
-    ranges: Vec<TextRange>,
+#[derive(Debug, Default)]
+struct Codegen {
+    // stack of functions that are currently being compiled
+    current_functions: Vec<FunctionCodegen>,
+
+    finished_functions: Vec<FunctionChunk>,
+
+    // TODO: what was I thinking with this? when generating a function (non-main)
+    // we need to keep track of its index so that calls to that function can load
+    // that function?
+    function_map: HashMap<String, usize>,
 }
 
-impl Debug for Code {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Code")
-            .field("bytes", &debug_bytes(&self.bytes))
-            .field("ranges", &self.ranges)
-            .finish()
-    }
-}
-
-fn debug_bytes(bytes: &[u8]) -> impl fmt::Debug {
-    let bytes: Vec<_> = bytes
-        .chunks_exact(4)
-        .map(|s| {
-            let q: [u8; 4] = s.try_into().expect("slice with length 4");
-            u32::from_le_bytes(q)
-        })
-        .collect();
-
-    bytes
-}
-
-impl Code {
-    fn from_op(op: Op, range: TextRange) -> Self {
-        Self {
-            bytes: vec![op as u8],
-            ranges: vec![range],
-        }
-    }
-}
-
-impl Code {
-    #[inline]
-    fn append(&mut self, mut source: Code) {
-        self.bytes.append(&mut source.bytes);
-        self.ranges.append(&mut source.ranges);
-    }
-
-    #[inline]
-    fn push(&mut self, source: (u8, TextRange)) {
-        self.bytes.push(source.0);
-        self.ranges.push(source.1);
-    }
-
-    #[inline]
-    fn push_byte(&mut self, source: u8) {
-        self.bytes.push(source);
-    }
-
-    #[inline]
-    fn push_byte_pair(&mut self, source: (u8, u8)) {
-        self.bytes.push(source.0);
-        self.bytes.push(source.1);
-    }
-
-    #[inline]
-    fn push_u16(&mut self, source: u16) {
-        let source: [u8; 2] = source.to_le_bytes();
-
-        self.bytes.push(source[0]);
-        self.bytes.push(source[1]);
-    }
-
-    #[inline]
-    fn extend<I: IntoIterator<Item = u8>>(&mut self, source: I) {
-        self.bytes.extend(source.into_iter());
-    }
-
-    #[inline]
-    fn extend_from_slice(&mut self, source: &[u8]) {
-        self.bytes.extend_from_slice(source);
-    }
-
-    #[inline]
-    fn shrink_to_fit(&mut self) {
-        self.bytes.shrink_to_fit();
-        self.ranges.shrink_to_fit();
-    }
-}
-
-impl From<(u8, TextRange)> for Code {
-    fn from(source: (u8, TextRange)) -> Self {
-        Self {
-            bytes: vec![source.0],
-            ranges: vec![source.1],
-        }
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct FunctionChunk {
-    /// bytecode (ops and operands) with text ranges corresponding to those ops
-    code: Code,
-
-    /// constants pool that are not encoded as operands, ex. strings
-    constants: Vec<u8>,
-
-    /// Running total of the stack slots that have been allocated for locals
-    current_stack_slots: u16,
-
-    /// Map from a unique LocalDef to its slot in the stack (and its slot size??)
-    stack_slots: HashMap<LocalDefKey, u16>,
-}
-
-// Constructors
-impl FunctionChunk {
+impl Codegen {
     fn new() -> Self {
-        Default::default()
+        let mut codegen = Codegen::default();
+        let main = FunctionCodegen::new(0, "main", 0);
+        codegen.current_functions.push(main);
+
+        codegen
+    }
+
+    fn take_chunk(self) -> ProgramChunk {
+        ProgramChunk {
+            functions: self.finished_functions,
+        }
     }
 }
 
-// Mutating functions
-impl FunctionChunk {
-    fn write_expr(&mut self, expr: Idx<Expr>, context: &Context) {
+impl Codegen {
+    fn curr(&self) -> &FunctionCodegen {
+        self.current_functions.last().unwrap()
+    }
+
+    fn curr_mut(&mut self) -> &mut FunctionCodegen {
+        self.current_functions.last_mut().unwrap()
+    }
+
+    fn curr_chunk(&self) -> &FunctionChunk {
+        &self.current_functions.last().unwrap().chunk
+    }
+
+    fn curr_chunk_mut(&mut self) -> &mut FunctionChunk {
+        &mut self.current_functions.last_mut().unwrap().chunk
+    }
+
+    fn push_func(&mut self) {
+        self.current_functions.push(FunctionCodegen::default())
+    }
+
+    fn finish_func(&mut self) {
+        let curr = self.current_functions.pop().unwrap();
+        self.finished_functions.push(curr.chunk);
+    }
+
+    fn write_expr(&mut self, expr: Idx<Expr>, context: &hir::Context) {
         let code = self.synth_expr(expr, context);
 
-        self.code.append(code);
+        self.curr_chunk_mut().code.append(code);
+    }
+
+    fn append_ret(&mut self) {
+        self.curr_chunk_mut()
+            .code
+            .append(Code::from_op(Op::Ret, Default::default()))
     }
 
     /// Generates the bytecode and `TextRange`s for an expression.
-    ///
-    /// **Invariant**: the index of each `TextRange` in that `Vec` need to correspond to the index of
-    /// the corresponding `Op` within the bytecode.
-    fn synth_expr(&mut self, expr_idx: Idx<Expr>, context: &Context) -> Code {
+    fn synth_expr(&mut self, expr_idx: Idx<Expr>, context: &hir::Context) -> Code {
         use Expr::*;
 
         let expr = context.expr(expr_idx);
         let range = context.range_of(expr_idx);
         match expr {
+            Function(expr) => {
+                self.push_func();
+
+                // let curr = self.curr_mut();
+                // TODO: set curr.current_stack_slots using expr.params
+
+                self.write_expr(expr.body, context);
+                self.append_ret();
+
+                // ??? what bytecode is generated here?
+                Code::default()
+            }
+
             BoolLiteral(b) => self.synth_bool_constant(*b, range),
             FloatLiteral(f) => self.synth_float_constant(*f, range),
             IntLiteral(i) => self.synth_int_constant(*i, range),
-            StringLiteral(key) => {
-                let s = context.lookup(*key);
-                self.synth_string_constant(s, range)
-            }
+            StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
 
             Binary(expr) => self.synth_binary_expr(expr, context),
             Unary(expr) => self.synth_unary_expr(expr, context),
-            Function(expr) => self.synth_function_expr(expr, context),
             LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
             Call(expr) => self.synth_call_expr(expr, context),
             LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
+            UnresolvedLocalRef { key } => unreachable!(),
             Block(expr) => self.synth_block_expr(expr, context),
             If(expr) => self.synth_if_expr(expr, context),
 
@@ -233,9 +184,9 @@ impl FunctionChunk {
     }
 
     fn synth_string_constant(&mut self, value: &str, range: TextRange) -> Code {
-        let idx = self.constants.len();
+        let idx = self.curr_chunk().constants.len();
         let len = value.len() as u32;
-        self.constants.extend(value.as_bytes());
+        self.curr_chunk_mut().constants.extend(value.as_bytes());
 
         let mut code = Code::default();
         code.push(self.synth_op(Op::PushString, range));
@@ -247,7 +198,7 @@ impl FunctionChunk {
         code
     }
 
-    fn synth_binary_expr(&mut self, expr: &BinaryExpr, context: &Context) -> Code {
+    fn synth_binary_expr(&mut self, expr: &BinaryExpr, context: &hir::Context) -> Code {
         let BinaryExpr { op, lhs, rhs } = expr;
         let lhs_type = context.type_of_expr(*lhs);
 
@@ -289,7 +240,7 @@ impl FunctionChunk {
         code
     }
 
-    fn synth_unary_expr(&mut self, expr: &UnaryExpr, context: &Context) -> Code {
+    fn synth_unary_expr(&mut self, expr: &UnaryExpr, context: &hir::Context) -> Code {
         let UnaryExpr { op, expr: idx } = expr;
         let expr_type = context.type_of_expr(*idx);
 
@@ -310,11 +261,12 @@ impl FunctionChunk {
         code
     }
 
-    fn synth_function_expr(&mut self, expr: &FunctionExpr, context: &Context) -> Code {
-        todo!()
-    }
-
-    fn synth_local_def(&mut self, key: LocalDefKey, value: Idx<Expr>, context: &Context) -> Code {
+    fn synth_local_def(
+        &mut self,
+        key: LocalDefKey,
+        value: Idx<Expr>,
+        context: &hir::Context,
+    ) -> Code {
         let mut code = self.synth_expr(value, context);
 
         let expr_type = context.type_of_expr(value);
@@ -329,28 +281,31 @@ impl FunctionChunk {
             _ => Op::SetLocalN,
         };
         code.append(Code::from_op(set_op, TextRange::default()));
-        code.extend_from_slice(&self.current_stack_slots.to_le_bytes());
+        code.extend_from_slice(&self.curr().current_stack_slots.to_le_bytes());
         if set_op == Op::SetLocalN {
             code.extend_from_slice(&word_size.to_le_bytes());
         }
 
-        self.stack_slots.insert(key, self.current_stack_slots);
-        self.current_stack_slots += word_size;
+        let mut curr = self.curr_mut();
+
+        curr.stack_slots
+            .insert(key, (curr.current_stack_slots, word_size));
+        curr.current_stack_slots += word_size;
 
         code
     }
 
-    fn synth_block_expr(&mut self, expr: &BlockExpr, context: &Context) -> Code {
+    fn synth_block_expr(&mut self, expr: &BlockExpr, context: &hir::Context) -> Code {
         let BlockExpr { exprs } = expr;
 
-        let start_stack_slot_size = self.current_stack_slots;
+        let start_stack_slot_size = self.curr().current_stack_slots;
 
         let mut code = Code::default();
         for expr in exprs {
             code.append(self.synth_expr(*expr, context));
         }
 
-        let slots_to_pop = self.current_stack_slots - start_stack_slot_size;
+        let slots_to_pop = self.curr().current_stack_slots - start_stack_slot_size;
 
         match slots_to_pop {
             0 => {}
@@ -363,7 +318,7 @@ impl FunctionChunk {
             }
         }
 
-        self.current_stack_slots = start_stack_slot_size;
+        self.curr_mut().current_stack_slots = start_stack_slot_size;
 
         code
     }
@@ -376,7 +331,7 @@ impl FunctionChunk {
     /// This allows me to write correct code because I am horrible at manually dealing
     /// with byte offsets and bitwise operations. There may be a performance impact of
     /// this that can be evaluated later.
-    fn synth_if_expr(&mut self, expr: &IfExpr, context: &Context) -> Code {
+    fn synth_if_expr(&mut self, expr: &IfExpr, context: &hir::Context) -> Code {
         let IfExpr {
             condition,
             then_branch,
@@ -415,17 +370,22 @@ impl FunctionChunk {
         code
     }
 
-    fn synth_call_expr(&mut self, expr: &CallExpr, context: &Context) -> Code {
-        let CallExpr { callee, args, .. } = expr;
+    fn synth_call_expr(&mut self, expr: &CallExpr, context: &hir::Context) -> Code {
+        let CallExpr {
+            callee,
+            args,
+            callee_path,
+        } = expr;
 
         let mut code = Code::default();
+
+        code.append(self.synth_expr(*callee, context));
 
         for arg in args {
             code.append(self.synth_expr(*arg, context));
         }
         let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of_expr(*idx)).collect();
 
-        let callee_path = callee.display(context.interner);
         // TODO: putting builtins into a "core" library and loading them into a "prelude" for name resolution
         if callee_path == "print" {
             code.append(self.synth_builtin_call(&callee_path, arg_types));
@@ -438,11 +398,12 @@ impl FunctionChunk {
         &mut self,
         expr_idx: Idx<Expr>,
         expr: &LocalRefExpr,
-        context: &Context,
+        context: &hir::Context,
     ) -> Code {
-        let expr_type = context.type_of_expr(expr_idx);
-        let word_size = word_size_of(expr_type);
-        let op = match word_size {
+        let (slot_number, slot_size) = self.curr().stack_slots[&expr.key];
+        // let expr_type = context.type_of_expr(expr_idx);
+        // let word_size = word_size_of(expr_type);
+        let op = match slot_size {
             0 => unreachable!(),
             1 => Op::GetLocal,
             2 => Op::GetLocal2,
@@ -453,19 +414,10 @@ impl FunctionChunk {
 
         let mut code = Code::from_op(op, TextRange::default());
 
-        let name = expr.name;
+        code.extend_from_slice(&slot_number.to_le_bytes());
 
-        if let LocalRefName::Resolved(key) = name {
-            let stack_slot_offset = self.stack_slots[&key];
-            code.extend_from_slice(&stack_slot_offset.to_le_bytes());
-
-            if op == Op::GetLocalN {
-                code.extend_from_slice(&word_size.to_le_bytes());
-            }
-        } else {
-            // TODO: this should go away when a MIR (control flow graph) is added after the HIR
-            // we would only have resolved names in codegen
-            unreachable!()
+        if op == Op::GetLocalN {
+            code.extend_from_slice(&slot_size.to_le_bytes());
         }
 
         code
@@ -498,7 +450,77 @@ impl FunctionChunk {
 
         code
     }
+}
 
+#[derive(Debug, Default)]
+pub struct ProgramChunk {
+    pub functions: Vec<FunctionChunk>,
+}
+
+impl ProgramChunk {
+    pub fn main(&self) -> &FunctionChunk {
+        self.functions.last().unwrap()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FunctionCodegen {
+    id: usize,
+
+    /// Bytecode chunk being generated
+    chunk: FunctionChunk,
+
+    /// Running total of the stack slots that have been allocated for locals
+    current_stack_slots: u16,
+
+    /// Map from a unique LocalDef to (slot_number, slot_size) in the stack
+    stack_slots: HashMap<LocalDefKey, (u16, u16)>,
+}
+
+impl FunctionCodegen {
+    fn new(id: usize, name: &str, parameter_slots: u32) -> Self {
+        Self {
+            chunk: FunctionChunk::new(name, parameter_slots),
+            id,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FunctionChunk {
+    /// bytecode (ops and operands) with text ranges corresponding to those ops
+    code: Code,
+
+    /// Total "slots" / words used by parameters of this function
+    parameter_slots: u32,
+
+    /// constants pool that are not encoded as operands, ex. strings
+    ///
+    /// The first byte is the length of the name of the function, and the next
+    /// `len` bytes are the function name.
+    // TODO: encapsulate this in a struct?
+    constants: Vec<u8>,
+}
+
+// TODO: implement Debug
+
+// Constructors
+impl FunctionChunk {
+    fn new(name: &str, parameter_slots: u32) -> Self {
+        let mut chunk = Self::default();
+        chunk.parameter_slots = parameter_slots;
+
+        chunk.constants.push(name.len() as u8);
+        chunk.constants.extend_from_slice(name.as_bytes());
+
+        chunk
+    }
+}
+
+// Mutating functions
+
+impl FunctionChunk {
     fn write_op(&mut self, op: Op, range: TextRange) {
         self.code.bytes.push(op as u8);
         self.code.ranges.push(range);
@@ -526,24 +548,12 @@ impl FunctionChunk {
     }
 }
 
-// Functions to read from the Chunk.
+// Non-Mutating functions
 impl FunctionChunk {
     /// Gets the Op at the given index.
     #[inline]
     pub fn get_op(&self, i: usize) -> Result<Op, InvalidOpError> {
         self.code.bytes[i].try_into()
-    }
-
-    unsafe fn read_unchecked<T>(&self, offset: usize) -> T
-    where
-        T: Readable,
-    {
-        self.code
-            .bytes
-            .as_ptr()
-            .add(offset)
-            .cast::<T>()
-            .read_unaligned()
     }
 
     /// Reads bytes from the bytecode and returns as T.
@@ -554,13 +564,21 @@ impl FunctionChunk {
     #[inline]
     pub fn read<T>(&self, offset: usize) -> T
     where
-        T: Readable,
+        T: BytecodeRead,
     {
         assert!(offset + mem::size_of::<T>() - 1 < self.code.bytes.len());
 
         // Safety: We checked that it is not an out-of-bounds read,
         // so this is safe.
         unsafe { self.read_unchecked(offset) }
+    }
+
+    pub fn name(&self) -> &str {
+        let len = self.constants[0] as usize;
+        let bytes = &self.constants[1..len];
+
+        // Safety: bytes were valid UTF-8 when Self was created
+        unsafe { std::str::from_utf8_unchecked(bytes) }
     }
 
     pub fn borrow_constants(&self) -> &[u8] {
@@ -588,6 +606,18 @@ impl FunctionChunk {
     /// Triggers undefined behavior if the index is out-of-bounds
     pub unsafe fn constants_slice_unchecked(&self, index: Range<usize>) -> &[u8] {
         self.constants.get_unchecked(index)
+    }
+
+    unsafe fn read_unchecked<T>(&self, offset: usize) -> T
+    where
+        T: BytecodeRead,
+    {
+        self.code
+            .bytes
+            .as_ptr()
+            .add(offset)
+            .cast::<T>()
+            .read_unaligned()
     }
 }
 
@@ -658,11 +688,11 @@ fn word_size_of(ty: &Type) -> u16 {
 /// # Safety
 ///
 /// Types implementing this trait must not implement Drop.
-pub unsafe trait Readable {}
+pub unsafe trait BytecodeRead {}
 
-unsafe impl Readable for u8 {}
-unsafe impl Readable for u16 {}
-unsafe impl Readable for u32 {}
-unsafe impl Readable for VMInt {}
-unsafe impl Readable for VMFloat {}
-unsafe impl Readable for VMString {}
+unsafe impl BytecodeRead for u8 {}
+unsafe impl BytecodeRead for u16 {}
+unsafe impl BytecodeRead for u32 {}
+unsafe impl BytecodeRead for VMInt {}
+unsafe impl BytecodeRead for VMFloat {}
+unsafe impl BytecodeRead for VMString {}

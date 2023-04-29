@@ -5,7 +5,7 @@ fn main() -> io::Result<()> {
     println!("test input: `{input}`");
 
     let chunk = compiler::compile(&input);
-    println!("{chunk}");
+    println!("{chunk:?}");
 
     println!("Begin execution:");
     println!("===== =====");

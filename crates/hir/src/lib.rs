@@ -34,20 +34,7 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
         .map(|expr| context.lower_expr(Some(expr)))
         .collect();
 
-    let main_body = Expr::Block(BlockExpr { exprs });
-    let main_body = context.alloc_expr(main_body, None);
-
-    let main_func = Expr::Function(FunctionExpr {
-        params: vec![],
-        body: main_body,
-    });
-    let main_func = context.alloc_expr(main_func, None);
-
-    let program = Expr::Call(CallExpr {
-        callee: main_func,
-        callee_path: "~main".into(),
-        args: vec![],
-    });
+    let program = Expr::Block(BlockExpr { exprs });
     let program = context.alloc_expr(program, None);
 
     context.type_check(program, &Type::Top);

@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 lasso = "0.6.0"
 vm_codegen = { path = "../vm_codegen" }
+vm_types = { path = "../vm_types" }

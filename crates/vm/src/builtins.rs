@@ -11,7 +11,7 @@ pub const PRINT_BOOL: u8 = 4;
 
 pub const LEN_STRING: u8 = 5;
 
-impl VM {
+impl VM<'_> {
     pub(crate) fn print_string(&mut self) {
         let s = self.stack.pop_string();
 

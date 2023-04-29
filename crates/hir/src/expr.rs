@@ -17,10 +17,10 @@ pub enum Expr {
     BoolLiteral(bool),
 
     /// 64-bit Floating point literal value, ex. `1.0`, `-7654.321`
-    FloatLiteral(f64), // TODO: shared definition of Float
+    FloatLiteral(f64),
 
     /// 32-bit Integer literal value, ex. `0`, `12345`, `-98765`
-    IntLiteral(i32), // TODO: shared definition of Int
+    IntLiteral(i64),
 
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
