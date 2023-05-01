@@ -24,6 +24,13 @@ pub struct Stack {
 
 impl Stack {
     #[inline]
+    fn slice_from_current(&self) -> &[Word] {
+        let curr_index = self.data.len();
+
+        &self.data[curr_index..]
+    }
+
+    #[inline]
     fn extend<I: IntoIterator<Item = Word>>(&mut self, iter: I) {
         self.data.extend(iter)
     }

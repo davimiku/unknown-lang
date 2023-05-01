@@ -1,4 +1,5 @@
 use crate::words::DWord;
+use crate::VMInt;
 use bytemuck::cast;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::Deref;
@@ -54,12 +55,12 @@ impl VMString {
 impl VMString {
     /// Returns the bytes length of the string
     #[inline]
-    pub fn length(&self) -> u32 {
-        match self {
+    pub fn length(&self) -> VMInt {
+        (match self {
             VMString::Heap(s) => s.len,
             VMString::Constant(s) => s.len,
             VMString::Embedded(s) => s.len as u32,
-        }
+        }) as VMInt
     }
 
     /// Returns a Rust String for this VMString by cloning

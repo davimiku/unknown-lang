@@ -9,7 +9,7 @@ fn generate_chunk(input: &str) -> ProgramChunk {
 
 #[test]
 fn test_print_call() {
-    let input = "print 1";
+    let input = "print \"Hello\"";
 
     let chunk = generate_chunk(input);
     println!("{}", chunk.main());

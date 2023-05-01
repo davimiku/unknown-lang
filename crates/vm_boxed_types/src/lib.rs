@@ -1,6 +1,7 @@
+use std::rc::Rc;
+
 use lasso::Spur;
 use vm_codegen::FunctionChunk;
-use vm_types::words::Word;
 
 mod function_arity;
 
@@ -44,11 +45,11 @@ mod function_arity;
 // }
 
 /// Metadata for a function, stored on the heap
-#[derive(Debug)]
-pub struct VMFunction<'a> {
+#[derive(Debug, Clone, Default)]
+pub struct VMFunction {
     /// Total number of "slots" / VM words are used by parameters
     pub parameter_slots: u32,
-    pub chunk: &'a FunctionChunk,
+    pub chunk: Rc<FunctionChunk>,
     pub name: Option<Spur>,
 }
 

@@ -40,12 +40,8 @@ const JUMP_WITH_OFFSET_SIZE: usize = 5;
 
 pub fn codegen(idx: &Idx<Expr>, context: &hir::Context) -> ProgramChunk {
     let mut codegen = Codegen::new();
-    codegen.push_func();
-
-    // TODO: set curr.current_stack_slots to account for CLI args?
 
     codegen.write_expr(*idx, context);
-    codegen.append_ret();
 
     codegen.take_chunk()
 }
@@ -60,19 +56,24 @@ struct Codegen {
     // TODO: what was I thinking with this? when generating a function (non-main)
     // we need to keep track of its index so that calls to that function can load
     // that function?
+    // should be HashMap<id, index>?  (both are usize)
+    // or current_functions should be a HashMap? Where the key is the eventual index of finished_functions
     function_map: HashMap<String, usize>,
 }
 
 impl Codegen {
     fn new() -> Self {
         let mut codegen = Codegen::default();
-        let main = FunctionCodegen::new(0, "main", 0);
-        codegen.current_functions.push(main);
+        // TODO: set parameter_slots to account for CLI args?
+
+        codegen.push_func(0, "main", 0);
 
         codegen
     }
 
-    fn take_chunk(self) -> ProgramChunk {
+    fn take_chunk(mut self) -> ProgramChunk {
+        self.finish_func(); // finish main
+
         ProgramChunk {
             functions: self.finished_functions,
         }
@@ -96,11 +97,14 @@ impl Codegen {
         &mut self.current_functions.last_mut().unwrap().chunk
     }
 
-    fn push_func(&mut self) {
-        self.current_functions.push(FunctionCodegen::default())
+    fn push_func(&mut self, id: usize, name: &str, parameter_slots: u32) {
+        self.current_functions
+            .push(FunctionCodegen::new(id, name, parameter_slots))
     }
 
     fn finish_func(&mut self) {
+        self.append_ret();
+
         let curr = self.current_functions.pop().unwrap();
         self.finished_functions.push(curr.chunk);
     }
@@ -125,13 +129,13 @@ impl Codegen {
         let range = context.range_of(expr_idx);
         match expr {
             Function(expr) => {
-                self.push_func();
+                self.push_func(0, "", 0);
 
                 // let curr = self.curr_mut();
                 // TODO: set curr.current_stack_slots using expr.params
 
                 self.write_expr(expr.body, context);
-                self.append_ret();
+                self.finish_func();
 
                 // ??? what bytecode is generated here?
                 Code::default()
@@ -379,7 +383,10 @@ impl Codegen {
 
         let mut code = Code::default();
 
-        code.append(self.synth_expr(*callee, context));
+        // TODO: this is a hack
+        if callee_path != "print" {
+            code.append(self.synth_expr(*callee, context));
+        }
 
         for arg in args {
             code.append(self.synth_expr(*arg, context));
@@ -388,7 +395,9 @@ impl Codegen {
 
         // TODO: putting builtins into a "core" library and loading them into a "prelude" for name resolution
         if callee_path == "print" {
-            code.append(self.synth_builtin_call(&callee_path, arg_types));
+            code.append(self.synth_builtin_call(callee_path, arg_types));
+        } else {
+            // TODO: generate Op::Call ?
         }
 
         code
@@ -432,7 +441,6 @@ impl Codegen {
                 Type::Int | Type::IntLiteral(_) => PRINT_INT,
                 Type::String | Type::StringLiteral(_) => PRINT_STR,
 
-                // Type::Named(_) => todo!(),
                 _ => unreachable!(),
             };
 
@@ -458,12 +466,12 @@ pub struct ProgramChunk {
 }
 
 impl ProgramChunk {
-    pub fn main(&self) -> &FunctionChunk {
+    fn main(&self) -> &FunctionChunk {
         self.functions.last().unwrap()
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FunctionCodegen {
     id: usize,
 
@@ -482,7 +490,8 @@ impl FunctionCodegen {
         Self {
             chunk: FunctionChunk::new(name, parameter_slots),
             id,
-            ..Default::default()
+            current_stack_slots: 0,
+            stack_slots: Default::default(),
         }
     }
 }
@@ -573,8 +582,13 @@ impl FunctionChunk {
         unsafe { self.read_unchecked(offset) }
     }
 
+    /// Gets the name of the function from the bytecode
     pub fn name(&self) -> &str {
         let len = self.constants[0] as usize;
+        if len == 0 {
+            return "";
+        }
+
         let bytes = &self.constants[1..len];
 
         // Safety: bytes were valid UTF-8 when Self was created

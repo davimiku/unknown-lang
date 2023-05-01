@@ -1,4 +1,4 @@
-use vm_types::VMInt;
+use vm_types::{string::VMString, VMBool, VMFloat, VMInt};
 
 use crate::VM;
 
@@ -11,39 +11,23 @@ pub const PRINT_BOOL: u8 = 4;
 
 pub const LEN_STRING: u8 = 5;
 
-impl VM<'_> {
-    pub(crate) fn print_string(&mut self) {
-        let s = self.stack.pop_string();
+#[inline]
+pub(crate) fn print_string(s: String) {
+    println!("{s}");
+}
 
-        let s = self.deref_string(&s);
+pub(crate) fn print_int(int: VMInt) {
+    println!("{int}");
+}
 
-        println!("{s}");
-    }
+pub(crate) fn print_float(float: VMFloat) {
+    println!("{float:?}");
+}
 
-    pub(crate) fn print_int(&mut self) {
-        let int = self.stack.pop_int();
+pub(crate) fn print_bool(b: VMBool) {
+    println!("{}", b != 0);
+}
 
-        println!("{int}");
-    }
-
-    pub(crate) fn print_float(&mut self) {
-        let float = self.stack.pop_float();
-
-        println!("{float:?}");
-    }
-
-    pub(crate) fn print_bool(&mut self) {
-        let b = self.stack.pop_bool();
-
-        println!("{}", b != 0);
-    }
-
-    pub(crate) fn len_string(&mut self) {
-        let s = self.stack.pop_string();
-
-        let len = s.length();
-
-        // TODO: should length be a larger int?
-        self.stack.push_int(len as VMInt);
-    }
+pub(crate) fn len_string(s: VMString) -> VMInt {
+    s.length()
 }

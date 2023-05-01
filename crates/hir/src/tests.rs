@@ -18,6 +18,19 @@ macro_rules! cast {
     }};
 }
 
+fn print(input: &str) {
+    let mut interner = Interner::default();
+
+    let root: Root = parser::parse(input).into();
+    let (root_expr, context) = lower(&root, &mut interner);
+
+    let root_expr = cast!(context.expr(root_expr), Expr::Block);
+    for expr in root_expr.exprs.iter() {
+        let expr = context.expr(*expr);
+        println!("{expr:?}");
+    }
+}
+
 fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
     let mut interner = Interner::default();
 
@@ -58,7 +71,7 @@ fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner
     let (root, context) = lower(&root, &mut interner);
 
     let main_block = context.expr(root);
-    let main_block = cast!(main_block, Expr::Block);
+    let _ = cast!(main_block, Expr::Block);
 
     assert_eq!(context.diagnostics, expected);
 }
@@ -332,6 +345,17 @@ fn unary_function_assignment() {
     let expected_vars = &[("a~0", "Int"), ("f~0", "(Int) -> Unit")];
 
     check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn print_simple() {
+    let input = "print \"Hello\"";
+
+    print(input);
+
+    let expected_expr = "print~0 (\"Hello\",)";
+
+    check(input, expected_expr, &[])
 }
 
 #[test]

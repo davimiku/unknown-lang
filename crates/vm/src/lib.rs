@@ -1,7 +1,10 @@
-use builtins::{LEN_STRING, PRINT_BOOL, PRINT_FLOAT, PRINT_INT, PRINT_STRING};
+use builtins::{
+    len_string, print_bool, print_float, print_int, print_string, LEN_STRING, PRINT_BOOL,
+    PRINT_FLOAT, PRINT_INT, PRINT_STRING,
+};
 use memory_recycling::Gc;
 use stack::Stack;
-use std::mem::size_of;
+use std::mem::{size_of, MaybeUninit};
 use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
 use vm_boxed_types::VMFunction;
@@ -39,44 +42,53 @@ where
 }
 
 #[derive(Debug)]
-pub struct VM<'a> {
+pub struct VM {
     /// Program stack containing values
     stack: Stack,
 
-    /// Current call frames
-    frames: Vec<CallFrame<'a>>,
+    /// Active call frames
+    frames: [CallFrame; MAX_FRAMES],
+
+    /// Current number of active call frames
+    frame_count: usize,
+
+    functions: Vec<Rc<FunctionChunk>>,
 
     interner: lasso::Rodeo,
 }
 
-impl VM<'_> {
+#[inline]
+fn init_frames() -> [CallFrame; MAX_FRAMES] {
+    let mut uninit_frames: [MaybeUninit<CallFrame>; MAX_FRAMES] =
+        unsafe { MaybeUninit::uninit().assume_init() };
+
+    for frame in &mut uninit_frames[..] {
+        unsafe {
+            std::ptr::write(frame.as_mut_ptr(), Default::default());
+        }
+    }
+
+    unsafe { std::mem::transmute::<_, [CallFrame; MAX_FRAMES]>(uninit_frames) }
+}
+
+impl VM {
     pub(crate) fn new(program_chunk: ProgramChunk) -> Self {
+        let frames = init_frames();
+        let functions = program_chunk.functions.into_iter().map(Rc::new).collect();
         let mut vm = VM {
-            // chunk: main_chunk,
             stack: Stack::default(),
-            frames: Vec::with_capacity(MAX_FRAMES),
+            frames,
+            frame_count: 0,
+            functions,
             interner: lasso::Rodeo::default(),
         };
-        vm.push_frame(&program_chunk.main());
+        vm.push_main();
 
         vm
     }
 
-    fn push_frame(&mut self, chunk: &FunctionChunk) {
-        let frameCount = self.frames.len();
-        let function = self.alloc_function(chunk);
-        let frame = CallFrame {
-            function: &function,
-            ip: todo!(),
-            slots: todo!(),
-        };
-
-        self.frames.push(frame);
-    }
-
     fn run(&mut self) -> InterpretResult<()> {
-        let mut frameCount = self.frames.len();
-        let mut frame = self.frames[frameCount - 1];
+        let mut frame = &mut self.frames[self.frame_count - 1];
         loop {
             let op = frame.function.chunk.get_op(frame.ip)?;
             frame.ip += 1;
@@ -84,15 +96,15 @@ impl VM<'_> {
             use Op::*;
             match op {
                 PushInt => {
-                    let constant = self.read::<VMInt>();
+                    let constant = frame.read::<VMInt>();
                     self.stack.push_int(constant);
                 }
                 PushFloat => {
-                    let constant = self.read::<VMFloat>();
+                    let constant = frame.read::<VMFloat>();
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let s = self.read::<VMString>();
+                    let s = frame.read::<VMString>();
                     self.stack.push_string(s);
                 }
                 PushTrue => {
@@ -111,7 +123,7 @@ impl VM<'_> {
                     self.stack.pop_qword();
                 }
                 PopN => {
-                    let num_slots = self.read::<u8>();
+                    let num_slots = frame.read::<u8>();
                     self.stack.pop_n_dynamic(num_slots);
                 }
                 PopString => {
@@ -132,30 +144,30 @@ impl VM<'_> {
                     // Gc gets dropped and reduces count
                 }
                 GetLocal => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_word_at(slot_offset);
                     self.stack.push_word(*val);
                 }
                 GetLocal2 => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let vals = self.stack.peek_dword_at(slot_offset);
 
                     self.stack.push_dword(*vals);
                 }
                 GetLocal4 => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let vals = self.stack.peek_qword_at(slot_offset);
 
                     self.stack.push_qword(*vals);
                 }
                 GetLocalN => todo!(),
                 SetLocal => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let word = self.stack.peek_word();
                     self.stack.set_word_at(*word, slot_offset);
                 }
                 SetLocal2 => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
                     let words: [Word; 2] = (*val).into();
 
@@ -164,7 +176,7 @@ impl VM<'_> {
                     }
                 }
                 SetLocal4 => {
-                    let slot_offset = self.read::<u16>() as usize;
+                    let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_qword();
                     let words: [Word; 4] = (*val).into();
 
@@ -197,7 +209,7 @@ impl VM<'_> {
                     let b = self.stack.pop_int();
                     let a = self.stack.pop_int();
                     if b == 0 {
-                        return Err(RuntimePanic::RangeError);
+                        return Err(Panic::DivideByZero);
                     }
 
                     let res = a / b;
@@ -215,7 +227,7 @@ impl VM<'_> {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
                     if b == 0.0 {
-                        return Err(RuntimePanic::DivideByZero);
+                        return Err(Panic::DivideByZero);
                     }
 
                     let res = a / b;
@@ -229,12 +241,12 @@ impl VM<'_> {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
-                    let b = self.deref_string(&b);
-                    let a = self.deref_string(&a);
+                    let b = frame.deref_string(&b);
+                    let a = frame.deref_string(&a);
 
                     // TODO: optimize out extra heap allocation, create function that
                     // copies both slices of bytes to a new pointer without intermediate Rust String
-                    let concatenated = self.alloc_string(format!("{a}{b}"));
+                    let concatenated = alloc_string(format!("{a}{b}"));
 
                     self.stack.push_string(concatenated);
                 }
@@ -244,15 +256,44 @@ impl VM<'_> {
                     todo!()
                 }
                 Builtin => {
-                    let builtin_idx = self.read::<u8>();
-                    self.call_builtin(builtin_idx);
+                    let builtin_idx = frame.read::<u8>();
+                    match builtin_idx {
+                        0 => unreachable!("no builtin at the zero byte"),
+                        PRINT_STRING => {
+                            let s = self.stack.pop_string();
+
+                            let s = frame.deref_string(&s);
+                            print_string(s);
+                        }
+                        PRINT_INT => {
+                            let int = self.stack.pop_int();
+                            print_int(int);
+                        }
+                        PRINT_FLOAT => {
+                            let float = self.stack.pop_float();
+                            print_float(float)
+                        }
+                        PRINT_BOOL => {
+                            let b = self.stack.pop_bool();
+                            print_bool(b)
+                        }
+                        LEN_STRING => {
+                            let s = self.stack.pop_string();
+
+                            let len = len_string(s);
+                            self.stack.push_int(len as VMInt);
+                        }
+                        _ => {}
+                    }
+                    // TODO: remove when reworking how builtins are called
+                    // self.call_builtin(builtin_idx);
                 }
                 Jump => {
-                    let offset = self.read::<u32>();
+                    let offset = frame.read::<u32>();
                     frame.ip += offset as usize;
                 }
                 JumpIfFalse => {
-                    let offset = self.read::<u32>();
+                    let offset = frame.read::<u32>();
                     let condition = self.stack.pop_bool();
                     if condition == 0 {
                         frame.ip += offset as usize;
@@ -273,70 +314,48 @@ impl VM<'_> {
     /// Increments current instruction pointer accordingly.
     ///
     /// Panics if there are not enough bytes to read.
-    // TODO: possibly take `ip` as a mutable reference parameter so
-    // it is removed from the VM struct?
     #[inline]
     fn read<T: BytecodeRead>(&mut self) -> T {
-        let mut frame = self.frames[self.frames.len() - 1];
+        let mut frame = self.frames.last_mut().unwrap();
         let value = frame.function.chunk.read::<T>(frame.ip);
         frame.ip += size_of::<T>();
 
         value
     }
 
-    /// Allocates a dynamically generated String.
-    ///
-    /// If the string is small, it is allocated inline. For larger string,
-    /// the data is allocated on the heap.
-    ///
-    /// It is the caller's responsibility to free the memory for this string.
-    /// Normally, this will be handled by the garbage collector or with statically
-    /// determined `drop` operations.
-    fn alloc_string(&self, s: String) -> VMString {
-        let len = s.len();
-        if len <= MAX_EMBEDDED_LENGTH {
-            let len = len as u8;
-            let mut data = [0; MAX_EMBEDDED_LENGTH];
-            s.bytes()
-                .zip(data.iter_mut())
-                .for_each(|(byte, data_ptr)| *data_ptr = byte);
-
-            VMString::new_embedded(len, data)
-        } else {
-            // let src = s.as_ptr();
-
-            // let layout = std::alloc::Layout::array::<u8>(len).expect("valid layout");
-            // let ptr = unsafe {
-            //     let dst = std::alloc::alloc(layout);
-            //     std::ptr::copy_nonoverlapping(src, dst, len);
-
-            //     dst
-            // };
-            VMString::new_allocated(s)
-        }
-    }
-
     /// Dereferences the UTF-8 string contents from the allocation
     pub(crate) fn deref_string(&self, s: &VMString) -> String {
-        let mut frame = &self.frames[self.frames.len() - 1];
+        let frame = &self.frames[self.frames.len() - 1];
 
         let constants = frame.function.chunk.borrow_constants();
         s.to_string(constants)
     }
 
-    /// Allocates a function object on the heap
-    fn alloc_function<'a>(&'a mut self, chunk: &'a FunctionChunk) -> VMFunction {
+    fn push_frame(&mut self, function_idx: usize) {
+        let chunk = self.functions[function_idx].clone();
         let name = self.interner.get_or_intern(chunk.name());
 
-        VMFunction {
+        let function = VMFunction {
             parameter_slots: 0,
             chunk,
             name: Some(name),
-        }
+        };
+        let new_frame_idx = self.frame_count;
+
+        self.frames[new_frame_idx] = CallFrame {
+            function,
+            ip: 0, // TODO: change if this becomes a pointer
+        };
+        self.frame_count += 1;
     }
 
-    fn call_function(&mut self, chunk: &FunctionChunk) {
-        self.push_frame(chunk)
+    fn push_main(&mut self) {
+        let main_idx = self.functions.len() - 1;
+        self.push_frame(main_idx)
+    }
+
+    fn call_function(&mut self, function_idx: usize) {
+        self.push_frame(function_idx)
         /*
            CallFrame* frame = &vm.frames[vm.frameCount++];
            frame->function = function;
@@ -357,36 +376,115 @@ impl VM<'_> {
         // shared access to the chunk to deref constants (ex. strings)?
         match i {
             0 => unreachable!("no builtin at the zero byte"),
-            PRINT_STRING => self.print_string(),
-            PRINT_INT => self.print_int(),
-            PRINT_FLOAT => self.print_float(),
-            PRINT_BOOL => self.print_bool(),
-            LEN_STRING => self.len_string(),
+            PRINT_STRING => {
+                let s = self.stack.pop_string();
+
+                let s = self.deref_string(&s);
+                print_string(s);
+            }
+            PRINT_INT => {
+                let int = self.stack.pop_int();
+                print_int(int);
+            }
+
+            PRINT_FLOAT => {
+                let float = self.stack.pop_float();
+                print_float(float)
+            }
+            PRINT_BOOL => {
+                let b = self.stack.pop_bool();
+                print_bool(b)
+            }
+            LEN_STRING => {
+                let s = self.stack.pop_string();
+
+                let len = len_string(s);
+                self.stack.push_int(len as VMInt);
+            }
             _ => {}
         }
     }
 }
 
-pub type InterpretResult<T> = Result<T, RuntimePanic>;
+/// Allocates a dynamically generated String.
+///
+/// If the string is small, it is allocated inline. For larger string,
+/// the data is allocated on the heap.
+///
+/// It is the caller's responsibility to free the memory for this string.
+/// Normally, this will be handled by the garbage collector or with reference
+/// counting.
+fn alloc_string(s: String) -> VMString {
+    let len = s.len();
+    if len <= MAX_EMBEDDED_LENGTH {
+        let len = len as u8;
+        let mut data = [0; MAX_EMBEDDED_LENGTH];
+        s.bytes()
+            .zip(data.iter_mut())
+            .for_each(|(byte, data_ptr)| *data_ptr = byte);
 
-#[derive(Debug, Clone, Copy)]
-pub struct CallFrame<'a> {
-    function: &'a VMFunction<'a>,
+        VMString::new_embedded(len, data)
+    } else {
+        // let src = s.as_ptr();
+
+        // let layout = std::alloc::Layout::array::<u8>(len).expect("valid layout");
+        // let ptr = unsafe {
+        //     let dst = std::alloc::alloc(layout);
+        //     std::ptr::copy_nonoverlapping(src, dst, len);
+
+        //     dst
+        // };
+        VMString::new_allocated(s)
+    }
+}
+
+pub type InterpretResult<T> = Result<T, Panic>;
+
+#[derive(Debug, Clone, Default)]
+pub struct CallFrame {
+    /// The function and its metadata for this call frame
+    function: VMFunction,
 
     // Review what the book said about using a pointer is faster?
+    /// Instruction Pointer
+    ///
+    /// Points to the current bytecode Op, is mutated as bytecode is executed
     ip: usize,
+    // A view into the program Stack
+    // TODO: do we need this? Would cause shared mutability with the VM
+    // why would CallFrame need access to the stack?
+    // slots: RefCell<Stack>,
+}
 
-    slots: &'a [Word],
+impl CallFrame {
+    #[inline]
+    fn read<T: BytecodeRead>(&mut self) -> T {
+        let value = self.function.chunk.read::<T>(self.ip);
+        self.ip += size_of::<T>();
+
+        value
+    }
+
+    pub(crate) fn deref_string(&self, s: &VMString) -> String {
+        let constants = self.function.chunk.borrow_constants();
+        s.to_string(constants)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum RuntimePanic {
+pub enum Panic {
+    /// Bytecode encountered an invalid operation.
+    /// Always indicates a compiler bug.
     InvalidOpError(InvalidOpError),
+
+    /// Out of range access or out of bounds index
     RangeError,
+
+    /// Division by zero
     DivideByZero,
 }
 
-impl From<InvalidOpError> for RuntimePanic {
+impl From<InvalidOpError> for Panic {
     fn from(e: InvalidOpError) -> Self {
         Self::InvalidOpError(e)
     }
