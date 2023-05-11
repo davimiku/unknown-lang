@@ -1,7 +1,5 @@
 use vm_types::{string::VMString, VMBool, VMFloat, VMInt};
 
-use crate::VM;
-
 // TODO: move to a shared "builtins" crate
 // remove duplication with vm_codegen crate
 pub const PRINT_STRING: u8 = 1;
@@ -16,18 +14,22 @@ pub(crate) fn print_string(s: String) {
     println!("{s}");
 }
 
+#[inline]
 pub(crate) fn print_int(int: VMInt) {
     println!("{int}");
 }
 
+#[inline]
 pub(crate) fn print_float(float: VMFloat) {
     println!("{float:?}");
 }
 
+#[inline]
 pub(crate) fn print_bool(b: VMBool) {
     println!("{}", b != 0);
 }
 
+#[inline]
 pub(crate) fn len_string(s: VMString) -> VMInt {
     s.length()
 }

@@ -4,16 +4,29 @@ fn main() -> io::Result<()> {
     let input = get_program_input()?;
     println!("test input: `{input}`");
 
-    let chunk = compiler::compile(&input);
-    println!("{chunk:?}");
+    let compile_result = compiler::compile(&input);
+    println!();
 
-    println!("Begin execution:");
-    println!("===== =====");
+    match compile_result {
+        Ok(chunk) => {
+            for function in chunk.functions.iter() {
+                println!("{function}");
+            }
+            println!("Begin execution:");
+            println!("===== =====");
 
-    let result = vm::run(chunk);
+            let result = vm::run(chunk);
 
-    println!("===== =====");
-    println!("result: {result:?}");
+            println!("===== =====");
+            println!("result: {result:?}");
+        }
+        Err(diagnostics) => {
+            eprintln!("compilation failed!");
+            for diagnostic in diagnostics {
+                eprintln!("{diagnostic:?}");
+            }
+        }
+    }
 
     Ok(())
 }
@@ -33,7 +46,10 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"print 123"#;
+    let program = r#"
+    let identity = (s: String) -> s
+    let hello = identity "12345678"
+    print hello"#;
 
     Ok(program.to_owned())
 }

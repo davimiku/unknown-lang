@@ -228,6 +228,14 @@ impl Function {
             .find_map(Expr::cast)
     }
 
+    pub fn name(&self) -> Option<String> {
+        self.0
+            .parent()
+            .and_then(LetBinding::cast)
+            .and_then(|let_binding| let_binding.name())
+            .map(|token| token.text().to_owned())
+    }
+
     pub fn range(&self) -> TextRange {
         self.0.text_range()
     }

@@ -2,11 +2,9 @@ use std::fmt;
 
 use la_arena::Idx;
 
-use crate::{
-    interner::{Interner, Key},
-    type_expr::TypeExpr,
-    COMPILER_BRAND,
-};
+use crate::interner::{Interner, Key};
+use crate::type_expr::TypeExpr;
+use crate::COMPILER_BRAND;
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
@@ -71,9 +69,10 @@ pub struct LocalDefExpr {
     pub type_annotation: Option<Idx<TypeExpr>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LocalDefKey {
-    name: Key,
+    // name: Key,
+    pub name: Key,
 
     /// Unique number for this Name within this Context
     idx: u32,
@@ -139,8 +138,14 @@ pub struct CallExpr {
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionExpr {
+    /// Parameters to the function
     pub params: Vec<FunctionParam>,
+
+    /// Body of the function
     pub body: Idx<Expr>,
+
+    /// Name of the function, if available
+    pub name: Option<Key>,
 }
 
 #[derive(Debug, PartialEq)]

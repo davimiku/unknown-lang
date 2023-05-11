@@ -17,7 +17,7 @@ pub use expr::{
     LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
 };
 use fmt_expr::fmt_root;
-pub use typecheck::{FunctionType, Type};
+pub use typecheck::{ArrayType, FunctionType, Type};
 
 use database::Database;
 

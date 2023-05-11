@@ -5,14 +5,15 @@ pub enum Type {
     Undetermined,
     Error,
 
+    Top,
+    Bottom,
+    Unit,
+
     // Literals
     BoolLiteral(bool),
     FloatLiteral(f64), // TODO: shared alias of Float
     IntLiteral(i64),   // TODO: shared alias of Int
     StringLiteral(Key),
-
-    // Unit
-    Unit,
 
     // Scalars
     Bool,
@@ -20,15 +21,17 @@ pub enum Type {
     Int,
     String,
 
-    Top,
-    Bottom,
-
-    // Compound
     // TODO: arena allocate Type so that recursive types can be Copy?
-    // Struct
+
+    // Sum
     // Union
-    // Newtype
+
+    // Product
+    // Struct
+
+    // Exponential
     Function(FunctionType),
+    Array(ArrayType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,4 +44,9 @@ impl Default for Type {
     fn default() -> Self {
         Self::Undetermined
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayType {
+    pub of: Box<Type>,
 }

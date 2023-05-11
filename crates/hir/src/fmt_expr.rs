@@ -6,7 +6,7 @@ use crate::expr::{
 };
 use crate::interner::Interner;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::typecheck::{fmt_local_types, FunctionType};
+use crate::typecheck::{fmt_local_types, ArrayType, FunctionType};
 use crate::{Context, Expr, Type};
 
 const DEFAULT_INDENT: usize = 4;
@@ -92,8 +92,15 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
 }
 
 fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
-    let FunctionExpr { params, body } = function;
-    s.push_str("fun (");
+    let FunctionExpr { params, body, name } = function;
+    s.push_str("fun");
+    if let Some(key) = name {
+        let name = context.interner.lookup(*key);
+        s.push('<');
+        s.push_str(name);
+        s.push('>');
+    }
+    s.push_str(" (");
     for param in params {
         s.push_str(&param.name.display(context.interner));
         s.push_str(" : ");
@@ -109,8 +116,7 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
         }
     }
     s.push_str(") -> ");
-
-    fmt_expr(s, *body, context, indent)
+    fmt_expr(s, *body, context, indent);
 }
 
 fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, indent: usize) {
@@ -187,6 +193,7 @@ pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
 
             s
         }
+        Type::Array(ArrayType { of }) => format!("[]{}", fmt_type(of, interner)),
         // Type::Named(name) => interner.lookup(*name).to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Top => "Top".to_string(),

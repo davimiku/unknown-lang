@@ -5,22 +5,22 @@
 //! - Text ranges corresponding to opcodes for debug information and errors
 //! - Constants pool for constants not encoded into operands, ex. strings
 use code::Code;
-pub use op::{InvalidOpError, Op};
+pub use op::{InvalidOpError, Op, ReturnType};
 
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_types::string::VMString;
 use vm_types::{VMBool, VMFloat, VMInt};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug, Display};
 use std::mem;
 use std::ops::Range;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionType, IfExpr, LocalDefKey,
-    LocalRefExpr, Type, UnaryExpr, UnaryOp,
+    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, LocalDefKey, LocalRefExpr, Type,
+    UnaryExpr, UnaryOp,
 };
 
 mod code;
@@ -38,8 +38,8 @@ pub const PRINT_BOOL: u8 = 4;
 /// Byte size of an Op::Jump or Op::JumpIfFalse with their u32 operand
 const JUMP_WITH_OFFSET_SIZE: usize = 5;
 
-pub fn codegen(idx: &Idx<Expr>, context: &hir::Context) -> ProgramChunk {
-    let mut codegen = Codegen::new();
+pub fn codegen(idx: &Idx<Expr>, context: &mut hir::Context) -> ProgramChunk {
+    let mut codegen = Codegen::new(context);
 
     codegen.write_expr(*idx, context);
 
@@ -61,18 +61,47 @@ struct Codegen {
     function_map: HashMap<String, usize>,
 }
 
-impl Codegen {
-    fn new() -> Self {
-        let mut codegen = Codegen::default();
-        // TODO: set parameter_slots to account for CLI args?
+/// Word size of an array, currently used to reserve stack slots
+/// for the array of CLI arguments.
+///
+/// TODO: Move to an `array` module (maybe in `vm_types`) when arrays are implemented
+const ARRAY_WORD_SIZE: u16 = 2;
 
-        codegen.push_func(0, "main", 0);
+/// Casts the target expression into the expected variant, or
+/// panics otherwise.
+///
+/// ```ignore
+/// let function_ty = cast!(expr_idx, Type::Function);
+/// ```
+macro_rules! cast {
+    ($target: expr, $pat: path) => {{
+        if let $pat(a) = $target {
+            a
+        } else {
+            panic!("mismatch variant when cast to {}", stringify!($pat));
+        }
+    }};
+}
+
+impl Codegen {
+    fn new(context: &mut hir::Context) -> Self {
+        let mut codegen = Codegen::default();
+
+        codegen.push_func(0, "main", ARRAY_WORD_SIZE, 1);
+
+        let args_local_key = context.find_local("args").unwrap();
+        let main = codegen.curr_mut();
+        main.add_local(args_local_key, ARRAY_WORD_SIZE);
+
+        // TODO: implement Array
+        main.push_alloc_type(&Type::Int);
+        main.push_alloc_type(&Type::Int);
 
         codegen
     }
 
     fn take_chunk(mut self) -> ProgramChunk {
-        self.finish_func(); // finish main
+        self.finish_func(true); // finish main
 
         ProgramChunk {
             functions: self.finished_functions,
@@ -97,13 +126,64 @@ impl Codegen {
         &mut self.current_functions.last_mut().unwrap().chunk
     }
 
-    fn push_func(&mut self, id: usize, name: &str, parameter_slots: u32) {
-        self.current_functions
-            .push(FunctionCodegen::new(id, name, parameter_slots))
+    fn push_func(&mut self, id: usize, name: &str, parameter_slots: u16, return_slots: u16) {
+        let func_codegen = FunctionCodegen::new(id, name, parameter_slots, return_slots);
+        self.current_functions.push(func_codegen);
     }
 
-    fn finish_func(&mut self) {
-        self.append_ret();
+    fn finish_func(&mut self, is_main: bool) {
+        let curr = self.curr();
+        let return_slots = curr.return_slots;
+
+        // slots to pop should be (total words of locals) + (return slots) because
+        // at this point the return values is on the top of the stack. We need to SetLocal
+        // that return value into the slot zero which is reserved for the return
+        let slots_to_pop = curr.next_stack_slot_index - return_slots - FUNC_PTR_SLOT;
+
+        let pops = self.synth_pops(slots_to_pop, TextRange::default());
+
+        // return value slots are allotted as a local at offset zero
+        let set_op = match return_slots {
+            0 => todo!("fix me"), // maybe make this an Option::None
+            1 => Op::SetLocal,
+            2 => Op::SetLocal2,
+            4 => Op::SetLocal4,
+            _ => Op::SetLocalN,
+        };
+        let mut set_return_slots: Code = synth_op(set_op, TextRange::default()).into();
+        set_return_slots.push_u16(0);
+        if set_op == Op::SetLocalN {
+            set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
+        }
+
+        let curr_chunk = self.curr_chunk_mut();
+
+        // TODO: this is a hack, figure out a better way to handle main's exit code as a return value
+        if !is_main {
+            // Put the return value in the right spot
+            curr_chunk.append(set_return_slots);
+
+            // pops for top of stack value
+            match return_slots {
+                0 => {}
+                1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
+                2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
+                4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
+                n => {
+                    curr_chunk.append(synth_op_operands(
+                        Op::PopN,
+                        TextRange::default(),
+                        &n.to_le_bytes(),
+                    ));
+                }
+            };
+        }
+
+        // pops for the locals (including parameters)
+        curr_chunk.append(pops);
+
+        // return from the function, which will pop the function pointer
+        curr_chunk.write_op(Op::Return, TextRange::default());
 
         let curr = self.current_functions.pop().unwrap();
         self.finished_functions.push(curr.chunk);
@@ -112,44 +192,58 @@ impl Codegen {
     fn write_expr(&mut self, expr: Idx<Expr>, context: &hir::Context) {
         let code = self.synth_expr(expr, context);
 
-        self.curr_chunk_mut().code.append(code);
-    }
-
-    fn append_ret(&mut self) {
-        self.curr_chunk_mut()
-            .code
-            .append(Code::from_op(Op::Ret, Default::default()))
+        self.curr_chunk_mut().append(code);
     }
 
     /// Generates the bytecode and `TextRange`s for an expression.
+    #[must_use]
     fn synth_expr(&mut self, expr_idx: Idx<Expr>, context: &hir::Context) -> Code {
         use Expr::*;
 
         let expr = context.expr(expr_idx);
         let range = context.range_of(expr_idx);
         match expr {
+            // TODO: clean up this messy logic
             Function(expr) => {
-                self.push_func(0, "", 0);
+                let name = expr.name.map_or("", |key| context.lookup(key));
 
-                // let curr = self.curr_mut();
-                // TODO: set curr.current_stack_slots using expr.params
+                let mut param_types: BTreeMap<LocalDefKey, &Type> = BTreeMap::default();
+                for param in expr.params.iter() {
+                    let param_key = param.name;
+                    let ty = context
+                        .type_of_local(&param_key)
+                        .expect("type of parameter is known");
+
+                    param_types.insert(param_key, ty);
+                }
+                let return_ty = &cast!(context.type_of_expr(expr_idx), Type::Function).return_ty;
+                let return_slots = word_size_of(return_ty);
+
+                let id = self.finished_functions.len();
+                let parameter_slots: u16 = param_types.values().map(|ty| word_size_of(ty)).sum();
+                self.push_func(id, name, parameter_slots, return_slots);
+
+                let curr = self.curr_mut();
+                for (param_key, param_type) in param_types {
+                    curr.add_local(param_key, word_size_of(param_type));
+                    curr.push_alloc_type(param_type);
+                }
 
                 self.write_expr(expr.body, context);
-                self.finish_func();
+                self.finish_func(false);
 
-                // ??? what bytecode is generated here?
-                Code::default()
+                synth_op_operands(Op::PushLocalFunc, range, &((id as u32).to_le_bytes()))
             }
 
-            BoolLiteral(b) => self.synth_bool_constant(*b, range),
-            FloatLiteral(f) => self.synth_float_constant(*f, range),
-            IntLiteral(i) => self.synth_int_constant(*i, range),
+            BoolLiteral(b) => synth_bool_constant(*b, range),
+            FloatLiteral(f) => synth_float_constant(*f, range),
+            IntLiteral(i) => synth_int_constant(*i, range),
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
 
             Binary(expr) => self.synth_binary_expr(expr, context),
             Unary(expr) => self.synth_unary_expr(expr, context),
             LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
-            Call(expr) => self.synth_call_expr(expr, context),
+            Call(expr) => self.synth_call_expr(expr_idx, expr, context),
             LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
             UnresolvedLocalRef { key } => unreachable!(),
             Block(expr) => self.synth_block_expr(expr, context),
@@ -161,39 +255,14 @@ impl Codegen {
         }
     }
 
-    fn synth_op(&self, op: Op, range: TextRange) -> (u8, TextRange) {
-        (op as u8, range)
-    }
-
-    fn synth_bool_constant(&self, value: bool, range: TextRange) -> Code {
-        match value {
-            true => self.synth_op(Op::PushTrue, range),
-            false => self.synth_op(Op::PushFalse, range),
-        }
-        .into()
-    }
-
-    fn synth_float_constant(&self, value: f64, range: TextRange) -> Code {
-        let mut code: Code = self.synth_op(Op::PushFloat, range).into();
-        code.extend_from_slice(&value.to_le_bytes());
-
-        code
-    }
-
-    fn synth_int_constant(&self, value: VMInt, range: TextRange) -> Code {
-        let mut code: Code = self.synth_op(Op::PushInt, range).into();
-        code.extend_from_slice(&value.to_le_bytes());
-
-        code
-    }
-
+    #[must_use]
     fn synth_string_constant(&mut self, value: &str, range: TextRange) -> Code {
         let idx = self.curr_chunk().constants.len();
         let len = value.len() as u32;
         self.curr_chunk_mut().constants.extend(value.as_bytes());
 
         let mut code = Code::default();
-        code.push(self.synth_op(Op::PushString, range));
+        code.push((Op::PushString, range));
 
         let string = VMString::new_constant(len, idx);
         let string_bytes: [u8; 16] = string.into();
@@ -202,6 +271,7 @@ impl Codegen {
         code
     }
 
+    #[must_use]
     fn synth_binary_expr(&mut self, expr: &BinaryExpr, context: &hir::Context) -> Code {
         let BinaryExpr { op, lhs, rhs } = expr;
         let lhs_type = context.type_of_expr(*lhs);
@@ -213,27 +283,27 @@ impl Codegen {
         use Type::*;
         code.push(match op {
             Add => match lhs_type {
-                Float | FloatLiteral(_) => self.synth_op(Op::AddFloat, TextRange::default()),
-                Int | IntLiteral(_) => self.synth_op(Op::AddInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::AddFloat, TextRange::default()),
+                Int | IntLiteral(_) => (Op::AddInt, TextRange::default()),
                 _ => unreachable!(),
             },
             Sub => match lhs_type {
-                Float | FloatLiteral(_) => self.synth_op(Op::SubFloat, TextRange::default()),
-                Int | IntLiteral(_) => self.synth_op(Op::SubInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::SubFloat, TextRange::default()),
+                Int | IntLiteral(_) => (Op::SubInt, TextRange::default()),
                 _ => unreachable!(),
             },
             Mul => match lhs_type {
-                Float | FloatLiteral(_) => self.synth_op(Op::MulFloat, TextRange::default()),
-                Int | IntLiteral(_) => self.synth_op(Op::MulInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::MulFloat, TextRange::default()),
+                Int | IntLiteral(_) => (Op::MulInt, TextRange::default()),
                 _ => unreachable!(),
             },
             Div => match lhs_type {
-                Float | FloatLiteral(_) => self.synth_op(Op::DivFloat, TextRange::default()),
-                Int | IntLiteral(_) => self.synth_op(Op::DivInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::DivFloat, TextRange::default()),
+                Int | IntLiteral(_) => (Op::DivInt, TextRange::default()),
                 _ => unreachable!(),
             },
             Concat => match lhs_type {
-                String | StringLiteral(_) => self.synth_op(Op::ConcatString, TextRange::default()),
+                String | StringLiteral(_) => (Op::ConcatString, TextRange::default()),
                 _ => unreachable!(),
             },
             Rem => todo!(),
@@ -244,6 +314,7 @@ impl Codegen {
         code
     }
 
+    #[must_use]
     fn synth_unary_expr(&mut self, expr: &UnaryExpr, context: &hir::Context) -> Code {
         let UnaryExpr { op, expr: idx } = expr;
         let expr_type = context.type_of_expr(*idx);
@@ -253,11 +324,11 @@ impl Codegen {
         use Type::*;
         use UnaryOp::*;
         code.push(match (op, expr_type) {
-            (Neg, Int) | (Neg, IntLiteral(_)) => self.synth_op(Op::NegateInt, TextRange::default()),
+            (Neg, Int) | (Neg, IntLiteral(_)) => synth_op(Op::NegateInt, TextRange::default()),
             (Neg, Float) | (Neg, FloatLiteral(_)) => {
-                self.synth_op(Op::NegateFloat, TextRange::default())
+                synth_op(Op::NegateFloat, TextRange::default())
             }
-            (Not, Bool) | (Not, BoolLiteral(_)) => self.synth_op(Op::NotBool, TextRange::default()),
+            (Not, Bool) | (Not, BoolLiteral(_)) => synth_op(Op::NotBool, TextRange::default()),
 
             _ => unreachable!(),
         });
@@ -265,76 +336,95 @@ impl Codegen {
         code
     }
 
+    #[must_use]
     fn synth_local_def(
         &mut self,
-        key: LocalDefKey,
+        local_key: LocalDefKey,
         value: Idx<Expr>,
         context: &hir::Context,
     ) -> Code {
         let mut code = self.synth_expr(value, context);
 
-        let expr_type = context.type_of_expr(value);
-        let word_size = word_size_of(expr_type);
+        let local_type = context.type_of_expr(value);
+        let local_size = word_size_of(local_type);
 
-        let set_op = match word_size {
-            0 => unreachable!(),
+        let set_op = match local_size {
+            0 => unreachable!("?"),
             1 => Op::SetLocal,
             2 => Op::SetLocal2,
             4 => Op::SetLocal4,
-
             _ => Op::SetLocalN,
         };
-        code.append(Code::from_op(set_op, TextRange::default()));
-        code.extend_from_slice(&self.curr().current_stack_slots.to_le_bytes());
+        code.push((set_op, TextRange::default()));
+        code.extend_from_slice(&self.curr().next_stack_slot_index.to_le_bytes());
         if set_op == Op::SetLocalN {
-            code.extend_from_slice(&word_size.to_le_bytes());
+            code.extend_from_slice(&local_size.to_le_bytes());
         }
 
-        let mut curr = self.curr_mut();
+        let curr = self.curr_mut();
 
-        curr.stack_slots
-            .insert(key, (curr.current_stack_slots, word_size));
-        curr.current_stack_slots += word_size;
+        curr.add_local(local_key, local_size);
+        curr.push_alloc_type(local_type);
 
         code
     }
 
+    #[must_use]
     fn synth_block_expr(&mut self, expr: &BlockExpr, context: &hir::Context) -> Code {
         let BlockExpr { exprs } = expr;
 
-        let start_stack_slot_size = self.curr().current_stack_slots;
+        let start_stack_slot_size = self.curr().next_stack_slot_index;
 
         let mut code = Code::default();
         for expr in exprs {
             code.append(self.synth_expr(*expr, context));
         }
 
-        let slots_to_pop = self.curr().current_stack_slots - start_stack_slot_size;
+        // TODO: handle return value
+        let slots_to_pop = self.curr().next_stack_slot_index - start_stack_slot_size;
+        code.append(self.synth_pops(slots_to_pop, TextRange::default()));
+        self.curr_mut().next_stack_slot_index = start_stack_slot_size;
 
-        match slots_to_pop {
-            0 => {}
-            1 => code.push(self.synth_op(Op::Pop1, TextRange::default())),
-            2 => code.push(self.synth_op(Op::Pop2, TextRange::default())),
-            4 => code.push(self.synth_op(Op::Pop4, TextRange::default())),
-            n => {
-                code.push(self.synth_op(Op::PopN, TextRange::default()));
-                code.extend_from_slice(&n.to_le_bytes());
+        code
+    }
+
+    #[must_use]
+    fn synth_pops(&mut self, slots_to_pop: u16, range: TextRange) -> Code {
+        let curr = self.curr_mut();
+        let start = curr.alloc_types.len() - slots_to_pop as usize;
+
+        let mut code = Code::default();
+        curr.alloc_types.drain(start..).rev().for_each(|item| {
+            match item {
+                AllocType::WordN(n) => match n {
+                    0 => {}
+                    1 => code.push((Op::Pop1, range)),
+                    2 => code.push((Op::Pop2, range)),
+                    4 => code.push((Op::Pop4, range)),
+                    n => {
+                        code.push((Op::PopN, range));
+                        code.push_u16(n);
+                    }
+                },
+                AllocType::String => code.push((Op::PopString, range)),
+                // TODO: implement Array
+                AllocType::Array => code.push((Op::Pop2, range)),
+                AllocType::Rc => code.push((Op::PopRc, range)),
+                AllocType::Gc => code.push((Op::PopGc, range)),
+                AllocType::Noop => {}
             }
-        }
-
-        self.curr_mut().current_stack_slots = start_stack_slot_size;
-
+        });
         code
     }
 
     /// The jump offsets for if/else operations are not backpatched, they are synthesized
     /// (synth) first rather than directly writing to the chunk. That allows us to synth
     /// the "then branch" of an if/else and get its byte length to write the jump offset
-    /// before writing the "then branch".
+    /// before writing the "then branch", which was easier to implement.
     ///
-    /// This allows me to write correct code because I am horrible at manually dealing
-    /// with byte offsets and bitwise operations. There may be a performance impact of
-    /// this that can be evaluated later.
+    /// This could be rewritten to use backpatching if there is a performance hit
+    /// of the intermediate allocations.
+    #[must_use]
     fn synth_if_expr(&mut self, expr: &IfExpr, context: &hir::Context) -> Code {
         let IfExpr {
             condition,
@@ -343,7 +433,7 @@ impl Codegen {
         } = expr;
         let mut code = self.synth_expr(*condition, context);
 
-        code.push(self.synth_op(Op::JumpIfFalse, TextRange::default()));
+        code.push((Op::JumpIfFalse, TextRange::default()));
 
         // synth the then_branch **before** appending the operand of Op::JumpIfFalse
         // TODO: is then_branch a BlockExpr? Otherwise we need to handle scopes
@@ -360,7 +450,7 @@ impl Codegen {
         code.append(then_code);
 
         if let Some(else_branch) = else_branch {
-            code.push(self.synth_op(Op::Jump, TextRange::default()));
+            code.push((Op::Jump, TextRange::default()));
 
             // synth the else_branch first, to calculate Op::Jump offset
             let else_code = self.synth_expr(*else_branch, context);
@@ -374,19 +464,22 @@ impl Codegen {
         code
     }
 
-    fn synth_call_expr(&mut self, expr: &CallExpr, context: &hir::Context) -> Code {
+    #[must_use]
+    fn synth_call_expr(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &CallExpr,
+        context: &hir::Context,
+    ) -> Code {
         let CallExpr {
             callee,
             args,
             callee_path,
         } = expr;
+        let return_ty = &cast!(context.type_of_expr(*callee), Type::Function).return_ty;
+        let return_slots = word_size_of(return_ty);
 
         let mut code = Code::default();
-
-        // TODO: this is a hack
-        if callee_path != "print" {
-            code.append(self.synth_expr(*callee, context));
-        }
 
         for arg in args {
             code.append(self.synth_expr(*arg, context));
@@ -397,12 +490,15 @@ impl Codegen {
         if callee_path == "print" {
             code.append(self.synth_builtin_call(callee_path, arg_types));
         } else {
-            // TODO: generate Op::Call ?
+            code.append(self.synth_expr(*callee, context));
+            code.push((Op::CallFunction, context.range_of(expr_idx)));
+            code.push_u16(return_slots);
         }
 
         code
     }
 
+    #[must_use]
     fn synth_local_ref(
         &mut self,
         expr_idx: Idx<Expr>,
@@ -410,10 +506,8 @@ impl Codegen {
         context: &hir::Context,
     ) -> Code {
         let (slot_number, slot_size) = self.curr().stack_slots[&expr.key];
-        // let expr_type = context.type_of_expr(expr_idx);
-        // let word_size = word_size_of(expr_type);
         let op = match slot_size {
-            0 => unreachable!(),
+            0 => unreachable!("or could a variable be assigned to unit?"),
             1 => Op::GetLocal,
             2 => Op::GetLocal2,
             4 => Op::GetLocal4,
@@ -421,7 +515,8 @@ impl Codegen {
             _ => Op::GetLocalN,
         };
 
-        let mut code = Code::from_op(op, TextRange::default());
+        let range = context.range_of(expr_idx);
+        let mut code = Code::from_op(op, range);
 
         code.extend_from_slice(&slot_number.to_le_bytes());
 
@@ -432,8 +527,11 @@ impl Codegen {
         code
     }
 
+    #[must_use]
     fn synth_builtin_call(&mut self, path: &str, arg_types: Vec<&Type>) -> Code {
         if path == "print" {
+            // TODO: "print" is just for String. Provide a temporary ToString operator until type parameters are
+            // implemented, then "print" can take a `Into<String>`
             let arg_type = *arg_types.get(0).expect("print to have 1 argument");
             let builtin_idx = match arg_type {
                 Type::Bool | Type::BoolLiteral(_) => PRINT_BOOL,
@@ -451,13 +549,66 @@ impl Codegen {
         Code::default()
     }
 
+    #[must_use]
     fn synth_builtin(&mut self, builtin_idx: u8, range: TextRange) -> Code {
         let mut code = Code::default();
-        code.push(self.synth_op(Op::Builtin, range));
-        code.push_byte(builtin_idx);
+        code.push((Op::CallBuiltin, range));
+        code.push_u8(builtin_idx);
 
         code
     }
+}
+
+fn synth_op(op: Op, range: TextRange) -> (u8, TextRange) {
+    (op as u8, range)
+}
+
+#[must_use]
+fn synth_op_operands(op: Op, range: TextRange, operands: &[u8]) -> Code {
+    let mut code: Code = synth_op(op, range).into();
+    code.extend_from_slice(operands);
+
+    code
+}
+
+#[must_use]
+fn synth_bool_constant(value: bool, range: TextRange) -> Code {
+    match value {
+        true => synth_op(Op::PushTrue, range),
+        false => synth_op(Op::PushFalse, range),
+    }
+    .into()
+}
+
+#[must_use]
+fn synth_float_constant(value: f64, range: TextRange) -> Code {
+    synth_op_operands(Op::PushFloat, range, &value.to_le_bytes())
+}
+
+#[must_use]
+fn synth_int_constant(value: VMInt, range: TextRange) -> Code {
+    synth_op_operands(Op::PushFloat, range, &value.to_le_bytes())
+}
+
+/// Represents the allocation type of a value.
+///
+/// The allocation type is important to determine which
+/// pop instruction needs to be emitted for that value.
+///
+/// For example, a `Rc` (reference-counted) allocated value
+/// needs the Op::Rc instruction emitted so the Rc pointer
+/// can be constructed from the raw pointer, then dropped to
+/// reduce the strong count on that Rc.
+#[derive(Debug)]
+enum AllocType {
+    WordN(u16),
+
+    String,
+    Array,
+    Rc,
+    Gc,
+
+    Noop,
 }
 
 #[derive(Debug, Default)]
@@ -466,6 +617,7 @@ pub struct ProgramChunk {
 }
 
 impl ProgramChunk {
+    #[cfg(test)]
     fn main(&self) -> &FunctionChunk {
         self.functions.last().unwrap()
     }
@@ -478,21 +630,79 @@ pub struct FunctionCodegen {
     /// Bytecode chunk being generated
     chunk: FunctionChunk,
 
-    /// Running total of the stack slots that have been allocated for locals
-    current_stack_slots: u16,
+    /// Total slots allocated for function return values
+    return_slots: u16,
+
+    /// Total slots allocated for function parameters
+    parameter_slots: u16,
+
+    /// Running index of the stack slots that have been allocated for this function
+    ///
+    /// Includes return slots, self (function) pointer, parameters, and locals.
+    next_stack_slot_index: u16,
 
     /// Map from a unique LocalDef to (slot_number, slot_size) in the stack
     stack_slots: HashMap<LocalDefKey, (u16, u16)>,
+
+    /// Keeps track of values to be able to emit specific pop instructions
+    ///
+    /// There are specialized pop instructions to handle allocated values, such
+    /// as Op::PopGc and Op::PopRc. Any time we need to emit bytecode Pop instructions
+    /// we pop from this which tells us what kind of Pop instruction to emit.
+    alloc_types: Vec<AllocType>,
 }
 
+const FUNC_PTR_SLOT: u16 = 1;
+
 impl FunctionCodegen {
-    fn new(id: usize, name: &str, parameter_slots: u32) -> Self {
+    fn new(id: usize, name: &str, parameter_slots: u16, return_slots: u16) -> Self {
         Self {
             chunk: FunctionChunk::new(name, parameter_slots),
             id,
-            current_stack_slots: 0,
+            return_slots,
+            parameter_slots,
+            next_stack_slot_index: return_slots + FUNC_PTR_SLOT,
+            alloc_types: Default::default(),
             stack_slots: Default::default(),
         }
+    }
+
+    fn add_local(&mut self, local_key: LocalDefKey, local_size: u16) {
+        self.stack_slots
+            .insert(local_key, (self.next_stack_slot_index, local_size));
+        self.next_stack_slot_index += local_size;
+    }
+
+    // TODO: after Arrays are implemented, this can be moved inside of `add_local`
+    // since there's nowhere that needs to call just this function
+    fn push_alloc_type(&mut self, local_type: &Type) {
+        let local_size = word_size_of(local_type);
+        let alloc_type = match (local_type, local_size) {
+            (Type::String | Type::StringLiteral(_), _) => AllocType::String,
+            (Type::Function(_), _) => AllocType::Rc,
+
+            (_, 0) => unreachable!(),
+            (_, 1) => AllocType::WordN(1),
+            (_, 2) => AllocType::WordN(2),
+            (_, 4) => AllocType::WordN(4),
+
+            (_, n) => AllocType::WordN(n),
+        };
+
+        match alloc_type {
+            AllocType::WordN(n) => {
+                self.alloc_types.push(AllocType::WordN(n));
+                for _ in 0..n - 1 {
+                    self.alloc_types.push(AllocType::Noop);
+                }
+            }
+            AllocType::Array => todo!(),
+            AllocType::String => {
+                self.alloc_types.push(AllocType::String);
+                self.alloc_types.push(AllocType::Noop); // 2nd word of string
+            }
+            p => self.alloc_types.push(p),
+        };
     }
 }
 
@@ -502,7 +712,7 @@ pub struct FunctionChunk {
     code: Code,
 
     /// Total "slots" / words used by parameters of this function
-    parameter_slots: u32,
+    pub parameter_slots: u16,
 
     /// constants pool that are not encoded as operands, ex. strings
     ///
@@ -516,20 +726,33 @@ pub struct FunctionChunk {
 
 // Constructors
 impl FunctionChunk {
-    fn new(name: &str, parameter_slots: u32) -> Self {
-        let mut chunk = Self::default();
-        chunk.parameter_slots = parameter_slots;
+    fn new(name: &str, parameter_slots: u16) -> Self {
+        let mut chunk = Self {
+            parameter_slots,
+            ..Self::default()
+        };
 
-        chunk.constants.push(name.len() as u8);
-        chunk.constants.extend_from_slice(name.as_bytes());
-
+        chunk.add_name_to_constants(name);
         chunk
+    }
+
+    fn append(&mut self, source: Code) {
+        self.code.append(source);
     }
 }
 
 // Mutating functions
 
 impl FunctionChunk {
+    fn add_name_to_constants(&mut self, name: &str) {
+        let len = name.len();
+        self.constants.push(len as u8);
+
+        if len > 0 {
+            self.constants.extend_from_slice(name.as_bytes());
+        }
+    }
+
     fn write_op(&mut self, op: Op, range: TextRange) {
         self.code.bytes.push(op as u8);
         self.code.ranges.push(range);
@@ -544,7 +767,7 @@ impl FunctionChunk {
     }
 
     pub fn write_ret(&mut self, range: TextRange) {
-        self.write_op(Op::Ret, range);
+        self.write_op(Op::Return, range);
     }
 
     pub fn write_noop(&mut self, range: TextRange) {
@@ -584,12 +807,13 @@ impl FunctionChunk {
 
     /// Gets the name of the function from the bytecode
     pub fn name(&self) -> &str {
-        let len = self.constants[0] as usize;
+        // TODO: need to have compile error for functions with name >255 characters
+        let len = self.constants[0];
         if len == 0 {
             return "";
         }
 
-        let bytes = &self.constants[1..len];
+        let bytes = &self.constants[1..((len + 1) as usize)];
 
         // Safety: bytes were valid UTF-8 when Self was created
         unsafe { std::str::from_utf8_unchecked(bytes) }
@@ -643,6 +867,13 @@ impl Display for FunctionChunk {
     /// This format is not stable and should not be depended on for
     /// any kind of machine parsing.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut name = self.name();
+        if name.is_empty() {
+            name = "<anonymous>";
+        }
+        let param_size = self.parameter_slots;
+
+        writeln!(f, "{name}: param size = {param_size}")?;
         let mut offset = 0;
         let mut op_idx = 0;
         while offset < self.code.bytes.len() {
@@ -685,7 +916,8 @@ fn word_size_of(ty: &Type) -> u16 {
         // Type::Named(_) => todo!(),
         Type::Unit => 0,
 
-        Type::Function(FunctionType { .. }) => todo!(),
+        Type::Function(_) => 1, // pointer size
+        Type::Array(_) => 2,
 
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),
@@ -710,3 +942,4 @@ unsafe impl BytecodeRead for u32 {}
 unsafe impl BytecodeRead for VMInt {}
 unsafe impl BytecodeRead for VMFloat {}
 unsafe impl BytecodeRead for VMString {}
+unsafe impl BytecodeRead for ReturnType {}

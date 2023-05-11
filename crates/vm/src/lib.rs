@@ -2,24 +2,28 @@ use builtins::{
     len_string, print_bool, print_float, print_int, print_string, LEN_STRING, PRINT_BOOL,
     PRINT_FLOAT, PRINT_INT, PRINT_STRING,
 };
-use memory_recycling::Gc;
+use exitcode::ExitCode;
 use stack::Stack;
 use std::mem::{size_of, MaybeUninit};
 use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
 use vm_boxed_types::VMFunction;
-use vm_codegen::{BytecodeRead, FunctionChunk, InvalidOpError, Op, ProgramChunk};
+use vm_codegen::{BytecodeRead, FunctionChunk, InvalidOpError, Op, ProgramChunk, ReturnType};
 use vm_types::string::{VMString, MAX_EMBEDDED_LENGTH};
 use vm_types::words::Word;
-use vm_types::{FromWordVec, VMFloat, VMInt};
+use vm_types::{FromWordVec, VMBool, VMFloat, VMInt};
 
 mod builtins;
 mod macros;
 mod stack;
 
 const MAX_FRAMES: usize = 64;
+const FUNC_PTR_SIZE: usize = 1;
 
-pub fn run(chunk: ProgramChunk) -> InterpretResult<()> {
+const BOOL_TRUE: VMBool = 1;
+const BOOL_FALSE: VMBool = 0;
+
+pub fn run(chunk: ProgramChunk) -> InterpretResult<ExitCode> {
     let mut vm = VM::new(chunk);
     vm.run()
 }
@@ -52,6 +56,9 @@ pub struct VM {
     /// Current number of active call frames
     frame_count: usize,
 
+    /// Program bytecode, where each function has a chunk
+    ///
+    // TODO: remove indirection of Rc if possible
     functions: Vec<Rc<FunctionChunk>>,
 
     interner: lasso::Rodeo,
@@ -59,6 +66,7 @@ pub struct VM {
 
 #[inline]
 fn init_frames() -> [CallFrame; MAX_FRAMES] {
+    // TODO: use a crate/macro for array initialization
     let mut uninit_frames: [MaybeUninit<CallFrame>; MAX_FRAMES] =
         unsafe { MaybeUninit::uninit().assume_init() };
 
@@ -82,16 +90,18 @@ impl VM {
             functions,
             interner: lasso::Rodeo::default(),
         };
-        vm.push_main();
+
+        vm.push_frame_main();
 
         vm
     }
 
-    fn run(&mut self) -> InterpretResult<()> {
+    fn run(&mut self) -> InterpretResult<ExitCode> {
         let mut frame = &mut self.frames[self.frame_count - 1];
         loop {
             let op = frame.function.chunk.get_op(frame.ip)?;
             frame.ip += 1;
+            dbg!(&op);
 
             use Op::*;
             match op {
@@ -124,24 +134,19 @@ impl VM {
                 }
                 PopN => {
                     let num_slots = frame.read::<u8>();
-                    self.stack.pop_n_dynamic(num_slots);
+                    self.stack.pop_n_discard(num_slots);
                 }
                 PopString => {
                     let _ = self.stack.pop_string();
                     // VMString drops, including its internal Rc for Rc-managed strings
                 }
                 PopRc => {
-                    let raw_ptr = self.stack.pop_ptr::<u8>();
-                    // Safety: ptr was created by Rc::into_raw originally
-                    let _ = unsafe { Rc::from_raw(raw_ptr) };
-                    // Rc gets dropped and reduces strong count
+                    let _ = self.stack.pop_rc::<u8>();
+                    // Rc drops, reduces strong count
                 }
                 PopGc => {
-                    let raw_ptr = self.stack.pop_ptr::<u8>();
-
-                    // Safety: ptr was created by Gc::into_raw originally
-                    let _ = unsafe { Gc::from_raw(raw_ptr) };
-                    // Gc gets dropped and reduces count
+                    self.stack.pop_gc::<u8>();
+                    // Gc drops, possibly marking for later cleanup
                 }
                 GetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -185,20 +190,25 @@ impl VM {
                     }
                 }
                 SetLocalN => {
-                    let slot_offset = self.read::<u16>();
-                    let num_slots = self.read::<u16>();
+                    let slot_offset = frame.read::<u16>();
+                    let num_slots = frame.read::<u16>();
 
                     // let val = self.stack.peek_n(num_slots.into());
 
                     todo!()
                 }
+                PushLocalFunc => {
+                    let function_idx = frame.read::<u32>() as usize;
+                    let function = self.functions[function_idx].clone();
+
+                    self.stack.push_rc(function);
+                }
                 NotBool => {
                     let top = self.stack.peek_bool();
-                    let _true = 1;
-                    let _false = 0;
+
                     match top {
-                        b if b == _false => self.stack.replace_top_word(_true),
-                        b if b == _true => self.stack.replace_top_word(_false),
+                        b if b == BOOL_FALSE => self.stack.replace_top_word(BOOL_TRUE),
+                        b if b == BOOL_TRUE => self.stack.replace_top_word(BOOL_FALSE),
                         _ => unreachable!("invalid stack value for Bool"),
                     }
                 }
@@ -238,6 +248,7 @@ impl VM {
                     self.stack.replace_top_word(-top);
                 }
                 ConcatString => {
+                    dbg!(&self.stack);
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
@@ -250,12 +261,27 @@ impl VM {
 
                     self.stack.push_string(concatenated);
                 }
-                Call => {
-                    let num_words_args = self.read::<u8>();
+                CallFunction => {
+                    let return_slots = frame.read::<u16>() as usize;
+                    let func_ptr: Rc<FunctionChunk> = self.stack.pop_rc();
+                    let return_address = frame.ip;
+                    let parameter_slots: usize = func_ptr.parameter_slots.into();
 
-                    todo!()
+                    dbg!(&self.stack);
+                    self.stack.shift_at_end(parameter_slots + 1);
+                    dbg!(&self.stack);
+
+                    let func_ptr_index = self.stack.len() - parameter_slots - 1;
+                    let raw_ptr = Rc::into_raw(func_ptr.clone());
+
+                    self.stack
+                        .set_word_at((raw_ptr as u64).into(), func_ptr_index);
+                    dbg!(&self.stack);
+                    self.push_frame(func_ptr, return_slots, return_address);
+
+                    frame = &mut self.frames[self.frame_count - 1];
                 }
-                Builtin => {
+                CallBuiltin => {
                     let builtin_idx = frame.read::<u8>();
                     match builtin_idx {
                         0 => unreachable!("no builtin at the zero byte"),
@@ -299,45 +325,42 @@ impl VM {
                         frame.ip += offset as usize;
                     }
                 }
-                Ret => {
-                    // TODO: better output for debugging?
+                Return => {
+                    // function pointer
+                    dbg!(&self.stack);
+                    let _ = self.stack.pop_rc::<u8>();
+                    dbg!(&self.stack);
 
-                    // TODO: return the top value of the stack maybe?
-                    break Ok(());
+                    let return_address = frame.return_address;
+                    self.frame_count -= 1;
+                    if self.frame_count == 0 {
+                        return Ok(self.stack.pop_int() as ExitCode);
+                    }
+
+                    frame = &mut self.frames[self.frame_count - 1];
+                    frame.ip = return_address;
+                    self.stack.offset = frame.stack_offset;
                 }
                 Noop => {}
             }
+            dbg!(&self.stack);
         }
     }
 
-    /// Reads bytes from the bytecode and returns as T.
-    /// Increments current instruction pointer accordingly.
-    ///
-    /// Panics if there are not enough bytes to read.
-    #[inline]
-    fn read<T: BytecodeRead>(&mut self) -> T {
-        let mut frame = self.frames.last_mut().unwrap();
-        let value = frame.function.chunk.read::<T>(frame.ip);
-        frame.ip += size_of::<T>();
+    fn push_frame(
+        &mut self,
+        function: Rc<FunctionChunk>,
+        return_slots: usize,
+        return_address: usize,
+    ) {
+        let name = self.interner.get_or_intern(function.name());
 
-        value
-    }
-
-    /// Dereferences the UTF-8 string contents from the allocation
-    pub(crate) fn deref_string(&self, s: &VMString) -> String {
-        let frame = &self.frames[self.frames.len() - 1];
-
-        let constants = frame.function.chunk.borrow_constants();
-        s.to_string(constants)
-    }
-
-    fn push_frame(&mut self, function_idx: usize) {
-        let chunk = self.functions[function_idx].clone();
-        let name = self.interner.get_or_intern(chunk.name());
+        let args_size = function.parameter_slots as usize;
+        self.stack.offset = self.stack.len() - return_slots - FUNC_PTR_SIZE - args_size;
 
         let function = VMFunction {
             parameter_slots: 0,
-            chunk,
+            chunk: function,
             name: Some(name),
         };
         let new_frame_idx = self.frame_count;
@@ -345,24 +368,23 @@ impl VM {
         self.frames[new_frame_idx] = CallFrame {
             function,
             ip: 0, // TODO: change if this becomes a pointer
+            return_address,
+            stack_offset: self.stack.offset,
         };
         self.frame_count += 1;
     }
 
-    fn push_main(&mut self) {
-        let main_idx = self.functions.len() - 1;
-        self.push_frame(main_idx)
-    }
+    fn push_frame_main(&mut self) {
+        let main = self.functions.last().unwrap().clone();
 
-    fn call_function(&mut self, function_idx: usize) {
-        self.push_frame(function_idx)
-        /*
-           CallFrame* frame = &vm.frames[vm.frameCount++];
-           frame->function = function;
-           frame->ip = function->chunk.code;
-           frame->slots = vm.stackTop - argCount - 1;
-           return true;
-        */
+        self.stack.push_int(0); // placeholder for return code
+        self.stack.push_rc(main.clone());
+
+        // TODO: replace with real data of CLI args - []String args
+        self.stack.push_int(0xDEADBEEF_i64); // first word of []String
+        self.stack.push_int(0xFEEDC0DE_i64); // second word of []String
+
+        self.push_frame(main, 1, 0);
     }
 
     fn call_builtin(&mut self, i: u8) {
@@ -374,12 +396,16 @@ impl VM {
         //
         // So builtins shouldn't need access to the stack at all but they will need
         // shared access to the chunk to deref constants (ex. strings)?
+        // and the builtins would need a slice that was popped from the stack and
+        // also potentially return a slice to be pushed into the stack
+        let frame = &mut self.frames[self.frame_count - 1];
+
         match i {
             0 => unreachable!("no builtin at the zero byte"),
             PRINT_STRING => {
                 let s = self.stack.pop_string();
 
-                let s = self.deref_string(&s);
+                let s = frame.deref_string(&s);
                 print_string(s);
             }
             PRINT_INT => {
@@ -417,7 +443,7 @@ impl VM {
 fn alloc_string(s: String) -> VMString {
     let len = s.len();
     if len <= MAX_EMBEDDED_LENGTH {
-        let len = len as u8;
+        let len = len as u32;
         let mut data = [0; MAX_EMBEDDED_LENGTH];
         s.bytes()
             .zip(data.iter_mut())
@@ -450,10 +476,13 @@ pub struct CallFrame {
     ///
     /// Points to the current bytecode Op, is mutated as bytecode is executed
     ip: usize,
-    // A view into the program Stack
-    // TODO: do we need this? Would cause shared mutability with the VM
-    // why would CallFrame need access to the stack?
-    // slots: RefCell<Stack>,
+
+    /// Instruction of the calling function to return to
+    return_address: usize,
+
+    /// The stack offset used in this frame
+    // TODO: need this or is there a cleverer way?
+    stack_offset: usize,
 }
 
 impl CallFrame {

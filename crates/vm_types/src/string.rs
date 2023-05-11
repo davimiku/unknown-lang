@@ -8,7 +8,7 @@ use std::rc::Rc;
 // TODO: this was designed to fit in 16 bytes. The same data in an `enum` with repr(C)
 // uses 24 bytes (padding after the tag and after the len)
 #[repr(C)]
-pub struct VMString2 {
+struct VMString2 {
     tag: AllocationStrategy,
 
     data: VMStringData,
@@ -46,7 +46,7 @@ impl VMString {
         Self::Constant(ConstantVMString { len, start_idx })
     }
 
-    pub fn new_embedded(len: u8, data: [u8; MAX_EMBEDDED_LENGTH]) -> Self {
+    pub fn new_embedded(len: u32, data: [u8; MAX_EMBEDDED_LENGTH]) -> Self {
         Self::Embedded(EmbeddedVMString { len, data })
     }
 }
@@ -59,7 +59,7 @@ impl VMString {
         (match self {
             VMString::Heap(s) => s.len,
             VMString::Constant(s) => s.len,
-            VMString::Embedded(s) => s.len as u32,
+            VMString::Embedded(s) => s.len,
         }) as VMInt
     }
 
@@ -155,15 +155,39 @@ impl From<DWord> for VMString {
 
 impl From<[u8; 16]> for VMString {
     fn from(bytes: [u8; 16]) -> Self {
-        // TODO: need to construct the Rc using Rc::from_raw so that it gets
-        // dropped whenever this VMString is dropped
+        dbg!(bytes);
+        let [first8, second8]: [[u8; 8]; 2] = cast(bytes);
+        let [tag, len]: [[u8; 4]; 2] = cast(first8);
+        let len = u32::from_le_bytes(len);
+        let tag = u32::from_le_bytes(tag);
 
-        // 1. read first 4 bytes as the tag/discriminant
-        // 2. call
-        // VMString::new_allocated(s);
-        // VMString::new_constant(len, start_idx);
-        // VMString::new_embedded(len, data);
-        todo!()
+        match tag {
+            0 => {
+                // heap
+                let ptr = unsafe {
+                    let raw_ptr = usize::from_le_bytes(second8) as *const String;
+                    Rc::from_raw(raw_ptr)
+                };
+                let string = HeapVMString { len, ptr };
+                VMString::Heap(string)
+            }
+            1 => {
+                // constant
+                let start_idx = usize::from_le_bytes(second8);
+
+                let string = ConstantVMString { len, start_idx };
+
+                VMString::Constant(string)
+            }
+            2 => {
+                // embedded
+                let data: [u8; MAX_EMBEDDED_LENGTH] = second8;
+                let string = EmbeddedVMString { len, data };
+
+                VMString::Embedded(string)
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -178,6 +202,7 @@ pub struct HeapVMString {
 
 impl HeapVMString {
     fn dereference(&self) -> Rc<String> {
+        // TODO: is this a leftover from an old representation?
         // Safety: Necessary to avoid undefined behavior of directly
         // casting an unaligned pointer from the packed struct.
         let raw_ptr = std::ptr::addr_of!(self.ptr);
@@ -238,13 +263,13 @@ impl From<RawVMStringData> for ConstantVMString {
 // 1 byte tag, 1 byte length, 14 bytes data
 // or use the same strategy as compact_str to pack the length
 // in the last byte
-pub const MAX_EMBEDDED_LENGTH: usize = 11;
+pub const MAX_EMBEDDED_LENGTH: usize = 8;
 
-#[repr(packed, C)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct EmbeddedVMString {
     /// Length of the string
-    len: u8,
+    len: u32,
 
     /// Bytes of the string
     data: [u8; MAX_EMBEDDED_LENGTH],
@@ -265,7 +290,7 @@ impl From<EmbeddedVMString> for RawVMStringData {
         // Safety: EmbeddedVMString is 12 bytes and repr(packed, C),
         // so these bytes can be written to an array.
         unsafe {
-            (start.add(0) as *mut [u8; 1]).write([value.len]);
+            (start.add(0) as *mut [u8; 4]).write(value.len.to_le_bytes());
             (start.add(1) as *mut [u8; MAX_EMBEDDED_LENGTH]).write(value.data);
 
             uninit.assume_init()

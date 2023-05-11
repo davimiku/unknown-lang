@@ -8,26 +8,43 @@
 //! is an opaque type.
 //!
 //! It is possible and common for values to reside in more than
-//! one slot. For example, a Float uses 2 slots.
+//! one slot. For example, a String uses 2 slots.
 
+use std::fmt::{self, Debug};
+use std::rc::Rc;
+
+use memory_recycling::{Gc, Trace};
 use vm_types::string::VMString;
-use vm_types::words::{DWord, QWord, Word};
+use vm_types::words::{DWord, QWord, Word, ZERO_WORD};
 use vm_types::{VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots
 const STACK_MAX: usize = 256;
 
-#[derive(Debug)]
-pub struct Stack {
+pub(crate) struct Stack {
+    /// Stack data in units of Word
     data: Vec<Word>,
+
+    /// Offset for operations that reach into the internals of the stack
+    ///
+    /// call frames have a bottom of the stack which is not
+    /// the true bottom of the stack.
+    pub(crate) offset: usize,
+}
+
+impl Debug for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Stack")
+            .field("offset", &self.offset)
+            .field("data from offset", &self.slice_from_current())
+            .finish()
+    }
 }
 
 impl Stack {
     #[inline]
     fn slice_from_current(&self) -> &[Word] {
-        let curr_index = self.data.len();
-
-        &self.data[curr_index..]
+        &self.data[self.offset..]
     }
 
     #[inline]
@@ -38,7 +55,7 @@ impl Stack {
     /// Pushes one Word to the top of the stack
     #[inline]
     pub(crate) fn push_word<T: Into<Word>>(&mut self, val: T) {
-        self.extend([val.into()])
+        self.data.push(val.into())
     }
 
     #[inline]
@@ -75,21 +92,21 @@ impl Stack {
         self.push_dword(q);
     }
 
-    /// Removes the top `n` slots of the stack and returns it as an array
-    /// with length `N` and elements of `Word`.
-    ///
-    /// Slots are returned in FIFO order, i.e. reversed from the "popping" order.
-    /// This ensures that multi-Word values are returned as expected.
     #[inline]
-    pub(crate) fn pop_n<const N: usize>(&mut self, n: usize) -> [Word; N] {
-        let start = self.data.len() - n;
+    pub(crate) fn push_raw_ptr<T>(&mut self, ptr: *const T) {
+        self.push_word(ptr as u64);
+    }
 
-        let mut output: [Word; N] = [Default::default(); N];
-        for (i, word) in self.data.drain(start..).enumerate() {
-            output[i] = word;
-        }
+    #[inline]
+    pub(crate) fn push_rc<T>(&mut self, rc: Rc<T>) {
+        let raw_ptr = Rc::into_raw(rc);
+        self.push_raw_ptr(raw_ptr);
+    }
 
-        output
+    #[inline]
+    pub(crate) fn push_gc<T: Trace>(&mut self, gc: Gc<T>) {
+        let raw_ptr = Gc::into_raw(gc);
+        self.push_raw_ptr(raw_ptr);
     }
 
     /// Removes the top Word of the stack
@@ -114,21 +131,33 @@ impl Stack {
         self.pop_n::<4>(4).into()
     }
 
-    /// Removes the top `n` slots of the stack.
+    /// Removes the top `n` slots of the stack and returns it as an array
+    /// with length `N` and elements of `Word`.
     ///
-    /// Does not return the values.
-    // TODO: return the words as a slice?
-    // may not be possible because who owns the slice now?
-    pub(crate) fn pop_n_dynamic(&mut self, n: u8) {
-        for _ in 0..n {
-            self.pop_word();
+    /// Slots are returned in FIFO order, i.e. reversed from the "popping" order.
+    /// This ensures that multi-Word values are returned as expected.
+    #[inline]
+    pub(crate) fn pop_n<const N: usize>(&mut self, n: usize) -> [Word; N] {
+        let start = self.data.len() - n;
+
+        let mut output: [Word; N] = [Default::default(); N];
+        for (i, word) in self.data.drain(start..).enumerate() {
+            output[i] = word;
         }
+
+        output
     }
 
     /// Pops the top `n` slots of the stack, and gives ownership
-    /// of these to the caller as VM words.
+    /// of these to the caller.
     pub(crate) fn pop_n_as_vec(&mut self, n: usize) -> Vec<Word> {
         (0..n).map(|_| self.pop_word()).collect()
+    }
+
+    /// Removes the top `n` slots of the stack without returning the values.
+    pub(crate) fn pop_n_discard(&mut self, n: u8) {
+        let new_len = self.data.len() - n as usize;
+        self.data.truncate(new_len);
     }
 
     /// Removes the top value of the stack and returns it as a bool
@@ -137,27 +166,44 @@ impl Stack {
         self.pop_word().into()
     }
 
-    /// Removes the top slot of the stack and returns it as an XInt
+    /// Removes the top slot of the stack and returns it as an VMInt
     #[inline]
     pub fn pop_int(&mut self) -> VMInt {
         self.pop_word().into()
     }
 
-    /// Removes the top two slots of the stack and returns it as an f64
+    /// Removes the top slot of the stack and returns it as an VMFloat
     #[inline]
     pub fn pop_float(&mut self) -> VMFloat {
         self.pop_word().into()
     }
 
+    /// Removes the top two slots of the stack and returns it as an VMString
     #[inline]
     pub(crate) fn pop_string(&mut self) -> VMString {
         self.pop_dword().into()
     }
 
     #[inline]
-    pub(crate) fn pop_ptr<T>(&mut self) -> *const T {
+    pub(crate) fn pop_raw_ptr<T>(&mut self) -> *const T {
         let word = self.pop_word();
         u64::from(word) as *const T
+    }
+
+    #[inline]
+    pub(crate) fn pop_rc<T>(&mut self) -> Rc<T> {
+        let raw_ptr = self.pop_raw_ptr();
+
+        // Safety: this pointer must have been pushed with Rc::into_raw
+        unsafe { Rc::from_raw(raw_ptr) }
+    }
+
+    #[inline]
+    pub(crate) fn pop_gc<T: Trace>(&mut self) -> Gc<T> {
+        let raw_ptr = self.pop_raw_ptr();
+
+        // Safety: this pointer must have been pushed with Gc::into_raw
+        unsafe { Gc::from_raw(raw_ptr) }
     }
 
     /// Mutates the top value of the stack in-place.
@@ -186,12 +232,30 @@ impl Stack {
     /// necessary for setting the value of locals during variable definition.
     #[inline]
     pub(crate) fn set_word_at(&mut self, val: Word, index: usize) {
-        self.data[index] = val;
+        self.data[index + self.offset] = val;
+    }
+
+    /// Shifts the stack to the right by the given amount starting
+    /// at the given index. The shifted slots are replaced by zeros.
+    // TODO: better name needed
+    #[inline]
+    pub(crate) fn shift_at_end(&mut self, num_slots: usize) {
+        let index = self.len() - num_slots;
+        self.data.extend_from_within(index..);
+        dbg!(&self);
+        for i in 0..num_slots {
+            self.data[i + 1 + index + self.offset] = ZERO_WORD;
+        }
     }
 }
 
 // Non-mutating functions
 impl Stack {
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.data.len()
+    }
+
     #[inline]
     fn top_index(&self) -> usize {
         self.data.len() - 1
@@ -203,18 +267,24 @@ impl Stack {
     /// Panics if there is not 1 item in the stack.
     #[inline]
     pub(crate) fn peek_word(&self) -> &Word {
-        self.peek_word_at(self.data.len() - 1)
+        let index = self.data.len() - 1;
+        &self.data[index]
     }
 
     /// Peeks the DWord (2 Words) from the top of the stack
     #[inline]
     pub(crate) fn peek_dword(&self) -> &DWord {
-        self.peek_dword_at(self.data.len() - 2)
+        let index = self.data.len() - 2;
+        let words = &[self.data[index], self.data[index + 1]];
+        // TODO: make this part of the DWord constructor and verify its safe-ness
+        unsafe { std::mem::transmute(words) }
     }
 
     /// Peeks the QWord (4 Words) from the top of the stack
     #[inline]
     pub(crate) fn peek_qword(&self) -> &QWord {
+        todo!("fix: this shouldn't call peek_word_at anymore because that adds an offset");
+
         self.peek_qword_at(self.data.len() - 4)
     }
 
@@ -245,6 +315,7 @@ impl Stack {
 
     #[inline]
     pub(crate) fn peek_word_at(&self, index: usize) -> &Word {
+        let index = index + self.offset;
         &self.data[index]
     }
 
@@ -253,6 +324,7 @@ impl Stack {
     }
 
     pub(crate) fn peek_dword_at(&self, index: usize) -> &DWord {
+        let index = index + self.offset;
         let words = &[self.data[index], self.data[index + 1]];
         // TODO: make this part of the DWord constructor and verify its safe-ness
         unsafe { std::mem::transmute(words) }
@@ -260,6 +332,7 @@ impl Stack {
 
     /// Peeks and copies four Words from the given
     pub(crate) fn peek_qword_at(&self, index: usize) -> &QWord {
+        let index = index + self.offset;
         let words = &[
             self.data[index],
             self.data[index + 1],
@@ -280,18 +353,9 @@ impl Default for Stack {
     fn default() -> Self {
         Self {
             data: Vec::with_capacity(STACK_MAX),
+            offset: 0,
         }
     }
-}
-
-fn clone_into_array<A, T>(slice: &[T]) -> A
-where
-    A: Default + AsMut<[T]>,
-    T: Clone,
-{
-    let mut a = A::default();
-    <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
-    a
 }
 
 #[cfg(test)]

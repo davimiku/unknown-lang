@@ -41,9 +41,7 @@ pub enum Op {
 
     /// Push `String` value on the stack.
     ///
-    /// Operands: value: `(idx: u64, len: u64)`
-    /// or
-    /// Operands: value: `(ptr: u64, len: u64)`
+    /// Operands: value: VMString
     ///
     /// Stack: **=>** String
     PushString,
@@ -134,7 +132,7 @@ pub enum Op {
 
     /// Peeks the top 1 slot size from the stack and sets
     /// that value into the stack at the given offset.
-    /// The peeked value is not popped off the stack?
+    /// The peeked value is not popped off the stack.
     ///
     /// Operands: slot_offset: u16
     ///
@@ -253,23 +251,31 @@ pub enum Op {
     /// Stack: **=>**
     NegateFloat,
 
-    /// Binary `++` operator for String.
-    ///
-    /// Operands: mode: `u8`
+    /// Binary `++` operator for `String`.
     ///
     /// Stack: lhs, rhs **=>** "{lhs}{rhs}"
     ConcatString,
 
-    /// Call a user-defined function
+    /// Pushes the pointer for a local function that is known
+    /// at compile time.
     ///
-    /// Operands: ???
-    Call,
+    /// Operands: local function index: `u32`
+    ///
+    /// Stack: **=>** function ptr
+    PushLocalFunc,
+
+    /// Calls a plain function (no closure)
+    ///
+    /// Operands: word size of return value: `u16`
+    ///
+    /// Stack: function_ptr **=>** <new call frame>
+    CallFunction,
 
     /// Call to a built-in function
     ///
     /// Operands: built-in index: `u8`
     ///
-    Builtin,
+    CallBuiltin,
 
     /// Unconditional forwards jump by the given offset
     ///
@@ -286,10 +292,10 @@ pub enum Op {
     /// Stack: cond **=>**
     JumpIfFalse,
 
-    // push local?
-    // pop local?
     /// Return from a function
-    Ret,
+    ///
+    /// Stack: function_ptr **=>** <previous call frame>
+    Return,
 
     /// No operation
     /// This must always be the last variant of this enum,
@@ -299,6 +305,12 @@ pub enum Op {
     ///
     /// Stack: **=>**
     Noop,
+}
+
+impl From<Op> for u8 {
+    fn from(value: Op) -> Self {
+        value as u8
+    }
 }
 
 impl Op {
@@ -323,8 +335,9 @@ impl Op {
             Op::SetLocal | Op::SetLocal2 | Op::SetLocal4 => size_of::<u16>(),
             Op::GetLocalN | Op::SetLocalN => size_of::<(u16, u16)>(),
             Op::PopN => size_of::<u16>(),
-            Op::Builtin => size_of::<u8>(),
+            Op::CallBuiltin => size_of::<u8>(),
             Op::Jump | Op::JumpIfFalse => size_of::<u32>(),
+            Op::PushLocalFunc => size_of::<u32>(),
 
             _ => 0,
         }
@@ -346,6 +359,60 @@ impl TryFrom<u8> for Op {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value > Self::Noop as u8 {
             Err(InvalidOpError(value))
+        } else {
+            let op = unsafe { Self::from_raw(value) };
+
+            Ok(op)
+        }
+    }
+}
+
+#[derive(Debug)]
+#[repr(u8)]
+pub enum ReturnType {
+    /// 1 Word
+    Word,
+
+    /// 2 Words
+    DWord,
+
+    /// 3 Words
+    QWord,
+
+    /// Variable (N) amount of Words
+    ///
+    /// The next byte must contain the number of words to return
+    WordN,
+
+    String,
+    Array,
+    Rc,
+    Gc,
+
+    None,
+}
+
+impl ReturnType {
+    unsafe fn from_raw(value: u8) -> Self {
+        mem::transmute(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidReturnTypeError(u8);
+
+impl fmt::Display for InvalidReturnTypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid return type: {:#04x}", self.0)
+    }
+}
+
+impl TryFrom<u8> for ReturnType {
+    type Error = InvalidReturnTypeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value > Self::None as u8 {
+            Err(InvalidReturnTypeError(value))
         } else {
             let op = unsafe { Self::from_raw(value) };
 

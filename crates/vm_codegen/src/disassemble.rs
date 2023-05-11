@@ -67,7 +67,12 @@ impl Op {
 
                 print!("index: {slot_index}, size:{slot_size}");
             }
-            Op::Builtin => {
+            Op::CallFunction => {
+                let return_slots = read::<u16>(chunk, &mut offset);
+
+                print!("return_slots: {return_slots}");
+            }
+            Op::CallBuiltin => {
                 let builtin_idx = read::<u8>(chunk, &mut offset);
 
                 print!("{}", BUILTIN_NAMES[builtin_idx as usize])
@@ -82,6 +87,11 @@ impl Op {
                 let num_slots = read::<u16>(chunk, &mut offset);
 
                 print!("{num_slots}")
+            }
+            Op::PushLocalFunc => {
+                let function_idx = read::<u32>(chunk, &mut offset);
+
+                print!("func: {function_idx}")
             }
             _ => {}
         };

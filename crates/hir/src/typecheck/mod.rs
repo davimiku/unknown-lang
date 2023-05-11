@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use la_arena::{ArenaMap, Idx};
 use text_size::TextRange;
-pub use types::{FunctionType, Type};
+pub use types::{ArrayType, FunctionType, Type};
 
 use crate::fmt_expr::fmt_type;
 use crate::interner::{Interner, Key};

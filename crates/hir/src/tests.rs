@@ -44,9 +44,9 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
         .map(|s| format!("    {s}"))
         .join("\n");
 
-    let mut expected_vars = expected_vars
+    let expected_vars = &mut [("print~0", "(String) -> Unit")]
         .iter()
-        .chain(&[("print~0", "(String) -> Unit")])
+        .chain(expected_vars)
         .map(|(name, ty)| format!("{name} : {ty}"))
         .join("\n");
     if !expected_vars.is_empty() {
@@ -390,6 +390,77 @@ print_param "Hello!"
         print_param~0 (\"Hello!\",)"};
 
     let expected_vars = &[("a~0", "String"), ("print_param~0", "(String) -> Unit")];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn local_def_and_print() {
+    let input = r#"
+let a = "Hello"
+print a"#;
+
+    let expected_expr = indoc! {"
+        a~0 : \"Hello\" = \"Hello\"
+        print~0 (a~0,)"};
+
+    let expected_vars = &[("a~0", "\"Hello\"")];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn multiple_local_defs_and_print() {
+    let input = r#"
+let a = "Hello"
+let b = " World"
+print b
+print a"#;
+
+    let expected_expr = indoc! {"
+        a~0 : \"Hello\" = \"Hello\"
+        b~0 : \" World\" = \" World\"
+        print~0 (b~0,)
+        print~0 (a~0,)"};
+
+    let expected_vars = &[("a~0", "\"Hello\""), ("b~0", "\" World\"")];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn concat_function() {
+    let input = r#"
+let repeat = (s: String) -> s ++ s
+"#;
+
+    let expected_expr = indoc! {"
+    repeat~0 : (String) -> String = fun (s~0 : String) -> s~0 ++ s~0"};
+
+    let expected_vars = &[("repeat~0", "(String) -> String"), ("s~0", "String")];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn concat_function_call() {
+    let input = r#"
+let repeat = (s: String) -> { s ++ s }
+let hello_hello = repeat "Hello "
+print hello_hello"#;
+
+    let expected_expr = indoc! {"
+        repeat~0 : (String) -> String = fun (s~0 : String) -> {
+            s~0 ++ s~0
+        }
+        hello_hello~0 : String = repeat~0 (\"Hello \",)
+        print~0 (hello_hello~0,)"};
+
+    let expected_vars = &[
+        ("hello_hello~0", "String"),
+        ("repeat~0", "(String) -> String"),
+        ("s~0", "String"),
+    ];
 
     check(input, expected_expr, expected_vars);
 }

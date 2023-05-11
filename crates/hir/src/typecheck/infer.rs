@@ -122,7 +122,7 @@ fn infer_function(
     type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
-    let FunctionExpr { params, body } = function;
+    let FunctionExpr { params, body, name } = function;
 
     // TODO: this really needs to collect the Err(s) into a Vec
     let params: Result<Vec<Type>, TypeDiagnostic> = params
@@ -186,15 +186,22 @@ fn infer_local_def(
     if let Some(idx) = type_annotation {
         let (annotation, range) = database.type_expr(*idx);
         let expected = infer_type_expr(*idx, annotation, type_database);
-        check_expr(*value, &expected, type_database, database).map(|_| {
-            type_database.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
-            expected
-        })
+
+        match check_expr(*value, &expected, type_database, database) {
+            Ok(_) => {
+                type_database.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
+                Ok(expected)
+            }
+            Err(err) => Err(err),
+        }
     } else {
-        infer_expr(*value, type_database, database).map(|inferred| {
-            type_database.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
-            inferred
-        })
+        match infer_expr(*value, type_database, database) {
+            Ok(inferred) => {
+                type_database.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
+                Ok(inferred)
+            }
+            Err(err) => Err(err),
+        }
     }
 }
 

@@ -48,14 +48,22 @@ impl Code {
     }
 
     #[inline]
-    pub(super) fn push(&mut self, source: (u8, TextRange)) {
-        self.bytes.push(source.0);
+    pub(super) fn push<B: Into<u8>>(&mut self, source: (B, TextRange)) {
+        self.bytes.push(source.0.into());
         self.ranges.push(source.1);
     }
 
     #[inline]
-    pub(super) fn push_byte(&mut self, source: u8) {
+    pub(super) fn push_u8(&mut self, source: u8) {
         self.bytes.push(source);
+    }
+
+    #[inline]
+    pub(super) fn push_u16(&mut self, source: u16) {
+        let source: [u8; 2] = source.to_le_bytes();
+
+        self.bytes.push(source[0]);
+        self.bytes.push(source[1]);
     }
 
     #[inline]
@@ -76,14 +84,6 @@ impl Code {
     }
 
     #[inline]
-    fn push_u16(&mut self, source: u16) {
-        let source: [u8; 2] = source.to_le_bytes();
-
-        self.bytes.push(source[0]);
-        self.bytes.push(source[1]);
-    }
-
-    #[inline]
     fn extend<I: IntoIterator<Item = u8>>(&mut self, source: I) {
         self.bytes.extend(source.into_iter());
     }
@@ -93,6 +93,15 @@ impl From<(u8, TextRange)> for Code {
     fn from(source: (u8, TextRange)) -> Self {
         Self {
             bytes: vec![source.0],
+            ranges: vec![source.1],
+        }
+    }
+}
+
+impl From<(Op, TextRange)> for Code {
+    fn from(source: (Op, TextRange)) -> Self {
+        Self {
+            bytes: vec![source.0 as u8],
             ranges: vec![source.1],
         }
     }

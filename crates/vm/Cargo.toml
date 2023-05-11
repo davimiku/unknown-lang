@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+exitcode = "1.1.2"
 lasso = "0.6.0"
 memory_recycling = { path = "../memory_recycling" }
 vm_boxed_types = { path = "../vm_boxed_types" }

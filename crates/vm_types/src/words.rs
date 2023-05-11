@@ -1,7 +1,10 @@
 // TODO: these 3 are identical, generate with a macro
 
 use bytemuck::cast;
-use std::array;
+use std::{
+    array,
+    fmt::{self, Debug},
+};
 
 use crate::{VMBool, VMFloat, VMInt};
 
@@ -12,11 +15,21 @@ pub fn word_size_of<T>() -> usize {
 /// Represents 1 "word", or the base size of values in the VM.
 /// No values are smaller than 1 word.
 ///
-/// For example, a `Bool` is 1 Word.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// For example, an `Int` is 1 Word.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct Word {
     bytes: WordBytes,
 }
+
+pub const ZERO_WORD: Word = Word { bytes: [0; 8] };
+
+impl Debug for Word {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let num = u64::from_le_bytes(self.bytes);
+        f.write_fmt(format_args!("{num:016X}"))
+    }
+}
+
 pub const WORD_SIZE: usize = 8;
 type WordBytes = [u8; WORD_SIZE];
 
