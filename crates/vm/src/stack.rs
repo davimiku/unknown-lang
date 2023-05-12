@@ -14,6 +14,7 @@ use std::fmt::{self, Debug};
 use std::rc::Rc;
 
 use memory_recycling::{Gc, Trace};
+use vm_codegen::FunctionChunk;
 use vm_types::string::VMString;
 use vm_types::words::{DWord, QWord, Word, ZERO_WORD};
 use vm_types::{VMBool, VMFloat, VMInt};
@@ -191,6 +192,11 @@ impl Stack {
     }
 
     #[inline]
+    pub(crate) fn pop_func_ptr(&mut self) -> *const FunctionChunk {
+        self.pop_raw_ptr()
+    }
+
+    #[inline]
     pub(crate) fn pop_rc<T>(&mut self) -> Rc<T> {
         let raw_ptr = self.pop_raw_ptr();
 
@@ -242,7 +248,6 @@ impl Stack {
     pub(crate) fn shift_at_end(&mut self, num_slots: usize) {
         let index = self.len() - num_slots;
         self.data.extend_from_within(index..);
-        dbg!(&self);
         for i in 0..num_slots {
             self.data[i + 1 + index + self.offset] = ZERO_WORD;
         }

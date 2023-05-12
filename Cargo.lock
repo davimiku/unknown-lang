@@ -448,6 +448,7 @@ version = "0.1.0"
 name = "vm_codegen"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "hir",
  "la-arena",
  "memory_recycling",

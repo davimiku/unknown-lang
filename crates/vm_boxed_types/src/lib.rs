@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::ptr;
 
 use lasso::Spur;
 use vm_codegen::FunctionChunk;
@@ -45,12 +45,22 @@ mod function_arity;
 // }
 
 /// Metadata for a function, stored on the heap
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct VMFunction {
     /// Total number of "slots" / VM words are used by parameters
     pub parameter_slots: u32,
-    pub chunk: Rc<FunctionChunk>,
+    pub chunk: *const FunctionChunk,
     pub name: Option<Spur>,
+}
+
+impl Default for VMFunction {
+    fn default() -> Self {
+        Self {
+            parameter_slots: Default::default(),
+            chunk: ptr::null(),
+            name: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug)]

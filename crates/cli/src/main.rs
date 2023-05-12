@@ -47,8 +47,8 @@ fn test_main() {
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
     let program = r#"
-    let identity = (s: String) -> s
-    let hello = identity "12345678"
+    let repeat = (s: String) -> s ++ s
+    let hello = repeat "Hi "
     print hello"#;
 
     Ok(program.to_owned())

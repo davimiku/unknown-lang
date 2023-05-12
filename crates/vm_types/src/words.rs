@@ -8,7 +8,7 @@ use std::{
 
 use crate::{VMBool, VMFloat, VMInt};
 
-pub fn word_size_of<T>() -> usize {
+pub const fn word_size_of<T>() -> usize {
     std::mem::size_of::<T>() / WORD_SIZE
 }
 

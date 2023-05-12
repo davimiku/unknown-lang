@@ -1,19 +1,13 @@
 use crate::words::DWord;
 use crate::VMInt;
 use bytemuck::cast;
-use std::mem::{ManuallyDrop, MaybeUninit};
-use std::ops::Deref;
+use std::fmt;
+use std::mem::MaybeUninit;
+use std::ops::{Add, Deref};
 use std::rc::Rc;
+use std::slice;
+
 /// Representation of a String value in the bytecode, independent of its allocation
-// TODO: this was designed to fit in 16 bytes. The same data in an `enum` with repr(C)
-// uses 24 bytes (padding after the tag and after the len)
-#[repr(C)]
-struct VMString2 {
-    tag: AllocationStrategy,
-
-    data: VMStringData,
-}
-
 #[repr(C)]
 pub enum VMString {
     Heap(HeapVMString),
@@ -23,18 +17,42 @@ pub enum VMString {
     Embedded(EmbeddedVMString),
 }
 
-#[repr(C)]
-union VMStringData {
-    heap: ManuallyDrop<HeapVMString>,
-
-    constant: ConstantVMString,
-
-    embedded: EmbeddedVMString,
-}
-
 type RawVMStringData = [u8; 12];
 
+// Constructors
 impl VMString {
+    /// Allocates a dynamically generated String.
+    ///
+    /// If the string is small, it is allocated inline. For larger string,
+    /// the data is allocated on the heap.
+    ///
+    /// It is the caller's responsibility to free the memory for this string.
+    /// Normally, this will be handled by the garbage collector or with reference
+    /// counting.
+    pub fn new(s: String) -> VMString {
+        let len = s.len();
+        if len <= MAX_EMBEDDED_LENGTH {
+            let len = len as u32;
+            let mut data = [0; MAX_EMBEDDED_LENGTH];
+            s.bytes()
+                .zip(data.iter_mut())
+                .for_each(|(byte, data_ptr)| *data_ptr = byte);
+
+            VMString::new_embedded(len, data)
+        } else {
+            // let src = s.as_ptr();
+
+            // let layout = std::alloc::Layout::array::<u8>(len).expect("valid layout");
+            // let ptr = unsafe {
+            //     let dst = std::alloc::alloc(layout);
+            //     std::ptr::copy_nonoverlapping(src, dst, len);
+
+            //     dst
+            // };
+            VMString::new_allocated(s)
+        }
+    }
+
     pub fn new_allocated(s: String) -> Self {
         Self::Heap(HeapVMString {
             len: s.len() as u32,
@@ -42,8 +60,8 @@ impl VMString {
         })
     }
 
-    pub fn new_constant(len: u32, start_idx: usize) -> Self {
-        Self::Constant(ConstantVMString { len, start_idx })
+    pub fn new_constant(len: u32, data: *const u8) -> Self {
+        Self::Constant(ConstantVMString { len, data })
     }
 
     pub fn new_embedded(len: u32, data: [u8; MAX_EMBEDDED_LENGTH]) -> Self {
@@ -61,21 +79,6 @@ impl VMString {
             VMString::Constant(s) => s.len,
             VMString::Embedded(s) => s.len,
         }) as VMInt
-    }
-
-    /// Returns a Rust String for this VMString by cloning
-    // TODO: improve perf by avoiding String cloning
-    #[inline]
-    pub fn to_string(&self, constants: &[u8]) -> String {
-        match self {
-            VMString::Heap(s) => s.dereference().deref().clone(),
-            VMString::Constant(s) => {
-                String::from_utf8(s.bytes(constants).to_vec()).expect("valid UTF-8 bytes")
-            }
-            VMString::Embedded(s) => {
-                String::from_utf8(s.bytes().to_vec()).expect("valid UTF-8 bytes")
-            }
-        }
     }
 
     fn discriminant(&self) -> u32 {
@@ -120,6 +123,21 @@ impl VMString {
     // }
 }
 
+impl fmt::Display for VMString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            VMString::Heap(s) => s.dereference().deref().clone(),
+            VMString::Constant(s) => {
+                String::from_utf8(s.bytes().to_vec()).expect("valid UTF-8 bytes")
+            }
+            VMString::Embedded(s) => {
+                String::from_utf8(s.bytes().to_vec()).expect("valid UTF-8 bytes")
+            }
+        };
+        f.write_str(&s)
+    }
+}
+
 impl From<VMString> for DWord {
     fn from(source: VMString) -> Self {
         let bytes: [u8; 16] = source.into();
@@ -155,7 +173,6 @@ impl From<DWord> for VMString {
 
 impl From<[u8; 16]> for VMString {
     fn from(bytes: [u8; 16]) -> Self {
-        dbg!(bytes);
         let [first8, second8]: [[u8; 8]; 2] = cast(bytes);
         let [tag, len]: [[u8; 4]; 2] = cast(first8);
         let len = u32::from_le_bytes(len);
@@ -168,23 +185,17 @@ impl From<[u8; 16]> for VMString {
                     let raw_ptr = usize::from_le_bytes(second8) as *const String;
                     Rc::from_raw(raw_ptr)
                 };
-                let string = HeapVMString { len, ptr };
-                VMString::Heap(string)
+                VMString::Heap(HeapVMString { len, ptr })
             }
             1 => {
                 // constant
-                let start_idx = usize::from_le_bytes(second8);
-
-                let string = ConstantVMString { len, start_idx };
-
-                VMString::Constant(string)
+                let data = usize::from_le_bytes(second8) as *const u8;
+                VMString::Constant(ConstantVMString { len, data })
             }
             2 => {
                 // embedded
                 let data: [u8; MAX_EMBEDDED_LENGTH] = second8;
-                let string = EmbeddedVMString { len, data };
-
-                VMString::Embedded(string)
+                VMString::Embedded(EmbeddedVMString { len, data })
             }
             _ => unreachable!(),
         }
@@ -202,11 +213,10 @@ pub struct HeapVMString {
 
 impl HeapVMString {
     fn dereference(&self) -> Rc<String> {
-        // TODO: is this a leftover from an old representation?
-        // Safety: Necessary to avoid undefined behavior of directly
-        // casting an unaligned pointer from the packed struct.
         let raw_ptr = std::ptr::addr_of!(self.ptr);
 
+        // Safety: Necessary to avoid undefined behavior of directly
+        // casting an unaligned pointer from the packed struct.
         unsafe { std::ptr::read_unaligned(raw_ptr) }
     }
 }
@@ -231,23 +241,19 @@ pub struct ConstantVMString {
     /// Length of the string
     len: u32,
 
-    /// Index of the first byte of the string in the constants pool
-    start_idx: usize,
+    /// Pointer to the first byte of the string in the constants pool
+    data: *const u8,
 }
 
 impl ConstantVMString {
-    fn bytes<'a>(&self, constants: &'a [u8]) -> &'a [u8] {
-        let start = self.start_idx;
-        let end = start + (self.len as usize);
-
-        // TODO: could add an `unsafe` unchecked version for release builds
-        constants.get(start..end).expect("valid constants index")
+    fn bytes(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.data, self.len as usize) }
     }
 }
 
 impl From<ConstantVMString> for RawVMStringData {
     fn from(value: ConstantVMString) -> Self {
-        let start_split: [u32; 2] = cast(value.start_idx);
+        let start_split: [u32; 2] = cast(value.data as usize);
 
         cast([value.len, start_split[0], start_split[1]])
     }
@@ -282,6 +288,30 @@ impl EmbeddedVMString {
     }
 }
 
+impl Add for EmbeddedVMString {
+    type Output = EmbeddedVMString;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        // TODO: optimize
+        let self_len = self.len as usize;
+        let rhs_len = rhs.len as usize;
+        let new_len = self_len + rhs_len;
+        assert!(new_len <= MAX_EMBEDDED_LENGTH);
+
+        let mut new_data: [u8; MAX_EMBEDDED_LENGTH] = [0; MAX_EMBEDDED_LENGTH];
+        for i in 0..self_len {
+            new_data[i] = self.data[i];
+        }
+        for i in self_len..rhs_len {
+            new_data[i] = rhs.data[i];
+        }
+        EmbeddedVMString {
+            len: new_len as u32,
+            data: new_data,
+        }
+    }
+}
+
 impl From<EmbeddedVMString> for RawVMStringData {
     fn from(value: EmbeddedVMString) -> Self {
         let mut uninit = MaybeUninit::<RawVMStringData>::uninit();
@@ -291,7 +321,7 @@ impl From<EmbeddedVMString> for RawVMStringData {
         // so these bytes can be written to an array.
         unsafe {
             (start.add(0) as *mut [u8; 4]).write(value.len.to_le_bytes());
-            (start.add(1) as *mut [u8; MAX_EMBEDDED_LENGTH]).write(value.data);
+            (start.add(4) as *mut [u8; MAX_EMBEDDED_LENGTH]).write(value.data);
 
             uninit.assume_init()
         }

@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use vm_types::string::VMString;
 
-use crate::{BytecodeRead, FunctionChunk, Op, VMFloat, VMInt};
+use crate::{op::PushStringOperand, BytecodeRead, FunctionChunk, Op, VMFloat, VMInt};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in vm_codegen and vm
@@ -44,9 +44,13 @@ impl Op {
                 print!("{float}");
             }
             Op::PushString => {
-                let s = read::<VMString>(chunk, &mut offset);
+                let PushStringOperand { len, offset: idx } =
+                    read::<PushStringOperand>(chunk, &mut offset);
+                let start = idx as usize;
+                let end = start + len as usize;
+                let bytes = chunk.constants_slice(start..end);
 
-                let s = s.to_string(&chunk.constants);
+                let s = std::str::from_utf8(bytes).unwrap();
 
                 print!("\"{s}\"");
             }

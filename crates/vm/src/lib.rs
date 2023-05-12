@@ -6,12 +6,13 @@ use exitcode::ExitCode;
 use stack::Stack;
 use std::mem::{size_of, MaybeUninit};
 use std::ops::{Add, Mul, Sub};
-use std::rc::Rc;
 use vm_boxed_types::VMFunction;
-use vm_codegen::{BytecodeRead, FunctionChunk, InvalidOpError, Op, ProgramChunk, ReturnType};
-use vm_types::string::{VMString, MAX_EMBEDDED_LENGTH};
+use vm_codegen::{
+    BytecodeRead, FunctionChunk, InvalidOpError, Op, ProgramChunk, PushStringOperand,
+};
+use vm_types::string::{ConstantVMString, VMString, MAX_EMBEDDED_LENGTH};
 use vm_types::words::Word;
-use vm_types::{FromWordVec, VMBool, VMFloat, VMInt};
+use vm_types::{word_size_of, FromWordVec, VMBool, VMFloat, VMInt};
 
 mod builtins;
 mod macros;
@@ -57,9 +58,7 @@ pub struct VM {
     frame_count: usize,
 
     /// Program bytecode, where each function has a chunk
-    ///
-    // TODO: remove indirection of Rc if possible
-    functions: Vec<Rc<FunctionChunk>>,
+    functions: Vec<FunctionChunk>,
 
     interner: lasso::Rodeo,
 }
@@ -82,12 +81,11 @@ fn init_frames() -> [CallFrame; MAX_FRAMES] {
 impl VM {
     pub(crate) fn new(program_chunk: ProgramChunk) -> Self {
         let frames = init_frames();
-        let functions = program_chunk.functions.into_iter().map(Rc::new).collect();
         let mut vm = VM {
             stack: Stack::default(),
             frames,
             frame_count: 0,
-            functions,
+            functions: program_chunk.functions,
             interner: lasso::Rodeo::default(),
         };
 
@@ -97,11 +95,13 @@ impl VM {
     }
 
     fn run(&mut self) -> InterpretResult<ExitCode> {
+        let _ = &self.functions; // TODO: is this needed? supposed to make sure self.functions isn't mutated
         let mut frame = &mut self.frames[self.frame_count - 1];
         loop {
-            let op = frame.function.chunk.get_op(frame.ip)?;
+            // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
+            let chunk = unsafe { &*frame.function.chunk };
+            let op = chunk.get_op(frame.ip)?;
             frame.ip += 1;
-            dbg!(&op);
 
             use Op::*;
             match op {
@@ -114,7 +114,13 @@ impl VM {
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let s = frame.read::<VMString>();
+                    let PushStringOperand { len, offset } = frame.read::<PushStringOperand>();
+
+                    let constants =
+                        unsafe { frame.function.chunk.as_ref().unwrap().borrow_constants() };
+                    let data = &constants[offset as usize] as *const u8;
+
+                    let s = VMString::new_constant(len, data);
                     self.stack.push_string(s);
                 }
                 PushTrue => {
@@ -198,10 +204,10 @@ impl VM {
                     todo!()
                 }
                 PushLocalFunc => {
-                    let function_idx = frame.read::<u32>() as usize;
-                    let function = self.functions[function_idx].clone();
+                    let idx = frame.read::<u32>() as usize;
+                    let function = &self.functions[idx] as *const FunctionChunk;
 
-                    self.stack.push_rc(function);
+                    self.stack.push_raw_ptr(function);
                 }
                 NotBool => {
                     let top = self.stack.peek_bool();
@@ -248,35 +254,43 @@ impl VM {
                     self.stack.replace_top_word(-top);
                 }
                 ConcatString => {
-                    dbg!(&self.stack);
+                    // TODO: move this to `impl Add for VMString`
+                    use VMString::*;
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
-                    let b = frame.deref_string(&b);
-                    let a = frame.deref_string(&a);
+                    let concatenated = if a.length() + b.length() <= MAX_EMBEDDED_LENGTH as i64 {
+                        if let (Embedded(a), Embedded(b)) = (&a, &b) {
+                            let concatenated = *a + *b;
+                            VMString::Embedded(concatenated)
+                        } else {
+                            let b = b.to_string();
+                            let a = a.to_string();
 
-                    // TODO: optimize out extra heap allocation, create function that
-                    // copies both slices of bytes to a new pointer without intermediate Rust String
-                    let concatenated = alloc_string(format!("{a}{b}"));
+                            VMString::new(format!("{a}{b}"))
+                        }
+                    } else {
+                        // let b = b.to_string();
+                        // let a = a.to_string();
+
+                        VMString::new(format!("{a}{b}"))
+                    };
 
                     self.stack.push_string(concatenated);
                 }
                 CallFunction => {
                     let return_slots = frame.read::<u16>() as usize;
-                    let func_ptr: Rc<FunctionChunk> = self.stack.pop_rc();
+                    let func_ptr = self.stack.pop_func_ptr();
                     let return_address = frame.ip;
-                    let parameter_slots: usize = func_ptr.parameter_slots.into();
+                    // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
+                    let parameter_slots: usize = unsafe { (*func_ptr).parameter_slots.into() };
 
-                    dbg!(&self.stack);
-                    self.stack.shift_at_end(parameter_slots + 1);
-                    dbg!(&self.stack);
+                    self.stack.shift_at_end(parameter_slots + FUNC_PTR_SIZE);
 
-                    let func_ptr_index = self.stack.len() - parameter_slots - 1;
-                    let raw_ptr = Rc::into_raw(func_ptr.clone());
+                    let func_ptr_index = self.stack.len() - parameter_slots - FUNC_PTR_SIZE;
 
                     self.stack
-                        .set_word_at((raw_ptr as u64).into(), func_ptr_index);
-                    dbg!(&self.stack);
+                        .set_word_at((func_ptr as u64).into(), func_ptr_index);
                     self.push_frame(func_ptr, return_slots, return_address);
 
                     frame = &mut self.frames[self.frame_count - 1];
@@ -288,8 +302,7 @@ impl VM {
                         PRINT_STRING => {
                             let s = self.stack.pop_string();
 
-                            let s = frame.deref_string(&s);
-                            print_string(s);
+                            print_string(s.to_string());
                         }
                         PRINT_INT => {
                             let int = self.stack.pop_int();
@@ -327,9 +340,7 @@ impl VM {
                 }
                 Return => {
                     // function pointer
-                    dbg!(&self.stack);
                     let _ = self.stack.pop_rc::<u8>();
-                    dbg!(&self.stack);
 
                     let return_address = frame.return_address;
                     self.frame_count -= 1;
@@ -343,19 +354,21 @@ impl VM {
                 }
                 Noop => {}
             }
-            dbg!(&self.stack);
         }
     }
 
     fn push_frame(
         &mut self,
-        function: Rc<FunctionChunk>,
+        function: *const FunctionChunk,
         return_slots: usize,
         return_address: usize,
     ) {
-        let name = self.interner.get_or_intern(function.name());
+        // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
+        let function = unsafe { &*function };
 
+        let name = self.interner.get_or_intern(function.name());
         let args_size = function.parameter_slots as usize;
+
         self.stack.offset = self.stack.len() - return_slots - FUNC_PTR_SIZE - args_size;
 
         let function = VMFunction {
@@ -375,16 +388,16 @@ impl VM {
     }
 
     fn push_frame_main(&mut self) {
-        let main = self.functions.last().unwrap().clone();
+        let main = self.functions.last().unwrap();
 
         self.stack.push_int(0); // placeholder for return code
-        self.stack.push_rc(main.clone());
+        self.stack.push_raw_ptr(main as *const FunctionChunk);
 
         // TODO: replace with real data of CLI args - []String args
         self.stack.push_int(0xDEADBEEF_i64); // first word of []String
         self.stack.push_int(0xFEEDC0DE_i64); // second word of []String
 
-        self.push_frame(main, 1, 0);
+        self.push_frame(main, word_size_of::<VMInt>(), 0);
     }
 
     fn call_builtin(&mut self, i: u8) {
@@ -405,8 +418,7 @@ impl VM {
             PRINT_STRING => {
                 let s = self.stack.pop_string();
 
-                let s = frame.deref_string(&s);
-                print_string(s);
+                print_string(s.to_string());
             }
             PRINT_INT => {
                 let int = self.stack.pop_int();
@@ -429,38 +441,6 @@ impl VM {
             }
             _ => {}
         }
-    }
-}
-
-/// Allocates a dynamically generated String.
-///
-/// If the string is small, it is allocated inline. For larger string,
-/// the data is allocated on the heap.
-///
-/// It is the caller's responsibility to free the memory for this string.
-/// Normally, this will be handled by the garbage collector or with reference
-/// counting.
-fn alloc_string(s: String) -> VMString {
-    let len = s.len();
-    if len <= MAX_EMBEDDED_LENGTH {
-        let len = len as u32;
-        let mut data = [0; MAX_EMBEDDED_LENGTH];
-        s.bytes()
-            .zip(data.iter_mut())
-            .for_each(|(byte, data_ptr)| *data_ptr = byte);
-
-        VMString::new_embedded(len, data)
-    } else {
-        // let src = s.as_ptr();
-
-        // let layout = std::alloc::Layout::array::<u8>(len).expect("valid layout");
-        // let ptr = unsafe {
-        //     let dst = std::alloc::alloc(layout);
-        //     std::ptr::copy_nonoverlapping(src, dst, len);
-
-        //     dst
-        // };
-        VMString::new_allocated(s)
     }
 }
 
@@ -488,15 +468,13 @@ pub struct CallFrame {
 impl CallFrame {
     #[inline]
     fn read<T: BytecodeRead>(&mut self) -> T {
-        let value = self.function.chunk.read::<T>(self.ip);
+        // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
+        let chunk = unsafe { &*self.function.chunk };
+
+        let value = chunk.read::<T>(self.ip);
         self.ip += size_of::<T>();
 
         value
-    }
-
-    pub(crate) fn deref_string(&self, s: &VMString) -> String {
-        let constants = self.function.chunk.borrow_constants();
-        s.to_string(constants)
     }
 }
 

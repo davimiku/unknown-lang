@@ -4,7 +4,9 @@
 //! - The bytecode itself, including opcodes and operands
 //! - Text ranges corresponding to opcodes for debug information and errors
 //! - Constants pool for constants not encoded into operands, ex. strings
+pub use chunks::{FunctionChunk, ProgramChunk};
 use code::Code;
+pub use op::PushStringOperand;
 pub use op::{InvalidOpError, Op, ReturnType};
 
 use la_arena::Idx;
@@ -13,9 +15,7 @@ use vm_types::string::VMString;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::{self, Debug, Display};
-use std::mem;
-use std::ops::Range;
+use std::fmt::Debug;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
@@ -23,6 +23,7 @@ use hir::{
     UnaryExpr, UnaryOp,
 };
 
+mod chunks;
 mod code;
 mod disassemble;
 mod op;
@@ -103,9 +104,7 @@ impl Codegen {
     fn take_chunk(mut self) -> ProgramChunk {
         self.finish_func(true); // finish main
 
-        ProgramChunk {
-            functions: self.finished_functions,
-        }
+        ProgramChunk::new(self.finished_functions).expect("at least one compiled function")
     }
 }
 
@@ -264,9 +263,12 @@ impl Codegen {
         let mut code = Code::default();
         code.push((Op::PushString, range));
 
-        let string = VMString::new_constant(len, idx);
-        let string_bytes: [u8; 16] = string.into();
-        code.extend_from_slice(&string_bytes);
+        let operand = PushStringOperand {
+            len,
+            offset: idx as u32,
+        };
+
+        code.extend_from_slice(&operand.to_bytes());
 
         code
     }
@@ -611,18 +613,6 @@ enum AllocType {
     Noop,
 }
 
-#[derive(Debug, Default)]
-pub struct ProgramChunk {
-    pub functions: Vec<FunctionChunk>,
-}
-
-impl ProgramChunk {
-    #[cfg(test)]
-    fn main(&self) -> &FunctionChunk {
-        self.functions.last().unwrap()
-    }
-}
-
 #[derive(Debug)]
 pub struct FunctionCodegen {
     id: usize,
@@ -706,192 +696,6 @@ impl FunctionCodegen {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct FunctionChunk {
-    /// bytecode (ops and operands) with text ranges corresponding to those ops
-    code: Code,
-
-    /// Total "slots" / words used by parameters of this function
-    pub parameter_slots: u16,
-
-    /// constants pool that are not encoded as operands, ex. strings
-    ///
-    /// The first byte is the length of the name of the function, and the next
-    /// `len` bytes are the function name.
-    // TODO: encapsulate this in a struct?
-    constants: Vec<u8>,
-}
-
-// TODO: implement Debug
-
-// Constructors
-impl FunctionChunk {
-    fn new(name: &str, parameter_slots: u16) -> Self {
-        let mut chunk = Self {
-            parameter_slots,
-            ..Self::default()
-        };
-
-        chunk.add_name_to_constants(name);
-        chunk
-    }
-
-    fn append(&mut self, source: Code) {
-        self.code.append(source);
-    }
-}
-
-// Mutating functions
-
-impl FunctionChunk {
-    fn add_name_to_constants(&mut self, name: &str) {
-        let len = name.len();
-        self.constants.push(len as u8);
-
-        if len > 0 {
-            self.constants.extend_from_slice(name.as_bytes());
-        }
-    }
-
-    fn write_op(&mut self, op: Op, range: TextRange) {
-        self.code.bytes.push(op as u8);
-        self.code.ranges.push(range);
-    }
-
-    fn write_byte(&mut self, byte: u8) {
-        self.code.bytes.push(byte);
-    }
-
-    fn write_bytes(&mut self, bytes: &[u8]) {
-        self.code.bytes.extend(bytes);
-    }
-
-    pub fn write_ret(&mut self, range: TextRange) {
-        self.write_op(Op::Return, range);
-    }
-
-    pub fn write_noop(&mut self, range: TextRange) {
-        self.write_op(Op::Noop, range);
-    }
-
-    pub fn shrink_to_fit(&mut self) {
-        self.code.shrink_to_fit();
-        self.constants.shrink_to_fit();
-    }
-}
-
-// Non-Mutating functions
-impl FunctionChunk {
-    /// Gets the Op at the given index.
-    #[inline]
-    pub fn get_op(&self, i: usize) -> Result<Op, InvalidOpError> {
-        self.code.bytes[i].try_into()
-    }
-
-    /// Reads bytes from the bytecode and returns as T.
-    ///
-    /// Panics if there are not enough bytes to read.
-    // TODO: mutate `offset` in this function so the caller
-    // doesn't need to remember to mutate it
-    #[inline]
-    pub fn read<T>(&self, offset: usize) -> T
-    where
-        T: BytecodeRead,
-    {
-        assert!(offset + mem::size_of::<T>() - 1 < self.code.bytes.len());
-
-        // Safety: We checked that it is not an out-of-bounds read,
-        // so this is safe.
-        unsafe { self.read_unchecked(offset) }
-    }
-
-    /// Gets the name of the function from the bytecode
-    pub fn name(&self) -> &str {
-        // TODO: need to have compile error for functions with name >255 characters
-        let len = self.constants[0];
-        if len == 0 {
-            return "";
-        }
-
-        let bytes = &self.constants[1..((len + 1) as usize)];
-
-        // Safety: bytes were valid UTF-8 when Self was created
-        unsafe { std::str::from_utf8_unchecked(bytes) }
-    }
-
-    pub fn borrow_constants(&self) -> &[u8] {
-        &self.constants
-    }
-
-    /// Gets a slice of bytes from the constants pool at the given index
-    ///
-    /// Panics: if the index is out-of-bounds
-    pub fn constants_slice(&self, index: Range<usize>) -> &[u8] {
-        let result = self.constants.get(index.clone());
-        match result {
-            Some(s) => s,
-            None => {
-                println!("\n\n{index:?}");
-                panic!("Invalid slice index")
-            }
-        }
-    }
-
-    /// Gets a slice of bytes from the constants pool at the given index
-    ///
-    /// # Safety
-    ///
-    /// Triggers undefined behavior if the index is out-of-bounds
-    pub unsafe fn constants_slice_unchecked(&self, index: Range<usize>) -> &[u8] {
-        self.constants.get_unchecked(index)
-    }
-
-    unsafe fn read_unchecked<T>(&self, offset: usize) -> T
-    where
-        T: BytecodeRead,
-    {
-        self.code
-            .bytes
-            .as_ptr()
-            .add(offset)
-            .cast::<T>()
-            .read_unaligned()
-    }
-}
-
-// Functions for debugging the Chunk
-#[cfg(debug_assertions)]
-impl Display for FunctionChunk {
-    /// Prints the Chunk in a disassembled format for human-reading.
-    ///
-    /// This format is not stable and should not be depended on for
-    /// any kind of machine parsing.
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut name = self.name();
-        if name.is_empty() {
-            name = "<anonymous>";
-        }
-        let param_size = self.parameter_slots;
-
-        writeln!(f, "{name}: param size = {param_size}")?;
-        let mut offset = 0;
-        let mut op_idx = 0;
-        while offset < self.code.bytes.len() {
-            let op = self.code.bytes[offset];
-            let op: Op = op.try_into().expect("byte should be convertible to Op");
-            let range = self.code.ranges[op_idx];
-
-            let line = format!("{:?}:{:?}", range.start(), range.end());
-            write!(f, "{offset:04}  {line}  ")?;
-            offset = op.disassemble(self, offset);
-            writeln!(f)?;
-
-            op_idx += 1;
-        }
-        writeln!(f)
-    }
-}
-
 // TODO: represent this as a static map or some other efficient form
 // or use once_cell if merged into std
 // lazy_static!{
@@ -941,5 +745,5 @@ unsafe impl BytecodeRead for u16 {}
 unsafe impl BytecodeRead for u32 {}
 unsafe impl BytecodeRead for VMInt {}
 unsafe impl BytecodeRead for VMFloat {}
-unsafe impl BytecodeRead for VMString {}
+unsafe impl BytecodeRead for PushStringOperand {}
 unsafe impl BytecodeRead for ReturnType {}

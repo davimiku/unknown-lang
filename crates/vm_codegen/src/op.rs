@@ -7,7 +7,12 @@ use vm_types::string::VMString;
 use vm_types::VMFloat;
 use vm_types::VMInt;
 
-/// The opcodes of the virtual machine (VM)
+/// The opcodes (operation codes) of the virtual machine (VM)
+///
+/// Each operation code represents a runtime operation that the VM
+/// can perform.
+/// Most operations use values in the runtime stack. Some operations
+/// also have operands directly encoded in the bytecode after the op code.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum Op {
@@ -41,7 +46,7 @@ pub enum Op {
 
     /// Push `String` value on the stack.
     ///
-    /// Operands: value: VMString
+    /// Operands: value: PushStringOperand
     ///
     /// Stack: **=>** String
     PushString,
@@ -330,7 +335,7 @@ impl Op {
         match self {
             Op::PushInt => size_of::<VMInt>(),
             Op::PushFloat => size_of::<VMFloat>(),
-            Op::PushString => size_of::<VMString>(),
+            Op::PushString => size_of::<PushStringOperand>(),
             Op::GetLocal | Op::GetLocal2 | Op::GetLocal4 => size_of::<u16>(),
             Op::SetLocal | Op::SetLocal2 | Op::SetLocal4 => size_of::<u16>(),
             Op::GetLocalN | Op::SetLocalN => size_of::<(u16, u16)>(),
@@ -364,6 +369,19 @@ impl TryFrom<u8> for Op {
 
             Ok(op)
         }
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct PushStringOperand {
+    pub len: u32,
+    pub offset: u32,
+}
+
+impl PushStringOperand {
+    pub(crate) fn to_bytes(self) -> [u8; 8] {
+        bytemuck::cast([self.len, self.offset])
     }
 }
 

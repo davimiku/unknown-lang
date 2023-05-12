@@ -8,19 +8,27 @@ fn generate_chunk(input: &str) -> ProgramChunk {
 }
 
 #[test]
-fn print_call() {
+fn print_int() {
+    let input = "print 1";
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+fn print_string() {
     let input = "print \"Hello\"";
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
 fn string_concatenation() {
     let input = r#"print ("Hello, " ++ "World!")"#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -33,16 +41,16 @@ fn string_concat_local_def() {
     let c = a ++ b
     "#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
 fn if_else() {
     let input = "if true { print 1 } else { print 0 }";
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -50,8 +58,8 @@ fn local_def() {
     let input = r#"
 let a = "Hello""#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -60,8 +68,8 @@ fn print_local_def() {
 let a = "Hello"
 print a"#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -71,8 +79,8 @@ let repeat = (s: String) -> s ++ s
 repeat "Hello"
 "#;
 
-    let chunk = generate_chunk(input);
-    println!("{}\n{}", chunk.main(), chunk.functions[0]);
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -83,8 +91,8 @@ let b = " World"
 print b
 print a"#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -95,10 +103,8 @@ fn function_def_call() {
 let print_my_string = (s: String) -> { print s }
 print_my_string "Hello ""#;
 
-    let chunk = generate_chunk(input);
-    println!("{}", chunk.main());
-    println!();
-    println!("{}", chunk.functions[0]);
+    let program = generate_chunk(input);
+    println!("{program}");
 }
 
 #[test]
@@ -108,6 +114,18 @@ let repeat = (s: String) -> s ++ s
 let hello_hello = repeat "Hello "
 print hello_hello"#;
 
-    let chunk = generate_chunk(input);
-    println!("{}\n{}", chunk.main(), chunk.functions[0]);
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+fn unused_literals() {
+    let input = r#"
+1
+2.0
+true
+"str""#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
 }
