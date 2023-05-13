@@ -11,6 +11,10 @@ pub enum Expr {
     /// A missing expression from the parse tree
     Empty,
 
+    /// "Expression statement", an expression that the return value
+    /// is unused
+    Statement(Idx<Expr>),
+
     /// Boolean literal value, `true` or `false`
     BoolLiteral(bool),
 

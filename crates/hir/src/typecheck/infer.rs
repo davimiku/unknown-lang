@@ -43,6 +43,7 @@ pub(crate) fn infer_expr(
             variant: TypeDiagnosticVariant::Undefined { name: todo!() },
             range: database.range_of_expr(expr_idx),
         }),
+        Expr::Statement(expr_idx) => infer_expr(*expr_idx, type_database, database),
 
         Expr::BoolLiteral(b) => infer_bool_literal(*b, type_database, expr_idx),
         Expr::FloatLiteral(f) => infer_float_literal(*f, type_database, expr_idx),

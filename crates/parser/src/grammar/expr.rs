@@ -69,6 +69,11 @@ where
 {
     let mut lhs = lhs_parser(p)?;
 
+    if p.peek() == Some(Newline) {
+        p.bump();
+        return Some(lhs);
+    }
+
     loop {
         let curr = p.peek();
         if curr.is_none() {

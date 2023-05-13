@@ -166,6 +166,13 @@ impl<'a> Context<'a> {
 
 // Lowering functions - Expr
 impl<'a> Context<'a> {
+    pub(crate) fn lower_expr_statement(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
+        let inner = self.lower_expr(ast.clone());
+
+        let statement = Expr::Statement(inner);
+        self.alloc_expr(statement, ast)
+    }
+
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
@@ -284,7 +291,7 @@ impl<'a> Context<'a> {
 
         let exprs = ast
             .exprs()
-            .map(|expr_ast| self.lower_expr(Some(expr_ast)))
+            .map(|expr_ast| self.lower_expr_statement(Some(expr_ast)))
             .collect();
 
         self.pop_scope();

@@ -201,6 +201,14 @@ impl Codegen {
         let expr = context.expr(expr_idx);
         let range = context.range_of(expr_idx);
         match expr {
+            Statement(expr_idx) => {
+                let mut code = self.synth_expr(*expr_idx, context);
+
+                let ty = context.type_of_expr(*expr_idx);
+                code.append(pop_code_of(ty));
+
+                code
+            }
             // TODO: clean up this messy logic
             Function(expr) => {
                 let name = expr.name.map_or("", |key| context.lookup(key));
@@ -731,7 +739,6 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Float | Type::FloatLiteral(_) => vm_types::word_size_of::<VMFloat>(),
         Type::Int | Type::IntLiteral(_) => vm_types::word_size_of::<VMInt>(),
         Type::String | Type::StringLiteral(_) => vm_types::word_size_of::<VMString>(),
-        // Type::Named(_) => todo!(),
         Type::Unit => 0,
 
         Type::Function(_) => 1, // pointer size
@@ -742,6 +749,30 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Top => 0,
         Type::Bottom => 0,
     } as u16)
+}
+
+/// For a given Type, provides the bytecode required to
+/// pop it from the stack.
+#[must_use]
+fn pop_code_of(ty: &Type) -> Code {
+    let range = TextRange::default();
+
+    match ty {
+        Type::Unit => Code::default(),
+
+        Type::Bool
+        | Type::BoolLiteral(_)
+        | Type::FloatLiteral(_)
+        | Type::IntLiteral(_)
+        | Type::Float
+        | Type::Int => Code::from_op(Op::Pop1, range),
+        Type::StringLiteral(_) | Type::String => Code::from_op(Op::PopString, range),
+        Type::Function(_) => Code::from_op(Op::Pop1, range),
+        Type::Array(_) => todo!(),
+
+        Type::Top | Type::Bottom => unreachable!(),
+        Type::Undetermined | Type::Error => unreachable!(),
+    }
 }
 
 /// Types implementing this trait may be read from the bytecode.

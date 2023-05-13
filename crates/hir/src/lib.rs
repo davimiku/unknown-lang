@@ -31,7 +31,7 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
 
     let exprs: Vec<Idx<Expr>> = ast
         .exprs()
-        .map(|expr| context.lower_expr(Some(expr)))
+        .map(|expr| context.lower_expr_statement(Some(expr)))
         .collect();
 
     let program = Expr::Block(BlockExpr { exprs });

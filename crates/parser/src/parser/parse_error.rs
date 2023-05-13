@@ -24,16 +24,16 @@ impl fmt::Display for ParseError {
 
         for (idx, expected_kind) in self.expected.iter().enumerate() {
             if is_first(idx) {
-                write!(f, "{}", expected_kind)?;
+                write!(f, "{expected_kind}")?;
             } else if is_last(idx) {
-                write!(f, " or {}", expected_kind)?;
+                write!(f, " or {expected_kind}")?;
             } else {
-                write!(f, ", {}", expected_kind)?;
+                write!(f, ", {expected_kind}")?;
             }
         }
 
         if let Some(found) = self.found {
-            write!(f, ", but found {}", found)?;
+            write!(f, " but found {found}")?;
         }
 
         Ok(())
@@ -70,7 +70,7 @@ mod tests {
             vec![TokenKind::Equals],
             Some(TokenKind::Ident),
             10..20,
-            "error at 10..20: expected ‘=’, but found identifier",
+            "error at 10..20: expected ‘=’ but found identifier",
         );
     }
 
@@ -90,7 +90,7 @@ mod tests {
             vec![TokenKind::Plus, TokenKind::Dash],
             Some(TokenKind::Equals),
             0..1,
-            "error at 0..1: expected ‘+’ or ‘-’, but found ‘=’",
+            "error at 0..1: expected ‘+’ or ‘-’ but found ‘=’",
         );
     }
 
@@ -105,7 +105,7 @@ mod tests {
             ],
             Some(TokenKind::Let),
             100..105,
-            "error at 100..105: expected Int, identifier, ‘-’ or ‘(’, but found ‘let’",
+            "error at 100..105: expected Int, identifier, ‘-’ or ‘(’ but found ‘let’",
         );
     }
 }

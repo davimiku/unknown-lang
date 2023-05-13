@@ -50,7 +50,7 @@ fn get_program_input() -> io::Result<String> {
     // let repeat = (s: String) -> s ++ s
     // let hello = repeat "Hi "
     // print hello"#;
-    let program = "print ~123";
+    let program = r#"print ("Hello, " ++ "World!")"#;
 
     Ok(program.to_owned())
 }

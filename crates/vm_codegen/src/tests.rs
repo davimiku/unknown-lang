@@ -8,6 +8,33 @@ fn generate_chunk(input: &str) -> ProgramChunk {
 }
 
 #[test]
+fn int_literal() {
+    let input = "1";
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+fn string_literal() {
+    let input = "\"Hello\"";
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+fn multiple_string_literals() {
+    let input = r#""a1"
+"b2"
+"c3"
+"d4""#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
 fn print_int() {
     let input = "print 1";
 

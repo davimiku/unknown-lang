@@ -11,7 +11,7 @@ use vm_codegen::{
     BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op, ProgramChunk,
     PushStringOperand,
 };
-use vm_types::string::{ConstantVMString, VMString, MAX_EMBEDDED_LENGTH};
+use vm_types::string::{VMString, MAX_EMBEDDED_LENGTH};
 use vm_types::words::Word;
 use vm_types::{word_size_of, FromWordVec, VMBool, VMFloat, VMInt};
 

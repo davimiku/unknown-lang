@@ -79,8 +79,7 @@ fn check_error(input: &str, expected_tree: expect_test::Expect, expected_errors:
     assert_eq!(parse.errors, expected_errors);
 }
 
-// Convenience function to test expression parsing directly, since _most_
-// language constructs are expressions.
+// Convenience function to test expression parsing directly
 #[cfg(test)]
 fn check_expr(input: &str, expected_tree: expect_test::Expect) {
     let parse = test_parse_expr(input);

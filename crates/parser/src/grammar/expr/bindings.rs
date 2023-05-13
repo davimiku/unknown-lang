@@ -160,7 +160,7 @@ Root@0..17
     Emptyspace@15..16 " "
     Path@16..17
       Ident@16..17 "a"
-error at 8..11: expected Int, identifier, ‘-’ or ‘(’, but found ‘let’"#]],
+error at 8..11: expected Int, identifier, ‘-’ or ‘(’ but found ‘let’"#]],
         );
     }
 

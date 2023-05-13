@@ -31,7 +31,7 @@ fn print(input: &str) {
     }
 }
 
-fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
+fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     let mut interner = Interner::default();
 
     let root: Root = parser::parse(input).into();
@@ -39,10 +39,7 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
 
     assert_eq!(context.diagnostics, vec![]);
 
-    let expected_expr = expected_expr
-        .split('\n')
-        .map(|s| format!("    {s}"))
-        .join("\n");
+    let expected_expr = expected.split('\n').map(|s| format!("    {s}")).join("\n");
 
     let expected_vars = &mut [("args~0", "[]String"), ("print~0", "(String) -> Unit")]
         .iter()
@@ -88,6 +85,21 @@ fn string_literal() {
     let input = r#""Hello""#;
 
     check(input, "\"Hello\"", &[]);
+}
+
+#[test]
+fn multiple_string_literals() {
+    let input = r#""a1"
+"b2"
+"c3"
+"d4""#;
+
+    let expected = r#""a1";
+"b2";
+"c3";
+"d4";"#;
+
+    check(input, expected, &[]);
 }
 
 #[test]
