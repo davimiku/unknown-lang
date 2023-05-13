@@ -110,8 +110,8 @@ let message = "Hello World"
 // types are inferred, and this is the preferred way
 // in some cases you may want explicit type annotations
 
-let message: string = "Hello World"
-let count: string = 10 // <-- type error
+let message: String = "Hello World"
+let count: String = 10 // <-- type error
 ```
 
 ## Functions
@@ -130,11 +130,11 @@ Function syntax is:
 // The "nothing" function, empty inputs and no output
 let do_nothing = () -> { }
 
-// no inputs, always returns `16` as Int
-let returns_sixteen = () -> Int { 16 }
+// no inputs, always returns `16`
+let returns_sixteen = () ->  16
 
 // one Int input, returns Int
-let square = (input: Int) -> Int { input * input }
+let square = (input: Int) -> input * input
 
 // one String input, no return
 let shout = (input: String) -> {
@@ -149,9 +149,9 @@ In addition to the value parameters described above, there can also be type para
 
 Type parameters are listed first in the parameter list, and the identifier starts with an apostrophe `'`
 
-```txt
+```
 // The canonical "identity" function that just returns its input
-let identity = ('a, input: 'a) -> 'a { input }
+let identity = ('a, input: 'a) -> { input }
 
 
 let output_two = identity 2
@@ -162,3 +162,33 @@ let output_two = identity 2
 1. The first `'a` defines a type parameter, called `'a`, which can be used later.
 2. The second `'a`, used by the value parameter, constrains the type of that parameter.
 3. The third `'a`, used as the return type, defines that the function returns the same type as its input.
+
+```ts
+type MakeArray = <T>(input: T) => T[];
+
+function _makeArray<T>(input: T) {
+  return [input];
+}
+
+const makeArray: MakeArray = _makeArray;
+
+const strResult = makeArray("hello");
+const numResult = makeArray(123);
+```
+
+```
+type MakeIntList = Int -> List Int
+
+type MakeGenericList = ('a, 'a) -> List 'a
+// how do we say "define 'a, then use 'a" ?
+
+// options?
+type MakeGenericList = ('a, a: 'a) -> List a
+type MakeGenericList = ('a)('a) -> List 'a
+type MakeGenericList = ('a)('a -> List 'a)
+type MakeGenericList = ['a]('a) -> List 'a
+type MakeGenericList = <'a>('a) -> List 'a
+type MakeGenericList = 'a -> List 'a
+
+
+```
