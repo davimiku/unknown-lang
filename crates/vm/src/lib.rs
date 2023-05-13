@@ -287,15 +287,9 @@ impl VM {
                             let concatenated = *a + *b;
                             VMString::Embedded(concatenated)
                         } else {
-                            let b = b.to_string();
-                            let a = a.to_string();
-
                             VMString::new(format!("{a}{b}"))
                         }
                     } else {
-                        // let b = b.to_string();
-                        // let a = a.to_string();
-
                         VMString::new(format!("{a}{b}"))
                     };
 

@@ -301,15 +301,13 @@ impl Add for EmbeddedVMString {
         let self_len = self.len as usize;
         let rhs_len = rhs.len as usize;
         let new_len = self_len + rhs_len;
-        assert!(new_len <= MAX_EMBEDDED_LENGTH);
+        // Safety: we trust that this check is done before adding
+        debug_assert!(new_len <= MAX_EMBEDDED_LENGTH);
 
         let mut new_data: [u8; MAX_EMBEDDED_LENGTH] = [0; MAX_EMBEDDED_LENGTH];
-        for i in 0..self_len {
-            new_data[i] = self.data[i];
-        }
-        for i in self_len..rhs_len {
-            new_data[i] = rhs.data[i];
-        }
+        new_data[..self_len].copy_from_slice(&self.data[..self_len]);
+        new_data[self_len..rhs_len].copy_from_slice(&rhs.data[self_len..rhs_len]);
+
         EmbeddedVMString {
             len: new_len as u32,
             data: new_data,
@@ -337,26 +335,6 @@ impl From<RawVMStringData> for EmbeddedVMString {
     fn from(value: RawVMStringData) -> Self {
         todo!()
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u32)]
-enum AllocationStrategy {
-    /// The string is allocated on the heap, and its lifetime must be managed
-    // TODO: split this into heap allocations with a statically known lifetime
-    // that will have Drop calls automatically inserted vs. a heap allocation
-    // where the lifetime is managed by the GC
-    Heap = 1, // For easier debugging to not have zero bytes, can be removed later
-
-    /// The String is known at compiletime and is allocated in the constants
-    /// section of the bytecode. The lifetime of the string data is static
-    /// for the duration of the program and is owned by the bytecode itself.
-    Constants,
-
-    /// The bytes of the String are embedded within this struct itself
-    /// Up to 11 bytes? 4 bytes for tag and 1 byte for len?
-    /// Could go up to 14 bytes with unsafe pack the padding after a u8 tag
-    Embedded,
 }
 
 pub enum DisassembledVMString {
