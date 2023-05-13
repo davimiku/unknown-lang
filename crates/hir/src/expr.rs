@@ -199,6 +199,7 @@ impl fmt::Display for BinaryOp {
 pub enum UnaryOp {
     Neg,
     Not,
+    IntoString,
 }
 
 impl fmt::Display for UnaryOp {
@@ -206,6 +207,7 @@ impl fmt::Display for UnaryOp {
         match self {
             UnaryOp::Neg => write!(f, "-"),
             UnaryOp::Not => write!(f, "!"),
+            UnaryOp::IntoString => write!(f, "~"),
         }
     }
 }

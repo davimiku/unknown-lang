@@ -38,3 +38,15 @@ NotExpr@0..2
       Ident@1..2 "a""#]],
     );
 }
+
+#[test]
+fn parse_tostring_int() {
+    check_expr(
+        "~1",
+        expect![[r#"
+IntoStringExpr@0..2
+  Tilde@0..1 "~"
+  IntLiteralExpr@1..2
+    IntLiteral@1..2 "1""#]],
+    );
+}

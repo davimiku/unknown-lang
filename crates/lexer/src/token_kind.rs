@@ -167,6 +167,10 @@ pub enum TokenKind {
     #[token("!")]
     Bang,
 
+    /// `~`
+    #[token("~")]
+    Tilde,
+
     /// `<`
     #[token("<")]
     LAngle,
@@ -285,6 +289,7 @@ impl fmt::Display for TokenKind {
             Self::Caret => "‘^’",
             Self::Percent => "‘%’",
             Self::Bang => "‘!’",
+            Self::Tilde => "‘~’",
 
             Self::LAngle => "‘<’",
             Self::LAngleEquals => "‘<=’",

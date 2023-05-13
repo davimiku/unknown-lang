@@ -270,6 +270,7 @@ impl<'a> Context<'a> {
         let op = match ast.op().unwrap().kind() {
             SyntaxKind::Dash => UnaryOp::Neg,
             SyntaxKind::Bang => UnaryOp::Not,
+            SyntaxKind::Tilde => UnaryOp::IntoString,
             _ => unreachable!(),
         };
 

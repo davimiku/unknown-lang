@@ -3,6 +3,8 @@ mod bindings;
 mod tests;
 pub(super) mod types;
 
+use std::fmt;
+
 use lexer::TokenKind::{self, *};
 
 use crate::parser::marker::CompletedMarker;
@@ -18,13 +20,14 @@ use self::types::parse_type_expr;
 // (is the condition `a` or is the condition `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const CALL_ARG_START: [TokenKind; 8] = [
+const CALL_ARG_START: [TokenKind; 9] = [
     LParen,
     Ident,
     IntLiteral,
     FloatLiteral,
     StringLiteral,
     Bang,  // expression is higher precedence than function application
+    Tilde, // temporary IntoString operator
     False, // TODO: remove when true/false are turned into idents
     True,  // TODO: remove when true/false are turned into idents
 ];
@@ -151,6 +154,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 
         Dash => parse_negation_expr(p),
         Bang => parse_not_expr(p),
+        Tilde => parse_tostring_expr(p),
+
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
         Loop => parse_loop_expr(p),
@@ -259,8 +264,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
 
-    let op = UnaryOp::Neg;
-    let ((), right_binding_power) = op.binding_power();
+    let ((), right_binding_power) = UnaryOp::Neg.binding_power();
 
     // Consume the operator’s token.
     p.bump();
@@ -275,8 +279,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
 
-    let op = UnaryOp::Not;
-    let ((), right_binding_power) = op.binding_power();
+    let ((), right_binding_power) = UnaryOp::Not.binding_power();
 
     // Consume the operator's token.
     p.bump();
@@ -284,6 +287,21 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     expr_binding_power(p, right_binding_power, parse_lhs);
 
     m.complete(p, SyntaxKind::NotExpr)
+}
+
+fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(Tilde));
+
+    let m = p.start();
+
+    let ((), right_binding_power) = UnaryOp::IntoString.binding_power();
+
+    // Consume the operator's token.
+    p.bump();
+
+    expr_binding_power(p, right_binding_power, parse_lhs);
+
+    m.complete(p, SyntaxKind::IntoStringExpr)
 }
 
 // paren expr or function params??
@@ -454,16 +472,29 @@ impl BinaryOp {
     }
 }
 
-enum UnaryOp {
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnaryOp {
     Neg,
     Not,
+    IntoString,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
+            UnaryOp::IntoString => write!(f, "~"),
+        }
+    }
 }
 
 impl UnaryOp {
     fn binding_power(&self) -> ((), u8) {
         match self {
-            Self::Neg => ((), 11), // TODO: should be higher than Exp but less than Path
-            Self::Not => ((), 5),  // TODO: should be higher than And?
+            Self::Neg => ((), 11), // TODO: should be higher than Exp but less than Path?
+            Self::IntoString => ((), 9),
+            Self::Not => ((), 7),
         }
     }
 }

@@ -8,7 +8,8 @@ use std::mem::{size_of, MaybeUninit};
 use std::ops::{Add, Mul, Sub};
 use vm_boxed_types::VMFunction;
 use vm_codegen::{
-    BytecodeRead, FunctionChunk, InvalidOpError, Op, ProgramChunk, PushStringOperand,
+    BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op, ProgramChunk,
+    PushStringOperand,
 };
 use vm_types::string::{ConstantVMString, VMString, MAX_EMBEDDED_LENGTH};
 use vm_types::words::Word;
@@ -252,6 +253,28 @@ impl VM {
                 NegateFloat => {
                     let top = self.stack.peek_float();
                     self.stack.replace_top_word(-top);
+                }
+                IntoString => {
+                    let kind = frame.read::<IntoStringOperand>();
+                    match kind {
+                        IntoStringOperand::Bool => {
+                            let b = self.stack.pop_bool();
+                            if b == 0 {
+                                self.stack.push_string(VMString::new("false".to_string()));
+                            } else {
+                                self.stack.push_string(VMString::new("true".to_string()));
+                            }
+                        }
+                        IntoStringOperand::Float => {
+                            let float = self.stack.pop_float();
+                            // TODO: consider using the `ryu` crate
+                            self.stack.push_string(VMString::new(float.to_string()));
+                        }
+                        IntoStringOperand::Int => {
+                            let int = self.stack.pop_int();
+                            self.stack.push_string(VMString::new(int.to_string()));
+                        }
+                    }
                 }
                 ConcatString => {
                     // TODO: move this to `impl Add for VMString`

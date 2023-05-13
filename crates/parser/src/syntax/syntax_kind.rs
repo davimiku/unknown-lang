@@ -57,6 +57,7 @@ pub enum SyntaxKind {
     Caret,
     Percent,
     Bang,
+    Tilde,
 
     LAngle,
     LAngleEquals,
@@ -86,6 +87,7 @@ pub enum SyntaxKind {
     PathItem,
     StringLiteralExpr,
     StructTypeExpr,
+    IntoStringExpr,
     TypeExpr,
     UnionTypeExpr,
 
@@ -175,6 +177,8 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Caret => Self::Caret,
             TokenKind::Percent => Self::Percent,
             TokenKind::Bang => Self::Bang,
+            TokenKind::Tilde => Self::Tilde,
+
             TokenKind::Equals => Self::Equals,
             TokenKind::Comment => Self::Comment,
             TokenKind::LAngle => Self::LAngle,
@@ -225,6 +229,8 @@ impl fmt::Display for SyntaxKind {
             SyntaxKind::Hash => "‘#’",
             SyntaxKind::Percent => "‘%’",
             SyntaxKind::At => "‘@’",
+            SyntaxKind::Bang => "‘!’",
+            SyntaxKind::Tilde => "‘~’",
             SyntaxKind::Comment => "comment",
             SyntaxKind::LAngle => "‘<’",
             SyntaxKind::RAngle => "‘>’",

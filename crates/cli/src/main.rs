@@ -46,10 +46,11 @@ fn test_main() {
 
 #[cfg(test)]
 fn get_program_input() -> io::Result<String> {
-    let program = r#"
-    let repeat = (s: String) -> s ++ s
-    let hello = repeat "Hi "
-    print hello"#;
+    // let program = r#"
+    // let repeat = (s: String) -> s ++ s
+    // let hello = repeat "Hi "
+    // print hello"#;
+    let program = "print ~123";
 
     Ok(program.to_owned())
 }

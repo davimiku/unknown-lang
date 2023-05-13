@@ -2,7 +2,10 @@ use std::mem::size_of;
 
 use vm_types::string::VMString;
 
-use crate::{op::PushStringOperand, BytecodeRead, FunctionChunk, Op, VMFloat, VMInt};
+use crate::{
+    op::{IntoStringOperand, PushStringOperand},
+    BytecodeRead, FunctionChunk, Op, VMFloat, VMInt,
+};
 
 // TODO: pull builtins out to a separate crate?
 // This kind of idx -> builtin map would be used in vm_codegen and vm
@@ -53,6 +56,15 @@ impl Op {
                 let s = std::str::from_utf8(bytes).unwrap();
 
                 print!("\"{s}\"");
+            }
+            Op::IntoString => {
+                let kind = read::<IntoStringOperand>(chunk, &mut offset);
+
+                match kind {
+                    IntoStringOperand::Bool => print!("Bool"),
+                    IntoStringOperand::Float => print!("Float"),
+                    IntoStringOperand::Int => print!("Int"),
+                }
             }
 
             Op::GetLocal

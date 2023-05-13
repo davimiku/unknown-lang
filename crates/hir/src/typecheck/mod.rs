@@ -139,6 +139,7 @@ pub enum TypeDiagnosticVariant {
     BinaryMismatch { op: BinaryOp, lhs: Type, rhs: Type },
     // TODO: better name "tried to call something that was not a function"
     CalleeNotFunction { actual: Type },
+    CannotConvertIntoString { actual: Type },
     Incompatible { a: Type, b: Type },
     NoOverloadFound { name: String },
     TypeMismatch { expected: Type, actual: Type },

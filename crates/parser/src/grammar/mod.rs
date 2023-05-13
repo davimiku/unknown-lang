@@ -6,10 +6,6 @@ use crate::parser::Parser;
 
 use crate::syntax::SyntaxKind;
 
-// pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
-//     parse_root(p)
-// }
-
 // TODO: Remove this and all tests from AST that relies on these internal details
 pub(crate) fn root(p: &mut Parser) -> CompletedMarker {
     match p.entry_point {

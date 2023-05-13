@@ -29,7 +29,8 @@ impl VMString {
     /// It is the caller's responsibility to free the memory for this string.
     /// Normally, this will be handled by the garbage collector or with reference
     /// counting.
-    pub fn new(s: String) -> VMString {
+    // TODO: take &str instead?
+    pub fn new(s: String) -> Self {
         let len = s.len();
         if len <= MAX_EMBEDDED_LENGTH {
             let len = len as u32;
@@ -38,7 +39,7 @@ impl VMString {
                 .zip(data.iter_mut())
                 .for_each(|(byte, data_ptr)| *data_ptr = byte);
 
-            VMString::new_embedded(len, data)
+            Self::new_embedded(len, data)
         } else {
             // let src = s.as_ptr();
 
@@ -49,7 +50,7 @@ impl VMString {
 
             //     dst
             // };
-            VMString::new_allocated(s)
+            Self::new_allocated(s)
         }
     }
 
@@ -66,6 +67,10 @@ impl VMString {
 
     pub fn new_embedded(len: u32, data: [u8; MAX_EMBEDDED_LENGTH]) -> Self {
         Self::Embedded(EmbeddedVMString { len, data })
+    }
+
+    pub fn new_from_str(s: &str) -> Self {
+        Self::new(s.to_owned())
     }
 }
 

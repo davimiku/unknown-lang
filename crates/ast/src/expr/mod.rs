@@ -44,6 +44,7 @@ impl Expr {
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
+            SyntaxKind::IntoStringExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::Path => Self::Path(PathExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
@@ -487,7 +488,7 @@ impl Unary {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            .find(|token| matches!(token.kind(), Dash | Bang))
+            .find(|token| matches!(token.kind(), Dash | Bang | Tilde))
     }
 
     pub fn range(&self) -> TextRange {

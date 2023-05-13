@@ -6,8 +6,7 @@
 //! - Constants pool for constants not encoded into operands, ex. strings
 pub use chunks::{FunctionChunk, ProgramChunk};
 use code::Code;
-pub use op::PushStringOperand;
-pub use op::{InvalidOpError, Op, ReturnType};
+pub use op::{IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnType};
 
 use la_arena::Idx;
 use text_size::TextRange;
@@ -240,7 +239,7 @@ impl Codegen {
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
 
             Binary(expr) => self.synth_binary_expr(expr, context),
-            Unary(expr) => self.synth_unary_expr(expr, context),
+            Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
             LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
             Call(expr) => self.synth_call_expr(expr_idx, expr, context),
             LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
@@ -317,20 +316,35 @@ impl Codegen {
     }
 
     #[must_use]
-    fn synth_unary_expr(&mut self, expr: &UnaryExpr, context: &hir::Context) -> Code {
+    fn synth_unary_expr(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &UnaryExpr,
+        context: &hir::Context,
+    ) -> Code {
         let UnaryExpr { op, expr: idx } = expr;
         let expr_type = context.type_of_expr(*idx);
+        let range = context.range_of(expr_idx);
 
         let mut code = self.synth_expr(*idx, context);
 
         use Type::*;
         use UnaryOp::*;
-        code.push(match (op, expr_type) {
-            (Neg, Int) | (Neg, IntLiteral(_)) => synth_op(Op::NegateInt, TextRange::default()),
-            (Neg, Float) | (Neg, FloatLiteral(_)) => {
-                synth_op(Op::NegateFloat, TextRange::default())
+        code.append(match (op, expr_type) {
+            (Neg, Int) | (Neg, IntLiteral(_)) => synth_op(Op::NegateInt, range).into(),
+            (Neg, Float) | (Neg, FloatLiteral(_)) => synth_op(Op::NegateFloat, range).into(),
+
+            (Not, Bool) | (Not, BoolLiteral(_)) => synth_op(Op::NotBool, range).into(),
+
+            (IntoString, Bool) | (IntoString, BoolLiteral(_)) => {
+                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Bool as u8])
             }
-            (Not, Bool) | (Not, BoolLiteral(_)) => synth_op(Op::NotBool, TextRange::default()),
+            (IntoString, Float) | (IntoString, FloatLiteral(_)) => {
+                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Float as u8])
+            }
+            (IntoString, Int) | (IntoString, IntLiteral(_)) => {
+                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Int as u8])
+            }
 
             _ => unreachable!(),
         });
@@ -532,7 +546,7 @@ impl Codegen {
     #[must_use]
     fn synth_builtin_call(&mut self, path: &str, arg_types: Vec<&Type>) -> Code {
         if path == "print" {
-            // TODO: "print" is just for String. Provide a temporary ToString operator until type parameters are
+            // TODO: "print" is just for String. Provide a temporary IntoString operator until type parameters are
             // implemented, then "print" can take a `Into<String>`
             let arg_type = *arg_types.get(0).expect("print to have 1 argument");
             let builtin_idx = match arg_type {
@@ -745,5 +759,6 @@ unsafe impl BytecodeRead for u16 {}
 unsafe impl BytecodeRead for u32 {}
 unsafe impl BytecodeRead for VMInt {}
 unsafe impl BytecodeRead for VMFloat {}
+unsafe impl BytecodeRead for IntoStringOperand {}
 unsafe impl BytecodeRead for PushStringOperand {}
 unsafe impl BytecodeRead for ReturnType {}

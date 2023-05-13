@@ -218,7 +218,7 @@ pub enum Op {
     ///
     /// Operands:
     ///
-    /// Stack: **=>**
+    /// Stack: Int **=>** -Int
     NegateInt,
 
     /// Binary `+` operator for Float.
@@ -253,8 +253,15 @@ pub enum Op {
     ///
     /// Operands:
     ///
-    /// Stack: **=>**
+    /// Stack: Float **=>** -Float
     NegateFloat,
+
+    /// Coerces the top value of the stack into a String
+    ///
+    /// Operands: type of top value: `u8`
+    ///
+    /// Stack: (value) **=>** (string value)
+    IntoString,
 
     /// Binary `++` operator for `String`.
     ///
@@ -380,9 +387,17 @@ pub struct PushStringOperand {
 }
 
 impl PushStringOperand {
-    pub(crate) fn to_bytes(self) -> [u8; 8] {
+    pub(crate) fn to_bytes(&self) -> [u8; 8] {
         bytemuck::cast([self.len, self.offset])
     }
+}
+
+#[derive(Debug)]
+#[repr(u8)]
+pub enum IntoStringOperand {
+    Bool,
+    Float,
+    Int,
 }
 
 #[derive(Debug)]

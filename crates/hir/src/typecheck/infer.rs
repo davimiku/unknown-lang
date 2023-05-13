@@ -398,21 +398,35 @@ fn infer_unary(
         expr: inner_idx,
     } = expr;
 
+    let inner_type = infer_expr(*inner_idx, type_database, database)?;
     match op {
         UnaryOp::Neg => todo!(),
         UnaryOp::Not => {
-            let inner_type = infer_expr(*inner_idx, type_database, database);
-            match inner_type {
-                Ok(ty) => {
-                    check_expr(*inner_idx, &Type::Bool, type_database, database).map(|_| match ty {
-                        Type::Bool => Type::Bool,
-                        Type::BoolLiteral(b) => Type::BoolLiteral(!b),
-                        _ => unreachable!(),
-                    })
-                }
-                Err(diag) => Err(diag),
-            }
+            check_expr(*inner_idx, &Type::Bool, type_database, database).map(|_| match inner_type {
+                Type::Bool => Type::Bool,
+                Type::BoolLiteral(b) => Type::BoolLiteral(!b),
+                _ => unreachable!(),
+            })
         }
+
+        UnaryOp::IntoString => match inner_type {
+            Type::Unit
+            | Type::BoolLiteral(_)
+            | Type::FloatLiteral(_)
+            | Type::IntLiteral(_)
+            | Type::StringLiteral(_)
+            | Type::Bool
+            | Type::Float
+            | Type::Int
+            | Type::String
+            | Type::Function(_)
+            | Type::Array(_) => Ok(Type::String),
+
+            _ => Err(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::CannotConvertIntoString { actual: inner_type },
+                range: TextRange::default(),
+            }),
+        },
     }
 }
 
