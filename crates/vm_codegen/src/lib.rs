@@ -589,7 +589,7 @@ fn synth_float_constant(value: f64, range: TextRange) -> Code {
 
 #[must_use]
 fn synth_int_constant(value: VMInt, range: TextRange) -> Code {
-    synth_op_operands(Op::PushFloat, range, &value.to_le_bytes())
+    synth_op_operands(Op::PushInt, range, &value.to_le_bytes())
 }
 
 /// Represents the allocation type of a value.
