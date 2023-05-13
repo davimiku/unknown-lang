@@ -44,7 +44,7 @@ fn check(input: &str, expected_expr: &str, expected_vars: &[(&str, &str)]) {
         .map(|s| format!("    {s}"))
         .join("\n");
 
-    let expected_vars = &mut [("print~0", "(String) -> Unit")]
+    let expected_vars = &mut [("args~0", "[]String"), ("print~0", "(String) -> Unit")]
         .iter()
         .chain(expected_vars)
         .map(|(name, ty)| format!("{name} : {ty}"))
@@ -348,12 +348,23 @@ fn unary_function_assignment() {
 }
 
 #[test]
-fn print_simple() {
+fn print_string() {
     let input = "print \"Hello\"";
 
     print(input);
 
     let expected_expr = "print~0 (\"Hello\",)";
+
+    check(input, expected_expr, &[])
+}
+
+#[test]
+fn int() {
+    let input = "1";
+
+    print(input);
+
+    let expected_expr = "1";
 
     check(input, expected_expr, &[])
 }
