@@ -1,11 +1,6 @@
 use std::convert::TryFrom;
 use std::fmt;
 use std::mem;
-use std::mem::size_of;
-
-use vm_types::string::VMString;
-use vm_types::VMFloat;
-use vm_types::VMInt;
 
 /// The opcodes (operation codes) of the virtual machine (VM)
 ///
@@ -335,24 +330,6 @@ impl Op {
     /// convert from byte to Op.
     unsafe fn from_raw(value: u8) -> Self {
         mem::transmute(value)
-    }
-
-    /// Returns the size (in bytes) of the operand for each Op
-    pub(crate) fn operand_size(&self) -> usize {
-        match self {
-            Op::PushInt => size_of::<VMInt>(),
-            Op::PushFloat => size_of::<VMFloat>(),
-            Op::PushString => size_of::<PushStringOperand>(),
-            Op::GetLocal | Op::GetLocal2 | Op::GetLocal4 => size_of::<u16>(),
-            Op::SetLocal | Op::SetLocal2 | Op::SetLocal4 => size_of::<u16>(),
-            Op::GetLocalN | Op::SetLocalN => size_of::<(u16, u16)>(),
-            Op::PopN => size_of::<u16>(),
-            Op::CallBuiltin => size_of::<u8>(),
-            Op::Jump | Op::JumpIfFalse => size_of::<u32>(),
-            Op::PushLocalFunc => size_of::<u32>(),
-
-            _ => 0,
-        }
     }
 }
 

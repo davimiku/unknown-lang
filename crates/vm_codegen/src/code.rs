@@ -78,12 +78,6 @@ impl Code {
     }
 
     #[inline]
-    fn push_byte_pair(&mut self, source: (u8, u8)) {
-        self.bytes.push(source.0);
-        self.bytes.push(source.1);
-    }
-
-    #[inline]
     fn extend<I: IntoIterator<Item = u8>>(&mut self, source: I) {
         self.bytes.extend(source.into_iter());
     }
