@@ -4,6 +4,7 @@ use hir::Interner;
 fn generate_chunk(input: &str) -> ProgramChunk {
     let mut interner = Interner::default();
     let (root, mut context) = hir::lower_from_input(input, &mut interner);
+    assert_eq!(context.diagnostics, vec![]);
     codegen(&root, &mut context)
 }
 
@@ -36,7 +37,7 @@ fn multiple_string_literals() {
 
 #[test]
 fn print_int() {
-    let input = "print 1";
+    let input = "print ~1";
 
     let program = generate_chunk(input);
     println!("{program}");
@@ -74,7 +75,7 @@ fn string_concat_local_def() {
 
 #[test]
 fn if_else() {
-    let input = "if true { print 1 } else { print 0 }";
+    let input = r#"if true { print "Yes" } else { print "No" }"#;
 
     let program = generate_chunk(input);
     println!("{program}");
