@@ -44,6 +44,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     let expected_vars = &mut [("args~0", "[]String"), ("print~0", "(String) -> Unit")]
         .iter()
         .chain(expected_vars)
+        .sorted_by(|(a, ..), (b, ..)| a.cmp(b))
         .map(|(name, ty)| format!("{name} : {ty}"))
         .join("\n");
     if !expected_vars.is_empty() {
@@ -58,7 +59,10 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     );
     let actual = fmt_expr::fmt_root(root_expr, &context);
 
-    assert_eq!(actual, expected);
+    if actual != expected {
+        text_diff::print_diff(&expected, &actual, "");
+        assert_eq!(actual, expected);
+    }
 }
 
 /// Checks that the input lowered with an error
@@ -379,7 +383,7 @@ fn print_string() {
 
     print(input);
 
-    let expected_expr = "print~0 (\"Hello\",)";
+    let expected_expr = "print~0 (\"Hello\",);";
 
     check(input, expected_expr, &[])
 }
@@ -423,8 +427,8 @@ print_param "Hello!"
 "#;
 
     let expected_expr = indoc! {"
-        print_param~0 : (String) -> Unit = fun (a~0 : String) -> print~0 (a~0,)
-        print_param~0 (\"Hello!\",)"};
+        print_param~0 : (String) -> Unit = fun<print_param> (a~0 : String) -> print~0 (a~0,);
+        print_param~0 (\"Hello!\",);"};
 
     let expected_vars = &[("a~0", "String"), ("print_param~0", "(String) -> Unit")];
 
