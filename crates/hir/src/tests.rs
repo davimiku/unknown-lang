@@ -81,14 +81,14 @@ fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner
 fn int_literal() {
     let input = "1";
 
-    check(input, "1", &[]);
+    check(input, "1;", &[]);
 }
 
 #[test]
 fn string_literal() {
     let input = r#""Hello""#;
 
-    check(input, "\"Hello\"", &[]);
+    check(input, "\"Hello\";", &[]);
 }
 
 #[test]
@@ -110,21 +110,21 @@ fn multiple_string_literals() {
 fn int_addition() {
     let input = "1 + 2";
 
-    check(input, "1 + 2", &[]);
+    check(input, "1 + 2;", &[]);
 }
 
 #[test]
 fn not_false() {
     let input = "!false";
 
-    check(input, "!false", &[]);
+    check(input, "!false;", &[]);
 }
 
 #[test]
 fn not_true() {
     let input = "!true";
 
-    check(input, "!true", &[]);
+    check(input, "!true;", &[]);
 }
 
 #[test]
@@ -134,8 +134,8 @@ fn not_variable_ref() {
     let b = !a
 "#;
     let expected_expr = indoc! {"
-        a~0 : true = true
-        b~0 : false = !a~0"};
+        a~0 : true = true;
+        b~0 : false = !a~0;"};
 
     let expected_vars = &[("a~0", "true"), ("b~0", "false")];
 
@@ -146,35 +146,35 @@ fn not_variable_ref() {
 fn int_to_string() {
     let input = "~123";
 
-    check(input, "~123", &[]);
+    check(input, "~123;", &[]);
 }
 
 #[test]
 fn print_int_to_string() {
     let input = "print ~123";
 
-    check(input, "print~0 (~123,)", &[]);
+    check(input, "print~0 (~123,);", &[]);
 }
 
 #[test]
 fn string_concatenation() {
     let input = r#""Hello " ++ "World!""#;
 
-    check(input, "\"Hello \" ++ \"World!\"", &[]);
+    check(input, "\"Hello \" ++ \"World!\";", &[]);
 }
 
 #[test]
 fn local_def() {
     let input = "let a = 10";
 
-    check(input, "a~0 : 10 = 10", &[("a~0", "10")]);
+    check(input, "a~0 : 10 = 10;", &[("a~0", "10")]);
 }
 
 #[test]
 fn local_def_annotation() {
     let input = "let a: Int = 10";
 
-    check(input, "a~0 : Int~0 = 10", &[("a~0", "Int")]);
+    check(input, "a~0 : Int~0 = 10;", &[("a~0", "Int")]);
 }
 
 #[test]
@@ -185,8 +185,8 @@ fn local_ref() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 10 = 10
-        a~0"};
+        a~0 : 10 = 10;
+        a~0;"};
 
     check(input, expected_expr, &[("a~0", "10")]);
 }
@@ -199,8 +199,8 @@ fn multiple_local_def() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 1 = 1
-        b~0 : 2 = 2"};
+        a~0 : 1 = 1;
+        b~0 : 2 = 2;"};
     let expected_vars = &[("a~0", "1"), ("b~0", "2")];
 
     check(input, expected_expr, expected_vars);
@@ -216,10 +216,10 @@ fn multiple_local_ref() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 1 = 1
-        b~0 : 2 = 2
-        a~0
-        b~0"};
+        a~0 : 1 = 1;
+        b~0 : 2 = 2;
+        a~0;
+        b~0;"};
     let expected_vars = &[("a~0", "1"), ("b~0", "2")];
 
     check(input, expected_expr, expected_vars);
@@ -237,12 +237,12 @@ fn one_level_nested_scope() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 0 = 0
+        a~0 : 0 = 0;
         {
-            a~1 : 10 = 10
-            a~1
-        }
-        a~0"};
+            a~1 : 10 = 10;
+            a~1;
+        };
+        a~0;"};
     let expected_vars = &[("a~0", "0"), ("a~1", "10")];
 
     check(input, expected_expr, expected_vars);
@@ -266,18 +266,18 @@ fn two_level_nested_scope() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 0 = 0
+        a~0 : 0 = 0;
         {
-            a~0
-            a~1 : 10 = 10
+            a~0;
+            a~1 : 10 = 10;
             {
-                a~1
-                a~2 : 20 = 20
-                a~2
-            }
-            a~1
-        }
-        a~0"};
+                a~1;
+                a~2 : 20 = 20;
+                a~2;
+            };
+            a~1;
+        };
+        a~0;"};
 
     let expected_vars = &[("a~0", "0"), ("a~1", "10"), ("a~2", "20")];
 
@@ -324,7 +324,7 @@ fn nullary_function() {
     let input = "() -> {}";
     let expected_expr = indoc! {"
         fun () -> {
-        }"};
+        };"};
 
     check(input, expected_expr, &[]);
 }
@@ -333,8 +333,8 @@ fn nullary_function() {
 fn nullary_function_assignment() {
     let input = "let f = () -> {}";
     let expected_expr = indoc! {"
-        f~0 : () -> Unit = fun () -> {
-        }"};
+        f~0 : () -> Unit = fun<f> () -> {
+        };"};
 
     check(input, expected_expr, &[("f~0", "() -> Unit")]);
 }
@@ -360,7 +360,7 @@ fn unary_function() {
     let input = "(a: Int) -> {}";
     let expected_expr = indoc! {"
         fun (a~0 : Int) -> {
-        }"};
+        };"};
 
     check(input, expected_expr, &[("a~0", "Int")]);
 }
@@ -370,8 +370,8 @@ fn unary_function_assignment() {
     let input = "let f = (a: Int) -> {}";
 
     let expected_expr = indoc! {"
-        f~0 : (Int) -> Unit = fun (a~0 : Int) -> {
-        }"};
+        f~0 : (Int) -> Unit = fun<f> (a~0 : Int) -> {
+        };"};
     let expected_vars = &[("a~0", "Int"), ("f~0", "(Int) -> Unit")];
 
     check(input, expected_expr, expected_vars);
@@ -394,7 +394,7 @@ fn int() {
 
     print(input);
 
-    let expected_expr = "1";
+    let expected_expr = "1;";
 
     check(input, expected_expr, &[])
 }
@@ -403,7 +403,7 @@ fn int() {
 fn print_param_function() {
     let input = "(a: String) -> print a";
 
-    let expected_expr = "fun (a~0 : String) -> print~0 (a~0,)";
+    let expected_expr = "fun (a~0 : String) -> print~0 (a~0,);";
     let expected_vars = &[("a~0", "String")];
 
     check(input, expected_expr, expected_vars);
@@ -413,7 +413,7 @@ fn print_param_function() {
 fn print_param_function_assignment() {
     let input = "let f = (a: String) -> print a";
 
-    let expected_expr = "f~0 : (String) -> Unit = fun (a~0 : String) -> print~0 (a~0,)";
+    let expected_expr = "f~0 : (String) -> Unit = fun<f> (a~0 : String) -> print~0 (a~0,);";
     let expected_vars = &[("a~0", "String"), ("f~0", "(String) -> Unit")];
 
     check(input, expected_expr, expected_vars);
@@ -442,8 +442,8 @@ let a = "Hello"
 print a"#;
 
     let expected_expr = indoc! {"
-        a~0 : \"Hello\" = \"Hello\"
-        print~0 (a~0,)"};
+        a~0 : \"Hello\" = \"Hello\";
+        print~0 (a~0,);"};
 
     let expected_vars = &[("a~0", "\"Hello\"")];
 
