@@ -67,12 +67,13 @@ fn expr_binding_power<F>(
 where
     F: Fn(&mut Parser) -> Option<CompletedMarker>,
 {
-    let mut lhs = lhs_parser(p)?;
-
     if p.peek() == Some(Newline) {
+        let m = p.start();
         p.bump();
-        return Some(lhs);
+        return Some(m.complete(p, SyntaxKind::Newline));
     }
+
+    let mut lhs = lhs_parser(p)?;
 
     loop {
         let curr = p.peek();

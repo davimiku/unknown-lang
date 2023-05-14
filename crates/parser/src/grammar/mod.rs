@@ -58,4 +58,58 @@ Root@0..19
     StringLiteralExpr@15..19 "\"d4\"""#]],
         )
     }
+
+    #[test]
+    fn parse_function_def_and_call() {
+        let input = r#"let print_param = (a: String) -> print a
+        print_param "Hello!""#;
+        let expected = expect![[r#"
+Root@0..69
+  LetBinding@0..40
+    Let@0..3 "let"
+    Emptyspace@3..4 " "
+    Ident@4..16
+      Ident@4..15 "print_param"
+      Emptyspace@15..16 " "
+    Equals@16..17 "="
+    Emptyspace@17..18 " "
+    FunExpr@18..40
+      ParenExpr@18..30
+        LParen@18..19 "("
+        ParenExprItem@19..28
+          Path@19..20
+            Ident@19..20
+              Ident@19..20 "a"
+          Colon@20..21 ":"
+          Emptyspace@21..22 " "
+          TypeExpr@22..28
+            Path@22..28
+              Ident@22..28
+                Ident@22..28 "String"
+        RParen@28..29 ")"
+        Emptyspace@29..30 " "
+      Arrow@30..32 "->"
+      Emptyspace@32..33 " "
+      Call@33..40
+        Path@33..39
+          Ident@33..39
+            Ident@33..38 "print"
+            Emptyspace@38..39 " "
+        CallArgs@39..40
+          Path@39..40
+            Ident@39..40
+              Ident@39..40 "a"
+  Newline@40..49
+    Newline@40..41 "\n"
+    Emptyspace@41..49 "        "
+  Call@49..69
+    Path@49..61
+      Ident@49..61
+        Ident@49..60 "print_param"
+        Emptyspace@60..61 " "
+    CallArgs@61..69
+      StringLiteralExpr@61..69
+        StringLiteralExpr@61..69 "\"Hello!\"""#]];
+        check(input, expected);
+    }
 }
