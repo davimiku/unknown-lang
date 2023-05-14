@@ -124,8 +124,6 @@ print a"#;
 
 #[test]
 fn function_def_call() {
-    // FIXME: `print_my_string` isn't being saved as the name of the function
-
     let input = r#"
 let print_my_string = (s: String) -> { print s }
 print_my_string "Hello ""#;
