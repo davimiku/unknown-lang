@@ -43,7 +43,14 @@ pub(crate) fn infer_expr(
             variant: TypeDiagnosticVariant::Undefined { name: todo!() },
             range: database.range_of_expr(expr_idx),
         }),
-        Expr::Statement(expr_idx) => infer_expr(*expr_idx, type_database, database),
+        Expr::Statement(inner_idx) => {
+            // TODO: replace with Result::tap?
+            let result = infer_expr(*inner_idx, type_database, database);
+            if let Ok(ref inferred_type) = result {
+                type_database.set_expr_type(expr_idx, inferred_type.clone());
+            }
+            result
+        }
 
         Expr::BoolLiteral(b) => infer_bool_literal(*b, type_database, expr_idx),
         Expr::FloatLiteral(f) => infer_float_literal(*f, type_database, expr_idx),
@@ -62,6 +69,7 @@ pub(crate) fn infer_expr(
         Expr::If(if_expr) => infer_if_expr(if_expr, type_database, database),
     };
 
+    // TODO: replace with Result::tap?
     if let Ok(ref inferred_type) = inferred_result {
         type_database.set_expr_type(expr_idx, inferred_type.clone());
     }
