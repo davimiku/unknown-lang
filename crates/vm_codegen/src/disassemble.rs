@@ -1,7 +1,5 @@
 use std::mem::size_of;
 
-use vm_types::string::VMString;
-
 use crate::{
     op::{IntoStringOperand, PushStringOperand},
     BytecodeRead, FunctionChunk, Op, VMFloat, VMInt,
