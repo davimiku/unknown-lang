@@ -142,41 +142,41 @@ impl Codegen {
 
         // return value slots are allotted as a local at offset zero
         let set_op = match return_slots {
-            0 => todo!("fix me"), // maybe make this an Option::None
-            1 => Op::SetLocal,
-            2 => Op::SetLocal2,
-            4 => Op::SetLocal4,
-            _ => Op::SetLocalN,
+            0 => None,
+            1 => Some(Op::SetLocal),
+            2 => Some(Op::SetLocal2),
+            4 => Some(Op::SetLocal4),
+            _ => Some(Op::SetLocalN),
         };
-        let mut set_return_slots: Code = synth_op(set_op, TextRange::default()).into();
-        set_return_slots.push_u16(0);
-        if set_op == Op::SetLocalN {
-            set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
-        }
-
         let curr_chunk = self.curr_chunk_mut();
+        if let Some(set_op) = set_op {
+            let mut set_return_slots: Code = synth_op(set_op, TextRange::default()).into();
+            set_return_slots.push_u16(0);
+            if set_op == Op::SetLocalN {
+                set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
+            }
 
-        // TODO: this is a hack, figure out a better way to handle main's exit code as a return value
-        if !is_main {
-            // Put the return value in the right spot
-            curr_chunk.append(set_return_slots);
+            // TODO: this is a hack, figure out a better way to handle main's exit code as a return value
+            if !is_main {
+                // Put the return value in the right spot
+                curr_chunk.append(set_return_slots);
 
-            // pops for top of stack value
-            match return_slots {
-                0 => {}
-                1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
-                2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
-                4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
-                n => {
-                    curr_chunk.append(synth_op_operands(
-                        Op::PopN,
-                        TextRange::default(),
-                        &n.to_le_bytes(),
-                    ));
-                }
-            };
+                // pops for top of stack value
+                match return_slots {
+                    0 => {}
+                    1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
+                    2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
+                    4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
+                    n => {
+                        curr_chunk.append(synth_op_operands(
+                            Op::PopN,
+                            TextRange::default(),
+                            &n.to_le_bytes(),
+                        ));
+                    }
+                };
+            }
         }
-
         // pops for the locals (including parameters)
         curr_chunk.append(pops);
 
