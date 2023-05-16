@@ -1,4 +1,5 @@
-use vm_types::{string::VMString, VMBool, VMFloat, VMInt};
+use vm_string::VMString;
+use vm_types::{VMBool, VMFloat, VMInt};
 
 // TODO: move to a shared "builtins" crate
 // remove duplication with vm_codegen crate
@@ -31,5 +32,5 @@ pub(crate) fn print_bool(b: VMBool) {
 
 #[inline]
 pub(crate) fn len_string(s: VMString) -> VMInt {
-    s.length()
+    s.length().into()
 }

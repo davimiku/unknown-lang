@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use vm::{InterpretResult, RuntimePanic};
+use vm::{InterpretResult, Panic};
 use vm_types::FromWordVec;
-pub use vm_types::{string::VMString, VMBool, VMFloat, VMInt};
+pub use vm_types::{VMBool, VMFloat, VMInt};
 
 pub fn expect_ok<T>(input: &str, expected: T)
 where
@@ -18,7 +18,7 @@ where
     println!("Test passed!");
 }
 
-pub fn expect_panic(input: &str, expected: RuntimePanic) {
+pub fn expect_panic(input: &str, expected: Panic) {
     let result = run::<()>(input);
 
     assert!(result.is_err());
@@ -34,6 +34,7 @@ where
     T: FromWordVec,
 {
     let chunk = compiler::compile(input);
+    let chunk = chunk.expect("valid program for this test");
 
     vm::run_and_return::<T>(chunk).map(|words| T::from_vec(words))
 }

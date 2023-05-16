@@ -10,7 +10,7 @@ pub use op::{IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnTyp
 
 use la_arena::Idx;
 use text_size::TextRange;
-use vm_types::string::VMString;
+use vm_string::VMString;
 use vm_types::{VMBool, VMFloat, VMInt};
 
 use std::collections::{BTreeMap, HashMap};

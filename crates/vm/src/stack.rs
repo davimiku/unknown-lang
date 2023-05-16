@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use memory_recycling::{Gc, Trace};
 use vm_codegen::FunctionChunk;
-use vm_types::string::VMString;
+use vm_string::VMString;
 use vm_types::words::{DWord, QWord, Word, ZERO_WORD};
 use vm_types::{VMBool, VMFloat, VMInt};
 

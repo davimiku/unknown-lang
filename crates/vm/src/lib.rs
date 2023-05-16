@@ -11,7 +11,7 @@ use vm_codegen::{
     BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op, ProgramChunk,
     PushStringOperand,
 };
-use vm_types::string::{VMString, MAX_EMBEDDED_LENGTH};
+use vm_string::VMString;
 use vm_types::words::Word;
 use vm_types::{word_size_of, FromWordVec, VMBool, VMFloat, VMInt};
 
@@ -116,13 +116,15 @@ impl VM {
                 }
                 PushString => {
                     let PushStringOperand { len, offset } = frame.read::<PushStringOperand>();
-
+                    let start = offset as usize;
+                    let end = (offset + len) as usize;
                     let constants =
                         unsafe { frame.function.chunk.as_ref().unwrap().borrow_constants() };
-                    let data = &constants[offset as usize] as *const u8;
+                    let bytes = &constants[start..end];
 
-                    let s = VMString::new_constant(len, data);
-                    self.stack.push_string(s);
+                    let string = unsafe { String::from_utf8_unchecked(bytes.to_owned()) };
+
+                    self.stack.push_string(VMString::new(string));
                 }
                 PushTrue => {
                     self.stack.push_bool(true);
@@ -277,23 +279,10 @@ impl VM {
                     }
                 }
                 ConcatString => {
-                    // TODO: move this to `impl Add for VMString`
-                    use VMString::*;
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
-                    let concatenated = if a.length() + b.length() <= MAX_EMBEDDED_LENGTH as i64 {
-                        if let (Embedded(a), Embedded(b)) = (&a, &b) {
-                            let concatenated = *a + *b;
-                            VMString::Embedded(concatenated)
-                        } else {
-                            VMString::new(format!("{a}{b}"))
-                        }
-                    } else {
-                        VMString::new(format!("{a}{b}"))
-                    };
-
-                    self.stack.push_string(concatenated);
+                    self.stack.push_string(a + b);
                 }
                 CallFunction => {
                     let return_slots = frame.read::<u16>() as usize;

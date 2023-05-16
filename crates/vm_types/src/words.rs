@@ -123,7 +123,7 @@ pub struct DWord {
     bytes: DWordBytes,
 }
 pub const DWORD_SIZE: usize = WORD_SIZE * 2;
-type DWordBytes = [u8; DWORD_SIZE];
+pub(crate) type DWordBytes = [u8; DWORD_SIZE];
 
 // Convert From
 
