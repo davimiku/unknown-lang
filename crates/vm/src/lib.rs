@@ -154,7 +154,7 @@ impl VM {
                     // Rc drops, reduces strong count
                 }
                 PopGc => {
-                    self.stack.pop_gc::<u8>();
+                    let _ = self.stack.pop_gc::<u8>();
                     // Gc drops, possibly marking for later cleanup
                 }
                 GetLocal => {
@@ -164,17 +164,24 @@ impl VM {
                 }
                 GetLocal2 => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let vals = self.stack.peek_dword_at(slot_offset);
+                    let val = self.stack.peek_dword_at(slot_offset);
 
-                    self.stack.push_dword(*vals);
+                    self.stack.push_dword(*val);
                 }
                 GetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let vals = self.stack.peek_qword_at(slot_offset);
+                    let val = self.stack.peek_qword_at(slot_offset);
 
-                    self.stack.push_qword(*vals);
+                    self.stack.push_qword(*val);
                 }
                 GetLocalN => todo!(),
+                GetLocalString => {
+                    let slot_offset = frame.read::<u16>() as usize;
+                    let val = *self.stack.peek_dword_at(slot_offset);
+                    let string = VMString::from_copy(val.into());
+
+                    self.stack.push_string(string);
+                }
                 SetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let word = self.stack.peek_word();
@@ -183,11 +190,8 @@ impl VM {
                 SetLocal2 => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
-                    let words: [Word; 2] = (*val).into();
 
-                    for (i, word) in words.iter().enumerate() {
-                        self.stack.set_word_at(*word, slot_offset + i);
-                    }
+                    self.stack.set_dword_at(*val, slot_offset);
                 }
                 SetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -205,6 +209,13 @@ impl VM {
                     // let val = self.stack.peek_n(num_slots.into());
 
                     todo!()
+                }
+                SetLocalString => {
+                    let slot_offset = frame.read::<u16>() as usize;
+                    let val = *self.stack.peek_dword();
+                    let string = VMString::from_copy(val.into());
+
+                    self.stack.set_dword_at(string.into(), slot_offset);
                 }
                 PushLocalFunc => {
                     let idx = frame.read::<u32>() as usize;

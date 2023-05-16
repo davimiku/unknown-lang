@@ -68,9 +68,11 @@ impl Op {
             Op::GetLocal
             | Op::GetLocal2
             | Op::GetLocal4
+            | Op::GetLocalString
             | Op::SetLocal
             | Op::SetLocal2
-            | Op::SetLocal4 => {
+            | Op::SetLocal4
+            | Op::SetLocalString => {
                 let slot_index = read::<u16>(chunk, &mut offset);
 
                 print!("index: {slot_index}");

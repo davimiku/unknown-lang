@@ -60,10 +60,13 @@ impl VMString {
             new_heap_string(s)
         }
     }
-}
 
-impl From<VMStringBytes> for VMString {
-    fn from(value: VMStringBytes) -> Self {
+    /// Creates an instance of Self from raw bytes that were copied from
+    /// another Self instance.
+    ///
+    /// If the String data is heap-allocated, this reuses the same allocation
+    /// by incrementing the reference count rather than allocating more data.
+    pub fn from_copy(value: VMStringBytes) -> Self {
         // Safety: same size types
         // TODO: non unsafe way to do the same thing?
         let (tag, payload): (TagBytes, [u8; 12]) = unsafe { std::mem::transmute(value) };
@@ -73,13 +76,36 @@ impl From<VMStringBytes> for VMString {
             HEAP_DISCRIMINANT => {
                 // Safety: same size types
                 // TODO: non unsafe way to do the same thing?
-                let (_, ptr_bytes): ([u8; 4], [u8; 8]) = unsafe { std::mem::transmute(payload) };
-                let raw_ptr = usize::from_le_bytes(ptr_bytes) as *const String;
+                let (_padding, ptr_bytes): ([u8; 4], [u8; 8]) =
+                    unsafe { std::mem::transmute(payload) };
 
-                // Safety: was originally created by Rc::into_raw
-                let ptr = unsafe { Rc::from_raw(raw_ptr) };
+                VMString::Heap(HeapVMString::from_copy(ptr_bytes))
+            }
+            EMBEDDED_DISCRIMINANT => VMString::Embedded(payload.into()),
 
-                VMString::Heap(HeapVMString { ptr })
+            _ => unreachable!(),
+        }
+    }
+
+    /// Creates an instance of Self from raw bytes that were created by
+    /// the original instance calling `into_raw`.
+    ///
+    /// Ensures that its own allocation is re-used and the reference counts are
+    /// not incremented.
+    pub fn from_raw(value: VMStringBytes) -> Self {
+        // Safety: same size types
+        // TODO: non unsafe way to do the same thing?
+        let (tag, payload): (TagBytes, [u8; 12]) = unsafe { std::mem::transmute(value) };
+        let tag = u32::from_le_bytes(tag);
+
+        match tag {
+            HEAP_DISCRIMINANT => {
+                // Safety: same size types
+                // TODO: non unsafe way to do the same thing?
+                let (_padding, ptr_bytes): ([u8; 4], [u8; 8]) =
+                    unsafe { std::mem::transmute(payload) };
+
+                VMString::Heap(HeapVMString::from_raw(ptr_bytes))
             }
             EMBEDDED_DISCRIMINANT => VMString::Embedded(payload.into()),
 
@@ -88,11 +114,9 @@ impl From<VMStringBytes> for VMString {
     }
 }
 
-impl From<DWord> for VMString {
-    fn from(value: DWord) -> Self {
-        let bytes: VMStringBytes = value.into();
-        bytes.into()
-    }
+fn split_bytes(bytes: VMStringBytes) -> (u32, u32, [u8; 8]) {
+    //                                   tag  len?  data
+    todo!()
 }
 
 // Non-Mutating Functions

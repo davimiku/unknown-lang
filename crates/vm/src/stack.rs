@@ -16,7 +16,7 @@ use std::rc::Rc;
 use memory_recycling::{Gc, Trace};
 use vm_codegen::FunctionChunk;
 use vm_string::VMString;
-use vm_types::words::{DWord, QWord, Word, ZERO_WORD};
+use vm_types::words::{DWord, DWordBytes, QWord, Word, ZERO_WORD};
 use vm_types::{VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots
@@ -182,7 +182,8 @@ impl Stack {
     /// Removes the top two slots of the stack and returns it as an VMString
     #[inline]
     pub(crate) fn pop_string(&mut self) -> VMString {
-        self.pop_dword().into()
+        let bytes: DWordBytes = self.pop_dword().into();
+        VMString::from_raw(bytes)
     }
 
     #[inline]
@@ -234,12 +235,24 @@ impl Stack {
     /// data and it is opposite of the "depth" of the stack. i.e. index 0
     /// is the very bottom of the stack, the last element that could be popped.
     ///
+    /// The offset represents the start of the stack in the context of the
+    /// current call frame.
+    ///
     /// This is an escape hatch out of the proper notion of a "stack", but is
     /// necessary for setting the value of locals during variable definition.
     #[inline]
     pub(crate) fn set_word_at(&mut self, val: Word, index: usize) {
         self.data[index + self.offset] = val;
     }
+
+    pub(crate) fn set_dword_at(&mut self, val: DWord, index: usize) {
+        // TODO: std::ptr::write_bytes ?
+        let words: [Word; 2] = val.into();
+        for (i, word) in words.iter().enumerate() {
+            self.set_word_at(*word, index + i);
+        }
+    }
+    // pub(crate) fn set_qword_at(&mut self, val: DWord, index: usize) { }
 
     /// Shifts the stack to the right by the given amount starting
     /// at the given index. The shifted slots are replaced by zeros.
@@ -248,8 +261,9 @@ impl Stack {
     pub(crate) fn shift_at_end(&mut self, num_slots: usize) {
         let index = self.len() - num_slots;
         self.data.extend_from_within(index..);
+        // TODO: can this for loop be optimized with std::ptr::write_bytes?
         for i in 0..num_slots {
-            self.data[i + 1 + index + self.offset] = ZERO_WORD;
+            self.data[i + index + self.offset + 1] = ZERO_WORD;
         }
     }
 }
@@ -288,7 +302,7 @@ impl Stack {
     /// Peeks the QWord (4 Words) from the top of the stack
     #[inline]
     pub(crate) fn peek_qword(&self) -> &QWord {
-        todo!("fix: this shouldn't call peek_word_at anymore because that adds an offset");
+        todo!("fix: this shouldn't call peek_qword_at anymore because that adds an offset");
 
         self.peek_qword_at(self.data.len() - 4)
     }
@@ -313,10 +327,10 @@ impl Stack {
         (*self.peek_word()).into()
     }
 
-    #[inline]
-    pub(crate) fn peek_string(&self) -> VMString {
-        (*self.peek_dword()).into()
-    }
+    // #[inline]
+    // pub(crate) fn peek_string(&self) -> VMString {
+    //     (*self.peek_dword()).into()
+    // }
 
     #[inline]
     pub(crate) fn peek_word_at(&self, index: usize) -> &Word {

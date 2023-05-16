@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::{as_str::AsStr, VMString};
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct HeapVMString {
     /// Reference counted string data
     pub(crate) ptr: Rc<String>,
@@ -11,8 +11,29 @@ pub struct HeapVMString {
 
 // Constructors
 
-impl From<[u8; 8]> for HeapVMString {
-    fn from(value: [u8; 8]) -> Self {
+impl HeapVMString {
+    /// Creates an instance from raw bytes that had been previously copied.
+    ///
+    /// This assumes that there is at least one strong count to this allocation
+    /// already, and will increase the strong count unlike `from_raw`.
+    pub fn from_copy(value: [u8; 8]) -> Self {
+        let ptr = usize::from_le_bytes(value) as *const String;
+
+        // Safety: ptr is a bit-for-bit copy of a ptr originally created by `Rc::into_raw`
+        unsafe { Rc::increment_strong_count(ptr) };
+
+        // Safety: strong count has been increased to account for the fact that this will
+        // be another Rc to an existing allocation.
+        let ptr = unsafe { Rc::from_raw(ptr) };
+
+        Self { ptr }
+    }
+
+    /// Creates an instance from raw_bytse that had been previously created
+    /// by calling `into_raw`.
+    ///
+    /// This does not increase the strong count of this allocation, unlike `from_copy`.
+    pub fn from_raw(value: [u8; 8]) -> Self {
         let ptr = usize::from_le_bytes(value) as *const String;
 
         // Safety: ptr was created from Rc::into_raw originally
@@ -35,19 +56,6 @@ impl From<HeapVMString> for VMString {
         VMString::Heap(value)
     }
 }
-
-// impl Clone for HeapVMString {
-//     fn clone(&self) -> Self {
-//         let len = self.len;
-//         let raw_ptr = std::ptr::addr_of!(self.ptr);
-
-//         // Safety: Necessary to avoid undefined behavior of directly
-//         // casting an unaligned pointer from the packed struct.
-//         let ptr = unsafe { std::ptr::read_unaligned(raw_ptr) };
-//         let ptr = ptr.clone();
-//         Self { len, ptr }
-//     }
-// }
 
 // Non-Mutating Function
 

@@ -147,6 +147,8 @@ impl Codegen {
             2 => Some(Op::SetLocal2),
             4 => Some(Op::SetLocal4),
             _ => Some(Op::SetLocalN),
+            // No need for SetLocalString/SetLocalArray because this is a *move*
+            // of the value from the top of the stack to the bottom.
         };
         let curr_chunk = self.curr_chunk_mut();
         if let Some(set_op) = set_op {
@@ -157,6 +159,7 @@ impl Codegen {
             }
 
             // TODO: this is a hack, figure out a better way to handle main's exit code as a return value
+            // For example, inject a `PushInt0` at the end of main
             if !is_main {
                 // Put the return value in the right spot
                 curr_chunk.append(set_return_slots);
@@ -372,11 +375,12 @@ impl Codegen {
         let local_type = context.type_of_expr(value);
         let local_size = word_size_of(local_type);
 
-        let set_op = match local_size {
-            0 => unreachable!("?"),
-            1 => Op::SetLocal,
-            2 => Op::SetLocal2,
-            4 => Op::SetLocal4,
+        let set_op = match (local_type, local_size) {
+            (Type::String | Type::StringLiteral(_), _) => Op::SetLocalString,
+            (_, 0) => unreachable!("?"),
+            (_, 1) => Op::SetLocal,
+            (_, 2) => Op::SetLocal2,
+            (_, 4) => Op::SetLocal4,
             _ => Op::SetLocalN,
         };
         code.push((set_op, TextRange::default()));
@@ -530,11 +534,13 @@ impl Codegen {
         context: &hir::Context,
     ) -> Code {
         let (slot_number, slot_size) = self.curr().stack_slots[&expr.key];
-        let op = match slot_size {
-            0 => unreachable!("or could a variable be assigned to unit?"),
-            1 => Op::GetLocal,
-            2 => Op::GetLocal2,
-            4 => Op::GetLocal4,
+        let ty = context.type_of_expr(expr_idx);
+        let op = match (ty, slot_size) {
+            (Type::String | Type::StringLiteral(_), _) => Op::GetLocalString,
+            (_, 0) => unreachable!("or could a variable be assigned to unit?"),
+            (_, 1) => Op::GetLocal,
+            (_, 2) => Op::GetLocal2,
+            (_, 4) => Op::GetLocal4,
 
             _ => Op::GetLocalN,
         };

@@ -130,6 +130,14 @@ pub enum Op {
     /// Stack: **=>** value
     GetLocalN,
 
+    /// Gets a VM String at the given offset
+    /// and pushes it onto the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: **=>** String value
+    GetLocalString,
+
     /// Peeks the top 1 slot size from the stack and sets
     /// that value into the stack at the given offset.
     /// The peeked value is not popped off the stack.
@@ -166,6 +174,15 @@ pub enum Op {
     ///
     /// Stack: value **=>** value
     SetLocalN,
+
+    /// Sets a VM String to the given offset
+    /// The value to set is at the top of the stack, and
+    /// is not popped off the stack.
+    ///
+    /// Operands: slot_offset: u16
+    ///
+    /// Stack: value **=>** value
+    SetLocalString,
 
     /// Unary `!` operator for Bool.
     ///

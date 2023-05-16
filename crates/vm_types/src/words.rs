@@ -31,7 +31,7 @@ impl Debug for Word {
 }
 
 pub const WORD_SIZE: usize = 8;
-type WordBytes = [u8; WORD_SIZE];
+pub type WordBytes = [u8; WORD_SIZE];
 
 // Convert From
 
@@ -123,7 +123,7 @@ pub struct DWord {
     bytes: DWordBytes,
 }
 pub const DWORD_SIZE: usize = WORD_SIZE * 2;
-pub(crate) type DWordBytes = [u8; DWORD_SIZE];
+pub type DWordBytes = [u8; DWORD_SIZE];
 
 // Convert From
 
@@ -186,7 +186,7 @@ pub struct QWord {
     bytes: QWordBytes,
 }
 pub const QWORD_SIZE: usize = WORD_SIZE * 4;
-type QWordBytes = [u8; QWORD_SIZE];
+pub type QWordBytes = [u8; QWORD_SIZE];
 
 // Convert From
 
