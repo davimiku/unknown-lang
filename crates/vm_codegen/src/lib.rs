@@ -377,6 +377,17 @@ impl Codegen {
         let local_type = context.type_of_expr(value);
         let local_size = word_size_of(local_type);
 
+        // TODO: is this needed...?
+        // The value being set should already be on top of the stack, isn't this
+        // basically a noop in that case that could be skipped?
+        //
+        // `let a = 1234`
+        // will generate:
+        // PushInt 1234
+        // SetLocal offset: N
+        //
+        // Seems like the SetLocal is writing the same value to the same slot at the top
+        // of the stack.
         let set_op = match (local_type, local_size) {
             (Type::String | Type::StringLiteral(_), _) => Op::SetLocalString,
             (_, 0) => unreachable!("?"),
