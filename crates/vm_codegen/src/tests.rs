@@ -83,8 +83,8 @@ fn if_else() {
 
 #[test]
 fn local_def() {
-    let input = r#"
-let a = "Hello""#;
+    let input = r#"let a = 1234
+    print ~a"#;
 
     let program = generate_chunk(input);
     println!("{program}");
@@ -92,8 +92,7 @@ let a = "Hello""#;
 
 #[test]
 fn print_local_def() {
-    let input = r#"
-let a = "Hello"
+    let input = r#"let a = "Hello"
 print a"#;
 
     let program = generate_chunk(input);

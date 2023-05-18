@@ -152,33 +152,35 @@ impl Codegen {
         };
         let curr_chunk = self.curr_chunk_mut();
         if let Some(set_op) = set_op {
-            let mut set_return_slots: Code = synth_op(set_op, TextRange::default()).into();
-            set_return_slots.push_u16(0);
+            let mut set_return_slots: Code = if is_main {
+                // main exits successfully with return code 0
+                synth_int_constant(0, TextRange::default())
+            } else {
+                Code::default()
+            };
+            set_return_slots.append(synth_op(set_op, TextRange::default()).into());
+            set_return_slots.push_u16(0); // return slots are offset: 0
             if set_op == Op::SetLocalN {
                 set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
             }
 
-            // TODO: this is a hack, figure out a better way to handle main's exit code as a return value
-            // For example, inject a `PushInt0` at the end of main
-            if !is_main {
-                // Put the return value in the right spot
-                curr_chunk.append(set_return_slots);
+            // Put the return value in the right spot
+            curr_chunk.append(set_return_slots);
 
-                // pops for top of stack value
-                match return_slots {
-                    0 => {}
-                    1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
-                    2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
-                    4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
-                    n => {
-                        curr_chunk.append(synth_op_operands(
-                            Op::PopN,
-                            TextRange::default(),
-                            &n.to_le_bytes(),
-                        ));
-                    }
-                };
-            }
+            // pops for top of stack value
+            match return_slots {
+                0 => {}
+                1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
+                2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
+                4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
+                n => {
+                    curr_chunk.append(synth_op_operands(
+                        Op::PopN,
+                        TextRange::default(),
+                        &n.to_le_bytes(),
+                    ));
+                }
+            };
         }
         // pops for the locals (including parameters)
         curr_chunk.append(pops);
@@ -651,9 +653,6 @@ pub struct FunctionCodegen {
     /// Total slots allocated for function return values
     return_slots: u16,
 
-    /// Total slots allocated for function parameters
-    parameter_slots: u16,
-
     /// Running index of the stack slots that have been allocated for this function
     ///
     /// Includes return slots, self (function) pointer, parameters, and locals.
@@ -678,7 +677,6 @@ impl FunctionCodegen {
             chunk: FunctionChunk::new(name, parameter_slots),
             id,
             return_slots,
-            parameter_slots,
             next_stack_slot_index: return_slots + FUNC_PTR_SLOT,
             alloc_types: Default::default(),
             stack_slots: Default::default(),
