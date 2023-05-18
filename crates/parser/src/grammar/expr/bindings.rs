@@ -85,10 +85,9 @@ Root@0..13
       Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
-    Call@10..13
-      Path@10..13
-        Ident@10..13
-          Ident@10..13 "bar""#]],
+    Path@10..13
+      Ident@10..13
+        Ident@10..13 "bar""#]],
         );
     }
 
