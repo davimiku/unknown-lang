@@ -46,7 +46,7 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 
         Expr::LocalRef(LocalRefExpr { key }) => s.push_str(&key.display(context.interner)),
 
-        Expr::UnresolvedLocalRef { key } => todo!(),
+        Expr::UnresolvedLocalRef { .. } => todo!(),
 
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
         Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
