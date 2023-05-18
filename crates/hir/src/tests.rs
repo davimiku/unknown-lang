@@ -61,7 +61,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 
     if actual != expected {
         text_diff::print_diff(&expected, &actual, "");
-        assert_eq!(actual, expected);
+        assert!(false, "Expected did not match actual, see printed diff.");
     }
 }
 
@@ -459,10 +459,10 @@ print b
 print a"#;
 
     let expected_expr = indoc! {"
-        a~0 : \"Hello\" = \"Hello\"
-        b~0 : \" World\" = \" World\"
-        print~0 (b~0,)
-        print~0 (a~0,)"};
+        a~0 : \"Hello\" = \"Hello\";
+        b~0 : \" World\" = \" World\";
+        print~0 (b~0,);
+        print~0 (a~0,);"};
 
     let expected_vars = &[("a~0", "\"Hello\""), ("b~0", "\" World\"")];
 
@@ -476,7 +476,7 @@ let repeat = (s: String) -> s ++ s
 "#;
 
     let expected_expr = indoc! {"
-    repeat~0 : (String) -> String = fun (s~0 : String) -> s~0 ++ s~0"};
+    repeat~0 : (String) -> String = fun<repeat> (s~0 : String) -> s~0 ++ s~0;"};
 
     let expected_vars = &[("repeat~0", "(String) -> String"), ("s~0", "String")];
 
@@ -491,11 +491,11 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~0 : (String) -> String = fun (s~0 : String) -> {
-            s~0 ++ s~0
-        }
-        hello_hello~0 : String = repeat~0 (\"Hello \",)
-        print~0 (hello_hello~0,)"};
+        repeat~0 : (String) -> String = fun<repeat> (s~0 : String) -> {
+            s~0 ++ s~0;
+        };
+        hello_hello~0 : String = repeat~0 (\"Hello \",);
+        print~0 (hello_hello~0,);"};
 
     let expected_vars = &[
         ("hello_hello~0", "String"),

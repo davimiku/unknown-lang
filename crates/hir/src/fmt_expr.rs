@@ -142,6 +142,7 @@ fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, in
         type_buffer
     ));
     fmt_expr(s, *value, context, indent);
+    s.push(';');
 }
 
 pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, _indent: usize) {
