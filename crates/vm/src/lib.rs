@@ -30,23 +30,6 @@ pub fn run(chunk: ProgramChunk) -> InterpretResult<ExitCode> {
     vm.run()
 }
 
-/// Runs the VM and returns the remaining value from the stack.
-///
-/// The caller must provide the expected result because stack
-/// values may be different sizes.
-pub fn run_and_return<T>(chunk: ProgramChunk) -> InterpretResult<Vec<Word>>
-where
-    T: FromWordVec,
-{
-    let mut vm = VM::new(chunk);
-    let result = vm.run();
-
-    let words_to_pop = vm_types::word_size_of::<T>();
-    let popped_words = vm.stack.pop_n_as_vec(words_to_pop);
-
-    result.map(|_| popped_words)
-}
-
 #[derive(Debug)]
 pub struct VM {
     /// Program stack containing values
