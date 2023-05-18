@@ -1,4 +1,7 @@
+use std::mem;
+
 use static_assertions::const_assert;
+use vm_types::words::DWORD_SIZE;
 
 use super::*;
 
@@ -13,7 +16,14 @@ const EMBEDDED_STRING5: &str = "12345";
 const_assert!(EMBEDDED_STRING4.len() + EMBEDDED_STRING5.len() > MAX_EMBEDDED_LENGTH);
 
 #[test]
-fn test_discriminant() {
+fn size() {
+    assert_eq!(mem::size_of::<VMString>(), DWORD_SIZE);
+    assert_eq!(mem::size_of::<HeapVMString>(), 8);
+    assert_eq!(mem::size_of::<EmbeddedVMString>(), 8);
+}
+
+#[test]
+fn discriminant() {
     let embedded = VMString::new(EMBEDDED_STRING1);
     let heap = VMString::new(HEAP_STRING);
 
@@ -22,7 +32,7 @@ fn test_discriminant() {
 }
 
 #[test]
-fn test_concat_embedded() {
+fn concat_embedded() {
     let a = VMString::new(EMBEDDED_STRING1);
     let b = VMString::new(EMBEDDED_STRING1);
 
@@ -34,7 +44,7 @@ fn test_concat_embedded() {
 }
 
 #[test]
-fn test_concat_longer_than_embedded() {
+fn concat_longer_than_embedded() {
     let a = VMString::new(EMBEDDED_STRING4);
     let b = VMString::new(EMBEDDED_STRING5);
 
@@ -46,7 +56,7 @@ fn test_concat_longer_than_embedded() {
 }
 
 #[test]
-fn test_concat_embedded_heap() {
+fn concat_embedded_heap() {
     let a = VMString::new(EMBEDDED_STRING4);
     let b = VMString::new(HEAP_STRING);
 
@@ -58,7 +68,7 @@ fn test_concat_embedded_heap() {
 }
 
 #[test]
-fn test_concat_heap_embedded() {
+fn concat_heap_embedded() {
     let a = VMString::new(HEAP_STRING);
     let b = VMString::new(EMBEDDED_STRING4);
 
@@ -70,7 +80,7 @@ fn test_concat_heap_embedded() {
 }
 
 #[test]
-fn test_concat_heap() {
+fn concat_heap() {
     let a = VMString::new(HEAP_STRING);
     let b = VMString::new(HEAP_STRING);
 

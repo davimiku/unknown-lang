@@ -67,21 +67,11 @@ impl VMString {
     /// If the String data is heap-allocated, this reuses the same allocation
     /// by incrementing the reference count rather than allocating more data.
     pub fn from_copy(value: VMStringBytes) -> Self {
-        // Safety: same size types
-        // TODO: non unsafe way to do the same thing?
-        let (tag, payload): (TagBytes, [u8; 12]) = unsafe { std::mem::transmute(value) };
-        let tag = u32::from_le_bytes(tag);
+        let (tag, data) = split_bytes(value);
 
         match tag {
-            HEAP_DISCRIMINANT => {
-                // Safety: same size types
-                // TODO: non unsafe way to do the same thing?
-                let (_padding, ptr_bytes): ([u8; 4], [u8; 8]) =
-                    unsafe { std::mem::transmute(payload) };
-
-                VMString::Heap(HeapVMString::from_copy(ptr_bytes))
-            }
-            EMBEDDED_DISCRIMINANT => VMString::Embedded(payload.into()),
+            HEAP_DISCRIMINANT => VMString::Heap(HeapVMString::from_copy(data)),
+            EMBEDDED_DISCRIMINANT => VMString::Embedded(data.into()),
 
             _ => unreachable!(),
         }
@@ -93,30 +83,25 @@ impl VMString {
     /// Ensures that its own allocation is re-used and the reference counts are
     /// not incremented.
     pub fn from_raw(value: VMStringBytes) -> Self {
-        // Safety: same size types
-        // TODO: non unsafe way to do the same thing?
-        let (tag, payload): (TagBytes, [u8; 12]) = unsafe { std::mem::transmute(value) };
-        let tag = u32::from_le_bytes(tag);
+        let (tag, data) = split_bytes(value);
 
         match tag {
-            HEAP_DISCRIMINANT => {
-                // Safety: same size types
-                // TODO: non unsafe way to do the same thing?
-                let (_padding, ptr_bytes): ([u8; 4], [u8; 8]) =
-                    unsafe { std::mem::transmute(payload) };
-
-                VMString::Heap(HeapVMString::from_raw(ptr_bytes))
-            }
-            EMBEDDED_DISCRIMINANT => VMString::Embedded(payload.into()),
+            HEAP_DISCRIMINANT => VMString::Heap(HeapVMString::from_raw(data)),
+            EMBEDDED_DISCRIMINANT => VMString::Embedded(data.into()),
 
             _ => unreachable!(),
         }
     }
 }
 
-fn split_bytes(bytes: VMStringBytes) -> (u32, u32, [u8; 8]) {
-    //                                   tag  len?  data
-    todo!()
+type Tag = u32;
+type Data = [u8; 8];
+
+fn split_bytes(bytes: VMStringBytes) -> (Tag, Data) {
+    let [tag, data]: [[u8; 8]; 2] = cast(bytes);
+    let tag = u64::from_le_bytes(tag) as u32;
+
+    (tag, data)
 }
 
 // Non-Mutating Functions
@@ -179,7 +164,7 @@ impl From<VMString> for VMStringBytes {
         // for embedded strings we store the length
         // for heap allocated strings it is just padding so that the Rc ptr is aligned
         let (tag_extra, payload): ([u8; 4], [u8; 8]) = match value {
-            VMString::Embedded(s) => (s.len.to_le_bytes(), s.bytes),
+            VMString::Embedded(s) => (s.length().to_le_bytes(), s.bytes),
             VMString::Heap(s) => (
                 0_u32.to_le_bytes(),
                 (Rc::into_raw(s.ptr) as usize).to_le_bytes(),

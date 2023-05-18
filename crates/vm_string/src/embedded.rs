@@ -1,48 +1,47 @@
 use std::fmt::Debug;
 
-use bytemuck::cast;
-
 use crate::{as_str::AsStr, VMString};
 
 /// Maximum number of bytes that can be represented in a string
 /// without heap allocation.
-pub const MAX_EMBEDDED_LENGTH: usize = 8;
+pub const MAX_EMBEDDED_LENGTH: usize = 7;
 
-pub(crate) type EmbeddedBytes = [u8; MAX_EMBEDDED_LENGTH];
+pub(crate) type EmbeddedBytes = [u8; MAX_EMBEDDED_LENGTH + 1];
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq)]
 pub struct EmbeddedVMString {
-    /// Length of the string
-    pub(crate) len: u32,
-
-    /// Bytes of the string
+    /// Bytes of the string, where the first byte is the length
     pub(crate) bytes: EmbeddedBytes,
 }
 
-impl From<[u8; 12]> for EmbeddedVMString {
-    fn from(value: [u8; 12]) -> Self {
-        let split: [[u8; 4]; 3] = cast(value);
-        let len = u32::from_le_bytes(split[0]);
-        let bytes = cast([split[1], split[2]]);
-
-        Self { len, bytes }
+impl From<[u8; 8]> for EmbeddedVMString {
+    fn from(bytes: [u8; 8]) -> Self {
+        Self { bytes }
     }
 }
 
-pub(crate) fn new_embedded_string(len: u32, bytes: EmbeddedBytes) -> VMString {
-    EmbeddedVMString { len, bytes }.into()
+pub(crate) fn new_embedded_string(len: u32, data: [u8; MAX_EMBEDDED_LENGTH]) -> VMString {
+    let len = len as u8;
+    let mut bytes = [0; 8];
+    bytes[0] = len;
+    unsafe {
+        let dest = bytes.as_mut_ptr() as *mut u8;
+        std::ptr::copy_nonoverlapping(data.as_ptr(), dest.add(1), len as usize);
+    }
+
+    EmbeddedVMString { bytes }.into()
 }
 
 impl EmbeddedVMString {
     #[inline]
     pub(super) fn length(&self) -> u32 {
-        self.len
+        self.bytes[0].into()
     }
 
     pub(super) fn as_bytes(&self) -> &[u8] {
         // Safety: `self.len` is the exact length of the valid data in the slice
-        unsafe { self.bytes.get_unchecked(0..(self.len as usize)) }
+        unsafe { self.bytes.get_unchecked(1..(self.length() as usize + 1)) }
     }
 }
 
@@ -65,10 +64,8 @@ impl From<EmbeddedVMString> for VMString {
     }
 }
 
-impl From<EmbeddedVMString> for [u8; 12] {
+impl From<EmbeddedVMString> for [u8; 8] {
     fn from(value: EmbeddedVMString) -> Self {
-        let len_bytes: [u8; 4] = value.len.to_le_bytes();
-        let data_bytes: [[u8; 4]; 2] = cast(value.bytes);
-        bytemuck::cast([len_bytes, data_bytes[0], data_bytes[1]])
+        value.bytes
     }
 }

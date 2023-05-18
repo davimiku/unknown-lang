@@ -24,8 +24,8 @@ impl Add for EmbeddedVMString {
     type Output = VMString;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let lhs_len = self.len as usize;
-        let rhs_len = rhs.len as usize;
+        let lhs_len = self.length() as usize;
+        let rhs_len = rhs.length() as usize;
         let new_len = lhs_len + rhs_len;
 
         if lhs_len == 0 {
@@ -36,7 +36,8 @@ impl Add for EmbeddedVMString {
         }
 
         if new_len <= MAX_EMBEDDED_LENGTH {
-            let mut new_data: EmbeddedBytes = [0; MAX_EMBEDDED_LENGTH];
+            let mut new_data: EmbeddedBytes = [0; MAX_EMBEDDED_LENGTH + 1];
+            new_data[0] = new_len as u8;
             let lhs_src = self.as_bytes().as_ptr();
             let rhs_src = rhs.as_bytes().as_ptr();
             let dst = new_data.as_mut_ptr();
@@ -45,15 +46,11 @@ impl Add for EmbeddedVMString {
             // `src` is valid for reads of `len` bytes and `dst` is valid for
             // writes of `len` bytes.
             unsafe {
-                std::ptr::copy_nonoverlapping(lhs_src, dst, lhs_len);
-                std::ptr::copy_nonoverlapping(rhs_src, dst.add(lhs_len), rhs_len);
+                std::ptr::copy_nonoverlapping(lhs_src, dst.add(1), lhs_len);
+                std::ptr::copy_nonoverlapping(rhs_src, dst.add(1 + lhs_len), rhs_len);
             }
 
-            EmbeddedVMString {
-                len: new_len as u32,
-                bytes: new_data,
-            }
-            .into()
+            EmbeddedVMString { bytes: new_data }.into()
         } else {
             let mut new_bytes = Vec::with_capacity(new_len);
             new_bytes.extend_from_slice(self.as_bytes());
