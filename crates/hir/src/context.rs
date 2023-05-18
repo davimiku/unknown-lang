@@ -169,8 +169,13 @@ impl<'a> Context<'a> {
     pub(crate) fn lower_expr_statement(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         let inner = self.lower_expr(ast.clone());
 
-        let statement = Expr::Statement(inner);
-        self.alloc_expr(statement, ast)
+        match self.expr(inner) {
+            Expr::LocalDef(_) => inner,
+            _ => {
+                let statement = Expr::Statement(inner);
+                self.alloc_expr(statement, ast)
+            }
+        }
     }
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
