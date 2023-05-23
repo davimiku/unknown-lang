@@ -103,6 +103,7 @@ pub enum SyntaxKind {
     ImportBinding,
     LetBinding,
     TypeBinding,
+    ReturnStatement,
 
     // Type components
     CompoundTypeBlock,

@@ -194,6 +194,7 @@ impl<'a> Context<'a> {
                 Loop(ast) => self.lower_loop(ast),
                 Paren(ast) => return self.lower_expr(ast.expr()),
                 Path(ast) => self.lower_path(ast),
+                Return(ast) => self.lower_return_statement(ast),
                 StringLiteral(ast) => self.lower_string_literal(ast),
                 Unary(ast) => self.lower_unary(ast),
             }
@@ -405,6 +406,14 @@ impl<'a> Context<'a> {
             then_branch,
             else_branch,
         })
+    }
+
+    fn lower_return_statement(&mut self, ast: ast::ReturnStatement) -> Expr {
+        let return_value = ast.return_value();
+        // TODO: None variant should be substituted with Unit value?
+        let return_value = self.lower_expr(return_value);
+
+        Expr::ReturnStatement(return_value)
     }
 }
 

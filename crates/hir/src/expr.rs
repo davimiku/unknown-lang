@@ -11,10 +11,6 @@ pub enum Expr {
     /// A missing expression from the parse tree
     Empty,
 
-    /// "Expression statement", an expression that the return value
-    /// is unused
-    Statement(Idx<Expr>),
-
     /// Boolean literal value, `true` or `false`
     BoolLiteral(bool),
 
@@ -49,8 +45,16 @@ pub enum Expr {
 
     LocalDef(LocalDefExpr),
 
-    // TODO: should If be a special case of Match?
+    // TODO: should be Match?
     If(IfExpr),
+
+    /// "Expression statement", an expression that the return value
+    /// is unused
+    Statement(Idx<Expr>),
+
+    /// "Return statement" doesn't produce a value itself. It mutates
+    /// the runtime state (stack, call frame)
+    ReturnStatement(Idx<Expr>),
 }
 
 impl Default for Expr {

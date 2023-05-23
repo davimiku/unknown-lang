@@ -43,8 +43,12 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
 }
 
 pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
-    let parsed = parser::parse(input).syntax();
-    let root = ast::Root::cast(parsed).expect("valid Root node");
+    let parsed = parser::parse(input);
+    if parsed.errors().len() > 0 {
+        panic!("found errors while parsing");
+    }
+
+    let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 
     lower(&root, interner)
 }

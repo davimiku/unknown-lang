@@ -125,8 +125,8 @@ impl VM {
                     self.stack.pop_qword();
                 }
                 PopN => {
-                    let num_slots = frame.read::<u8>();
-                    self.stack.pop_n_discard(num_slots);
+                    let num_slots = frame.read::<u16>();
+                    self.stack.pop_n_discard(num_slots as usize);
                 }
                 PopString => {
                     let _ = self.stack.pop_string();

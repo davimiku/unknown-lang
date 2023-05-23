@@ -62,6 +62,10 @@ impl Parse {
     pub fn syntax(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green_node.clone())
     }
+
+    pub fn errors(&self) -> &[ParseError] {
+        &self.errors
+    }
 }
 
 #[cfg(test)]

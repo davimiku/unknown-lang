@@ -67,6 +67,17 @@ impl Code {
     }
 
     #[inline]
+    pub(super) fn push_u32(&mut self, source: u32) {
+        let source: [u8; 4] = source.to_le_bytes();
+
+        // TODO: write_bytes
+        self.bytes.push(source[0]);
+        self.bytes.push(source[1]);
+        self.bytes.push(source[2]);
+        self.bytes.push(source[3]);
+    }
+
+    #[inline]
     pub(super) fn extend_from_slice(&mut self, source: &[u8]) {
         self.bytes.extend_from_slice(source);
     }

@@ -154,3 +154,11 @@ true
     let program = generate_chunk(input);
     println!("{program}");
 }
+
+#[test]
+fn return_expression() {
+    let input = r#"return 1"#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}

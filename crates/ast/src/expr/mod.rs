@@ -19,6 +19,7 @@ pub enum Expr {
     Loop(Loop),
     Paren(ParenExpr),
     Path(PathExpr),
+    Return(ReturnStatement),
     StringLiteral(StringLiteral),
     // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     Unary(Unary),
@@ -47,6 +48,7 @@ impl Expr {
             SyntaxKind::IntoStringExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::Path => Self::Path(PathExpr(node)),
+            SyntaxKind::ReturnStatement => Self::Return(ReturnStatement(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
         })
@@ -67,6 +69,7 @@ impl Expr {
             Loop(e) => e.range(),
             Paren(e) => e.range(),
             Path(e) => e.range(),
+            Return(e) => e.range(),
             StringLiteral(e) => e.range(),
             Unary(e) => e.range(),
         }
@@ -455,6 +458,23 @@ impl PathExpr {
 
     pub fn ident_strings(&self) -> impl Iterator<Item = String> {
         self.ident_tokens().map(|token| String::from(token.text()))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnStatement(SyntaxNode);
+
+impl ReturnStatement {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::ReturnStatement).then_some(Self(node))
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+
+    pub fn return_value(&self) -> Option<Expr> {
+        self.0.children().find_map(Expr::cast)
     }
 }
 

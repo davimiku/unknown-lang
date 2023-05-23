@@ -140,6 +140,7 @@ pub enum TypeDiagnosticVariant {
     // TODO: better name "tried to call something that was not a function"
     CalleeNotFunction { actual: Type },
     CannotConvertIntoString { actual: Type },
+    Empty { expr: Idx<Expr> },
     Incompatible { a: Type, b: Type },
     NoOverloadFound { name: String },
     TypeMismatch { expected: Type, actual: Type },

@@ -33,6 +33,10 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
             fmt_expr(s, *expr_idx, context, indent);
             s.push(';');
         }
+        Expr::ReturnStatement(return_value) => {
+            s.push_str("return ");
+            fmt_expr(s, *return_value, context, indent);
+        }
 
         Expr::BoolLiteral(b) => s.push_str(&b.to_string()),
         Expr::FloatLiteral(f) => s.push_str(&f.to_string()),

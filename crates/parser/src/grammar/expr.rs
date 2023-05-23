@@ -169,6 +169,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         Let => parse_let_binding(p),
         Type => parse_type_binding(p),
 
+        Return => parse_return(p),
+
         If => parse_if_expr(p),
 
         _ => {
@@ -394,6 +396,20 @@ fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
     }
 
     m.complete(p, SyntaxKind::IfExpr)
+}
+
+fn parse_return(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(Return));
+    let m = p.start();
+    p.bump();
+
+    if p.at_end() || p.at(Newline) {
+        p.bump_all_space();
+    } else {
+        parse_expr(p);
+    }
+
+    m.complete(p, SyntaxKind::ReturnStatement)
 }
 
 fn parse_condition_expr(p: &mut Parser) -> CompletedMarker {

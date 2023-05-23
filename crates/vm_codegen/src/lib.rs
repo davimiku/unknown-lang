@@ -129,64 +129,11 @@ impl Codegen {
         self.current_functions.push(func_codegen);
     }
 
-    fn finish_func(&mut self, is_main: bool) {
-        let curr = self.curr();
-        let return_slots = curr.return_slots;
+    fn finish_func(&mut self, main_implicit_return: bool) {
+        let return_code = self.synth_return(main_implicit_return);
 
-        // slots to pop should be (total words of locals) + (return slots) because
-        // at this point the return values is on the top of the stack. We need to SetLocal
-        // that return value into the slot zero which is reserved for the return
-        let slots_to_pop = curr.next_stack_slot_index - return_slots - FUNC_PTR_SLOT;
-
-        let pops = self.synth_pops(slots_to_pop, TextRange::default());
-
-        // return value slots are allotted as a local at offset zero
-        let set_op = match return_slots {
-            0 => None,
-            1 => Some(Op::SetLocal),
-            2 => Some(Op::SetLocal2),
-            4 => Some(Op::SetLocal4),
-            _ => Some(Op::SetLocalN),
-            // No need for SetLocalString/SetLocalArray because this is a *move*
-            // of the value from the top of the stack to the bottom.
-        };
         let curr_chunk = self.curr_chunk_mut();
-        if let Some(set_op) = set_op {
-            let mut set_return_slots: Code = if is_main {
-                // main exits successfully with return code 0
-                synth_int_constant(0, TextRange::default())
-            } else {
-                Code::default()
-            };
-            set_return_slots.append(synth_op(set_op, TextRange::default()).into());
-            set_return_slots.push_u16(0); // return slots are offset: 0
-            if set_op == Op::SetLocalN {
-                set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
-            }
-
-            // Put the return value in the right spot
-            curr_chunk.append(set_return_slots);
-
-            // pops for top of stack value
-            match return_slots {
-                0 => {}
-                1 => curr_chunk.write_op(Op::Pop1, TextRange::default()),
-                2 => curr_chunk.write_op(Op::Pop2, TextRange::default()),
-                4 => curr_chunk.write_op(Op::Pop4, TextRange::default()),
-                n => {
-                    curr_chunk.append(synth_op_operands(
-                        Op::PopN,
-                        TextRange::default(),
-                        &n.to_le_bytes(),
-                    ));
-                }
-            };
-        }
-        // pops for the locals (including parameters)
-        curr_chunk.append(pops);
-
-        // return from the function, which will pop the function pointer
-        curr_chunk.write_op(Op::Return, TextRange::default());
+        curr_chunk.append(return_code);
 
         let curr = self.current_functions.pop().unwrap();
         self.finished_functions.push(curr.chunk);
@@ -214,7 +161,13 @@ impl Codegen {
 
                 code
             }
-            // TODO: clean up this messy logic
+            ReturnStatement(return_value) => {
+                let mut code = self.synth_expr(*return_value, context);
+                code.append(self.synth_return(false));
+
+                code
+            }
+            // TODO: clean up this messy logic, extract to a separate function
             Function(expr) => {
                 let name = expr.name.map_or("", |key| context.lookup(key));
 
@@ -243,7 +196,7 @@ impl Codegen {
                 self.write_expr(expr.body, context);
                 self.finish_func(false);
 
-                synth_op_operands(Op::PushLocalFunc, range, &((id as u32).to_le_bytes()))
+                synth_op_u32(Op::PushLocalFunc, range, id as u32)
             }
 
             BoolLiteral(b) => synth_bool_constant(*b, range),
@@ -350,13 +303,13 @@ impl Codegen {
             (Not, Bool) | (Not, BoolLiteral(_)) => synth_op(Op::NotBool, range).into(),
 
             (IntoString, Bool) | (IntoString, BoolLiteral(_)) => {
-                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Bool as u8])
+                synth_op_u8(Op::IntoString, range, IntoStringOperand::Bool as u8)
             }
             (IntoString, Float) | (IntoString, FloatLiteral(_)) => {
-                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Float as u8])
+                synth_op_u8(Op::IntoString, range, IntoStringOperand::Float as u8)
             }
             (IntoString, Int) | (IntoString, IntLiteral(_)) => {
-                synth_op_operands(Op::IntoString, range, &[IntoStringOperand::Int as u8])
+                synth_op_u8(Op::IntoString, range, IntoStringOperand::Int as u8)
             }
 
             _ => unreachable!(),
@@ -423,37 +376,110 @@ impl Codegen {
 
         // TODO: handle return value
         let slots_to_pop = self.curr().next_stack_slot_index - start_stack_slot_size;
-        code.append(self.synth_pops(slots_to_pop, TextRange::default()));
+        code.append(self.synth_pops(slots_to_pop, TextRange::default(), true));
         self.curr_mut().next_stack_slot_index = start_stack_slot_size;
 
         code
     }
 
     #[must_use]
-    fn synth_pops(&mut self, slots_to_pop: u16, range: TextRange) -> Code {
+    fn synth_return(&mut self, main_implicit_return: bool) -> Code {
+        let curr = self.curr();
+        let return_slots = curr.return_slots;
+
+        // slots to pop should be (total words of locals) + (return slots) because
+        // at this point the return values is on the top of the stack. We need to SetLocal
+        // that return value into the slot zero which is reserved for the return
+        let slots_to_pop = curr.next_stack_slot_index - return_slots - FUNC_PTR_SLOT;
+
+        let pops = self.synth_pops(slots_to_pop, TextRange::default(), false);
+
+        // return value slots are allotted as a local at offset zero
+        let set_op = match return_slots {
+            0 => None,
+            1 => Some(Op::SetLocal),
+            2 => Some(Op::SetLocal2),
+            4 => Some(Op::SetLocal4),
+            _ => Some(Op::SetLocalN),
+            // No need for SetLocalString/SetLocalArray because this is a *move*
+            // of the value from the top of the stack to the bottom.
+        };
+        let mut code = Code::default();
+        if let Some(set_op) = set_op {
+            let mut set_return_slots: Code = if main_implicit_return {
+                // main exits successfully with return code 0
+                synth_int_constant(0, TextRange::default())
+            } else {
+                Code::default()
+            };
+            set_return_slots.append(synth_op(set_op, TextRange::default()).into());
+            set_return_slots.push_u16(0); // return slots are offset: 0
+            if set_op == Op::SetLocalN {
+                set_return_slots.extend_from_slice(&return_slots.to_le_bytes());
+            }
+
+            // Put the return value in the right spot
+            code.append(set_return_slots);
+
+            // pops for top of stack value
+            match return_slots {
+                0 => {}
+                1 => code.append(Code::from_op(Op::Pop1, TextRange::default())),
+                2 => code.append(Code::from_op(Op::Pop2, TextRange::default())),
+                4 => code.append(Code::from_op(Op::Pop4, TextRange::default())),
+                n => {
+                    code.append(synth_op_u16(Op::PopN, TextRange::default(), n));
+                }
+            };
+        }
+        // pops for the locals (including parameters)
+        code.append(pops);
+
+        // return from the function, which will pop the function pointer
+        code.append(Code::from_op(Op::Return, TextRange::default()));
+
+        code
+    }
+
+    #[must_use]
+    fn synth_pops(
+        &mut self,
+        slots_to_pop: u16,
+        range: TextRange,
+        consume_alloc_types: bool,
+    ) -> Code {
         let curr = self.curr_mut();
         let start = curr.alloc_types.len() - slots_to_pop as usize;
 
+        // FIXME: early return statements are consuming these, which
+        // breaks the codegen for natural returns
         let mut code = Code::default();
-        curr.alloc_types.drain(start..).rev().for_each(|item| {
-            match item {
-                AllocType::WordN(n) => match n {
-                    0 => {}
-                    1 => code.push((Op::Pop1, range)),
-                    2 => code.push((Op::Pop2, range)),
-                    4 => code.push((Op::Pop4, range)),
-                    n => {
-                        code.push((Op::PopN, range));
-                        code.push_u16(n);
-                    }
-                },
-                AllocType::String => code.push((Op::PopString, range)),
-                // TODO: implement Array
-                AllocType::Array => code.push((Op::Pop2, range)),
-                AllocType::Rc => code.push((Op::PopRc, range)),
-                AllocType::Gc => code.push((Op::PopGc, range)),
-                AllocType::Noop => {}
-            }
+
+        // TODO: collapse adjacent plain pops to reduce emitted code
+        // for example, instead of "Pop1; Pop1", emit a Pop2
+        let alloc_types: Vec<AllocType> = if consume_alloc_types {
+            curr.alloc_types.drain(start..).rev().collect()
+        } else {
+            curr.alloc_types[start..].iter().rev().cloned().collect()
+        };
+
+        alloc_types.into_iter().for_each(|item| match item {
+            AllocType::WordN(n) => match n {
+                0 => {}
+                1 => code.push((Op::Pop1, range)),
+                2 => code.push((Op::Pop2, range)),
+                4 => code.push((Op::Pop4, range)),
+                n => {
+                    code.push((Op::PopN, range));
+                    code.push_u16(n);
+                }
+            },
+            AllocType::String => code.push((Op::PopString, range)),
+            // TODO: implement Array
+            AllocType::Array => code.push((Op::Pop2, range)),
+            AllocType::Rc => code.push((Op::PopRc, range)),
+            AllocType::Gc => code.push((Op::PopGc, range)),
+            AllocType::Noop => {}
         });
         code
     }
@@ -602,13 +628,35 @@ impl Codegen {
     }
 }
 
+#[must_use]
 fn synth_op(op: Op, range: TextRange) -> (u8, TextRange) {
     (op as u8, range)
 }
 
 #[must_use]
+fn synth_op_u8(op: Op, range: TextRange, operand: u8) -> Code {
+    let mut code = Code::from_op(op, range);
+    code.push_u8(operand);
+    code
+}
+
+#[must_use]
+fn synth_op_u16(op: Op, range: TextRange, operand: u16) -> Code {
+    let mut code = Code::from_op(op, range);
+    code.push_u16(operand);
+    code
+}
+
+#[must_use]
+fn synth_op_u32(op: Op, range: TextRange, operand: u32) -> Code {
+    let mut code = Code::from_op(op, range);
+    code.push_u32(operand);
+    code
+}
+
+#[must_use]
 fn synth_op_operands(op: Op, range: TextRange, operands: &[u8]) -> Code {
-    let mut code: Code = synth_op(op, range).into();
+    let mut code = Code::from_op(op, range);
     code.extend_from_slice(operands);
 
     code
@@ -642,7 +690,7 @@ fn synth_int_constant(value: VMInt, range: TextRange) -> Code {
 /// needs the Op::Rc instruction emitted so the Rc pointer
 /// can be constructed from the raw pointer, then dropped to
 /// reduce the strong count on that Rc.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum AllocType {
     WordN(u16),
 
@@ -785,7 +833,8 @@ fn pop_code_of(ty: &Type) -> Code {
         Type::Function(_) => Code::from_op(Op::Pop1, range),
         Type::Array(_) => todo!(),
 
-        Type::Top | Type::Bottom => unreachable!(),
+        Type::Bottom => Code::default(),
+        Type::Top => unreachable!("Top is not a constructable value"),
         Type::Undetermined | Type::Error => unreachable!(),
     }
 }

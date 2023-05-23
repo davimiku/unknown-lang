@@ -40,16 +40,25 @@ pub(crate) fn infer_expr(
 
     let inferred_result = match expr {
         Expr::Empty => Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::Undefined { name: todo!() },
-            range: database.range_of_expr(expr_idx),
+            variant: TypeDiagnosticVariant::Empty { expr: expr_idx },
+            range: *range,
         }),
         Expr::Statement(inner_idx) => {
-            // TODO: replace with Result::tap?
             let result = infer_expr(*inner_idx, type_database, database);
+
+            // TODO: replace with Result::tap?
+            // TODO: is this correct? Shouldn't Expr::Statement have a Unit type?
             if let Ok(ref inferred_type) = result {
                 type_database.set_expr_type(expr_idx, inferred_type.clone());
             }
             result
+        }
+        Expr::ReturnStatement(return_value) => {
+            // TODO: not `?` operator, add to diagnostics but ReturnStatement
+            // still overall has a type of Bottom
+            infer_expr(*return_value, type_database, database)?;
+
+            Ok(Type::Bottom)
         }
 
         Expr::BoolLiteral(b) => infer_bool_literal(*b, type_database, expr_idx),
@@ -58,7 +67,10 @@ pub(crate) fn infer_expr(
         Expr::StringLiteral(key) => infer_string_literal(*key, type_database, expr_idx),
 
         Expr::LocalRef(local_ref) => infer_local_ref(local_ref, type_database),
-        Expr::UnresolvedLocalRef { key } => todo!(),
+        Expr::UnresolvedLocalRef { key } => Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::UndefinedLocal { name: *key },
+            range: *range,
+        }),
 
         Expr::Binary(expr) => infer_binary(expr, type_database, database),
         Expr::Unary(expr) => infer_unary(expr, type_database, database),

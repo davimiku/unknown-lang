@@ -115,4 +115,18 @@ Root@0..69
         StringLiteralExpr@61..69 "\"Hello!\"""#]];
         check(input, expected);
     }
+
+    #[test]
+    fn parse_plain_return() {
+        let input = r#"return 1"#;
+        let expected = expect![[r#"
+Root@0..8
+  ReturnStatement@0..8
+    Return@0..6 "return"
+    Emptyspace@6..7 " "
+    IntLiteralExpr@7..8
+      IntLiteral@7..8 "1""#]];
+
+        check(input, expected)
+    }
 }

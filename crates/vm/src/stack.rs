@@ -156,8 +156,8 @@ impl Stack {
     }
 
     /// Removes the top `n` slots of the stack without returning the values.
-    pub(crate) fn pop_n_discard(&mut self, n: u8) {
-        let new_len = self.data.len() - n as usize;
+    pub(crate) fn pop_n_discard(&mut self, n: usize) {
+        let new_len = self.data.len() - n;
         self.data.truncate(new_len);
     }
 

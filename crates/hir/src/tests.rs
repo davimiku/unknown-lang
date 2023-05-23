@@ -61,7 +61,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 
     if actual != expected {
         text_diff::print_diff(&expected, &actual, "");
-        assert!(false, "Expected did not match actual, see printed diff.");
+        panic!("Expected did not match actual, see printed diff.");
     }
 }
 
@@ -502,6 +502,18 @@ print hello_hello"#;
         ("repeat~0", "(String) -> String"),
         ("s~0", "String"),
     ];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn plain_print_statement() {
+    let input = r#"return 1"#;
+
+    let expected_expr = indoc! {"
+    return 1;"};
+
+    let expected_vars = &[];
 
     check(input, expected_expr, expected_vars);
 }
