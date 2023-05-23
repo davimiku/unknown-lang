@@ -1,3 +1,4 @@
+mod binary;
 mod functions;
 mod literals;
 mod types;

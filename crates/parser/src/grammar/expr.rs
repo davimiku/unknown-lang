@@ -93,6 +93,8 @@ where
             Or => BinaryOp::Or,
             Dot => BinaryOp::Path,
             Arrow => BinaryOp::Function,
+            EqualsEquals => BinaryOp::Eq,
+            BangEquals => BinaryOp::Ne,
 
             // Not at an operator, so is not a binary expression, so break
             // The "lhs" in this case is really the entire expression
@@ -472,6 +474,12 @@ enum BinaryOp {
     /// `or`
     Or,
 
+    /// `==`
+    Eq,
+
+    /// `!=`
+    Ne,
+
     /// `.`
     Path,
 
@@ -486,10 +494,11 @@ impl BinaryOp {
             Self::Function => (1, 1),
             Self::Or => (3, 4),
             Self::And => (5, 6),
-            Self::Add | Self::Sub | Self::Concat => (7, 8),
-            Self::Mul | Self::Div | Self::Rem => (9, 10),
-            Self::Exp => (12, 11),
-            Self::Path => (13, 14),
+            Self::Eq | Self::Ne => (7, 8),
+            Self::Add | Self::Sub | Self::Concat => (9, 10),
+            Self::Mul | Self::Div | Self::Rem => (11, 12),
+            Self::Exp => (14, 13),
+            Self::Path => (15, 16),
         }
     }
 }
