@@ -9,3 +9,4 @@ edition = "2021"
 compiler = { path = "../../crates/compiler" }
 vm = { path = "../../crates/vm" }
 vm_types = { path = "../../crates/vm_types" }
+exitcode = "1.1.2"
