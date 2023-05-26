@@ -239,6 +239,12 @@ impl VM {
 
                     self.stack.push_bool(a == b);
                 }
+                NeInt => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+
+                    self.stack.push_bool(a != b);
+                }
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),
                 MulFloat => float_bin_op!(self, mul),
@@ -261,6 +267,12 @@ impl VM {
                     let a = self.stack.pop_float();
 
                     self.stack.push_bool(a == b);
+                }
+                NeFloat => {
+                    let b = self.stack.pop_float();
+                    let a = self.stack.pop_float();
+
+                    self.stack.push_bool(a != b);
                 }
                 IntoString => {
                     let kind = frame.read::<IntoStringOperand>();
@@ -295,6 +307,12 @@ impl VM {
                     let a = self.stack.pop_string();
 
                     self.stack.push_bool(a == b);
+                }
+                NeString => {
+                    let b = self.stack.pop_string();
+                    let a = self.stack.pop_string();
+
+                    self.stack.push_bool(a != b);
                 }
                 CallFunction => {
                     let return_slots = frame.read::<u16>() as usize;

@@ -240,6 +240,13 @@ pub enum Op {
     /// Stack: lhs, rhs **=>** lhs == rhs
     EqInt,
 
+    /// Binary `!=` operator for Int
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** lhs != rhs
+    NeInt,
+
     /// Binary `+` operator for Float.
     ///
     /// Operands:
@@ -282,6 +289,13 @@ pub enum Op {
     /// Stack: lhs, rhs **=>** lhs == rhs
     EqFloat,
 
+    /// Binary `!=` operator for Float
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** lhs != rhs
+    NeFloat,
+
     /// Coerces the top value of the stack into a String
     ///
     /// Operands: type of top value: `u8`
@@ -300,6 +314,13 @@ pub enum Op {
     ///
     /// Stack: lhs, rhs **=>** lhs == rhs
     EqString,
+
+    /// Binary `!=` operator for String
+    ///
+    /// Operands:
+    ///
+    /// Stack: lhs, rhs **=>** lhs != rhs
+    NeString,
 
     /// Pushes the pointer for a local function that is known
     /// at compile time.

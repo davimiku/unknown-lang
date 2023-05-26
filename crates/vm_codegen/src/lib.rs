@@ -289,7 +289,13 @@ impl Codegen {
 
                 _ => unreachable!(),
             },
-            Ne => todo!(),
+            Ne => match lhs_type {
+                Float | FloatLiteral(_) => (Op::NeFloat, range),
+                Int | IntLiteral(_) => (Op::NeInt, range),
+                String | StringLiteral(_) => (Op::NeString, range),
+
+                _ => unreachable!(),
+            },
         });
 
         code
