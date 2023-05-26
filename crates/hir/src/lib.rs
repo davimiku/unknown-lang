@@ -44,7 +44,7 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
 
 pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
     let parsed = parser::parse(input);
-    if parsed.errors().len() > 0 {
+    if !parsed.errors().is_empty() {
         panic!("found errors while parsing");
     }
 
@@ -53,7 +53,7 @@ pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Exp
     lower(&root, interner)
 }
 
-pub fn fmt(ast: &ast::Root, interner: &'_ mut Interner) -> String {
+pub fn fmt(ast: &ast::Root, interner: &mut Interner) -> String {
     let (root, context) = lower(ast, interner);
 
     fmt_root(root, &context)

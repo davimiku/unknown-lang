@@ -6,9 +6,10 @@ use crate::interner::{Interner, Key};
 use crate::type_expr::TypeExpr;
 use crate::COMPILER_BRAND;
 
-#[derive(Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq)]
 pub enum Expr {
     /// A missing expression from the parse tree
+    #[default]
     Empty,
 
     /// Boolean literal value, `true` or `false`
@@ -55,12 +56,6 @@ pub enum Expr {
     /// "Return statement" doesn't produce a value itself. It mutates
     /// the runtime state (stack, call frame)
     ReturnStatement(Idx<Expr>),
-}
-
-impl Default for Expr {
-    fn default() -> Self {
-        Expr::Empty
-    }
 }
 
 /// Local definition
@@ -177,14 +172,35 @@ pub struct IfExpr {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum BinaryOp {
+    /// Addition `+`
     Add,
+
+    /// Subtraction `-`
     Sub,
+
+    /// Multiplication `*`
     Mul,
+
+    /// Division `/`
     Div,
+
+    /// Concatenation `++`
     Concat,
+
+    /// Remainder `%`
     Rem,
+
+    /// Exponent `^`
     Exp,
+
+    /// Path access operator `.`
     Path,
+
+    /// Equality `==`
+    Eq,
+
+    /// Inequality `!=`
+    Ne,
 }
 
 impl fmt::Display for BinaryOp {
@@ -199,6 +215,8 @@ impl fmt::Display for BinaryOp {
             Rem => write!(f, "%"),
             Exp => write!(f, "^"),
             Path => write!(f, "."),
+            Eq => write!(f, "=="),
+            Ne => write!(f, "!="),
         }
     }
 }

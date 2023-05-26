@@ -204,7 +204,7 @@ impl Codegen {
             IntLiteral(i) => synth_int_constant(*i, range),
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
 
-            Binary(expr) => self.synth_binary_expr(expr, context),
+            Binary(expr) => self.synth_binary_expr(expr_idx, expr, context),
             Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
             LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
             Call(expr) => self.synth_call_expr(expr_idx, expr, context),
@@ -239,8 +239,14 @@ impl Codegen {
     }
 
     #[must_use]
-    fn synth_binary_expr(&mut self, expr: &BinaryExpr, context: &hir::Context) -> Code {
+    fn synth_binary_expr(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &BinaryExpr,
+        context: &hir::Context,
+    ) -> Code {
         let BinaryExpr { op, lhs, rhs } = expr;
+        let range = context.range_of(expr_idx);
         let lhs_type = context.type_of_expr(*lhs);
 
         let mut code = self.synth_expr(*lhs, context);
@@ -250,32 +256,40 @@ impl Codegen {
         use Type::*;
         code.push(match op {
             Add => match lhs_type {
-                Float | FloatLiteral(_) => (Op::AddFloat, TextRange::default()),
-                Int | IntLiteral(_) => (Op::AddInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::AddFloat, range),
+                Int | IntLiteral(_) => (Op::AddInt, range),
                 _ => unreachable!(),
             },
             Sub => match lhs_type {
-                Float | FloatLiteral(_) => (Op::SubFloat, TextRange::default()),
-                Int | IntLiteral(_) => (Op::SubInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::SubFloat, range),
+                Int | IntLiteral(_) => (Op::SubInt, range),
                 _ => unreachable!(),
             },
             Mul => match lhs_type {
-                Float | FloatLiteral(_) => (Op::MulFloat, TextRange::default()),
-                Int | IntLiteral(_) => (Op::MulInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::MulFloat, range),
+                Int | IntLiteral(_) => (Op::MulInt, range),
                 _ => unreachable!(),
             },
             Div => match lhs_type {
-                Float | FloatLiteral(_) => (Op::DivFloat, TextRange::default()),
-                Int | IntLiteral(_) => (Op::DivInt, TextRange::default()),
+                Float | FloatLiteral(_) => (Op::DivFloat, range),
+                Int | IntLiteral(_) => (Op::DivInt, range),
                 _ => unreachable!(),
             },
             Concat => match lhs_type {
-                String | StringLiteral(_) => (Op::ConcatString, TextRange::default()),
+                String | StringLiteral(_) => (Op::ConcatString, range),
                 _ => unreachable!(),
             },
             Rem => todo!(),
             Exp => todo!(),
             Path => todo!(),
+            Eq => match lhs_type {
+                Float | FloatLiteral(_) => (Op::EqFloat, range),
+                Int | IntLiteral(_) => (Op::EqInt, range),
+                String | StringLiteral(_) => (Op::EqString, range),
+
+                _ => unreachable!(),
+            },
+            Ne => todo!(),
         });
 
         code

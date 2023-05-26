@@ -270,6 +270,8 @@ impl<'a> Context<'a> {
             SyntaxKind::Dot => BinaryOp::Path,
             SyntaxKind::Caret => BinaryOp::Exp,
             SyntaxKind::Percent => BinaryOp::Rem,
+            SyntaxKind::EqualsEquals => BinaryOp::Eq,
+            SyntaxKind::BangEquals => BinaryOp::Ne,
             _ => unreachable!(),
         };
 

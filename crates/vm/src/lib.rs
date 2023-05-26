@@ -233,6 +233,12 @@ impl VM {
                     self.stack.replace_top_word(-top);
                 }
                 RemInt => todo!(),
+                EqInt => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+
+                    self.stack.push_bool(a == b);
+                }
                 AddFloat => float_bin_op!(self, add),
                 SubFloat => float_bin_op!(self, sub),
                 MulFloat => float_bin_op!(self, mul),
@@ -249,6 +255,12 @@ impl VM {
                 NegateFloat => {
                     let top = self.stack.peek_float();
                     self.stack.replace_top_word(-top);
+                }
+                EqFloat => {
+                    let b = self.stack.pop_float();
+                    let a = self.stack.pop_float();
+
+                    self.stack.push_bool(a == b);
                 }
                 IntoString => {
                     let kind = frame.read::<IntoStringOperand>();
@@ -277,6 +289,12 @@ impl VM {
                     let a = self.stack.pop_string();
 
                     self.stack.push_string(a + b);
+                }
+                EqString => {
+                    let b = self.stack.pop_string();
+                    let a = self.stack.pop_string();
+
+                    self.stack.push_bool(a == b);
                 }
                 CallFunction => {
                     let return_slots = frame.read::<u16>() as usize;

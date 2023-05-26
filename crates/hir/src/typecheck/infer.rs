@@ -2,12 +2,13 @@
 //! Type inference
 
 use std::collections::HashMap;
+use std::f32::consts::E;
 
 use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
 
-use super::builtins::{get_builtin_functions, BuiltinFunctionSignature};
+use super::builtins::{get_builtin_functions, BuiltinFunctionSignature, BuiltinSignatures};
 use super::{
     check_expr, is_subtype, FunctionType, Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant,
 };
@@ -253,7 +254,7 @@ fn infer_block(
 fn infer_call(
     expr_idx: Idx<Expr>,
     expr: &CallExpr,
-    builtin_signatures: HashMap<&str, Vec<BuiltinFunctionSignature>>,
+    builtin_signatures: BuiltinSignatures,
     type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
@@ -461,15 +462,18 @@ fn infer_binary(
     let lhs_type = infer_expr(expr.lhs, type_database, database)?;
     let (rhs, rhs_range) = database.expr(expr.rhs);
     let rhs_type = infer_expr(expr.rhs, type_database, database)?;
+
+    use BinaryOp::*;
     match expr.op {
-        BinaryOp::Add => infer_binary_add(&lhs_type, &rhs_type),
-        BinaryOp::Concat => infer_binary_concat(&lhs_type, &rhs_type),
-        BinaryOp::Sub => todo!(),
-        BinaryOp::Mul => todo!(),
-        BinaryOp::Div => todo!(),
-        BinaryOp::Rem => todo!(),
-        BinaryOp::Exp => todo!(),
-        BinaryOp::Path => todo!(),
+        Add => infer_binary_add(&lhs_type, &rhs_type),
+        Concat => infer_binary_concat(&lhs_type, &rhs_type),
+        Sub => todo!(),
+        Mul => todo!(),
+        Div => todo!(),
+        Rem => todo!(),
+        Exp => todo!(),
+        Path => todo!(),
+        Eq | Ne => infer_binary_equality(&lhs_type, &rhs_type, expr.op),
     }
     .map_err(|variant| TypeDiagnostic {
         variant,
@@ -497,6 +501,22 @@ fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagno
             })
         }
     })
+}
+
+fn infer_binary_equality(
+    lhs_type: &Type,
+    rhs_type: &Type,
+    op: BinaryOp,
+) -> Result<Type, TypeDiagnosticVariant> {
+    if is_subtype(lhs_type, rhs_type) || is_subtype(rhs_type, lhs_type) {
+        Ok(Type::Bool)
+    } else {
+        Err(TypeDiagnosticVariant::BinaryMismatch {
+            op,
+            lhs: lhs_type.clone(),
+            rhs: rhs_type.clone(),
+        })
+    }
 }
 
 fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {

@@ -95,10 +95,11 @@ impl Binary {
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
+            // TODO: Extract these binary op tokens into a more obvious or shared place
             .find(|token| {
                 matches!(
                     token.kind(),
-                    Plus | PlusPlus | Dash | Star | Slash | Dot | Caret
+                    Plus | PlusPlus | Dash | Star | Slash | Dot | Caret | EqualsEquals | BangEquals
                 )
             })
     }
