@@ -1,8 +1,6 @@
-use std::{
-    fmt::{self, Display},
-    mem,
-    ops::Range,
-};
+use std::fmt::{self, Display};
+use std::mem;
+use std::ops::Range;
 
 use text_size::TextRange;
 
@@ -80,14 +78,6 @@ impl FunctionChunk {
     pub(crate) fn write_op(&mut self, op: Op, range: TextRange) {
         self.code.bytes.push(op as u8);
         self.code.ranges.push(range);
-    }
-
-    fn write_byte(&mut self, byte: u8) {
-        self.code.bytes.push(byte);
-    }
-
-    fn write_bytes(&mut self, bytes: &[u8]) {
-        self.code.bytes.extend(bytes);
     }
 
     pub fn write_ret(&mut self, range: TextRange) {
