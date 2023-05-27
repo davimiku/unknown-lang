@@ -5,7 +5,7 @@ use builtins::{
 };
 use exitcode::ExitCode;
 use stack::Stack;
-use std::mem::{size_of, MaybeUninit};
+use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
 use vm_boxed_types::VMFunction;
 use vm_codegen::{
@@ -45,24 +45,8 @@ pub struct VM {
     interner: lasso::Rodeo,
 }
 
-#[inline]
-fn init_frames() -> [CallFrame; MAX_FRAMES] {
-    // TODO: use a crate/macro for array initialization
-    let mut uninit_frames: [MaybeUninit<CallFrame>; MAX_FRAMES] =
-        unsafe { MaybeUninit::uninit().assume_init() };
-
-    for frame in &mut uninit_frames[..] {
-        unsafe {
-            std::ptr::write(frame.as_mut_ptr(), Default::default());
-        }
-    }
-
-    unsafe { std::mem::transmute::<_, [CallFrame; MAX_FRAMES]>(uninit_frames) }
-}
-
 impl VM {
     pub(crate) fn new(program_chunk: ProgramChunk) -> Self {
-        // let frames = init_frames();
         let mut vm = VM {
             stack: Stack::default(),
             frames: ArrayVec::new(),
@@ -70,7 +54,8 @@ impl VM {
             interner: lasso::Rodeo::default(),
         };
 
-        vm.push_frame_main();
+        vm.push_frame_main()
+            .expect("main call frame to be successfully initialized");
 
         vm
     }
@@ -189,8 +174,8 @@ impl VM {
                     }
                 }
                 SetLocalN => {
-                    let slot_offset = frame.read::<u16>();
-                    let num_slots = frame.read::<u16>();
+                    let _slot_offset = frame.read::<u16>();
+                    let _num_slots = frame.read::<u16>();
 
                     // let val = self.stack.peek_n(num_slots.into());
 
@@ -330,10 +315,11 @@ impl VM {
 
                     self.stack
                         .set_word_at((func_ptr as u64).into(), func_ptr_index);
-                    self.push_frame(func_ptr, return_slots, return_address);
 
-                    // TODO: unwrap_unchecked should be fine because a frame was just pushed
-                    frame = self.frames.last_mut().unwrap();
+                    self.push_frame(func_ptr, return_slots, return_address)?;
+
+                    // Safety: a frame was just pushed, so there is a last frame to unwrap
+                    frame = unsafe { self.frames.last_mut().unwrap_unchecked() };
                 }
                 CallBuiltin => {
                     let builtin_idx = frame.read::<u8>();
@@ -387,8 +373,8 @@ impl VM {
                         return Ok(self.stack.pop_int() as ExitCode);
                     }
 
-                    // TODO: unwrap_unchecked should be fine here because len==0 was checked
-                    frame = self.frames.last_mut().unwrap();
+                    // Safety: self.frames was just checked to be not empty
+                    frame = unsafe { self.frames.last_mut().unwrap_unchecked() };
                     frame.ip = return_address;
                     self.stack.offset = frame.stack_offset;
                 }
@@ -430,7 +416,7 @@ impl VM {
             .map_err(|_| Panic::CallFrameOverflowError)
     }
 
-    fn push_frame_main(&mut self) {
+    fn push_frame_main(&mut self) -> Result<(), Panic> {
         let main = self.functions.last().unwrap();
 
         self.stack.push_int(0); // placeholder for return code
@@ -440,10 +426,10 @@ impl VM {
         self.stack.push_int(0xDEADBEEF_i64); // first word of []String
         self.stack.push_int(0xFEEDC0DE_i64); // second word of []String
 
-        self.push_frame(main, word_size_of::<VMInt>(), 0);
+        self.push_frame(main, word_size_of::<VMInt>(), 0)
     }
 
-    fn call_builtin(&mut self, i: u8) {
+    fn _call_builtin(&mut self, i: u8) {
         // TODO: move builtins to an array/map or something to not hard-code
         // TODO: define builtins as an enum, convert the u8 to the enum and match
         // Potentially define as "metadata":
