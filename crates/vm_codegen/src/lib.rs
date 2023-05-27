@@ -209,7 +209,7 @@ impl Codegen {
             LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
             Call(expr) => self.synth_call_expr(expr_idx, expr, context),
             LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
-            UnresolvedLocalRef { key } => unreachable!(),
+            UnresolvedLocalRef { key: _ } => unreachable!(),
             Block(expr) => self.synth_block_expr(expr, context),
             If(expr) => self.synth_if_expr(expr, context),
 
