@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use builtins::{
     len_string, print_bool, print_float, print_int, print_string, LEN_STRING, PRINT_BOOL,
     PRINT_FLOAT, PRINT_INT, PRINT_STRING,
@@ -13,7 +14,7 @@ use vm_codegen::{
 };
 use vm_string::VMString;
 use vm_types::words::Word;
-use vm_types::{word_size_of, FromWordVec, VMBool, VMFloat, VMInt};
+use vm_types::{word_size_of, VMBool, VMFloat, VMInt};
 
 mod builtins;
 mod macros;
@@ -36,10 +37,7 @@ pub struct VM {
     stack: Stack,
 
     /// Active call frames
-    frames: [CallFrame; MAX_FRAMES],
-
-    /// Current number of active call frames
-    frame_count: usize,
+    frames: ArrayVec<CallFrame, MAX_FRAMES>,
 
     /// Program bytecode, where each function has a chunk
     functions: Vec<FunctionChunk>,
@@ -64,11 +62,10 @@ fn init_frames() -> [CallFrame; MAX_FRAMES] {
 
 impl VM {
     pub(crate) fn new(program_chunk: ProgramChunk) -> Self {
-        let frames = init_frames();
+        // let frames = init_frames();
         let mut vm = VM {
             stack: Stack::default(),
-            frames,
-            frame_count: 0,
+            frames: ArrayVec::new(),
             functions: program_chunk.functions,
             interner: lasso::Rodeo::default(),
         };
@@ -79,13 +76,19 @@ impl VM {
     }
 
     fn run(&mut self) -> InterpretResult<ExitCode> {
-        let _ = &self.functions; // TODO: is this needed? supposed to make sure self.functions isn't mutated
-        let mut frame = &mut self.frames[self.frame_count - 1];
+        // ensures self.functions isn't mutated
+        // TODO: decide if making self.functions a slice is worth the syntax cost of lifetime annotations
+        let _ = &self.functions;
+        // TODO: unwrap_unchecked should be fine because frames starts with len==1 (`main`)
+        let mut frame = self.frames.last_mut().unwrap();
         loop {
             // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
             let chunk = unsafe { &*frame.function.chunk };
             let op = chunk.get_op(frame.ip)?;
             frame.ip += 1;
+
+            // #[cfg(debug_stack)]
+            // dbg!(op);
 
             use Op::*;
             match op {
@@ -329,7 +332,8 @@ impl VM {
                         .set_word_at((func_ptr as u64).into(), func_ptr_index);
                     self.push_frame(func_ptr, return_slots, return_address);
 
-                    frame = &mut self.frames[self.frame_count - 1];
+                    // TODO: unwrap_unchecked should be fine because a frame was just pushed
+                    frame = self.frames.last_mut().unwrap();
                 }
                 CallBuiltin => {
                     let builtin_idx = frame.read::<u8>();
@@ -375,21 +379,24 @@ impl VM {
                     }
                 }
                 Return => {
-                    // function pointer
-                    let _ = self.stack.pop_rc::<u8>();
+                    let _ = self.stack.pop_func_ptr();
 
                     let return_address = frame.return_address;
-                    self.frame_count -= 1;
-                    if self.frame_count == 0 {
+                    self.frames.pop();
+                    if self.frames.is_empty() {
                         return Ok(self.stack.pop_int() as ExitCode);
                     }
 
-                    frame = &mut self.frames[self.frame_count - 1];
+                    // TODO: unwrap_unchecked should be fine here because len==0 was checked
+                    frame = self.frames.last_mut().unwrap();
                     frame.ip = return_address;
                     self.stack.offset = frame.stack_offset;
                 }
                 Noop => {}
             }
+
+            // #[cfg(debug_stack)]
+            // dbg!(&self.stack);
         }
     }
 
@@ -398,7 +405,7 @@ impl VM {
         function: *const FunctionChunk,
         return_slots: usize,
         return_address: usize,
-    ) {
+    ) -> Result<(), Panic> {
         // Safety: VM owns FunctionChunk memory and lifetime is longer than this pointer
         let function = unsafe { &*function };
 
@@ -412,15 +419,15 @@ impl VM {
             chunk: function,
             name: Some(name),
         };
-        let new_frame_idx = self.frame_count;
 
-        self.frames[new_frame_idx] = CallFrame {
-            function,
-            ip: 0, // TODO: change if this becomes a pointer
-            return_address,
-            stack_offset: self.stack.offset,
-        };
-        self.frame_count += 1;
+        self.frames
+            .try_push(CallFrame {
+                function,
+                ip: 0, // TODO: change if this becomes a pointer
+                return_address,
+                stack_offset: self.stack.offset,
+            })
+            .map_err(|_| Panic::CallFrameOverflowError)
     }
 
     fn push_frame_main(&mut self) {
@@ -447,7 +454,6 @@ impl VM {
         // shared access to the chunk to deref constants (ex. strings)?
         // and the builtins would need a slice that was popped from the stack and
         // also potentially return a slice to be pushed into the stack
-        let frame = &mut self.frames[self.frame_count - 1];
 
         match i {
             0 => unreachable!("no builtin at the zero byte"),
@@ -519,6 +525,9 @@ pub enum Panic {
     /// Bytecode encountered an invalid operation.
     /// Always indicates a compiler bug.
     InvalidOpError(InvalidOpError),
+
+    /// The number of Call Frames exceeded the available amount
+    CallFrameOverflowError,
 
     /// Out of range access or out of bounds index
     RangeError,
