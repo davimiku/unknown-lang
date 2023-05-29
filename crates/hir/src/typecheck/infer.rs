@@ -1,9 +1,6 @@
 //!
 //! Type inference
 
-use std::collections::HashMap;
-use std::f32::consts::E;
-
 use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
@@ -27,6 +24,8 @@ use crate::CallExpr;
 // signature that concatenates the internal Vec<TypeDiagnostic> so it can be chained/collected
 type InferResult = Result<Type, TypeDiagnostic>;
 
+struct InferResult2(Result<Type, TypeDiagnostic>);
+
 pub(crate) fn infer_expr(
     expr_idx: Idx<Expr>,
     type_database: &mut TypeDatabase,
@@ -45,14 +44,10 @@ pub(crate) fn infer_expr(
             range: *range,
         }),
         Expr::Statement(inner_idx) => {
-            let result = infer_expr(*inner_idx, type_database, database);
+            // TODO: collect error but still return Unit for the statement itself
+            infer_expr(*inner_idx, type_database, database)?;
 
-            // TODO: replace with Result::tap?
-            // TODO: is this correct? Shouldn't Expr::Statement have a Unit type?
-            if let Ok(ref inferred_type) = result {
-                type_database.set_expr_type(expr_idx, inferred_type.clone());
-            }
-            result
+            Ok(Type::Unit)
         }
         Expr::ReturnStatement(return_value) => {
             // TODO: not `?` operator, add to diagnostics but ReturnStatement
@@ -212,7 +207,7 @@ fn infer_local_def(
         match check_expr(*value, &expected, type_database, database) {
             Ok(_) => {
                 type_database.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
-                Ok(expected)
+                Ok(Type::Unit)
             }
             Err(err) => Err(err),
         }
@@ -220,7 +215,7 @@ fn infer_local_def(
         match infer_expr(*value, type_database, database) {
             Ok(inferred) => {
                 type_database.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
-                Ok(inferred)
+                Ok(Type::Unit)
             }
             Err(err) => Err(err),
         }
@@ -233,22 +228,27 @@ fn infer_block(
     type_database: &mut TypeDatabase,
     database: &Database,
 ) -> Result<Type, TypeDiagnostic> {
+    // TODO: collect all TypeDiagnostics
     let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
         .exprs
         .iter()
         .map(|arg| infer_expr(*arg, type_database, database))
         .collect();
-    expr_types.map(|expr_types| {
-        let tail_type = expr_types.last();
-        tail_type.map_or_else(
-            || Type::Unit,
-            |tail_type| {
-                type_database.set_expr_type(expr_idx, tail_type.clone());
+    let expr_types = expr_types?;
+    let tail_expr = block.exprs.last().copied();
+    let tail_type = tail_expr.and_then(|tail_expr| {
+        let (tail_expr, ..) = database.expr(tail_expr);
+        match tail_expr {
+            Expr::Statement(inner) => type_database.get_expr_type(*inner),
+            Expr::LocalDef(_) => Some(&Type::Unit),
+            e => {
+                dbg!(e);
+                unreachable!();
+            }
+        }
+    });
 
-                tail_type.clone()
-            },
-        )
-    })
+    Ok(tail_type.cloned().unwrap_or(Type::Unit))
 }
 
 fn infer_call(
@@ -389,11 +389,22 @@ fn infer_if_expr(
     database: &Database,
 ) -> InferResult {
     let IfExpr {
+        condition,
         then_branch,
         else_branch,
-        ..
     } = if_expr;
 
+    // TODO: collect all errors, don't short-circuit
+    let condition_ty = infer_expr(*condition, type_database, database)?;
+    if !is_subtype(&condition_ty, &Type::Bool) {
+        return Err(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::TypeMismatch {
+                expected: Type::Bool,
+                actual: condition_ty,
+            },
+            range: database.range_of_expr(*condition),
+        });
+    }
     if let Some(else_branch) = else_branch {
         let then_type = infer_expr(*then_branch, type_database, database)?;
         let else_type = infer_expr(*else_branch, type_database, database)?;
@@ -458,9 +469,9 @@ fn infer_binary(
     database: &Database,
 ) -> InferResult {
     // TODO: collect both errors, not early return
-    let (lhs, lhs_range) = database.expr(expr.lhs);
+    // let (lhs, lhs_range) = database.expr(expr.lhs);
     let lhs_type = infer_expr(expr.lhs, type_database, database)?;
-    let (rhs, rhs_range) = database.expr(expr.rhs);
+    // let (rhs, rhs_range) = database.expr(expr.rhs);
     let rhs_type = infer_expr(expr.rhs, type_database, database)?;
 
     use BinaryOp::*;
@@ -526,7 +537,7 @@ fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDia
         | (T::String, T::StringLiteral(_))
         | (T::String, T::String) => T::String,
 
-        // TODO: concat these as a new StringLiteral type (constant folding)
+        // TODO: constant folding?
         (T::StringLiteral(a), T::StringLiteral(b)) => T::String,
 
         _ => {
@@ -571,79 +582,96 @@ fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
 
 #[cfg(test)]
 mod tests {
-    // /// Asserts that the provided `Result` is `Ok`
-    // /// and returns the unwrapped value.
-    // macro_rules! assert_ok {
-    //     ($value:expr) => {{
-    //         assert!($value.is_ok());
-    //         $value.unwrap()
-    //     }};
-    // }
+    /// Asserts that the provided `Result` is `Ok`
+    /// and returns the unwrapped value.
+    macro_rules! assert_ok {
+        ($value:expr) => {{
+            assert!($value.is_ok());
+            $value.unwrap()
+        }};
+    }
 
-    // /// Asserts that the provided `Result` is `Err`
-    // /// and returns the unwrapped error.
-    // macro_rules! assert_err {
-    //     ($value:expr) => {{
-    //         assert!($value.is_err());
-    //         $value.unwrap_err()
-    //     }};
-    // }
+    /// Asserts that the provided `Result` is `Err`
+    /// and returns the unwrapped error.
+    macro_rules! assert_err {
+        ($value:expr) => {{
+            assert!($value.is_err());
+            $value.unwrap_err()
+        }};
+    }
 
-    // use la_arena::Idx;
+    use la_arena::Idx;
 
-    // use crate::typecheck::{TypeCheckResults, TypeDiagnostic};
-    // use crate::{BlockExpr, Context, Expr, Type};
+    use crate::typecheck::{TypeDatabase, TypeDiagnostic};
+    use crate::{BlockExpr, Context, Expr, Interner, Type};
 
-    // use super::{infer_expr, InferResult};
+    use super::{infer_expr, InferResult};
 
-    // fn check(input: &str) -> InferResult {
-    //     let parsed = parser::parse(input).syntax();
-    //     let root = ast::Root::cast(parsed).expect("valid Root node");
-    //     let mut context = Context::default();
+    fn check(input: &str, interner: &mut Interner) -> InferResult {
+        let parsed = parser::parse(input).syntax();
+        let root = ast::Root::cast(parsed).expect("valid Root node");
+        let mut context = Context::new(interner);
 
-    //     let exprs: Vec<Idx<Expr>> = root
-    //         .exprs()
-    //         .map(|expr| context.lower_expr(Some(expr)))
-    //         .collect();
+        let exprs: Vec<Idx<Expr>> = root
+            .exprs()
+            .map(|expr| context.lower_expr_statement(Some(expr)))
+            .collect();
 
-    //     // wrap everything in a block
-    //     let root = Expr::Block(BlockExpr { exprs });
-    //     let root = context.alloc_expr(root, None);
+        // wrap everything in a block
+        let root = Expr::Block(BlockExpr { exprs });
+        let root = context.alloc_expr(root, None);
 
-    //     infer_expr(
-    //         root,
-    //         &mut TypeCheckResults::new(&context.interner),
-    //         &context.database,
-    //     )
-    // }
+        infer_expr(root, &mut TypeDatabase::default(), &context.database)
+    }
 
-    // fn check_infer_type(input: &str, expected: Type) {
-    //     let result = check(input);
+    fn check_infer_type(input: &str, expected: Type, interner: Option<Interner>) {
+        let mut interner = interner.unwrap_or_default();
+        let result = check(input, &mut interner);
 
-    //     let actual = assert_ok!(result);
-    //     assert_eq!(expected, actual);
-    // }
+        let actual = assert_ok!(result);
+        assert_eq!(expected, actual);
+    }
 
-    // fn check_infer_error(input: &str, expected: TypeDiagnostic) {
-    //     let result = check(input);
+    fn check_infer_error(input: &str, expected: TypeDiagnostic, interner: Option<Interner>) {
+        let mut interner = interner.unwrap_or_default();
 
-    //     let actual = assert_err!(result);
-    //     assert_eq!(expected, actual)
-    // }
+        let result = check(input, &mut interner);
 
-    // #[test]
-    // fn infer_int_literal() {
-    //     let input = "1";
-    //     let expected = Type::IntLiteral(1);
+        let actual = assert_err!(result);
+        assert_eq!(expected, actual)
+    }
 
-    //     check_infer_type(input, expected);
-    // }
+    #[test]
+    fn infer_int_literal() {
+        let input = "1";
+        let expected = Type::IntLiteral(1);
 
-    // #[test]
-    // fn infer_let_binding() {
-    //     let input = "let a = 1";
-    //     let expected = Type::IntLiteral(1);
+        check_infer_type(input, expected, None);
+    }
 
-    //     check_infer_type(input, expected);
-    // }
+    #[test]
+    fn infer_int_addition() {
+        let input = "2 + 3";
+        let expected = Type::IntLiteral(5);
+
+        check_infer_type(input, expected, None);
+    }
+
+    #[test]
+    fn infer_string_literal() {
+        let input = r#""Hello""#;
+        let mut interner = Interner::default();
+        let key = interner.intern("Hello");
+        let expected = Type::StringLiteral(key);
+
+        check_infer_type(input, expected, Some(interner));
+    }
+
+    #[test]
+    fn infer_let_binding() {
+        let input = "let a = 1";
+        let expected = Type::Unit;
+
+        check_infer_type(input, expected, None);
+    }
 }

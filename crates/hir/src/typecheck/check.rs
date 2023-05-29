@@ -39,7 +39,7 @@ pub(crate) fn check_expr(
 ///    If a Float was required, a FloatLiteral would suffice.
 pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
     use Type as T;
-
+    dbg!(a, b);
     if a == b {
         return true;
     }
