@@ -674,4 +674,15 @@ mod tests {
 
         check_infer_type(input, expected, None);
     }
+
+    #[test]
+    fn infer_block() {
+        let input = r#"{
+    let a = 1
+    a
+}"#;
+        let expected = Type::IntLiteral(1);
+
+        check_infer_type(input, expected, None);
+    }
 }
