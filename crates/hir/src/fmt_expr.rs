@@ -46,6 +46,7 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Binary(binary) => fmt_binary_expr(s, binary, context, indent),
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
+        Expr::EmptyBlock => s.push_str("{}"),
         Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
         Expr::LocalRef(LocalRefExpr { key }) => s.push_str(&key.display(context.interner)),

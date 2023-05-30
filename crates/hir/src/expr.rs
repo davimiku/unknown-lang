@@ -34,6 +34,10 @@ pub enum Expr {
     /// result is the evaluation of the final expression.
     Block(BlockExpr),
 
+    /// Empty block expression. Always returns Unit because there
+    /// are no expressions contained within.
+    EmptyBlock,
+
     Call(CallExpr),
 
     LocalRef(LocalRefExpr),
@@ -124,7 +128,6 @@ pub struct UnaryExpr {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockExpr {
     pub exprs: Vec<Idx<Expr>>,
-    // tail_expr: Option<Idx<Expr>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

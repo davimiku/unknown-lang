@@ -297,14 +297,18 @@ impl<'a> Context<'a> {
     fn lower_block(&mut self, ast: ast::Block) -> Expr {
         self.push_scope();
 
-        let exprs = ast
+        let exprs: Vec<Idx<Expr>> = ast
             .exprs()
             .map(|expr_ast| self.lower_expr_statement(Some(expr_ast)))
             .collect();
 
         self.pop_scope();
 
-        Expr::Block(BlockExpr { exprs })
+        if exprs.is_empty() {
+            Expr::EmptyBlock
+        } else {
+            Expr::Block(BlockExpr { exprs })
+        }
     }
 
     fn lower_loop(&mut self, _ast: ast::Loop) -> Expr {

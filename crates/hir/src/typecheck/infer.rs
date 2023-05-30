@@ -70,6 +70,7 @@ pub(crate) fn infer_expr(
 
         Expr::Binary(expr) => infer_binary(expr, type_database, database),
         Expr::Unary(expr) => infer_unary(expr, type_database, database),
+        Expr::EmptyBlock => Ok(Type::Unit),
         Expr::Block(block) => infer_block(expr_idx, block, type_database, database),
         Expr::Call(expr) => infer_call(expr_idx, expr, builtin_signatures, type_database, database),
         Expr::Function(function) => infer_function(function, type_database, database),
