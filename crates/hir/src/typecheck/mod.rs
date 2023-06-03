@@ -127,6 +127,12 @@ pub struct TypeDiagnostic {
     pub range: TextRange,
 }
 
+impl TypeDiagnostic {
+    pub fn message(&self) -> String {
+        self.variant.message()
+    }
+}
+
 impl From<TypeDiagnostic> for Diagnostic {
     fn from(value: TypeDiagnostic) -> Self {
         Diagnostic::Type(value)
@@ -147,4 +153,36 @@ pub enum TypeDiagnosticVariant {
     UndefinedLocal { name: Key },
     UndefinedFunction { name: String },
     Undefined { name: LocalDefKey },
+}
+
+impl TypeDiagnosticVariant {
+    fn message(&self) -> String {
+        match self {
+            TypeDiagnosticVariant::ArgsMismatch { expected, actual } => {
+                format!("Expected {expected} arguments, found {actual}")
+            }
+            TypeDiagnosticVariant::BinaryMismatch { op, lhs, rhs } => {
+                format!("Operation `{op}` is not valid for argument types {lhs:?}, {rhs:?}")
+            }
+            TypeDiagnosticVariant::CalleeNotFunction { actual } => {
+                format!("Expected a function, found {actual:?}")
+            }
+            TypeDiagnosticVariant::CannotConvertIntoString { actual } => {
+                format!("Unable to convert type {actual:?} into a String")
+            }
+            TypeDiagnosticVariant::Empty { expr } => format!("Found unexpected empty expression"),
+            TypeDiagnosticVariant::Incompatible { a, b } => {
+                format!("Incompatible types, found {a:?}, {b:?}")
+            }
+            TypeDiagnosticVariant::NoOverloadFound { name } => {
+                format!("No overload found for {name}")
+            }
+            TypeDiagnosticVariant::TypeMismatch { expected, actual } => {
+                format!("Expected type {expected:?}, found {actual:?}")
+            }
+            TypeDiagnosticVariant::UndefinedLocal { name } => format!("Undefined local variable"),
+            TypeDiagnosticVariant::UndefinedFunction { name } => format!("Undefined function"),
+            TypeDiagnosticVariant::Undefined { name } => format!("Undefined local def key"),
+        }
+    }
 }

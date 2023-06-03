@@ -1,4 +1,5 @@
-use hir::{Diagnostic, Interner};
+pub use hir::Diagnostic;
+use hir::Interner;
 use vm_codegen::ProgramChunk;
 
 pub fn compile(input: &str) -> Result<ProgramChunk, Vec<Diagnostic>> {
