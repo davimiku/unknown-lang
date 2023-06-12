@@ -406,8 +406,8 @@ fn infer_if_expr(
             range: database.range_of_expr(*condition),
         });
     }
+    let then_type = infer_expr(*then_branch, type_database, database)?;
     if let Some(else_branch) = else_branch {
-        let then_type = infer_expr(*then_branch, type_database, database)?;
         let else_type = infer_expr(*else_branch, type_database, database)?;
 
         infer_compatible_type(&then_type, &else_type).ok_or(TypeDiagnostic {
