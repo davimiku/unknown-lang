@@ -72,6 +72,34 @@ pub struct TypeDatabase {
 }
 
 impl TypeDatabase {
+    pub(crate) fn display(&self, interner: &Interner) -> String {
+        let mut output = String::new();
+
+        output.push_str("\nExpression types:\n");
+        for (idx, ty) in self.expr_types.iter() {
+            output.push_str(&format!("{idx:?}: {ty:?}\n"));
+        }
+
+        output.push_str("\nType Expression types:\n");
+        for (idx, ty) in self.type_expr_types.iter() {
+            output.push_str(&format!("{idx:?}: {ty:?}\n"));
+        }
+
+        output.push_str("\nLocal Defs:\n");
+        for (key, ty) in self.local_defs.iter() {
+            output.push_str(&format!("{}: {:?}\n", key.display(interner), ty));
+        }
+
+        output.push_str("\nLocal Type Defs:\n");
+        for (key, ty) in self.local_type_defs.iter() {
+            output.push_str(&format!("{}: {:?}\n", key.display(interner), ty));
+        }
+
+        output
+    }
+}
+
+impl TypeDatabase {
     pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Option<&Type> {
         self.expr_types.get(idx)
     }
@@ -147,4 +175,10 @@ pub enum TypeDiagnosticVariant {
     UndefinedLocal { name: Key },
     UndefinedFunction { name: String },
     Undefined { name: LocalDefKey },
+}
+
+impl TypeDiagnostic {
+    pub fn message(&self) -> String {
+        format!("{:?}", self)
+    }
 }

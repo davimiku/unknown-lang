@@ -1,3 +1,4 @@
+use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use la_arena::Idx;
@@ -88,6 +89,19 @@ impl<'a> Context<'a> {
             scopes,
             interner,
         }
+    }
+}
+
+impl Display for Context<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let database = self.database.display(self.interner);
+        f.write_str(&database)?;
+
+        let type_database = self.type_database.display(self.interner);
+        f.write_str(&type_database)?;
+
+        let scopes = self.scopes.display(self.interner);
+        f.write_str(&scopes)
     }
 }
 

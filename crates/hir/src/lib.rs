@@ -26,7 +26,7 @@ use interner::Key;
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
-pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+pub fn lower_ast<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
     let mut context = Context::new(interner);
 
     let exprs: Vec<Idx<Expr>> = ast
@@ -42,7 +42,8 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
     (program, context)
 }
 
-pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+// TODO: remove this, only used for codegen tests
+pub fn lower_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
     let parsed = parser::parse(input);
     if !parsed.errors().is_empty() {
         panic!("found errors while parsing");
@@ -50,11 +51,11 @@ pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Exp
 
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 
-    lower(&root, interner)
+    lower_ast(&root, interner)
 }
 
 pub fn fmt(ast: &ast::Root, interner: &mut Interner) -> String {
-    let (root, context) = lower(ast, interner);
+    let (root, context) = lower_ast(ast, interner);
 
     fmt_root(root, &context)
 }

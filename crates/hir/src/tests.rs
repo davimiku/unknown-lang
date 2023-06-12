@@ -22,7 +22,7 @@ fn print(input: &str) {
     let mut interner = Interner::default();
 
     let root: Root = parser::parse(input).into();
-    let (root_expr, context) = lower(&root, &mut interner);
+    let (root_expr, context) = lower_ast(&root, &mut interner);
 
     let root_expr = cast!(context.expr(root_expr), Expr::Block);
     for expr in root_expr.exprs.iter() {
@@ -35,7 +35,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     let mut interner = Interner::default();
 
     let root: Root = parser::parse(input).into();
-    let (root_expr, context) = lower(&root, &mut interner);
+    let (root_expr, context) = lower_ast(&root, &mut interner);
 
     assert_eq!(context.diagnostics, vec![]);
 
@@ -69,7 +69,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner>) {
     let mut interner = interner.unwrap_or(Interner::default());
     let root: Root = parser::parse(input).into();
-    let (root, context) = lower(&root, &mut interner);
+    let (root, context) = lower_ast(&root, &mut interner);
 
     let main_block = context.expr(root);
     let _ = cast!(main_block, Expr::Block);
@@ -286,7 +286,7 @@ fn two_level_nested_scope() {
 
 #[test]
 fn local_wrong_type_int_literal() {
-    let input = "let a: String = 100";
+    let input: &str = "let a: String = 100";
     //                               16^ ^19
     let expected = vec![TypeDiagnostic {
         range: TextRange::new(16.into(), 19.into()),
@@ -305,7 +305,7 @@ fn local_wrong_type_string_literal() {
     let mut interner = Interner::default();
     let key = interner.intern("Hello World!");
 
-    let input = r#"let a: Int = "Hello World!""#;
+    let input: &str = r#"let a: Int = "Hello World!""#;
     //                              13^            ^27
     let expected = vec![TypeDiagnostic {
         range: TextRange::new(13.into(), 27.into()),
@@ -507,7 +507,7 @@ print hello_hello"#;
 }
 
 #[test]
-fn plain_print_statement() {
+fn plain_return_statement() {
     let input = r#"return 1"#;
 
     let expected_expr = indoc! {"
@@ -516,4 +516,22 @@ fn plain_print_statement() {
     let expected_vars = &[];
 
     check(input, expected_expr, expected_vars);
+}
+
+#[test]
+fn conditional_return() {
+    let input = r#"let res = 2 + 3
+if res != 5 {
+    return 1
+}"#;
+
+    let expected = indoc! {"
+res~0 : 5 = 2 + 3;
+if (res~0 != 5) {
+    return 1;
+};"};
+
+    let expected_vars = &[("res~0", "5")];
+
+    check(input, expected, expected_vars);
 }

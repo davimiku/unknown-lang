@@ -11,9 +11,9 @@ use std::collections::HashMap;
 
 use id_tree::{InsertBehavior, Node, Tree};
 
-use crate::interner::{Interner, Key};
+use crate::interner::Key;
 use crate::type_expr::LocalTypeDefKey;
-use crate::LocalDefKey;
+use crate::{Interner, LocalDefKey};
 
 #[derive(Debug, Default)]
 pub struct Scope {
@@ -64,8 +64,13 @@ impl Scope {
 /// Holds the tree of Scope structs
 #[derive(Debug)]
 pub(crate) struct Scopes {
+    /// Data of the scopes
     tree: id_tree::Tree<Scope>,
 
+    /// Useful for iterating later
+    root_id: id_tree::NodeId,
+
+    /// Mutable id ofr
     current_node_id: id_tree::NodeId,
 
     /// Local definition counts
@@ -74,16 +79,16 @@ pub(crate) struct Scopes {
 }
 
 impl Scopes {
-    pub fn display_from_current(&self, interner: &Interner) -> String {
-        let mut s = String::new();
-        s.push_str(&format!("===scope {:?}===\n", self.current_node_id));
-        s.push_str(&self.current().display(interner));
+    pub fn display(&self, interner: &Interner) -> String {
+        let mut output = String::new();
+        for node_id in self.tree.traverse_pre_order_ids(&self.root_id).unwrap() {
+            output.push_str(&format!("===scope {:?}===\n", node_id));
 
-        for node in self.tree.ancestors(&self.current_node_id).unwrap() {
-            s.push_str(&node.data().display(interner));
+            let node = self.tree.get(&node_id).unwrap();
+            output.push_str(&node.data().display(interner));
+            output.push('\n');
         }
-
-        s
+        output
     }
 }
 
@@ -173,6 +178,7 @@ impl Scopes {
         let root = tree.insert(root, InsertBehavior::AsRoot).unwrap();
         Self {
             tree,
+            root_id: root.clone(),
             current_node_id: root,
             local_counts: HashMap::default(),
         }

@@ -3,7 +3,7 @@ use hir::Interner;
 
 fn generate_chunk(input: &str) -> ProgramChunk {
     let mut interner = Interner::default();
-    let (root, mut context) = hir::lower_from_input(input, &mut interner);
+    let (root, mut context) = hir::lower_input(input, &mut interner);
     assert_eq!(context.diagnostics, vec![]);
     codegen(&root, &mut context)
 }

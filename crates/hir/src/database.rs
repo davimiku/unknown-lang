@@ -1,4 +1,4 @@
-use crate::{Expr, TypeExpr};
+use crate::{Expr, Interner, TypeExpr};
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
 
@@ -17,6 +17,26 @@ pub struct Database {
     /// Text ranges of the expressions from `exprs`
     /// Invariant: The indexes must be kept in sync
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
+}
+
+impl Database {
+    pub(crate) fn display(&self, interner: &Interner) -> String {
+        let mut output = String::new();
+
+        output.push_str("\nExpressions:\n");
+        for (idx, expr) in self.exprs.iter() {
+            let range = self.expr_ranges[idx];
+            output.push_str(&format!("{idx:?} ({range:?}): {expr:?}\n"));
+        }
+
+        output.push_str("\nType Expressions:\n");
+        for (idx, expr) in self.type_exprs.iter() {
+            let range = self.type_expr_ranges[idx];
+            output.push_str(&format!("{idx:?} ({range:?}): {expr:?}\n"));
+        }
+
+        output
+    }
 }
 
 // Non-Mutating functions
