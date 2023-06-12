@@ -1,62 +1,134 @@
-use std::io;
+mod args;
+mod lsp_diagnostic;
+
+use std::{
+    env, fs,
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
+};
+
+use clap::Parser;
+use exitcode::ExitCode;
+use lsp_diagnostic::LSPDiagnostic;
+use path_clean::PathClean;
+
+use crate::args::{Args, Commands, EntryPath};
 
 fn main() -> io::Result<()> {
-    let input = get_program_input()?;
-    println!("test input: `{input}`");
+    let cli = Args::parse();
+    let diagnostics = match cli.command {
+        Commands::Check { path } => check(path),
+        Commands::Build { path } => build(path),
+        Commands::Run { path } => run(path),
+    }?;
 
-    let compile_result = compiler::compile(&input);
-    println!();
-
-    match compile_result {
-        Ok(chunk) => {
-            for function in chunk.functions.iter() {
-                println!("{function}");
-            }
-            println!("Begin execution:");
-            println!("===== =====");
-
-            let result = vm::run(chunk);
-
-            println!("===== =====");
-            println!("result: {result:?}");
-        }
-        Err(diagnostics) => {
-            eprintln!("compilation failed!");
-            for diagnostic in diagnostics {
-                eprintln!("{diagnostic:?}");
-            }
-        }
+    for d in diagnostics {
+        eprintln!("{d:?}");
     }
 
+    // let diagnostics_json = serde_json::to_string(&diagnostics)?;
+
+    // let mut stdout = io::stdout().lock();
+    // stdout.write_all(diagnostics_json.as_bytes())?;
+
     Ok(())
+}
+
+// TODO: lower, do not codegen
+// TODO: replace with LSPDiagnostic
+// fn check(path: Option<EntryPath>) -> io::Result<Vec<LSPDiagnostic>> {
+fn check(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
+    let program = get_program_input(path)?;
+    Ok(match compiler::compile(&program, true) {
+        Ok(_) => Vec::new(),
+        Err(diagnostics) => diagnostics,
+    })
+
+    // let diagnostics: Vec<LSPDiagnostic> = match compiler::compile(&program) {
+    //     Ok(_) => vec![],
+    //     Err(diagnostics) => diagnostics.iter().map(|d| d.into()).collect(),
+    // };
+
+    // Ok(diagnostics)
+}
+
+fn build(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
+    let program = get_program_input(path)?;
+    Ok(match compiler::compile(&program, true) {
+        Ok(_) => Vec::new(),
+        Err(diagnostics) => diagnostics,
+    })
+}
+
+fn run(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
+    let program = get_program_input(path)?;
+
+    Ok(match compiler::compile(&program, false) {
+        Ok(program) => {
+            let run_result = vm::run(program);
+            match run_result {
+                Ok(exit_code) => {
+                    if exit_code != exitcode::OK {
+                        eprintln!("Exit code: {exit_code}");
+                    }
+                }
+                Err(panic) => {
+                    eprintln!("Panic: {panic:?}");
+                }
+            }
+            vec![]
+        }
+        Err(diagnostics) => diagnostics,
+    })
 }
 
 #[cfg(test)]
 #[test]
 #[ignore = "not a real unit test"]
-fn test_main() {
-    let main_result = main();
+fn test_main() -> io::Result<()> {
+    println!("{:?}", env::current_dir());
+    // when "Run Test", the cwd is crates/cli (the level of the Cargo.toml of this crate)
+    // when "Debug", the cwd is the root level of this workspace
+    let path = String::from("test.prog");
+    let diagnostics = run(Some(path))?;
 
-    if let Err(ref error) = main_result {
-        eprintln!("{error}")
+    for d in diagnostics {
+        eprintln!("{d:?}");
     }
 
-    assert!(main_result.is_ok());
+    // let diagnostics_json = serde_json::to_string(&diagnostics)?;
+
+    // let mut stdout = io::stdout().lock();
+    // stdout.write_all(diagnostics_json.as_bytes())?;
+
+    Ok(())
 }
 
-#[cfg(test)]
-fn get_program_input() -> io::Result<String> {
-    let program = r#"
-if 1 == 1 {
-    print "good"
-} else {
-    print "bad"
-}"#;
+fn absolute_path(path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    let path = path.as_ref();
 
-    Ok(program.to_owned())
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    }
+    .clean();
+
+    Ok(absolute_path)
 }
 
-#[cfg(not(test))]
-fn get_program_input() -> io::Result<String> {
-    std::fs::read_to_string("test.txt")
+fn get_program_input(entry_path: Option<EntryPath>) -> io::Result<String> {
+    if let Some(path) = entry_path {
+        let abs = absolute_path(path)?;
+        let contents = fs::read_to_string(abs)?;
+
+        Ok(contents)
+    } else {
+        let mut buf = String::new();
+        let stdin = io::stdin();
+        let mut handle = stdin.lock();
+        handle.read_to_string(&mut buf)?;
+
+        Ok(buf)
+    }
 }
