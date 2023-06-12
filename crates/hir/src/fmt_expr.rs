@@ -7,7 +7,7 @@ use crate::expr::{
 use crate::interner::Interner;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
 use crate::typecheck::{fmt_local_types, ArrayType, FunctionType};
-use crate::{Context, Expr, Type};
+use crate::{Context, Expr, IfExpr, Type};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -56,9 +56,7 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
         Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
 
-        Expr::If(_if_expr) => {
-            todo!()
-        }
+        Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
     }
 }
 
@@ -148,6 +146,23 @@ fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, in
     ));
     fmt_expr(s, *value, context, indent);
     s.push(';');
+}
+
+fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: usize) {
+    let IfExpr {
+        condition,
+        then_branch,
+        else_branch,
+    } = if_expr;
+
+    s.push_str("if (");
+    fmt_expr(s, *condition, context, indent);
+    s.push_str(") ");
+    fmt_expr(s, *then_branch, context, indent);
+    if let Some(else_branch) = else_branch {
+        s.push_str(" else ");
+        fmt_expr(s, *else_branch, context, indent)
+    }
 }
 
 pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, _indent: usize) {
