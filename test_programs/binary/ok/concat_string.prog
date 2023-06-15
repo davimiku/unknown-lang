@@ -1,0 +1,4 @@
+let expected = "hello world"
+let actual = "hello" ++ " world"
+
+if expected != actual { return 1 }
