@@ -1,0 +1,20 @@
+[package]
+name = "hir"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ast = { path = "../ast" }
+id_tree = "1.8.0"
+itertools = "0.10.5"
+la-arena = "0.3.0"
+lasso = "0.6.0"
+parser = { path = "../parser" }
+text-size = "1.1.0"
+
+[dev-dependencies]
+expect-test = "1.4.0"
+indoc = "2"
+text-diff = "0.4.0"

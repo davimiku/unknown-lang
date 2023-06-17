@@ -7,3 +7,14 @@ dist
 # https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 crates/Cargo.lock
 !crates/cli/Cargo.lock
+
+# File to play around with the compiler/interpreter
+test.txt
+
+# Place to write down various thoughts
+notes.md
+scoping.md
+
+# Items to complete
+TODO.md
+open decisions.md
