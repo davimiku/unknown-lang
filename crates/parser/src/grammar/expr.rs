@@ -20,8 +20,9 @@ use self::types::parse_type_expr;
 // (is the condition `a` or is the condition `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const CALL_ARG_START: [TokenKind; 9] = [
+const CALL_ARG_START: [TokenKind; 10] = [
     LParen,
+    LBracket,
     Ident,
     IntLiteral,
     FloatLiteral,
@@ -390,11 +391,10 @@ fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
             p.bump();
             break;
         }
-        p.expect(Comma); // TODO: recover at next comma if possible? `["ok", }.?*, "ok"]
+        p.expect(Comma); // TODO: recover at next comma if possible? `["ok", -}.?*, "ok"]
     }
 
     m.complete(p, SyntaxKind::ArrayLiteral)
-    // ✅ true
 }
 
 fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
