@@ -7,6 +7,7 @@ pub use type_expr::TypeExpr;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    ArrayLiteral(ArrayLiteral),
     Block(Block),
     Binary(Binary),
     BoolLiteral(BoolLiteral),
@@ -28,6 +29,7 @@ pub enum Expr {
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         Some(match node.kind() {
+            SyntaxKind::ArrayLiteral => Self::ArrayLiteral(ArrayLiteral(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
@@ -57,6 +59,7 @@ impl Expr {
     pub fn range(self) -> TextRange {
         use Expr::*;
         match self {
+            ArrayLiteral(e) => e.range(),
             Block(e) => e.range(),
             Binary(e) => e.range(),
             BoolLiteral(e) => e.range(),
@@ -73,6 +76,23 @@ impl Expr {
             StringLiteral(e) => e.range(),
             Unary(e) => e.range(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayLiteral(SyntaxNode);
+
+impl ArrayLiteral {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::BlockExpr).then_some(Self(node))
+    }
+
+    pub fn items(&self) -> impl Iterator<Item = Expr> {
+        self.0.children().filter_map(Expr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
@@ -366,8 +386,12 @@ impl IntLiteral {
         self.0.first_token()
     }
 
-    pub fn value_as_string(&self) -> Option<String> {
+    pub fn as_string(&self) -> Option<String> {
         self.value().map(|token| String::from(token.text()))
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        self.as_string().and_then(|s| s.parse().ok())
     }
 
     pub fn range(&self) -> TextRange {
@@ -489,6 +513,10 @@ impl StringLiteral {
 
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        self.value().map(|token| token.text().to_owned())
     }
 
     pub fn range(&self) -> TextRange {

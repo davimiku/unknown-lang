@@ -1,3 +1,10 @@
+use std::{
+    fs::{self, DirEntry},
+    io,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
+
 use super::*;
 
 /// Asserts that the provided `Option` is `Some`
@@ -24,8 +31,8 @@ macro_rules! assert_matches {
 }
 
 fn parse_expr(input: &str) -> Expr {
-    // TODO: remove and switch to more of a opaque box test
-    Expr::cast(parser::test_parse_expr(input).syntax()).unwrap()
+    let node = parser::test_parse_expr(input).syntax();
+    Expr::cast(node).unwrap()
 }
 
 fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: &[&str]) {
@@ -189,7 +196,7 @@ fn add_int_and_function() {
 
     let lhs = assert_some!(binary.lhs());
     let lhs = assert_matches!(lhs, Expr::IntLiteral);
-    let lhs = assert_some!(lhs.value_as_string());
+    let lhs = assert_some!(lhs.as_string());
     assert_eq!(expected_lhs, lhs);
 
     let rhs = assert_some!(binary.rhs());
@@ -279,4 +286,22 @@ fn return_statement() {
     let return_statement = assert_matches!(parsed, Expr::Return);
     let return_value = assert_some!(return_statement.return_value());
     assert_matches!(return_value, Expr::IntLiteral);
+}
+
+#[test]
+fn array_literal_int() {
+    let input = "[1, 2, 3]";
+
+    let parsed = parse_expr(input);
+
+    let array_literal = assert_matches!(parsed, Expr::ArrayLiteral);
+    let items: Vec<_> = array_literal
+        .items()
+        .map(|item| assert_matches!(item, Expr::IntLiteral))
+        .collect();
+
+    let expected: Vec<i64> = vec![1, 2, 3];
+    let actual: Vec<i64> = items.iter().map(|item| item.as_i64().unwrap()).collect();
+
+    assert_eq!(expected, actual);
 }
