@@ -38,6 +38,22 @@ TypeExpr@0..3
 }
 
 #[test]
+fn array_type() {
+    let input = "[]A";
+    check(
+        input,
+        expect![[r#"
+TypeExpr@0..3
+  ArrayType@0..3
+    LBracket@0..1 "["
+    RBracket@1..2 "]"
+    Path@2..3
+      Ident@2..3
+        Ident@2..3 "A""#]],
+    )
+}
+
+#[test]
 fn parameterized_type() {
     let input = "Option Int";
     check(

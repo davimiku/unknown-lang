@@ -17,6 +17,7 @@ pub enum SyntaxKind {
     Else,
     For,
     If,
+    In,
     Let,
     Loop,
     Module,
@@ -36,6 +37,7 @@ pub enum SyntaxKind {
     StringLiteral,
 
     ArrayLiteral,
+    ArrayType,
 
     // Delimiters
     LBrace,
@@ -139,6 +141,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Else => Self::Else,
             TokenKind::For => Self::For,
             TokenKind::If => Self::If,
+            TokenKind::In => Self::In,
             TokenKind::Let => Self::Let,
             TokenKind::Loop => Self::Loop,
             TokenKind::Module => Self::Module,
