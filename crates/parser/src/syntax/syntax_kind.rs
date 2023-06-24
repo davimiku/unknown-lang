@@ -35,6 +35,8 @@ pub enum SyntaxKind {
     FloatLiteral,
     StringLiteral,
 
+    ArrayLiteral,
+
     // Delimiters
     LBrace,
     RBrace,

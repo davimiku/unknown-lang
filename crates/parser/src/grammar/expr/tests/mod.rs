@@ -1,6 +1,7 @@
 mod binary;
+mod compound_literals;
 mod functions;
-mod literals;
+mod scalar_literals;
 mod types;
 mod unary;
 

@@ -73,6 +73,7 @@ where
         return Some(m.complete(p, SyntaxKind::Newline));
     }
 
+    // Uses `parse_lhs` from either value expressions or type expressions
     let mut lhs = lhs_parser(p)?;
 
     loop {
@@ -166,6 +167,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 
         LParen => parse_paren_expr_or_function_params(p),
         LBrace => parse_block(p),
+        LBracket => parse_array_literal(p),
         Loop => parse_loop_expr(p),
 
         Let => parse_let_binding(p),
@@ -249,9 +251,9 @@ fn parse_call_arguments(p: &mut Parser) -> CompletedMarker {
 
     // single arg may omit the parentheses
     if !p.at(LParen) {
-        // TODO: call expr_binding_power instead with the binding power of function application
-        // for the situation of `f g 1`
-        // should be parsed like `(f g) 1`
+        // TODO: call expr_binding_power instead with the binding power of function application?
+        // check for precedence, function application `f g h` should be like `f (g h)`
+        // (right associative)
         parse_expr(p);
     } else {
         p.bump();
@@ -368,6 +370,31 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
     p.expect(RParen);
 
     m.complete(p, SyntaxKind::ParenExpr)
+}
+
+fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(LBracket));
+
+    let m = p.start();
+    p.bump();
+
+    // early exit for `[]`
+    if p.at(RBracket) {
+        p.bump();
+        return m.complete(p, SyntaxKind::ArrayLiteral);
+    }
+
+    loop {
+        parse_expr(p);
+        if p.at(RBracket) {
+            p.bump();
+            break;
+        }
+        p.expect(Comma); // TODO: recover at next comma if possible? `["ok", }.?*, "ok"]
+    }
+
+    m.complete(p, SyntaxKind::ArrayLiteral)
+    // ✅ true
 }
 
 fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
