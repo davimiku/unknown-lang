@@ -535,3 +535,27 @@ if (res~0 != 5) {
 
     check(input, expected, expected_vars);
 }
+
+#[test]
+fn array_literal_int() {
+    let input = r#"let a = [1, 2, 3]"#;
+
+    let expected = indoc! {"
+    a~0 : []Int = [1,2,3,];"};
+
+    let expected_vars = &[("a~0", "[]Int")];
+
+    check(input, expected, expected_vars);
+}
+
+#[test]
+fn string_literal_int() {
+    let input = r#"let a = ["x", "y", "z"]"#;
+
+    let expected = indoc! {"
+    a~0 : []String = [\"x\",\"y\",\"z\",];"};
+
+    let expected_vars = &[("a~0", "[]String")];
+
+    check(input, expected, expected_vars);
+}

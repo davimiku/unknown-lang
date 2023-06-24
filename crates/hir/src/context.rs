@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
+use itertools::Itertools;
 use la_arena::Idx;
 use parser::SyntaxKind;
 use text_size::TextRange;
@@ -196,6 +197,7 @@ impl<'a> Context<'a> {
         use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
             match ast {
+                ArrayLiteral(ast) => self.lower_array_literal(ast),
                 Binary(ast) => self.lower_binary(ast),
                 Block(ast) => self.lower_block(ast),
                 BoolLiteral(ast) => self.lower_bool_literal(ast),
@@ -272,6 +274,15 @@ impl<'a> Context<'a> {
         } else {
             Expr::Empty
         }
+    }
+
+    fn lower_array_literal(&mut self, ast: ast::ArrayLiteral) -> Expr {
+        let items = ast
+            .items()
+            .map(|item| self.lower_expr(Some(item)))
+            .collect_vec();
+
+        Expr::ArrayLiteral(items)
     }
 
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {

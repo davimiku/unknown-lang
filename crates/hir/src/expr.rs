@@ -24,6 +24,9 @@ pub enum Expr {
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
 
+    /// Array literal value, ex. `[1, 2, 3]`
+    ArrayLiteral(Vec<Idx<Expr>>),
+
     /// Binary expression, ex. `a + b`, `c ^ d`
     Binary(BinaryExpr),
 
