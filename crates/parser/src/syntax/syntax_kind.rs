@@ -107,6 +107,7 @@ pub enum SyntaxKind {
     ImportBinding,
     LetBinding,
     TypeBinding,
+    ForInLoop,
     ReturnStatement,
 
     // Type components

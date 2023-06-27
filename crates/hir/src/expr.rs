@@ -65,6 +65,29 @@ pub enum Expr {
     ReturnStatement(Idx<Expr>),
 }
 
+// constructors
+impl Expr {
+    pub(crate) fn local_def(
+        key: LocalDefKey,
+        value: Idx<Expr>,
+        type_annotation: Option<Idx<TypeExpr>>,
+    ) -> Self {
+        Self::LocalDef(LocalDefExpr {
+            key,
+            value,
+            type_annotation,
+        })
+    }
+
+    pub(crate) fn call(callee: Idx<Expr>, callee_path: String, args: Vec<Idx<Expr>>) -> Self {
+        Self::Call(CallExpr {
+            callee,
+            callee_path,
+            args,
+        })
+    }
+}
+
 /// Local definition
 ///
 /// Defines a new variable in a given scope.
@@ -162,6 +185,15 @@ pub struct FunctionParam {
     pub name: LocalDefKey,
 
     pub ty: Option<Idx<TypeExpr>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ForInLoopStmt {
+    pub array: Idx<Expr>,
+
+    pub item: Idx<Expr>,
+
+    pub block: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
