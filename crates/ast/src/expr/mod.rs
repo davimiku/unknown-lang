@@ -13,6 +13,7 @@ pub enum Expr {
     BoolLiteral(BoolLiteral),
     Call(CallExpr),
     FloatLiteral(FloatLiteral),
+    ForInLoop(ForInLoop),
     Function(Function),
     If(If),
     IntLiteral(IntLiteral),
@@ -65,6 +66,7 @@ impl Expr {
             BoolLiteral(e) => e.range(),
             Call(e) => e.range(),
             FloatLiteral(e) => e.range(),
+            ForInLoop(e) => e.range(),
             Function(e) => e.range(),
             If(e) => e.range(),
             IntLiteral(e) => e.range(),
@@ -221,6 +223,19 @@ impl FloatLiteral {
 
     pub fn value(&self) -> Option<parser::SyntaxToken> {
         self.0.first_token()
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ForInLoop(SyntaxNode);
+
+impl ForInLoop {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::ForInLoop).then_some(Self(node))
     }
 
     pub fn range(&self) -> TextRange {

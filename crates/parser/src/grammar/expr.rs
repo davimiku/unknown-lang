@@ -177,6 +177,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         Return => parse_return(p),
 
         If => parse_if_expr(p),
+        For => parse_for_in_loop(p),
 
         _ => {
             p.error();
@@ -425,6 +426,22 @@ fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
     }
 
     m.complete(p, SyntaxKind::IfExpr)
+}
+
+fn parse_for_in_loop(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at(For));
+
+    let m = p.start();
+
+    p.expect(For);
+    parse_ident_token(p);
+    p.expect(In);
+
+    parse_lhs(p);
+
+    parse_block(p);
+
+    m.complete(p, SyntaxKind::ForInLoop)
 }
 
 fn parse_return(p: &mut Parser) -> CompletedMarker {
