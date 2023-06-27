@@ -1,0 +1,377 @@
+{
+	"name": "Tusk",
+	"scopeName": "source.tusk",
+	"patterns": [
+		{
+			"comment": "Implementation",
+			"begin": "\\b(impl)\\b",
+			"end": "\\{",
+			"beginCaptures": {
+				"1": {
+					"name": "storage.type.tusk"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#block_comment"
+				}
+			]
+		},
+		{
+			"include": "#block_comment"
+		},
+		{
+			"include": "#line_comment"
+		},
+		{
+			"include": "#string_literal"
+		},
+		{
+			"comment": "Floating point literal (fraction)",
+			"name": "constant.numeric.float.tusk",
+			"match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9_]+)?(float)?\\b"
+		},
+		{
+			"comment": "Floating point literal (exponent)",
+			"name": "constant.numeric.float.tusk",
+			"match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?[eE][+-]?[0-9_]+(float)?\\b"
+		},
+		{
+			"comment": "Floating point literal (typed)",
+			"name": "constant.numeric.float.tusk",
+			"match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?([eE][+-]?[0-9_]+)?(float)\\b"
+		},
+		{
+			"comment": "Integer literal (decimal)",
+			"name": "constant.numeric.integer.decimal.tusk",
+			"match": "\\b[0-9][0-9_]*(u?int)?\\b"
+		},
+		{
+			"comment": "Control keyword",
+			"name": "keyword.control.tusk",
+			"match": "\\b(break|continue|else|if|in|for|loop|match|return|while)\\b"
+		},
+		{
+			"comment": "Import Export keyword",
+			"name": "keyword.control.import.tusk",
+			"match": "\\b(export|import)\\b"
+		},
+		{
+			"comment": "Keyword",
+			"name": "keyword.other.tusk",
+			"match": "\\b(let|module)\\b"
+		},
+		{
+			"comment": "Boolean constant",
+			"name": "constant.language.boolean.tusk",
+			"match": "\\b(true|false)\\b"
+		},
+		{
+			"include": "#sigils"
+		},
+		{
+			"include": "#self"
+		},
+		{
+			"include": "#storage"
+		},
+		{
+			"include": "#generic"
+		},
+		{
+			"comment": "Miscellaneous operator",
+			"name": "keyword.operator.misc.tusk",
+			"match": "(=>|::|\\bas\\b)"
+		},
+		{
+			"comment": "Comparison operator",
+			"name": "keyword.operator.comparison.tusk",
+			"match": "(&&|\\|\\||==|!=)"
+		},
+		{
+			"comment": "Assignment operator",
+			"name": "keyword.operator.assignment.tusk",
+			"match": "(\\+=|-=|/=|\\*=|%=|\\^=|&=|\\|=|<<=|>>=|=)"
+		},
+		{
+			"comment": "Arithmetic operator",
+			"name": "keyword.operator.arithmetic.tusk",
+			"match": "(!|\\+|-|/|\\*|%|\\^|&|\\||<<|>>)"
+		},
+		{
+			"include": "#core_types"
+		},
+		{
+			"include": "#core_variants"
+		},
+		{
+			"include": "#core_traits"
+		},
+		{
+			"include": "#std_types"
+		},
+		{
+			"comment": "Function call",
+			"match": "\\b[A-Za-z][A-Za-z0-9_]*\\s*\\(",
+			"captures": {
+				"1": {
+					"name": "entity.name.function.tusk"
+				}
+			}
+		},
+		{
+			"comment": "Function call with type parameters",
+			"begin": "\\b([A-Za-z][A-Za-z0-9_]*|_[A-Za-z0-9_]+)\\s*(::)(?=\\s*<.*>\\s*\\()",
+			"end": "\\(",
+			"captures": {
+				"1": {
+					"name": "entity.name.function.tusk"
+				},
+				"2": {
+					"name": "keyword.operator.misc.tusk"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#type_params"
+				}
+			]
+		},
+		{
+			"comment": "Function definition",
+			"begin": "\\b(def)\\s+([A-Za-z][A-Za-z0-9_]*|_[A-Za-z0-9_]+)",
+			"end": "[\\{;]",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.other.def.tusk"
+				},
+				"2": {
+					"name": "entity.name.function.tusk"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#block_comment"
+				},
+				{
+					"include": "#line_comment"
+				},
+				{
+					"include": "#sigils"
+				},
+				{
+					"include": "#self"
+				},
+				{
+					"include": "#storage"
+				},
+				{
+					"include": "#core_types"
+				},
+				{
+					"include": "#core_traits"
+				},
+				{
+					"include": "#std_types"
+				},
+				{
+					"include": "#type_params"
+				},
+				{
+					"include": "#where"
+				},
+				{
+					"comment": "Function arguments",
+					"match": "\bdef\b",
+					"name": "keyword.other.def.tusk"
+				}
+			]
+		},
+		{
+			"comment": "Type declaration",
+			"begin": "\\b(enum|object|struct|trait)\\s+([a-zA-Z][a-zA-Z0-9_]*)",
+			"end": "[\\{\\(]",
+			"beginCaptures": {
+				"1": {
+					"name": "storage.type.tusk"
+				},
+				"2": {
+					"name": "entity.name.type.tusk"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#block_comment"
+				},
+				{
+					"include": "#line_comment"
+				},
+				{
+					"include": "#core_traits"
+				},
+				{
+					"include": "#type_params"
+				},
+				{
+					"include": "#core_types"
+				},
+				{
+					"include": "#where"
+				}
+			]
+		},
+		{
+			"include": "#identifier"
+		}
+	],
+	"repository": {
+		"escaped_character": {
+			"name": "constant.character.escape.tusk",
+			"match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
+		},
+		"interpolation": {
+			"begin": "(\\{)",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.operator.sigil.tusk"
+				}
+			},
+			"end": "(\\})",
+			"endCaptures": {
+				"1": {
+					"name": "keyword.operator.sigil.tusk"
+				}
+			},
+			"include": "#Tusk",
+			"contentName": "source.tusk"
+		},
+		"string_literal": {
+			"comment": "Double-quote string literal",
+			"name": "string.quoted.double.tusk",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"include": "#escaped_character"
+				},
+				{
+					"include": "#interpolation"
+				}
+			]
+		},
+		"sigils": {
+			"comment": "Sigil",
+			"name": "keyword.operator.sigil.tusk",
+			"match": "[&*](?=[a-zA-Z0-9_\\(\\[\\|\\\"]+)"
+		},
+		"self": {
+			"comment": "Self variable",
+			"name": "variable.language.tusk",
+			"match": "\\bself\\b"
+		},
+		"storage": {
+			"comment": "Mutable storage modifier",
+			"patterns": [
+				{
+					"name": "storage.modifier.mut.tusk",
+					"match": "\\bmutable\\b"
+				}
+			]
+		},
+		"where": {
+			"comment": "Generic where clause",
+			"name": "keyword.other.where.tusk",
+			"match": "\\bwhere\\b"
+		},
+		"generic": {
+			"comment": "Generic type",
+			"name": "storage.modifier.generic.tusk",
+			"match": "'([a-zA-Z][a-zA-Z0-9_]*)\\b",
+			"captures": {
+				"1": {
+					"name": "entity.name.generic.tusk"
+				}
+			}
+		},
+		"core_types": {
+			"comment": "Built-in/core type",
+			"name": "storage.type.core.tusk",
+			"match": "\\b(bool|uint|int|float|string|Self|Option|Result)\\b"
+		},
+		"core_variants": {
+			"comment": "Core type variant",
+			"name": "support.constant.core.tusk",
+			"match": "\\b(Some|None|Ok|Err)\\b"
+		},
+		"core_traits": {
+			"comment": "Core trait",
+			"name": "support.type.core.tusk",
+			"match": "\\b(Equal|Ordering|Into|From|Default|Iterator|ToString)\\b"
+		},
+		"std_types": {
+			"comment": "Standard library type",
+			"name": "storage.class.std.tusk",
+			"match": "\\b(List|Map|Set)\\b"
+		},
+		"block_comment": {
+			"comment": "Block comment",
+			"name": "comment.block.tusk",
+			"begin": "/\\*",
+			"end": "\\*/",
+			"patterns": [
+				{
+					"include": "#block_doc_comment"
+				},
+				{
+					"include": "#block_comment"
+				}
+			]
+		},
+		"line_comment": {
+			"comment": "Single-line comment",
+			"name": "comment.line.double-slash.tusk",
+			"begin": "//",
+			"end": "$"
+		},
+		"identifier": {
+			"comment": "An identifier",
+			"name": "entity.name.type.tusk",
+			"match": "\\b([A-Za-z][_A-Za-z0-9]*)\\b"
+		},
+		"type_params": {
+			"comment": "Type parameters TODO check brackets",
+			"name": "meta.type_params.tusk",
+			"begin": "\\[(?![=<])",
+			"end": "(?<![-])\\]",
+			"patterns": [
+				{
+					"include": "#block_comment"
+				},
+				{
+					"include": "#line_comment"
+				},
+				{
+					"include": "#sigils"
+				},
+				{
+					"include": "#storage"
+				},
+				{
+					"include": "#generic"
+				},
+				{
+					"include": "#core_types"
+				},
+				{
+					"include": "#core_traits"
+				},
+				{
+					"include": "#std_types"
+				},
+				{
+					"include": "#type_params"
+				}
+			]
+		}
+	}
+}

@@ -1,0 +1,66 @@
+{
+  "name": "walrus-language",
+  "displayName": "Walrus language",
+  "description": "Language support for the Walrus language",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davimiku/unknown-lang"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "walrus",
+        "extensions": [
+          ".walrus"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "walrus-markdown"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "walrus",
+        "scopeName": "source.walrus",
+        "path": "./syntaxes/walrus.tmLanguage.json"
+      },
+      {
+        "language": "walrus-markdown",
+        "scopeName": "markdown.walrus.codeblock",
+        "path": "./syntaxes/walrus-markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.walrus": "walrus"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "install-self": "code --install-extension walrus-language-0.0.1.vsix",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.19.0",
+    "@types/node": "^20.2.5",
+    "@types/vscode": "^1.75.1",
+    "@vscode/test-electron": "^2.2.3",
+    "prettier": "^2.8.8",
+    "typescript": "^5.0.4"
+  }
+}
