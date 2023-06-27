@@ -174,8 +174,7 @@ impl FunctionChunk {
 }
 
 // Functions for debugging the Chunk
-#[cfg(debug_assertions)]
-impl fmt::Display for FunctionChunk {
+impl Display for FunctionChunk {
     /// Prints the Chunk in a disassembled format for human-reading.
     ///
     /// This format is not stable and should not be depended on for

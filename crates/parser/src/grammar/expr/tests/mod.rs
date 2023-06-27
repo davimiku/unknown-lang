@@ -1,6 +1,7 @@
 mod binary;
+mod compound_literals;
 mod functions;
-mod literals;
+mod scalar_literals;
 mod types;
 mod unary;
 
@@ -576,6 +577,29 @@ LoopExpr@0..7
   BlockExpr@5..7
     LBrace@5..6 "{"
     RBrace@6..7 "}""#]],
+    )
+}
+
+#[test]
+fn parse_empty_for_loop() {
+    check_expr(
+        "for x in xs {}",
+        expect![[r#"
+ForLoopStatement@0..14
+  For@0..3 "for"
+  Emptyspace@3..4 " "
+  Ident@4..6
+    Ident@4..5 "x"
+    Emptyspace@5..6 " "
+  In@6..8 "in"
+  Emptyspace@8..9 " "
+  Path@9..12
+    Ident@9..12
+      Ident@9..11 "xs"
+      Emptyspace@11..12 " "
+  BlockExpr@12..14
+    LBrace@12..13 "{"
+    RBrace@13..14 "}""#]],
     )
 }
 

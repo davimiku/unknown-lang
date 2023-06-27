@@ -24,6 +24,9 @@ pub enum Expr {
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
 
+    /// Array literal value, ex. `[1, 2, 3]`
+    ArrayLiteral(Vec<Idx<Expr>>),
+
     /// Binary expression, ex. `a + b`, `c ^ d`
     Binary(BinaryExpr),
 
@@ -60,6 +63,29 @@ pub enum Expr {
     /// "Return statement" doesn't produce a value itself. It mutates
     /// the runtime state (stack, call frame)
     ReturnStatement(Idx<Expr>),
+}
+
+// constructors
+impl Expr {
+    pub(crate) fn local_def(
+        key: LocalDefKey,
+        value: Idx<Expr>,
+        type_annotation: Option<Idx<TypeExpr>>,
+    ) -> Self {
+        Self::LocalDef(LocalDefExpr {
+            key,
+            value,
+            type_annotation,
+        })
+    }
+
+    pub(crate) fn call(callee: Idx<Expr>, callee_path: String, args: Vec<Idx<Expr>>) -> Self {
+        Self::Call(CallExpr {
+            callee,
+            callee_path,
+            args,
+        })
+    }
 }
 
 /// Local definition
@@ -159,6 +185,15 @@ pub struct FunctionParam {
     pub name: LocalDefKey,
 
     pub ty: Option<Idx<TypeExpr>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ForInLoopStmt {
+    pub array: Idx<Expr>,
+
+    pub item: Idx<Expr>,
+
+    pub block: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

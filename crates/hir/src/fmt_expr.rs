@@ -42,6 +42,14 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::FloatLiteral(f) => s.push_str(&f.to_string()),
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.interner.lookup(*key))),
+        Expr::ArrayLiteral(items) => {
+            s.push('[');
+            for item in items {
+                fmt_expr(s, *item, context, indent);
+                s.push(',');
+            }
+            s.push(']');
+        }
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Binary(binary) => fmt_binary_expr(s, binary, context, indent),

@@ -182,3 +182,24 @@ impl TypeDiagnostic {
         format!("{:?}", self)
     }
 }
+
+struct TypeResult {
+    ty: Type,
+    diagnostics: Vec<TypeDiagnostic>,
+}
+
+impl TypeResult {
+    fn as_result(self) -> Result<Type, Vec<TypeDiagnostic>> {
+        if self.diagnostics.is_empty() {
+            Ok(self.ty)
+        } else {
+            Err(self.diagnostics)
+        }
+    }
+
+    fn unwrap(&self) -> &Type {
+        debug_assert!(self.diagnostics.is_empty());
+
+        &self.ty
+    }
+}

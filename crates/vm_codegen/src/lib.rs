@@ -203,6 +203,7 @@ impl Codegen {
             FloatLiteral(f) => synth_float_constant(*f, range),
             IntLiteral(i) => synth_int_constant(*i, range),
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
+            ArrayLiteral(_) => todo!(),
 
             Binary(expr) => self.synth_binary_expr(expr_idx, expr, context),
             Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),

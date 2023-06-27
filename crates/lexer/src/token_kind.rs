@@ -39,6 +39,10 @@ pub enum TokenKind {
     #[token("if")]
     If,
 
+    /// `in`
+    #[token("in")]
+    In,
+
     /// `let`
     #[token("let")]
     Let,
@@ -249,6 +253,7 @@ impl fmt::Display for TokenKind {
             Self::Else => "‘else’",
             Self::For => "‘for’",
             Self::If => "‘if’",
+            Self::In => "‘in’",
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
             Self::Module => "‘module’",
@@ -408,6 +413,11 @@ mod tests {
     #[test]
     fn lex_if_keyword() {
         check("if", TokenKind::If);
+    }
+
+    #[test]
+    fn lex_in_keyword() {
+        check("in", TokenKind::In);
     }
 
     #[test]

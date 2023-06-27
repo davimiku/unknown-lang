@@ -59,6 +59,8 @@ pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
         (T::StringLiteral(_), T::String) => true,
         (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
 
+        (T::Array(a), T::Array(b)) => is_subtype(&a.of, &b.of),
+
         (T::Function(a), T::Function(b)) => is_function_subtype(a, b),
 
         _ => false,

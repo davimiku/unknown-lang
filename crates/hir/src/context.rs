@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
+use itertools::Itertools;
 use la_arena::Idx;
 use parser::SyntaxKind;
 use text_size::TextRange;
@@ -196,12 +197,14 @@ impl<'a> Context<'a> {
         use ast::Expr::*;
         let expr = if let Some(ast) = ast.clone() {
             match ast {
+                ArrayLiteral(ast) => self.lower_array_literal(ast),
                 Binary(ast) => self.lower_binary(ast),
                 Block(ast) => self.lower_block(ast),
                 BoolLiteral(ast) => self.lower_bool_literal(ast),
                 Call(ast) => self.lower_call(ast),
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_expr(ast),
+                ForInLoop(ast) => self.lower_for_in_loop(ast),
                 If(ast) => self.lower_if_expr(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
                 LetBinding(ast) => self.lower_let_binding(ast),
@@ -232,11 +235,7 @@ impl<'a> Context<'a> {
             .type_annotation()
             .map(|type_expr| self.lower_type_expr(type_expr.into()));
 
-        Expr::LocalDef(LocalDefExpr {
-            key,
-            value,
-            type_annotation,
-        })
+        Expr::local_def(key, value, type_annotation)
     }
 
     fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {
@@ -272,6 +271,15 @@ impl<'a> Context<'a> {
         } else {
             Expr::Empty
         }
+    }
+
+    fn lower_array_literal(&mut self, ast: ast::ArrayLiteral) -> Expr {
+        let items = ast
+            .items()
+            .map(|item| self.lower_expr(Some(item)))
+            .collect_vec();
+
+        Expr::ArrayLiteral(items)
     }
 
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {
@@ -325,6 +333,50 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// ```txt
+    /// for el in arr {
+    ///     //
+    /// }
+    /// ```
+    ///
+    /// translates to:
+    ///
+    /// ```txt
+    /// {
+    ///     let mutable _index = 0
+    ///     let _len = arr.len
+    ///     loop {
+    ///         if _index >= _len { break }
+    ///         let el = arr _index
+    ///         //
+    ///         _index += 1
+    ///     }
+    /// }
+    /// ```
+    fn lower_for_in_loop(&mut self, ast: ast::ForInLoop) -> Expr {
+        self.push_scope();
+
+        // inject `let mutable _index = 0`
+        let index_key = self.scopes.insert_local(self.interner.intern("_index"));
+        let index_value = self.alloc_expr(Expr::IntLiteral(0), None);
+        let index_def: Idx<Expr> =
+            self.alloc_expr(Expr::local_def(index_key, index_value, None), None);
+
+        // inject `let _len = arr.len`
+        let len_key = self.scopes.insert_local(self.interner.intern("_len"));
+        let len_value = self.alloc_expr(
+            Expr::call(
+                todo!(), // `Array.len` from global|builtin|primordial scope
+                todo!(), // array path|literal from ast
+                vec![],
+            ),
+            None,
+        );
+        let len_def = self.alloc_expr(Expr::local_def(len_key, len_value, None), None);
+
+        todo!()
+    }
+
     fn lower_loop(&mut self, _ast: ast::Loop) -> Expr {
         self.push_scope();
         // identify break expressions
@@ -352,11 +404,7 @@ impl<'a> Context<'a> {
             .collect();
 
         // TODO: check for mismatched arg count?
-        Expr::Call(CallExpr {
-            callee,
-            callee_path,
-            args,
-        })
+        Expr::call(callee, callee_path, args)
     }
 
     fn lower_path(&mut self, path: ast::PathExpr) -> Expr {

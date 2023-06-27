@@ -1,7 +1,8 @@
 use crate::Key;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum Type {
+    #[default]
     Undetermined,
     Error,
 
@@ -34,19 +35,20 @@ pub enum Type {
     Array(ArrayType),
 }
 
+impl Type {
+    pub(crate) fn array_of(ty: Type) -> Self {
+        Self::Array(ArrayType { of: Box::new(ty) })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub return_ty: Box<Type>,
 }
 
-impl Default for Type {
-    fn default() -> Self {
-        Self::Undetermined
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct ArrayType {
+    // TODO: arena allocate types, then this is Idx<Type> ?
     pub of: Box<Type>,
 }

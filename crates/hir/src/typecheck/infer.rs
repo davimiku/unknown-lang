@@ -16,7 +16,7 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::CallExpr;
+use crate::{ArrayType, CallExpr};
 
 // TODO: needs to have Vec<TypeDiagnostic>
 //
@@ -61,6 +61,7 @@ pub(crate) fn infer_expr(
         Expr::FloatLiteral(f) => infer_float_literal(*f, type_database, expr_idx),
         Expr::IntLiteral(i) => infer_int_literal(*i, type_database, expr_idx),
         Expr::StringLiteral(key) => infer_string_literal(*key, type_database, expr_idx),
+        Expr::ArrayLiteral(items) => infer_array_literal(items, type_database, database),
 
         Expr::LocalRef(local_ref) => infer_local_ref(local_ref, type_database),
         Expr::UnresolvedLocalRef { key } => Err(TypeDiagnostic {
@@ -382,6 +383,56 @@ fn infer_string_literal(
     type_database.set_expr_type(expr_idx, inferred_type.clone());
 
     Ok(inferred_type)
+}
+
+/// Given a Type, if it is a literal then widen to the corresponding scalar.
+/// Otherwise return the same Type.
+///
+/// This is used to handle the special/builtin subtype nature of the scalars
+fn widen_to_scalar(ty: Type) -> Type {
+    use Type as T;
+    match ty {
+        T::BoolLiteral(_) | T::Bool => T::Bool,
+        T::FloatLiteral(_) | T::Float => T::Float,
+        T::IntLiteral(_) | T::Int => T::Int,
+        T::StringLiteral(_) | T::String => T::String,
+
+        T::Array(ArrayType { of }) => T::array_of(widen_to_scalar(*of)),
+
+        t => t,
+    }
+}
+
+/// Infers the type for an ArrayLiteral
+///
+/// Loops through the items and infers the types for each of those.
+/// The first (non-error) inferred type becomes the expected type for
+/// the rest of the elements.
+fn infer_array_literal(
+    items: &[Idx<Expr>],
+    type_database: &mut TypeDatabase,
+    database: &Database,
+) -> Result<Type, TypeDiagnostic> {
+    if items.is_empty() {
+        return Ok(Type::array_of(Type::Bottom));
+    }
+
+    let mut inner_type: Option<Type> = None;
+    for idx in items.iter().rev() {
+        if let Some(ref inner_type) = inner_type {
+            // TODO: collect error
+            check_expr(*idx, inner_type, type_database, database);
+        } else {
+            let item_ty = infer_expr(*idx, type_database, database);
+            if let Ok(ref item_ty) = item_ty {
+                inner_type = Some(widen_to_scalar(item_ty.clone()));
+            } else {
+                // TODO: collect error
+            }
+        }
+    }
+
+    Ok(Type::array_of(inner_type.unwrap_or(Type::Bottom)))
 }
 
 fn infer_if_expr(
