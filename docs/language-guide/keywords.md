@@ -19,13 +19,13 @@ The following keywords relate to variable assignment. Please also see [assignmen
 
 _Structure_
 
-```
+```rs
 let __ident__ = __expr__
 ```
 
 _Example_
 
-```
+```rs
 let greeting = "Hello, world!"
 ```
 
@@ -37,36 +37,84 @@ let greeting = "Hello, world!"
 
 _Structure_
 
-```
+```rs
 let mut __ident__ = __value__
 ```
 
 _Example_
 
-```
+```rs
 let mut count = 0
 ```
 
-`count` could be bound to another value later because it was declared as a mutable binding.
+`count` could be bound to another value later because it was declared as mutable.
 
 ```rs
-count = count + 1
+count = count + 1 // ✅ OK
+```
+
+### type
+
+`type` creates an _immutable_ binding to a type.
+
+_Structure_
+
+```rs
+type __ident__ = __type__
+```
+
+_Examples_
+
+```rs
+type Point = (Int, Int)
+type PixelColor = union { red, blue, green }
+
 ```
 
 ## Control Flow
 
 Below are the keywords used for control flow.
 
-### if / else
+### match
 
-`if` and `else` provide the same control flow constructs familiar from other languages.
+`match` is the primary keyword used for branching control flow.
 
 _Structure_
 
+```rs
+match __expr__ {
+    __pattern1__ => __expr1__,
+    __pattern2__ => __expr2__,
+    __pattern3__ => __expr3__,
+}
 ```
-if __condition_1__ {
+
+_Example_
+
+In the example below, the output of the `match` expression is used, so all branches must output the same type.
+
+```rs
+let hex_code = match color {
+    .red => "#FF0000",
+    .blue => "#00FF00",
+    .green => "#0000FF",
+}
+```
+
+This particular example is matching on the variants of a [union](TODO). The "arms" of the `match` expression match on what are referred to as "patterns", see [pattern syntax](TODO) for more details.
+
+`match` expressions must be exhaustive, see [exhaustive matching](TODO).
+
+### if / else
+
+`if` and `else` is a form of a `match` expression that only works on booleans. These boolean expressions are often referred to as "conditions".
+
+_Structure_
+
+```rs
+if __condition1__ {
     __expr1__
-} else if __condition_2__ {
+} else if __condition2__ {
     __expr2__
 } else {
     __expr3__
@@ -90,6 +138,8 @@ let greeting = if user.is_registered {
 } else {
     "Hello, newcomer!"
 }
+
+print greeting
 ```
 
 In the example below, the branches of the if/else expression do not have compatible types, and the program has a type error.
@@ -120,6 +170,8 @@ if some_condition {
 
 ### for / in
 
+> **Feature Note**: Not confirmed this feature will be present. Iteration may be better achieved in pipeline style or "method" style (iterator.for_each)
+
 The `for` and `in` keywords can be combined for iteration.
 
 _Structure_
@@ -145,7 +197,7 @@ for i in 0..10 {
 }
 ```
 
-Learn more about [iterators](TODO) and [range expressions](TODO), and also reference the [standard library]() for types that are iterable.
+Learn more about [iterators](TODO) and [range expressions](TODO), and also reference the [standard library](TODO) for types that are iterable.
 
 The `for / in` style of iteration is generally used for imperative-style code that has **side-effects**.
 
@@ -155,7 +207,7 @@ The `return` keyword stops the function and outputs the value after the keyword.
 
 _Structure_
 
-```
+```rs
 let __function_name__ = () -> {
     // ...
     return __value__
@@ -189,8 +241,6 @@ let factorial = (n: Int): Int -> {
 
 ### while
 
-> **Note**: This feature can be disabled by the execution context for executing untrusted user code to reduce the possibility of an infinite loop.
-
 _Structure_
 
 ```rs
@@ -222,7 +272,7 @@ Resources are values that have a lifetime associated with them. Typically, this 
 The `with` keyword creates a block that automatically disposes resources at the end of the block. This defines the lifetime of that resources to be no longer than the lifetime of the block.
 
 ```rs
-with let file = stdlib.fs.open "data.txt" {
+with let file = fs.open "data.txt" {
     for line in file.read_lines {
         print line
     }
@@ -257,12 +307,18 @@ Files may also be defined as modules. The "parent" module defines the "child" mo
 
 ```rs
 // in the parent module
-module parser "./parser.gr"
+module parser "./parser.prog"
 ```
 
-The "parser.gr" file is now the "parser" module, and the same rules apply.
+The "parser.prog" file is now the "parser" module, and the same rules apply.
+
+> `.prog` is a placeholder file extension until this language has a name
 
 TODO: Create an image with two "files" (rectangles) side-by-side and show the module declaration in one file with an arrow to the other file.
+
+> **Design Note**: Modules are still far from being Design Finalized or Implemented. The design may change significantly to adopt some features from ML-style modules, such as parameterizing by type.
+>
+> This could be a step towards a language-supported method of Dependency Injection that is module-based.
 
 ### import
 
@@ -272,7 +328,21 @@ The `/` syntax is a placeholder and is not finalized.
 
 ```rs
 // example: `import` at the top of a module
-import stdlib/json
+let ( json ) = import stdlib
+let ( read_file ) = import stdlib/fs
+
+type ( Path ) = import stdlib/fs
+```
+
+The syntax is the same as normal variables. The `import` keyword returns a record (named tuple) which is destructured on the left-hand side of the variable assignment.
+
+Destructuring is typically used to import only the specific types and values needed, however, sometimes it may be more appropriate to import the whole module as a namespace.
+
+```rs
+let fs = import stdlib/fs
+
+// `fs` is
+let contents = fs.read_file path
 ```
 
 If the `import` keyword appears at the top of a module, the identifiers may be used anywhere in that module. Similarly, the `import` keyword may appear in a [function](./functions.md) or in a [block](TODO), and the identifiers are brought into that scope only. See the [Scope](./scope.md) section for more detail on scopes.
@@ -280,21 +350,9 @@ If the `import` keyword appears at the top of a module, the identifiers may be u
 ```rs
 // example: `import` within function block
 let read_json_file = (path: String) -> {
-    import stdlib/fs
-    import stdlib/json
+    let ( fs, json) = import stdlib
 
     // ...
-}
-```
-
-```rs
-// example: `import` within a block
-
-let response = {
-    import stdlib/http
-    import stdlib/json
-
-
 }
 ```
 
@@ -303,12 +361,12 @@ let response = {
 The `as` keyword can change the local identifier for something that was brought into scope with the `import` statement.
 
 ```rs
-import some_module/some_long_name as name
+let ( some_long_name as name ) = import some_module
 ```
 
 ### export
 
-> `export` as a keyword is not decided, it may be an attribute instead.
+> **Design Note**: `export` as a keyword is not decided, it may be an attribute instead.
 
 The `export` keyword marks an identifier as being "public", such that it can be `import`ed from other modules. By default, the [visibility](TODO) of the identifier is "one level up" from the current module, so either the parent of the current module, or if the current module is at the root of the package, is it visible outside of the package.
 
