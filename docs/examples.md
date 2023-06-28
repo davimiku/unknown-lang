@@ -163,6 +163,8 @@ let output_two = identity 2
 2. The second `'a`, used by the value parameter, constrains the type of that parameter.
 3. The third `'a`, used as the return type, defines that the function returns the same type as its input.
 
+Interesting example, the type signature for a function that just puts its input into a list/array.
+
 ```ts
 type MakeArray = <T>(input: T) => T[];
 
@@ -176,19 +178,34 @@ const strResult = makeArray("hello");
 const numResult = makeArray(123);
 ```
 
-```
+```rs
+// our type signatures don't have parameter names
 type MakeIntList = Int -> List Int
 
-type MakeGenericList = ('a, 'a) -> List 'a
 // how do we say "define 'a, then use 'a" ?
+type MakeGenericList = ('a, 'a) -> List 'a
+// this is confusing, why 'a twice?
 
-// options?
+// options
+
+// require value parameter names in type definitions (boo hiss...)
 type MakeGenericList = ('a, a: 'a) -> List a
+
+// Separate type parameters from value parameters with semicolon
+type MakeGenericList = ('a; 'a) -> List 'a
+
+// type parameters in a separate list
 type MakeGenericList = ('a)('a) -> List 'a
+
+// type parameters outside the function
 type MakeGenericList = ('a)('a -> List 'a)
+
+// type parameters in a separate list, but with square brackets!
 type MakeGenericList = ['a]('a) -> List 'a
+
+// type parameters in a separate list, but with less than and greater than operators!
 type MakeGenericList = <'a>('a) -> List 'a
+
+// let there be type parameters without defining them first? Is that ambiguous?
 type MakeGenericList = 'a -> List 'a
-
-
 ```

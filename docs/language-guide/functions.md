@@ -41,8 +41,8 @@ The terminology used for the example above is:
 When a function outputs the unit type, the output type can be omitted.
 
 ```rs
-/// `name` has a type of `String`
-let shout_name = (name: String) -> print (name + "!!!")
+/// `shout_name` has a type of `String -> ()`
+let shout_name = (name: String) -> print (name ++ "!!!")
 ```
 
 The `print` function outputs the unit type, so the `shout_name` function also outputs the unit type.
@@ -54,21 +54,30 @@ The `print` function outputs the unit type, so the `shout_name` function also ou
 Functions can also be explicitly typed on the left-hand side of the variable binding to remove the need for type annotations on the right-hand side.
 
 ```rs
-let square: Int -> Int = num -> num * num
+let square: Int -> Int = num -> num^2
 ```
 
 ## Function Application
 
-Functions are applied to data by using the identifer of the function followed by a space ` ` and then the data. This is also referred to as "calling" or "invoking" a function.
+Functions are applied to data by using the identifer of the function followed by a space ` ` and then the data. This is sometimes referred to as "calling" or "invoking" a function.
 
 ```rs
-let squared_once = square 3     // squared_once == 9
-let squared_again = square nine // squared_again == 81
+// apply the `square` function to the value `3`
+let squared_once = square 3
+squared_once == 9 // ✅ true
+
+// apply the `square` function to the variable `nine`
+let squared_again = square nine
+
+squared_again == 81 // ✅ true
 ```
 
 Function application is right-associative.
 
 ```rs
+let double: Int -> Int = num -> num * 2
+let square: Int -> Int = num -> num^2
+
 let result = double square 3   // result == 18
 
 // is the same as this
@@ -82,26 +91,40 @@ let result = double (square 3) // result == 18
 Functions may have multiple input parameters by separating the parameters with a comma `,` in the parameter list.
 
 ```rs
-let parse_int = (input: String, radix: Int) -> Int {
-    // ...
+let pythagorean = (a: Float, b: Float): Float -> {
+    let c_squared = a^2 + b^2
+
+    Math.sqrt c_squared
 }
 
-let user_input = "1234"
-let parsed_user_input = parse_int (user_input, 10)
+let c = pythagorean (3.0, 4.0)
+c == 5.0 // ✅ true
 ```
 
 The terminology used for the example above is:
 
-- `parse_int` has two **input parameters** of type `String` and `Int`
-- `parse_int` has an **output type** of `Int`
-- The type of the `parse_int` function is `(String, Int) -> Int`
+- `pythagorean` has two **input parameters** of type `Float` and `Float`
+- `pythagorean` has an **output type** of `Float`
+- The type of the `pythagorean` function is `(Float, Float) -> Float`
+
+### Function Bodies with Curly Braces
+
+Some function examples have been shown with curly braces (`{` and `}`) and some without. This is not a special syntax or a special rule, the function body must always be a single expression. Curly braces are the delimiters for a [Block Expression](TODO), so this block expression is the function body.
+
+```rs
+// Function body is a multiplication expression
+let square = (n: Int): Int -> n * n
+
+// Function body is a block expression
+let square = (n: Int): Int -> { n * n }
+```
 
 ### Multiple Output Values with a Tuple
 
 A function may only have a single output, but that output can be a compound type such as a tuple.
 
 ```rs
-let median_and_mode = (arr: []Int) -> (Int, Int) {
+let median_and_mode = (arr: [Int]) -> (Int, Int) {
     // ...
 }
 
@@ -113,8 +136,8 @@ let result = median_and_mode nums
 // Or destructure the tuple into two separate variables
 let (median, mode) = median_and_mode nums
 
-print median  // 5
-print mode // 3
+median == 5 // ✅ true
+mode == 3   // ✅ true
 ```
 
 See also
@@ -149,39 +172,33 @@ let min = (x: Int, y: Int): Int -> {
 }
 ```
 
-In the example above, the `if...else` _expression_ is the final expression of the function `min`, so the `if...else` output value is the output value of the `min` function.
+In the example above, the `if...else` is the final expression of the block, which is the final expression of the function `min`, so the `if...else` output value is the output value of the `min` function.
+
+1. `if...else` outputs `Int`,
+2. Therefore, the block outputs `Int`,
+3. Therefore, the function `min` outputs `Int`
 
 Although the expression-oriented style is preferred, the `return` keyword can still be convenient as an "early return" escape hatch for longer sections of procedural code.
 
-### Function Bodies with Curly Braces
-
-Some function examples have been shown with curly braces (`{` and `}`) and some without. This is not a special syntax or a special rule, the function body must always be a single expression. Curly braces are the delimiters for a [Block Expression](TODO), so this block expression is the function body.
-
-```rs
-// Function body is a binary multiplication expression
-let square = (n: Int): Int -> n * n
-
-// Function body is a block expression
-let square = (n: Int): Int -> { n * n }
-```
-
 ### Type Parameters
 
-> **Note**: Everything from here on is not implemented
+> **Implementation Status**: Everything from here on is Not Implemented
 
 Functions may defined type parameters for input and/or output types. Just as functions can define parameters for values, they may also define parameters for types.
 
 In the example below, the type parameter `'a` is first defined, then it is used in the type for the first value parameter.
 
 ```rs
-let most_common_element = ('a, arr: []'a) -> 'a {
+let most_common_element = ('a, arr: ['a]) -> 'a {
     // ...
 }
 ```
 
+> _Syntax Note_: Considering separating the type parameters from the value parameters with a `;`
+
 The example can be described as "Given an input of an `array` of some type `'a`, the output will be a value of type `'a`".
 
-The type signature of this function is `[]'a -> 'a` where `'a` is a generic type.
+The type signature of this function is `['a] -> 'a` where `'a` is a generic type.
 
 Type parameters must follow these syntax rules:
 
@@ -194,10 +211,12 @@ Type parameters must follow these syntax rules:
 Given the previous `most_common_element` function, applying this function is the same as for functions without type parameters.
 
 ```rs
-let mode = most_common_element [1, 2, 1, 3, 1, 4] // mode == 1
+let mode = most_common_element [1, 2, 1, 3, 1, 4]
+
+mode == 1 // ✅ true
 ```
 
-In this case, and in most cases, the type parameter is _inferred_. The `'a` type parameter is inferred as `Int`, because the value parameter is `[]Int`.
+In this case, and in most cases, the type parameter is _inferred_. The `'a` type parameter is inferred as `Int`, because the value parameter is `[Int]`.
 
 In some cases, the type parameter can't be inferred, and so the type argument needs to be provided explicitly. This is done in the normal argument list. For example, the `parse` function from the standard library often requires an explicit type argument.
 
@@ -218,7 +237,7 @@ let parsed_int: Int = "12345".parse
 Constraints can be applied to the type parameters. Similar to how the type of a value parameter limits the values that can be passed into the function, the type constraints limits the types that can be used as the type parameter.
 
 ```rs
-let sum_array = ('a: Add + Default, arr: []'a): 'a -> {
+let sum_array = ('a: Add + Default, arr: ['a]): 'a -> {
     let mut total: 'a = default
     for item in arr {
         total += item

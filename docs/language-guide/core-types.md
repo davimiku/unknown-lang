@@ -4,10 +4,6 @@ The following types are provided by the core language runtime.
 
 All of the core types have [Value semantics](https://en.wikipedia.org/wiki/Value_semantics). These are compared by value and are copied into functions by value.
 
-## Integer
-
-The Integer type is written as `Int`. This is a 64-bit integer and values of this type are integers from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 .
-
 ## Boolean
 
 The Boolean type is written as `Bool`. Values of this type are either `true` or `false`.
@@ -23,22 +19,29 @@ let likes_candy = false
 
 Two values that are both `true` or both `false` are equal to each other.
 
-### Numeric - Examples
+| Left  | Right | Result |
+| ----- | ----- | ------ |
+| true  | true  | true   |
+| true  | false | false  |
+| false | true  | false  |
+| false | false | true   |
+
+## Integer
+
+The Integer type is written as `Int`. This is a 64-bit integer and values of this type are integers from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 .
+
+### Integer - Examples
 
 ```rs
 // Inferred types
-let lbs_in_ton = 2_000  // 🧐 inferred type: Int
-let km_in_mile = 1.609  // 🧐 inferred type: Float
+let meters_in_km = 1000
+let oldest_turtle_age = 188
 
-// Explicit types
-let oldest_turtle_age: Int = 188
-let mole: Float = 6.022e23
-
-// Type suffix on value
+// Underscores can help readability
 let distance_from_earth = 150_000_000
 ```
 
-### Numeric - Equality
+### Integer - Equality
 
 Integers may be compared for equality.
 
@@ -48,6 +51,12 @@ Integers may be compared for equality.
 100 == 100    // ✅
 -33 != -99    // ✅
 ```
+
+## Float
+
+The
+
+### Integer and Float - Equality
 
 Integers and floating point numbers may not be compared for equality.
 
@@ -74,7 +83,7 @@ Strings do not allow for random access at a byte index unless the string is know
 
 [String interpolation](https://en.wikipedia.org/wiki/String_interpolation) is achieved by placing expressions inside the `{` and `}` characters as delimiters.
 
-The value of the expression must implement the `Into<String>` trait (all core types such as `Int`, `Float`, `Bool`, and `String` itself implement this trait).
+The value of the expression must be able to be converted to a String. See [String Conversion](TODO) for more details.
 
 ```rs
 let message = "Greetings, {user}. Last logged in: {last_login_date}."
@@ -93,7 +102,7 @@ let total_score_message = "Total score: {{
     score
 }}"
 
-// Consider separating complex expressions to a separate variable
+// Instead, consider separating complex expressions to a separate variable
 let total_score = {
     let mut total = 0
     for score in scores {
@@ -106,9 +115,20 @@ let total_score_message = "Total score: {total_score}"
 
 ### String - Escape Characters
 
-`\"` - strings are delimited by `"` characters, so any literal `"` character that should appear in a string must be escaped.
-`\{` - The `{` character in a string is used to create a block for string interpolation so any literal `{` character must be escaped.
-`\\` - The `\` character is used to escape the next character, and thus must be escaped itself.
+- `\"`: strings are delimited by `"` characters, so any literal `"` character that should appear in a string must be escaped.
+- `\{`: The `{` character in a string is used to create a block for string interpolation so any literal `{` character must be escaped.
+- `\\`: The `\` character is used to escape the next character, and thus must be escaped itself.
+
+```rs
+// Escaping quotes
+let message = "Then she said \"Hello, World\"!"
+
+// Escaping left-curly
+let docs = "The \{ and } characters are delimiters for a block.".
+
+// Escaping backslash
+let note = "Backslash is normally an escape character, so to write \\ in a String you need to escape it."
+```
 
 ### String - Equality
 
@@ -123,22 +143,20 @@ String can be compared for equality.
 
 Arrays are contiguous values of the same type with a fixed length and capacity. For a similar collection that can be dynamically resized during runtime, see [List](../standard-library/core.md) from the standard library.
 
-> **Implementation Status**: Not implemented
+> **Implementation Status**: Not Implemented
 
 ### Array - Syntax
 
 Arrays are defined with the `[` and `]` delimiters with items separated by a `,` character.
 
-The type notation of an array is the `[]` characters followed by the type of the items.
+The type notation of an array is the `[` and `]` delimiters with the type inbetween the delimiters.
 
-For example, an array of `Int` is typed as `[]Int` and an array of `(Int, Int)` tuples is typed as `[](Int, Int)`.
+For example, an array of integers has a type of `[Int]` and an array of `(Int, Int)` tuples has a type of `[(Int, Int)]`.
 
 ### Array - Examples
 
 ```rs
-let colors: []String = ["red", "green", "blue"] // explicit type
-
-let colors = ["red", "green", "blue"]  // 🧐 inferred type: []String
+let colors = ["red", "green", "blue"]
 ```
 
 ### Array - Equality
@@ -155,7 +173,7 @@ colors != ["purple", "yellow", "orange"] // ✅ true
 
 A tuple is a finite and immutable sequence of ordered items.
 
-> **Implementation Status**: Not implemented
+> **Implementation Status**: Not Implemented
 
 ## Tuple - Syntax
 
@@ -166,8 +184,8 @@ Tuples elements are accessed with the `.` operator followed by the index of the 
 Type definitions for tuples also use the `(` and `)` characters as delimiters, such as `(int, int)`. Explicit type definitions are rarely used for variable assignment due to type inference.
 
 ```rs
-let point: (Int, Int) = (4, 19)  // explicit type annotation
-let enemy_move = (3, "up")       // 🧐 inferred type: (Int, String)
+let point = (4, 19)
+let enemy_move = (3, "up")
 ```
 
 ### Tuple - Examples
@@ -186,8 +204,9 @@ This example tuple has four elements, which are:
 The value `50`, which is at the 1-index of the inner tuple at the 3-index of the outer tuple would be accessed by `my_tuple.3.1`.
 
 ```rs
-let point = (4, 19)
-point.0 = 20  // ❌ cannot mutate a tuple
+let my_tuple = (21, true, "hello", ("tree", 50))
+
+my_tuple.3.1 == 50 // ✅ true
 ```
 
 ### Tuple - Destructuring Assignment
@@ -195,11 +214,11 @@ point.0 = 20  // ❌ cannot mutate a tuple
 Multiple variable bindings can be created from a single assignment operator using tuple destructuring assignment.
 
 ```rs
-let status = (100, true)  // 🧐 inferred type: (Int, Bool)
-let (total, is_finished) = status
-
-let point = (4, 19)  // 🧐 inferred type: (Int, Int)
+let point = (4, 19)
 let (x, y) = point
+
+x == 4 // ✅ true
+y == 19 // ✅ true
 ```
 
 ### Tuple - Equality
@@ -208,21 +227,28 @@ Tuples are equal if all elements are equal, in-order.
 
 ```rs
 let point = (4, 19)
-point == (4, 19)  // true
-point == (5, 20)  // false
+point == (4, 19)  // ✅ true
+point != (5, 20)  // ✅ true
 ```
 
-## Named Tuple
+## Record
 
-Named tuples are key=value pairs where the key is a `string` and the value may be any of the core types.
+Records are key=value pairs where the key is an [identifier](TODO) and the value may be any of the core types.
 
-TODO: how to do structs then? something needs to have the ability to structurally hold references. Better to have records as value/copy types and use a separate `struct` keyword? or stay consistent and only use records?
+> TODO: Likely relax the restriction on the value being a core type and allow the value to be a user-defined type too.
 
-Records are defined with `{{` and `}}` as the opening and closing delimiters. `key=value` pairs are delimited by a comma `,`.
-
-Keys must be delimited by `"` (quotation marks) if the key contains a ` ` (space) or a `=` character.
+Records are defined with `(` and `)` as the opening and closing delimiters. `key=value` pairs are delimited by a comma `,`. This is a similar syntax to tuples, and records can be thought of as "named tuples".
 
 ### Record - Examples
+
+A 2D point can be defined as:
+
+```rs
+let point = (
+    x = 4,
+    y = 19,
+)
+```
 
 ```rs
 let book = (
@@ -232,7 +258,7 @@ let book = (
         birth_year = 1343,
         death_year = 1400,
     ),
-    "original title" = "Tales of Caunterbury",
+    original_title = "Tales of Caunterbury",
 )
 ```
 
@@ -242,24 +268,12 @@ Multiple variable bindings can be created from a single assignment operator usin
 
 ```rs
 let point = (
-    x = 2,
-    y = 5,
+    x = 4,
+    y = 19,
 )
 
 let ( x, y ) = point
-// x has a value of 2
-// y has a value of 5
-```
 
-### Record - Shorthand Assignment
-
-The keys for a key=value pair can be inferred using shorthand notation where the key will be given the string value of the identifier provided.
-
-```rs
-let x = 2
-let y = 5
-let shorthand = {{ x, y }}
-# record has a key "x" with value 2 and a key "y" with value 5
-
-let longhand = {{ x = x, y = y}}
+x == 4 // ✅ true
+y == 19 // ✅ true
 ```
