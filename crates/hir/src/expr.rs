@@ -18,14 +18,14 @@ pub enum Expr {
     /// 64-bit Floating point literal value, ex. `1.0`, `-7654.321`
     FloatLiteral(f64),
 
-    /// 32-bit Integer literal value, ex. `0`, `12345`, `-98765`
+    /// 64-bit Integer literal value, ex. `0`, `12345`, `-98765`
     IntLiteral(i64),
 
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
 
     /// Array literal value, ex. `[1, 2, 3]`
-    ArrayLiteral(Vec<Idx<Expr>>),
+    ArrayLiteral(ArrayLiteralExpr),
 
     /// Binary expression, ex. `a + b`, `c ^ d`
     Binary(BinaryExpr),
@@ -49,6 +49,12 @@ pub enum Expr {
         key: Key,
     },
 
+    Path(PathExpr),
+
+    IndexInt(IndexIntExpr),
+    // IndexString(IndexStringExpr), // string literals, ex. for named tuples
+    // Index(IndexExpr), // arbitrary expressions
+    ///
     Function(FunctionExpr),
 
     LocalDef(LocalDefExpr),
@@ -65,7 +71,8 @@ pub enum Expr {
     ReturnStatement(Idx<Expr>),
 }
 
-// constructors
+// convenience constructors
+// TODO: may remove
 impl Expr {
     pub(crate) fn local_def(
         key: LocalDefKey,
@@ -138,6 +145,12 @@ pub struct LocalRefExpr {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum ArrayLiteralExpr {
+    Empty,
+    NonEmpty { elements: Vec<Idx<Expr>> },
+}
+
+#[derive(Debug, PartialEq, Eq)]
 /// Binary expression
 pub struct BinaryExpr {
     pub op: BinaryOp,
@@ -206,6 +219,20 @@ pub struct IfExpr {
 
     /// Expression that is executed when the condition is false
     pub else_branch: Option<Idx<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PathExpr {
+    pub subject: Idx<Expr>,
+
+    pub member: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct IndexIntExpr {
+    pub subject: Idx<Expr>,
+
+    pub index: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

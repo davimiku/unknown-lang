@@ -17,7 +17,7 @@ use memory_recycling::{Gc, Trace};
 use vm_codegen::FunctionChunk;
 use vm_string::VMString;
 use vm_types::words::{DWord, DWordBytes, QWord, Word, ZERO_WORD};
-use vm_types::{VMBool, VMFloat, VMInt};
+use vm_types::{VMArray, VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots
 const STACK_MAX: usize = 256;
@@ -72,6 +72,11 @@ impl Stack {
     }
 
     #[inline]
+    pub(crate) fn push_slice(&mut self, value: &[Word]) {
+        self.extend(value.iter().copied());
+    }
+
+    #[inline]
     pub(crate) fn push_bool<B: Into<VMBool>>(&mut self, val: B) {
         self.push_word(val.into());
     }
@@ -91,6 +96,12 @@ impl Stack {
     pub(crate) fn push_string(&mut self, s: VMString) {
         let q: DWord = s.into();
         self.push_dword(q);
+    }
+
+    #[inline]
+    pub(crate) fn push_array(&mut self, array: VMArray) {
+        let words: DWord = array.into();
+        self.push_dword(words);
     }
 
     #[inline]
@@ -184,6 +195,11 @@ impl Stack {
     pub(crate) fn pop_string(&mut self) -> VMString {
         let bytes: DWordBytes = self.pop_dword().into();
         VMString::from_raw(bytes)
+    }
+
+    #[inline]
+    pub(crate) fn pop_array(&mut self) -> VMArray {
+        self.pop_dword().into()
     }
 
     #[inline]

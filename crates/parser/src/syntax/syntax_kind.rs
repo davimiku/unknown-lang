@@ -87,7 +87,7 @@ pub enum SyntaxKind {
     NegationExpr,
     NotExpr,
     ParenExpr,
-    Path,
+    PathExpr,
     PathItem,
     StringLiteralExpr,
     StructTypeExpr,

@@ -1,10 +1,3 @@
-use std::{
-    fs::{self, DirEntry},
-    io,
-    path::{Path, PathBuf},
-    process::ExitCode,
-};
-
 use super::*;
 
 /// Asserts that the provided `Option` is `Some`
@@ -40,12 +33,12 @@ fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: 
     let param_list = function.param_list();
     let params = param_list.params();
     for (i, param) in params.enumerate() {
-        let name = assert_some!(param.ident());
-        assert_eq!(name, expected_idents[i]);
+        let ident = assert_some!(param.ident());
+        assert_eq!(ident.as_string(), expected_idents[i]);
 
         if let Some(TypeExpr::Path(path)) = param.type_expr() {
-            let type_name = path.ident_strings().next().unwrap();
-            assert_eq!(type_name, expected_type_idents[i]);
+            let ident = assert_matches!(assert_some!(path.subject()), TypeExpr::Ident);
+            assert_eq!(ident.as_string(), expected_type_idents[i]);
         }
     }
 }
@@ -74,7 +67,10 @@ fn simple_path() {
     let parsed = parse_expr(input);
 
     let path = assert_matches!(parsed, Expr::Path);
-    assert_eq!(path.ident_strings().next(), Some(String::from("my_func")));
+    let ident = assert_matches!(assert_some!(path.subject()), Expr::Ident);
+    assert_eq!(ident.as_string(), "my_func");
+
+    assert!(path.member().is_none());
 }
 
 #[test]
@@ -84,10 +80,13 @@ fn call_empty_arg() {
     let parsed = parse_expr(input);
 
     let call = assert_matches!(parsed, Expr::Call);
+
     let callee = assert_some!(call.callee());
     let path = assert_matches!(callee, Expr::Path);
-    let ident_string = assert_some!(path.ident_strings().next());
-    assert_eq!(ident_string, "my_func");
+    let ident = assert_matches!(assert_some!(path.subject()), Expr::Ident);
+    assert_eq!(ident.as_string(), "my_func");
+    assert!(path.member().is_none());
+
     let call_args = assert_some!(call.args());
     assert_eq!(0, call_args.args().count());
 }
@@ -117,15 +116,16 @@ fn call_arguments() {
 #[test]
 fn call_path_no_args() {
     let input = "a.my_func";
-    let expected_ident_strings = ["a", "my_func"];
 
     let parsed = parse_expr(input);
 
     let path = assert_matches!(parsed, Expr::Path);
-    let idents = path.ident_strings();
-    for (i, ident) in idents.enumerate() {
-        assert_eq!(ident, expected_ident_strings[i])
-    }
+    let subject_ident = assert_matches!(assert_some!(path.subject()), Expr::Ident);
+    assert_eq!(subject_ident.as_string(), "a");
+
+    let member = assert_matches!(assert_some!(path.member()), Expr::Path);
+    let member = assert_matches!(assert_some!(member.subject()), Expr::Ident);
+    assert_eq!(member.as_string(), "my_func");
 }
 
 #[test]
@@ -275,6 +275,27 @@ fn int_let_binding() {
 
     let let_binding = assert_matches!(parsed, Expr::LetBinding);
     assert_eq!(let_binding.name().unwrap().text(), "a");
+    let value = assert_some!(let_binding.value());
+    let value = assert_matches!(value, Expr::IntLiteral);
+    assert_eq!(value.as_i64(), Some(1));
+}
+
+#[test]
+fn int_let_binding_with_type_annotation() {
+    let input = "let a: Int = 1";
+
+    let parsed = parse_expr(input);
+
+    let let_binding = assert_matches!(parsed, Expr::LetBinding);
+    assert_eq!(let_binding.name().unwrap().text(), "a");
+
+    let type_annotation = assert_some!(let_binding.type_annotation());
+    let type_annotation = assert_matches!(type_annotation, TypeExpr::Ident);
+    assert_eq!(type_annotation.as_string(), "Int");
+
+    let value = assert_some!(let_binding.value());
+    let value = assert_matches!(value, Expr::IntLiteral);
+    assert_eq!(value.as_i64(), Some(1));
 }
 
 #[test]
@@ -304,4 +325,28 @@ fn array_literal_int() {
     let actual: Vec<i64> = items.iter().map(|item| item.as_i64().unwrap()).collect();
 
     assert_eq!(expected, actual);
+}
+
+#[test]
+fn array_literal_index() {
+    let input = "[0, 1].0";
+
+    let parsed = parse_expr(input);
+
+    let path = assert_matches!(parsed, Expr::Path);
+
+    assert_matches!(assert_some!(path.subject()), Expr::ArrayLiteral);
+    assert_matches!(assert_some!(path.member()), Expr::IntLiteral);
+}
+
+#[test]
+fn local_index() {
+    let input = r#"arr.1"#;
+
+    let parsed = parse_expr(input);
+
+    let path = assert_matches!(parsed, Expr::Path);
+
+    assert_matches!(assert_some!(path.subject()), Expr::Ident);
+    assert_matches!(assert_some!(path.member()), Expr::IntLiteral);
 }

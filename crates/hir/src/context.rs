@@ -7,8 +7,8 @@ use parser::SyntaxKind;
 use text_size::TextRange;
 
 use crate::expr::{
-    BinaryExpr, CallExpr, FunctionExpr, FunctionParam, IfExpr, LocalDefExpr, LocalRefExpr,
-    UnaryExpr,
+    ArrayLiteralExpr, BinaryExpr, CallExpr, FunctionExpr, FunctionParam, IfExpr, IndexIntExpr,
+    LocalDefExpr, LocalRefExpr, UnaryExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::scope::Scopes;
@@ -27,6 +27,7 @@ pub enum Diagnostic {
     Type(TypeDiagnostic),
 }
 
+// TODO: rename to LoweringContext? and have a TypecheckContext?
 #[derive(Debug)]
 pub struct Context<'a> {
     /// Database holding the lowered expressions and associated data
@@ -109,7 +110,12 @@ impl Display for Context<'_> {
 // Public functions
 impl<'a> Context<'a> {
     pub(crate) fn type_check(&mut self, root: Idx<Expr>, expected_type: &Type) {
-        let inferred_result = typecheck::infer_expr(root, &mut self.type_database, &self.database);
+        let inferred_result = typecheck::infer_expr(
+            root,
+            &mut self.type_database,
+            &self.database,
+            &self.interner,
+        );
 
         match inferred_result {
             Ok(_) => {
@@ -118,6 +124,7 @@ impl<'a> Context<'a> {
                     expected_type,
                     &mut self.type_database,
                     &self.database,
+                    &self.interner,
                 );
                 if let Err(err) = check_result {
                     self.diagnostics.push(err.into())
@@ -205,6 +212,7 @@ impl<'a> Context<'a> {
                 FloatLiteral(ast) => self.lower_float_literal(ast),
                 Function(ast) => self.lower_function_expr(ast),
                 ForInLoop(ast) => self.lower_for_in_loop(ast),
+                Ident(ast) => self.lower_name_ref(&ast.as_string()),
                 If(ast) => self.lower_if_expr(ast),
                 IntLiteral(ast) => self.lower_int_literal(ast),
                 LetBinding(ast) => self.lower_let_binding(ast),
@@ -274,12 +282,15 @@ impl<'a> Context<'a> {
     }
 
     fn lower_array_literal(&mut self, ast: ast::ArrayLiteral) -> Expr {
-        let items = ast
+        let elements = ast
             .items()
             .map(|item| self.lower_expr(Some(item)))
             .collect_vec();
 
-        Expr::ArrayLiteral(items)
+        Expr::ArrayLiteral(match elements.len() {
+            0 => ArrayLiteralExpr::Empty,
+            _ => ArrayLiteralExpr::NonEmpty { elements },
+        })
     }
 
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {
@@ -390,10 +401,13 @@ impl<'a> Context<'a> {
     fn lower_call(&mut self, ast: ast::CallExpr) -> Expr {
         let callee = ast.callee().unwrap();
         // TODO: remove this String
-        let mut callee_path = String::new();
-        if let ast::Expr::Path(path) = callee.clone() {
-            callee_path = path.ident_strings().next().unwrap();
-        }
+        let callee_path = if let ast::Expr::Path(path) = callee.clone() {
+            path.subject_as_ident()
+                .map(|ident| ident.as_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         let callee = self.lower_expr(Some(callee));
 
         // TODO: confirm new definition of Call always has args
@@ -408,14 +422,73 @@ impl<'a> Context<'a> {
     }
 
     fn lower_path(&mut self, path: ast::PathExpr) -> Expr {
-        // TODO: handling proper paths, i.e. `a.b.1`
-        let name = path.ident_strings().next().unwrap();
-        let key = self.interner.intern(&name);
+        // `a`
+        // -> subject: `a`
+        // -> member: None
 
-        self.lower_name_ref(key)
+        // `a.b.c` (MemberExpr)
+        // -> subject: `a.b`
+        // -> member: `.c`
+
+        // `a.b.1` (IndexExpr)
+        // -> subject: `a.b`
+        // -> index: `1` (Int)
+
+        // `loc.point."x"` (IndexExpr)
+        // -> subject: `loc.point`
+        // -> index: `"x"` (String)
+
+        // `arr.(mid)` (IndexExpr)
+        // -> subject: `arr`
+        // -> index: `mid` (variable)
+
+        // `arr.(point.x)` (IndexExpr)
+        // -> subject: `arr`
+        // -> index: `point.x` (path)
+
+        if let Some(member) = path.member() {
+            let subject = self.lower_expr(path.subject());
+            let member = self.lower_expr(Some(member));
+            //
+
+            match self.expr(member) {
+                // Index
+                Expr::IntLiteral(_) => Expr::IndexInt(IndexIntExpr {
+                    subject,
+                    index: member,
+                }),
+                Expr::StringLiteral(_) => todo!(),
+                Expr::Path(_) => todo!(),
+
+                Expr::Binary(_) => todo!(), // arr.(a + b) // ??
+                Expr::Unary(_) => todo!(),  // arr.(-x)     // ??
+
+                Expr::Call(_) => todo!(), // arr.(max arr2) // ??
+
+                // How do we distinguish between `a.b` (member) and `a.(b)` (index) ?
+                Expr::LocalRef(_) => todo!(),
+
+                Expr::Block(_) => todo!(), // technically allowed? Or prevent in AST
+                Expr::If(_) => todo!(),    // technically allowed? Or prevent in AST
+
+                _ => todo!(),
+            }
+        } else {
+            let subject = path
+                .subject_as_ident()
+                .expect("left side of path to be an ident");
+
+            self.lower_name_ref(&subject.as_string())
+        }
     }
 
-    fn lower_name_ref(&mut self, key: Key) -> Expr {
+    fn lower_index_expr(&mut self, subject: Expr, index: Expr) -> Expr {
+        todo!("didn't implement index expressions yet")
+    }
+
+    fn lower_name_ref(&mut self, name: &str) -> Expr {
+        let key: Key = self.interner.intern(name);
+
         let local_key = self.scopes.find_local(key);
 
         if let Some(local_key) = local_key {
@@ -433,7 +506,7 @@ impl<'a> Context<'a> {
             .map(|param| {
                 let ident = param.ident().expect("function parameter to have ident");
 
-                let key = self.interner.intern(&ident);
+                let key = self.interner.intern(&ident.as_string());
                 let key = self.scopes.insert_local(key);
 
                 let ty = param
@@ -497,6 +570,7 @@ impl<'a> Context<'a> {
                 IntLiteral(ast) => self.lower_type_int_literal(ast),
                 StringLiteral(ast) => self.lower_type_string_literal(ast),
 
+                Ident(ast) => self.lower_type_ident(ast),
                 Function(_) => todo!(),
                 Path(ast) => self.lower_type_path(ast),
                 Call(ast) => self.lower_type_call(ast),
@@ -564,10 +638,17 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn lower_type_path(&mut self, path: ast::PathExpr) -> TypeExpr {
+    fn lower_type_path(&mut self, path: ast::TypePathExpr) -> TypeExpr {
+        todo!()
         // TODO: handling proper paths, i.e. `a.b.1`
-        let name = path.ident_strings().next().unwrap();
-        let key = self.interner.intern(&name);
+        // let name = path.ident_strings().next().unwrap();
+        // let key = self.interner.intern(&name);
+
+        // self.lower_type_name_ref(key)
+    }
+
+    fn lower_type_ident(&mut self, ident: ast::Ident) -> TypeExpr {
+        let key = self.interner.intern(&ident.as_string());
 
         self.lower_type_name_ref(key)
     }

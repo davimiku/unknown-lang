@@ -6,7 +6,9 @@
 //! - Constants pool for constants not encoded into operands, ex. strings
 pub use chunks::{FunctionChunk, ProgramChunk};
 use code::Code;
-pub use op::{IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnType};
+pub use op::{
+    AllocArrayOperand, IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnType,
+};
 
 use la_arena::Idx;
 use text_size::TextRange;
@@ -18,8 +20,8 @@ use std::fmt::Debug;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, LocalDefKey, LocalRefExpr, Type,
-    UnaryExpr, UnaryOp,
+    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, IndexIntExpr,
+    LocalDefKey, LocalRefExpr, Type, UnaryExpr, UnaryOp,
 };
 
 mod chunks;
@@ -203,7 +205,11 @@ impl Codegen {
             FloatLiteral(f) => synth_float_constant(*f, range),
             IntLiteral(i) => synth_int_constant(*i, range),
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
-            ArrayLiteral(_) => todo!(),
+            ArrayLiteral(expr) => self.synth_array_literal(expr_idx, expr, context),
+
+            Path(_) => todo!(),
+            // (expr) => todo!(),
+            IndexInt(expr) => self.synth_index_int_expr(expr_idx, expr, context),
 
             Binary(expr) => self.synth_binary_expr(expr_idx, expr, context),
             Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
@@ -231,11 +237,59 @@ impl Codegen {
         code.push((Op::PushString, range));
 
         let operand = PushStringOperand {
-            len,
+            bytes_len: len,
             offset: idx as u32,
         };
 
         code.extend_from_slice(&operand.to_bytes());
+
+        code
+    }
+
+    #[must_use]
+    fn synth_array_literal(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &ArrayLiteralExpr,
+        context: &hir::Context,
+    ) -> Code {
+        let mut code = Code::default();
+        let range = context.range_of(expr_idx);
+
+        let operand = match expr {
+            ArrayLiteralExpr::Empty => AllocArrayOperand { len: 0, el_size: 0 },
+            ArrayLiteralExpr::NonEmpty { elements } => {
+                for el in elements {
+                    code.append(self.synth_expr(*el, context));
+                }
+
+                let el_type = context.type_of_expr(elements[0]);
+                AllocArrayOperand {
+                    len: elements.len() as u32,
+                    el_size: word_size_of(el_type) as u32,
+                }
+            }
+        };
+
+        code.push((Op::AllocArray, range));
+        code.extend_from_slice(&operand.to_bytes());
+
+        code
+    }
+
+    #[must_use]
+    fn synth_index_int_expr(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &IndexIntExpr,
+        context: &hir::Context,
+    ) -> Code {
+        let IndexIntExpr { subject, index } = expr;
+        let mut code = Code::default();
+        code.append(self.synth_expr(*subject, context));
+        code.append(self.synth_expr(*index, context));
+
+        code.append(Code::from_op(Op::GetArrayIndex, context.range_of(expr_idx)));
 
         code
     }
@@ -878,4 +932,5 @@ unsafe impl BytecodeRead for VMInt {}
 unsafe impl BytecodeRead for VMFloat {}
 unsafe impl BytecodeRead for IntoStringOperand {}
 unsafe impl BytecodeRead for PushStringOperand {}
+unsafe impl BytecodeRead for AllocArrayOperand {}
 unsafe impl BytecodeRead for ReturnType {}

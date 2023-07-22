@@ -172,7 +172,7 @@ pub enum TypeDiagnosticVariant {
     Incompatible { a: Type, b: Type },
     NoOverloadFound { name: String },
     TypeMismatch { expected: Type, actual: Type },
-    UndefinedLocal { name: Key },
+    UndefinedLocal { name: String },
     UndefinedFunction { name: String },
     Undefined { name: LocalDefKey },
 }

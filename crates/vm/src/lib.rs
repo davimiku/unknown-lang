@@ -7,14 +7,15 @@ use exitcode::ExitCode;
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
+use std::rc::Rc;
 use vm_boxed_types::VMFunction;
 use vm_codegen::{
-    BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op, ProgramChunk,
-    PushStringOperand,
+    AllocArrayOperand, BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op,
+    ProgramChunk, PushStringOperand,
 };
 use vm_string::VMString;
-use vm_types::words::Word;
-use vm_types::{word_size_of, VMBool, VMFloat, VMInt};
+use vm_types::words::{DWord, Word};
+use vm_types::{word_size_of, VMArray, VMBool, VMFloat, VMInt};
 
 mod builtins;
 mod macros;
@@ -86,7 +87,10 @@ impl VM {
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let PushStringOperand { len, offset } = frame.read::<PushStringOperand>();
+                    let PushStringOperand {
+                        bytes_len: len,
+                        offset,
+                    } = frame.read::<PushStringOperand>();
                     let start = offset as usize;
                     let end = (offset + len) as usize;
                     let constants =
@@ -96,6 +100,19 @@ impl VM {
                     let string = unsafe { String::from_utf8_unchecked(bytes.to_owned()) };
 
                     self.stack.push_string(VMString::new(string));
+                }
+                AllocArray => {
+                    let AllocArrayOperand { len, el_size } = frame.read::<AllocArrayOperand>();
+
+                    if len == 0 {
+                        self.stack.push_dword(DWord::default());
+                    } else {
+                        let values = self.stack.pop_n_as_vec(len as usize * el_size as usize);
+                        let ptr = Rc::new(values);
+                        let array = VMArray { ptr, len, el_size };
+
+                        self.stack.push_array(array);
+                    }
                 }
                 PushTrue => {
                     self.stack.push_bool(true);
@@ -119,6 +136,10 @@ impl VM {
                 PopString => {
                     let _ = self.stack.pop_string();
                     // VMString drops, including its internal Rc for Rc-managed strings
+                }
+                PopArray => {
+                    let _ = self.stack.pop_array();
+                    // VMArray drops, including its internal Rc for the data
                 }
                 PopRc => {
                     let _ = self.stack.pop_rc::<u8>();
@@ -152,6 +173,23 @@ impl VM {
                     let string = VMString::from_copy(val.into());
 
                     self.stack.push_string(string);
+                }
+                GetArrayIndex => {
+                    let index = self.stack.pop_int();
+                    if index < 0 {
+                        return Err(Panic::IndexError);
+                    }
+                    let index = index as usize;
+                    let VMArray { ptr, len, el_size } = self.stack.pop_array();
+                    if index >= len as usize {
+                        return Err(Panic::IndexError);
+                    }
+                    let el_size = el_size as usize;
+
+                    let start = index * el_size;
+                    let end = start + el_size;
+
+                    self.stack.push_slice(&ptr[start..end]);
                 }
                 SetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -188,6 +226,7 @@ impl VM {
 
                     self.stack.set_dword_at(string.into(), slot_offset);
                 }
+                SetArrayIndex => {}
                 PushLocalFunc => {
                     let idx = frame.read::<u32>() as usize;
                     let function = &self.functions[idx] as *const FunctionChunk;
@@ -515,8 +554,8 @@ pub enum Panic {
     /// The number of Call Frames exceeded the available amount
     CallFrameOverflowError,
 
-    /// Out of range access or out of bounds index
-    RangeError,
+    /// Out of bounds index
+    IndexError,
 
     /// Division by zero
     DivideByZero,

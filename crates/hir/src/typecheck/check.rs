@@ -8,15 +8,16 @@ use la_arena::Idx;
 use super::infer::infer_expr;
 use super::{Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::database::Database;
-use crate::{Expr, FunctionType};
+use crate::{Expr, FunctionType, Interner};
 
 pub(crate) fn check_expr(
     idx: Idx<Expr>,
     expected: &Type,
     type_database: &mut TypeDatabase,
     database: &Database,
+    interner: &Interner,
 ) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(idx, type_database, database)?;
+    let actual = infer_expr(idx, type_database, database, interner)?;
     if is_subtype(&actual, expected) {
         Ok(())
     } else {

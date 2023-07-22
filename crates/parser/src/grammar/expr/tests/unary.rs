@@ -3,6 +3,18 @@ use expect_test::expect;
 use crate::check_expr;
 
 #[test]
+fn parse_negation() {
+    check_expr(
+        "-1",
+        expect![[r#"
+NegationExpr@0..2
+  Dash@0..1 "-"
+  IntLiteralExpr@1..2
+    IntLiteral@1..2 "1""#]],
+    );
+}
+
+#[test]
 fn parse_not_false() {
     check_expr(
         "!false",
@@ -33,7 +45,7 @@ fn parse_not_variable_ref() {
         expect![[r#"
 NotExpr@0..2
   Bang@0..1 "!"
-  Path@1..2
+  PathExpr@1..2
     Ident@1..2
       Ident@1..2 "a""#]],
     );

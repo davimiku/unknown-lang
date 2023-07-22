@@ -13,8 +13,7 @@ pub enum TokenKind {
     #[regex("(?&decimal)")]
     IntLiteral,
 
-    // Allowed to omit digit before decimal (i.e. zero)
-    #[regex(r#"((?&decimal)\.(?&decimal)?|\.(?&decimal))"#)]
+    #[regex(r#"(?&decimal)\.(?&decimal)?"#)]
     FloatLiteral,
 
     #[regex("\"[^\"\n]*\"")]
@@ -373,11 +372,6 @@ mod tests {
     #[test]
     fn lex_float() {
         check("1.23", TokenKind::FloatLiteral);
-    }
-
-    #[test]
-    fn lex_float_no_leading_digit() {
-        check(".123", TokenKind::FloatLiteral);
     }
 
     #[test]

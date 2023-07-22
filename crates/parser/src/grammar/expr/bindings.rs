@@ -16,18 +16,18 @@
 use lexer::TokenKind;
 
 use crate::grammar::expr::types::parse_type_expr;
-use crate::grammar::expr::{parse_expr, parse_ident_token};
+use crate::grammar::expr::{parse_expr, parse_ident};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
 pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::Let));
+    debug_assert!(p.debug_at(TokenKind::Let));
     let m = p.start();
     p.bump();
 
     if !p.at(TokenKind::Equals) {
         // TODO: Pattern rather than Ident for destructuring
-        parse_ident_token(p);
+        parse_ident(p);
 
         if p.at(TokenKind::Colon) {
             p.bump();
@@ -47,12 +47,12 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
 }
 
 pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::Type));
+    debug_assert!(p.debug_at(TokenKind::Type));
     let m = p.start();
     p.bump();
 
     if !p.at(TokenKind::Equals) {
-        parse_ident_token(p);
+        parse_ident(p);
 
         p.expect(TokenKind::Equals);
     } else {
@@ -85,7 +85,7 @@ Root@0..13
       Emptyspace@7..8 " "
     Equals@8..9 "="
     Emptyspace@9..10 " "
-    Path@10..13
+    PathExpr@10..13
       Ident@10..13
         Ident@10..13 "bar""#]],
         );
@@ -106,10 +106,9 @@ Root@0..14
     Colon@5..6 ":"
     Emptyspace@6..7 " "
     TypeExpr@7..11
-      Path@7..11
-        Ident@7..11
-          Ident@7..10 "Int"
-          Emptyspace@10..11 " "
+      Ident@7..11
+        Ident@7..10 "Int"
+        Emptyspace@10..11 " "
     Equals@11..12 "="
     Emptyspace@12..13 " "
     IntLiteralExpr@13..14
@@ -179,9 +178,8 @@ Root@0..15
     Equals@7..8 "="
     Emptyspace@8..9 " "
     TypeExpr@9..15
-      Path@9..15
-        Ident@9..15
-          Ident@9..15 "String""#]],
+      Ident@9..15
+        Ident@9..15 "String""#]],
         )
     }
 
@@ -198,9 +196,8 @@ Root@0..13
     Equals@5..6 "="
     Emptyspace@6..7 " "
     TypeExpr@7..13
-      Path@7..13
-        Ident@7..13
-          Ident@7..13 "String""#]],
+      Ident@7..13
+        Ident@7..13 "String""#]],
         )
     }
 }

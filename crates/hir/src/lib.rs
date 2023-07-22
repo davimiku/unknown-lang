@@ -13,8 +13,8 @@ mod tests;
 
 pub use context::{Context, Diagnostic, COMPILER_BRAND};
 pub use expr::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, LocalDefExpr,
-    LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
+    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr,
+    IndexIntExpr, LocalDefExpr, LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
 };
 use fmt_expr::fmt_root;
 pub use typecheck::{ArrayType, FunctionType, Type};

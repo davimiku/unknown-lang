@@ -162,3 +162,13 @@ fn return_expression() {
     let program = generate_chunk(input);
     println!("{program}");
 }
+
+#[test]
+fn array_index() {
+    let input = r#"let arr = [0, 1, 2]
+    let one = arr.1
+    print ~one"#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}

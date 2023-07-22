@@ -3,6 +3,209 @@ use expect_test::expect;
 use crate::check_expr;
 
 #[test]
+fn parse_simple_infix_expression() {
+    check_expr(
+        "1+2",
+        expect![[r#"
+InfixExpr@0..3
+  IntLiteralExpr@0..1
+    IntLiteral@0..1 "1"
+  Plus@1..2 "+"
+  IntLiteralExpr@2..3
+    IntLiteral@2..3 "2""#]],
+    );
+}
+
+#[test]
+fn parse_binary_concat_expression() {
+    check_expr(
+        "\"Hello \" ++ \"World!\"",
+        expect![[r#"
+InfixExpr@0..20
+  StringLiteralExpr@0..9
+    StringLiteralExpr@0..8 "\"Hello \""
+    Emptyspace@8..9 " "
+  PlusPlus@9..11 "++"
+  Emptyspace@11..12 " "
+  StringLiteralExpr@12..20
+    StringLiteralExpr@12..20 "\"World!\"""#]],
+    )
+}
+
+#[test]
+fn parse_left_associative_infix_expression() {
+    check_expr(
+        "1+2+3+4",
+        expect![[r#"
+InfixExpr@0..7
+  InfixExpr@0..5
+    InfixExpr@0..3
+      IntLiteralExpr@0..1
+        IntLiteral@0..1 "1"
+      Plus@1..2 "+"
+      IntLiteralExpr@2..3
+        IntLiteral@2..3 "2"
+    Plus@3..4 "+"
+    IntLiteralExpr@4..5
+      IntLiteral@4..5 "3"
+  Plus@5..6 "+"
+  IntLiteralExpr@6..7
+    IntLiteral@6..7 "4""#]],
+    );
+}
+
+#[test]
+fn parse_right_associative_infix_expression() {
+    check_expr(
+        "1^2^3^4",
+        expect![[r#"
+InfixExpr@0..7
+  IntLiteralExpr@0..1
+    IntLiteral@0..1 "1"
+  Caret@1..2 "^"
+  InfixExpr@2..7
+    IntLiteralExpr@2..3
+      IntLiteral@2..3 "2"
+    Caret@3..4 "^"
+    InfixExpr@4..7
+      IntLiteralExpr@4..5
+        IntLiteral@4..5 "3"
+      Caret@5..6 "^"
+      IntLiteralExpr@6..7
+        IntLiteral@6..7 "4""#]],
+    );
+}
+
+#[test]
+fn parse_infix_expression_with_mixed_binding_power() {
+    check_expr(
+        "1+2*3-4",
+        expect![[r#"
+InfixExpr@0..7
+  InfixExpr@0..5
+    IntLiteralExpr@0..1
+      IntLiteral@0..1 "1"
+    Plus@1..2 "+"
+    InfixExpr@2..5
+      IntLiteralExpr@2..3
+        IntLiteral@2..3 "2"
+      Star@3..4 "*"
+      IntLiteralExpr@4..5
+        IntLiteral@4..5 "3"
+  Dash@5..6 "-"
+  IntLiteralExpr@6..7
+    IntLiteral@6..7 "4""#]],
+    );
+}
+
+#[test]
+fn remainder_same_as_multiply() {
+    check_expr(
+        "2*8%3",
+        expect![[r#"
+InfixExpr@0..5
+  InfixExpr@0..3
+    IntLiteralExpr@0..1
+      IntLiteral@0..1 "2"
+    Star@1..2 "*"
+    IntLiteralExpr@2..3
+      IntLiteral@2..3 "8"
+  Percent@3..4 "%"
+  IntLiteralExpr@4..5
+    IntLiteral@4..5 "3""#]],
+    )
+}
+
+#[test]
+fn parse_infix_expression_with_emptyspace() {
+    check_expr(
+        " 1 +   2* 3 ",
+        expect![[r#"
+InfixExpr@0..12
+  IntLiteralExpr@0..3
+    Emptyspace@0..1 " "
+    IntLiteral@1..2 "1"
+    Emptyspace@2..3 " "
+  Plus@3..4 "+"
+  Emptyspace@4..7 "   "
+  InfixExpr@7..12
+    IntLiteralExpr@7..8
+      IntLiteral@7..8 "2"
+    Star@8..9 "*"
+    Emptyspace@9..10 " "
+    IntLiteralExpr@10..12
+      IntLiteral@10..11 "3"
+      Emptyspace@11..12 " ""#]],
+    );
+}
+
+#[test]
+fn negation_has_higher_binding_power_than_binary_operators() {
+    check_expr(
+        "-1+1",
+        expect![[r#"
+InfixExpr@0..4
+  NegationExpr@0..2
+    Dash@0..1 "-"
+    IntLiteralExpr@1..2
+      IntLiteral@1..2 "1"
+  Plus@2..3 "+"
+  IntLiteralExpr@3..4
+    IntLiteral@3..4 "1""#]],
+    );
+}
+
+#[test]
+fn negation_following_binary_operator() {
+    check_expr(
+        "-1+-1",
+        expect![[r#"
+InfixExpr@0..5
+  NegationExpr@0..2
+    Dash@0..1 "-"
+    IntLiteralExpr@1..2
+      IntLiteral@1..2 "1"
+  Plus@2..3 "+"
+  NegationExpr@3..5
+    Dash@3..4 "-"
+    IntLiteralExpr@4..5
+      IntLiteral@4..5 "1""#]],
+    )
+}
+
+#[test]
+fn logical_and() {
+    check_expr(
+        "true and false",
+        expect![[r#"
+InfixExpr@0..14
+  BoolLiteralExpr@0..5
+    TrueLiteral@0..4 "true"
+    Emptyspace@4..5 " "
+  And@5..8 "and"
+  Emptyspace@8..9 " "
+  BoolLiteralExpr@9..14
+    FalseLiteral@9..14 "false""#]],
+    )
+}
+
+#[test]
+fn logical_or() {
+    check_expr(
+        "true or false",
+        expect![[r#"
+InfixExpr@0..13
+  BoolLiteralExpr@0..5
+    TrueLiteral@0..4 "true"
+    Emptyspace@4..5 " "
+  Or@5..7 "or"
+  Emptyspace@7..8 " "
+  BoolLiteralExpr@8..13
+    FalseLiteral@8..13 "false""#]],
+    )
+}
+
+#[test]
 fn parse_int_equality() {
     check_expr(
         "1 == 1",

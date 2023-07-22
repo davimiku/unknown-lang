@@ -60,6 +60,9 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     let actual = fmt_expr::fmt_root(root_expr, &context);
 
     if actual != expected {
+        println!("expected: {expected}");
+        println!("actual: {actual}");
+        println!("diff:");
         text_diff::print_diff(&expected, &actual, "");
         panic!("Expected did not match actual, see printed diff.");
     }
@@ -323,8 +326,7 @@ fn local_wrong_type_string_literal() {
 fn nullary_function() {
     let input = "() -> {}";
     let expected_expr = indoc! {"
-        fun () -> {
-        };"};
+    fun () -> {};"};
 
     check(input, expected_expr, &[]);
 }
@@ -333,8 +335,7 @@ fn nullary_function() {
 fn nullary_function_assignment() {
     let input = "let f = () -> {}";
     let expected_expr = indoc! {"
-        f~0 : () -> Unit = fun<f> () -> {
-        };"};
+    f~0 : () -> Unit = fun<f> () -> {};"};
 
     check(input, expected_expr, &[("f~0", "() -> Unit")]);
 }
@@ -359,8 +360,7 @@ fn unary_function_no_param_type() {
 fn unary_function() {
     let input = "(a: Int) -> {}";
     let expected_expr = indoc! {"
-        fun (a~0 : Int) -> {
-        };"};
+    fun (a~0 : Int) -> {};"};
 
     check(input, expected_expr, &[("a~0", "Int")]);
 }
@@ -370,8 +370,7 @@ fn unary_function_assignment() {
     let input = "let f = (a: Int) -> {}";
 
     let expected_expr = indoc! {"
-        f~0 : (Int) -> Unit = fun<f> (a~0 : Int) -> {
-        };"};
+    f~0 : (Int) -> Unit = fun<f> (a~0 : Int) -> {};"};
     let expected_vars = &[("a~0", "Int"), ("f~0", "(Int) -> Unit")];
 
     check(input, expected_expr, expected_vars);
@@ -549,13 +548,25 @@ fn array_literal_int() {
 }
 
 #[test]
-fn string_literal_int() {
+fn array_literal_string() {
     let input = r#"let a = ["x", "y", "z"]"#;
 
     let expected = indoc! {"
     a~0 : []String = [\"x\",\"y\",\"z\",];"};
 
     let expected_vars = &[("a~0", "[]String")];
+
+    check(input, expected, expected_vars);
+}
+
+#[test]
+fn array_literal_index() {
+    let input = "[0, 1, 2].1";
+
+    let expected = indoc! {"
+    [0,1,2,].1;"};
+
+    let expected_vars = &[];
 
     check(input, expected, expected_vars);
 }

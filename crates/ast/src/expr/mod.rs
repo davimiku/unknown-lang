@@ -3,7 +3,7 @@ mod type_expr;
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
-pub use type_expr::TypeExpr;
+pub use type_expr::{PathExpr as TypePathExpr, TypeExpr};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -15,6 +15,7 @@ pub enum Expr {
     FloatLiteral(FloatLiteral),
     ForInLoop(ForInLoop),
     Function(Function),
+    Ident(Ident),
     If(If),
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
@@ -41,8 +42,9 @@ impl Expr {
             }
             SyntaxKind::FloatLiteralExpr => Self::FloatLiteral(FloatLiteral(node)),
             SyntaxKind::FunExpr => Self::Function(Function(node)),
+            SyntaxKind::Ident => Self::Ident(Ident(node)),
             SyntaxKind::IfExpr => Self::If(If(node)),
-            SyntaxKind::InfixExpr => Self::Binary(Binary(node)),
+            SyntaxKind::InfixExpr => cast_infix(node),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
@@ -50,9 +52,10 @@ impl Expr {
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::IntoStringExpr => Self::Unary(Unary(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
-            SyntaxKind::Path => Self::Path(PathExpr(node)),
+            SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             SyntaxKind::ReturnStatement => Self::Return(ReturnStatement(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
+
             _ => return None,
         })
     }
@@ -68,6 +71,7 @@ impl Expr {
             FloatLiteral(e) => e.range(),
             ForInLoop(e) => e.range(),
             Function(e) => e.range(),
+            Ident(e) => e.range(),
             If(e) => e.range(),
             IntLiteral(e) => e.range(),
             LetBinding(e) => e.range(),
@@ -78,6 +82,19 @@ impl Expr {
             StringLiteral(e) => e.range(),
             Unary(e) => e.range(),
         }
+    }
+}
+
+fn cast_infix(node: SyntaxNode) -> Expr {
+    let binary = Binary(node.clone());
+    if let Some(token) = binary.op() {
+        if token.kind() == SyntaxKind::Dot {
+            Expr::Path(PathExpr(node))
+        } else {
+            Expr::Binary(binary)
+        }
+    } else {
+        Expr::Binary(binary)
     }
 }
 
@@ -282,45 +299,66 @@ impl Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunParam(SyntaxNode);
+pub enum FunParam {
+    WithoutType(SyntaxNode),
+    WithType(SyntaxNode),
+}
 
 impl FunParam {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         use SyntaxKind::*;
 
         match node.kind() {
-            // (a: A, b: B) ->
-            ParenExprItem => Some(Self(node)),
+            // (aaa: A, bbb: B) ->
+            //  ^^^^^^
+            ParenExprItem => Some(Self::WithType(node)),
 
-            // a ->
-            Path => Some(Self(node)),
+            // aaa ->
+            // ^^^
+            Path => Some(Self::WithoutType(node)),
 
-            // (a) ->
-            Call => node
-                .children()
-                .find(|child| child.kind() == Path)
-                .map(|_| Self(node)),
-
+            // (aaa) ->
+            // ^^^^^
+            // TODO: ParenExpr, pull out just the PathExpr?
             _ => None,
         }
     }
 
-    pub fn ident(&self) -> Option<String> {
-        self.0
-            .descendants()
-            .find_map(PathExpr::cast)
-            .and_then(|path| path.ident_strings().next())
+    // TODO: would be incorrect if a param was `: Int` ?
+    // needs to be reslient and return None in that case
+    // TODO: eventually may support destructuring (patterns!)
+    // here and then it's no longer meaningful to get an "ident" here
+    pub fn ident(&self) -> Option<Ident> {
+        if let Some(path) = PathExpr::cast(self.node().clone()) {
+            path.subject_as_ident()
+        } else {
+            self.node()
+                .children()
+                .find_map(PathExpr::cast)
+                .and_then(|path| path.subject_as_ident())
+        }
     }
 
     pub fn type_expr(&self) -> Option<TypeExpr> {
-        self.0
-            .children()
-            .find(|child| child.kind() == SyntaxKind::TypeExpr)
-            .and_then(TypeExpr::cast)
+        match self {
+            FunParam::WithoutType(_) => None,
+            FunParam::WithType(node) => node
+                .children()
+                .find(|child| child.kind() == SyntaxKind::TypeExpr)
+                .and_then(TypeExpr::cast),
+        }
     }
 
     pub fn range(&self) -> TextRange {
-        self.0.text_range()
+        self.node().text_range()
+    }
+
+    fn node(&self) -> SyntaxNode {
+        match self {
+            FunParam::WithoutType(node) => node,
+            FunParam::WithType(node) => node,
+        }
+        .clone()
     }
 }
 
@@ -331,11 +369,11 @@ impl FunParamList {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         use SyntaxKind::*;
 
-        matches!(node.kind(), ParenExpr | Path).then_some(Self(node))
+        matches!(node.kind(), ParenExpr | PathExpr).then_some(Self(node))
     }
 
     pub fn params(&self) -> Box<dyn Iterator<Item = FunParam>> {
-        if self.0.kind() == SyntaxKind::Path {
+        if self.0.kind() == SyntaxKind::PathExpr {
             let iter = self
                 .0
                 .parent()
@@ -348,6 +386,27 @@ impl FunParamList {
             let iter = self.0.children().filter_map(FunParam::cast);
             Box::new(iter)
         }
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Ident(SyntaxNode);
+
+impl Ident {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::Ident).then_some(Self(node))
+    }
+
+    pub fn as_string(&self) -> String {
+        self.0
+            .first_token()
+            .expect("parsed Ident to have a token")
+            .text()
+            .to_owned()
     }
 
     pub fn range(&self) -> TextRange {
@@ -438,8 +497,17 @@ impl LetBinding {
     }
 
     pub fn value(&self) -> Option<Expr> {
-        // TODO: check this doesn't pick up pattern / destructuring
-        self.0.children().find_map(Expr::cast)
+        // TODO: better abstraction for "go until {thing}, then take the next thing"
+
+        self.0
+            .children_with_tokens()
+            .skip_while(|child| match child.as_token() {
+                Some(token) => token.kind() != SyntaxKind::Equals,
+                None => true,
+            })
+            .skip(1) // consume the Equals
+            .filter_map(SyntaxElement::into_node)
+            .find_map(Expr::cast)
     }
 
     pub fn range(&self) -> TextRange {
@@ -477,27 +545,53 @@ impl ParenExpr {
     }
 }
 
+// TODO: rename to member expression?
+// TODO: parameterize to have Expr/TypeExpr use the same struct?
 #[derive(Debug, Clone)]
 pub struct PathExpr(SyntaxNode);
 
 impl PathExpr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        (node.kind() == SyntaxKind::Path).then_some(Self(node))
+        (node.kind() == SyntaxKind::PathExpr).then_some(Self(node))
     }
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
     }
 
-    pub fn ident_tokens(&self) -> impl Iterator<Item = SyntaxToken> {
-        self.0
-            .children()
-            .filter(|node| node.kind() == SyntaxKind::Ident)
-            .filter_map(|ident| ident.first_token())
+    /// The expression to the left of the dot
+    ///
+    /// The subject is the noun that drives the action of the sentence, ex.
+    /// "Karl runs", Karl is the subject. i.e. in `karl.runs`, karl is the subject.
+    // FIXME: take only the first child before the Dot
+    // user may be in the middle of typing `|.foo` ("|" is their cursor)
+    pub fn subject(&self) -> Option<Expr> {
+        self.0.first_child().and_then(Expr::cast)
     }
 
-    pub fn ident_strings(&self) -> impl Iterator<Item = String> {
-        self.ident_tokens().map(|token| String::from(token.text()))
+    pub fn subject_as_ident(&self) -> Option<Ident> {
+        if let Some(Expr::Ident(ident)) = self.subject() {
+            Some(ident)
+        } else {
+            None
+        }
+    }
+
+    /// The expression to the right of the dot
+    ///
+    /// In `point.x`, "x" is the member
+    pub fn member(&self) -> Option<Expr> {
+        let mut take = false;
+        // TODO: better abstraction for "go until {thing}, then take the next thing"
+        for child in self.0.children_with_tokens() {
+            if take {
+                return child.into_node().and_then(Expr::cast);
+            }
+            if child.kind() == SyntaxKind::Dot {
+                take = true;
+            }
+        }
+        None
     }
 }
 

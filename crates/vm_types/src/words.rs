@@ -65,6 +65,13 @@ impl From<VMFloat> for Word {
     }
 }
 
+impl From<(u32, u32)> for Word {
+    fn from(value: (u32, u32)) -> Self {
+        let bytes: [u8; 8] = cast([value.0.to_le_bytes(), value.1.to_le_bytes()]);
+        Self { bytes }
+    }
+}
+
 // Convert To
 
 impl From<Word> for WordBytes {
@@ -97,6 +104,13 @@ impl From<Word> for VMFloat {
     }
 }
 
+impl From<Word> for (u32, u32) {
+    fn from(value: Word) -> Self {
+        let values: [u32; 2] = cast(value.bytes);
+        (values[0], values[1])
+    }
+}
+
 // Iterators
 
 impl IntoIterator for Word {
@@ -116,9 +130,9 @@ impl FromIterator<u8> for Word {
 
 /// Represents a "double word", or the size of 2 base values.
 ///
-/// For example, a `Float` (called a "double" in some other languages)
-/// is represented by a DWord.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// For example, an Array is represented by a DWord because it
+/// is a pair of Word for the pointer and the length.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DWord {
     bytes: DWordBytes,
 }

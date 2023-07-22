@@ -1,13 +1,11 @@
 use lexer::TokenKind::*;
 
-use crate::grammar::expr::parse_ident_token;
+use crate::grammar::expr::parse_ident;
 use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use super::{
-    expr_binding_power, parse_bool_literal, parse_int_literal, parse_path, parse_string_literal,
-};
+use super::{expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal};
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
@@ -25,7 +23,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(False) || p.at(True) {
         parse_bool_literal(p)
     } else if p.at(Ident) {
-        parse_path(p)
+        parse_ident(p)
     } else if p.at(Union) {
         parse_union(p)
     } else if p.at(Struct) {
@@ -49,7 +47,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 // 1 param with explicit type: (Int)
 // N params with explicit types: (Int, Int)
 fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LParen));
+    debug_assert!(p.debug_at(LParen));
 
     let m = p.start();
     p.bump();
@@ -80,7 +78,7 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_array_type(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LBracket));
+    debug_assert!(p.debug_at(LBracket));
 
     let m = p.start();
 
@@ -93,7 +91,7 @@ fn parse_array_type(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_union(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Union));
+    debug_assert!(p.debug_at(Union));
 
     let m = p.start();
     p.bump();
@@ -102,7 +100,7 @@ fn parse_union(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Struct));
+    debug_assert!(p.debug_at(Struct));
 
     let m = p.start();
     p.bump();
@@ -113,7 +111,7 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 /// Parses a "compound type block"
 // TODO: better name?
 fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LBrace));
+    debug_assert!(p.debug_at(LBrace));
 
     let m = p.start();
     p.bump();
@@ -136,11 +134,11 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Ident));
+    debug_assert!(p.debug_at(Ident));
 
     let m = p.start();
 
-    parse_ident_token(p);
+    parse_ident(p);
     p.expect(Colon);
     expr_binding_power(p, 0, parse_lhs);
 

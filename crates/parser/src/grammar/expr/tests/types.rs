@@ -15,9 +15,8 @@ fn plain_type() {
         input,
         expect![[r#"
 TypeExpr@0..1
-  Path@0..1
-    Ident@0..1
-      Ident@0..1 "A""#]],
+  Ident@0..1
+    Ident@0..1 "A""#]],
     )
 }
 
@@ -27,13 +26,14 @@ fn path_type() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..3
-  Path@0..3
-    Ident@0..1
-      Ident@0..1 "A"
-    Dot@1..2 "."
-    Ident@2..3
-      Ident@2..3 "B""#]],
+            TypeExpr@0..3
+              PathExpr@0..3
+                Ident@0..1
+                  Ident@0..1 "A"
+                Dot@1..2 "."
+                PathExpr@2..3
+                  Ident@2..3
+                    Ident@2..3 "B""#]],
     )
 }
 
@@ -47,9 +47,8 @@ TypeExpr@0..3
   ArrayType@0..3
     LBracket@0..1 "["
     RBracket@1..2 "]"
-    Path@2..3
-      Ident@2..3
-        Ident@2..3 "A""#]],
+    Ident@2..3
+      Ident@2..3 "A""#]],
     )
 }
 
@@ -59,16 +58,15 @@ fn parameterized_type() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..10
-  Call@0..10
-    Path@0..7
-      Ident@0..7
-        Ident@0..6 "Option"
-        Emptyspace@6..7 " "
-    CallArgs@7..10
-      Path@7..10
-        Ident@7..10
-          Ident@7..10 "Int""#]],
+            TypeExpr@0..10
+              Call@0..10
+                Ident@0..7
+                  Ident@0..6 "Option"
+                  Emptyspace@6..7 " "
+                CallArgs@7..10
+                  PathExpr@7..10
+                    Ident@7..10
+                      Ident@7..10 "Int""#]],
     )
 }
 
@@ -78,17 +76,17 @@ fn type_function_no_params() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..7
-  FunExpr@0..7
-    ParenExpr@0..3
-      LParen@0..1 "("
-      RParen@1..2 ")"
-      Emptyspace@2..3 " "
-    Arrow@3..5 "->"
-    Emptyspace@5..6 " "
-    Path@6..7
-      Ident@6..7
-        Ident@6..7 "A""#]],
+            TypeExpr@0..7
+              FunExpr@0..7
+                ParenExpr@0..3
+                  LParen@0..1 "("
+                  RParen@1..2 ")"
+                  Emptyspace@2..3 " "
+                Arrow@3..5 "->"
+                Emptyspace@5..6 " "
+                PathExpr@6..7
+                  Ident@6..7
+                    Ident@6..7 "A""#]],
     );
 }
 
@@ -98,17 +96,16 @@ fn type_function_one_param() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..6
-  FunExpr@0..6
-    Path@0..2
-      Ident@0..2
-        Ident@0..1 "A"
-        Emptyspace@1..2 " "
-    Arrow@2..4 "->"
-    Emptyspace@4..5 " "
-    Path@5..6
-      Ident@5..6
-        Ident@5..6 "B""#]],
+            TypeExpr@0..6
+              FunExpr@0..6
+                Ident@0..2
+                  Ident@0..1 "A"
+                  Emptyspace@1..2 " "
+                Arrow@2..4 "->"
+                Emptyspace@4..5 " "
+                PathExpr@5..6
+                  Ident@5..6
+                    Ident@5..6 "B""#]],
     );
 }
 
@@ -118,20 +115,19 @@ fn type_function_one_param_with_paren() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..8
-  FunExpr@0..8
-    ParenExpr@0..4
-      LParen@0..1 "("
-      Path@1..2
-        Ident@1..2
-          Ident@1..2 "A"
-      RParen@2..3 ")"
-      Emptyspace@3..4 " "
-    Arrow@4..6 "->"
-    Emptyspace@6..7 " "
-    Path@7..8
-      Ident@7..8
-        Ident@7..8 "B""#]],
+            TypeExpr@0..8
+              FunExpr@0..8
+                ParenExpr@0..4
+                  LParen@0..1 "("
+                  Ident@1..2
+                    Ident@1..2 "A"
+                  RParen@2..3 ")"
+                  Emptyspace@3..4 " "
+                Arrow@4..6 "->"
+                Emptyspace@6..7 " "
+                PathExpr@7..8
+                  Ident@7..8
+                    Ident@7..8 "B""#]],
     );
 }
 
@@ -141,25 +137,23 @@ fn type_function_two_params() {
     check(
         input,
         expect![[r#"
-TypeExpr@0..11
-  FunExpr@0..11
-    ParenExpr@0..7
-      LParen@0..1 "("
-      Path@1..2
-        Ident@1..2
-          Ident@1..2 "A"
-      Comma@2..3 ","
-      Emptyspace@3..4 " "
-      Path@4..5
-        Ident@4..5
-          Ident@4..5 "B"
-      RParen@5..6 ")"
-      Emptyspace@6..7 " "
-    Arrow@7..9 "->"
-    Emptyspace@9..10 " "
-    Path@10..11
-      Ident@10..11
-        Ident@10..11 "C""#]],
+            TypeExpr@0..11
+              FunExpr@0..11
+                ParenExpr@0..7
+                  LParen@0..1 "("
+                  Ident@1..2
+                    Ident@1..2 "A"
+                  Comma@2..3 ","
+                  Emptyspace@3..4 " "
+                  Ident@4..5
+                    Ident@4..5 "B"
+                  RParen@5..6 ")"
+                  Emptyspace@6..7 " "
+                Arrow@7..9 "->"
+                Emptyspace@9..10 " "
+                PathExpr@10..11
+                  Ident@10..11
+                    Ident@10..11 "C""#]],
     );
 }
 
@@ -181,9 +175,8 @@ TypeExpr@0..20
           Ident@8..9 "a"
         Colon@9..10 ":"
         Emptyspace@10..11 " "
-        Path@11..12
-          Ident@11..12
-            Ident@11..12 "A"
+        Ident@11..12
+          Ident@11..12 "A"
       Comma@12..13 ","
       Emptyspace@13..14 " "
       CompoundTypeItem@14..19
@@ -191,10 +184,9 @@ TypeExpr@0..20
           Ident@14..15 "b"
         Colon@15..16 ":"
         Emptyspace@16..17 " "
-        Path@17..19
-          Ident@17..19
-            Ident@17..18 "B"
-            Emptyspace@18..19 " "
+        Ident@17..19
+          Ident@17..18 "B"
+          Emptyspace@18..19 " "
       RBrace@19..20 "}""#]],
     )
 }
@@ -217,9 +209,8 @@ TypeExpr@0..21
           Ident@9..10 "a"
         Colon@10..11 ":"
         Emptyspace@11..12 " "
-        Path@12..13
-          Ident@12..13
-            Ident@12..13 "A"
+        Ident@12..13
+          Ident@12..13 "A"
       Comma@13..14 ","
       Emptyspace@14..15 " "
       CompoundTypeItem@15..20
@@ -227,10 +218,9 @@ TypeExpr@0..21
           Ident@15..16 "b"
         Colon@16..17 ":"
         Emptyspace@17..18 " "
-        Path@18..20
-          Ident@18..20
-            Ident@18..19 "B"
-            Emptyspace@19..20 " "
+        Ident@18..20
+          Ident@18..19 "B"
+          Emptyspace@19..20 " "
       RBrace@20..21 "}""#]],
     )
 }

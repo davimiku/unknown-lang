@@ -45,7 +45,7 @@ pub(super) fn test_parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
 /// Parses a block of code, which is an expression delimited by
 /// curly braces. A block may contain zero to many expressions.
 pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LBrace));
+    debug_assert!(p.debug_at(LBrace));
     let m = p.start();
     p.bump();
 
@@ -117,11 +117,13 @@ where
         let m = lhs.precede(p);
 
         let rhs = expr_binding_power(p, right_binding_power, parse_lhs);
-        if op == BinaryOp::Function {
-            lhs = m.complete(p, SyntaxKind::FunExpr);
-        } else {
-            lhs = m.complete(p, SyntaxKind::InfixExpr);
-        }
+
+        lhs = match op {
+            BinaryOp::Function => m.complete(p, SyntaxKind::FunExpr),
+            BinaryOp::Path => m.complete(p, SyntaxKind::PathExpr),
+
+            _ => m.complete(p, SyntaxKind::InfixExpr),
+        };
 
         if rhs.is_none() {
             // TODO: add error like "expected expression on RHS"
@@ -160,7 +162,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         False => parse_bool_literal(p),
         True => parse_bool_literal(p),
 
-        Ident => parse_path(p),
+        Ident => parse_path_ident(p),
 
         Dash => parse_negation_expr(p),
         Bang => parse_not_expr(p),
@@ -189,7 +191,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(IntLiteral));
+    debug_assert!(p.debug_at(IntLiteral));
 
     let m = p.start();
     p.bump();
@@ -197,7 +199,7 @@ fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(FloatLiteral));
+    debug_assert!(p.debug_at(FloatLiteral));
 
     let m = p.start();
     p.bump();
@@ -205,7 +207,7 @@ fn parse_float_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(StringLiteral));
+    debug_assert!(p.debug_at(StringLiteral));
 
     let m = p.start();
     p.bump();
@@ -213,35 +215,28 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(False) || p.at(True));
+    debug_assert!(p.debug_at(False) || p.at(True));
 
     let m = p.start();
     p.bump();
     m.complete(p, SyntaxKind::BoolLiteralExpr)
 }
 
-fn parse_path(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Ident));
-    let m = p.start();
+// Helps wrap a lone Ident into a Path to make AST easier
+// TODO: is this hacky?
+fn parse_path_ident(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.debug_at(Ident));
 
-    parse_ident_token(p);
+    let cm = parse_ident(p);
 
-    while p.at(Dot) {
-        p.bump(); // eat Dot
-
-        // TODO: need immediate recovery here if not an ident
-        // because it's common that the user just typed the dot
-        parse_ident_token(p);
-
-        // TODO: parse integer too? like for tuple member
-        // `let x = point.0`
-        //          ^^^^^^^
+    if let Some(TokenKind::Dot) = p.peek() {
+        cm
+    } else {
+        cm.precede(p).complete(p, SyntaxKind::PathExpr)
     }
-
-    m.complete(p, SyntaxKind::Path)
 }
 
-pub(crate) fn parse_ident_token(p: &mut Parser) -> CompletedMarker {
+pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.expect(Ident);
     m.complete(p, SyntaxKind::Ident)
@@ -274,7 +269,7 @@ fn parse_call_arguments(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Dash));
+    debug_assert!(p.debug_at(Dash));
 
     let m = p.start();
 
@@ -289,7 +284,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Bang));
+    debug_assert!(p.debug_at(Bang));
 
     let m = p.start();
 
@@ -304,7 +299,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Tilde));
+    debug_assert!(p.debug_at(Tilde));
 
     let m = p.start();
 
@@ -327,7 +322,7 @@ fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
 // 2 params with explicit types: (a: Int, b: Int)
 // 2 params with inferred types: (a, b)
 fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LParen));
+    debug_assert!(p.debug_at(LParen));
 
     let m = p.start();
     p.bump();
@@ -375,7 +370,7 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LBracket));
+    debug_assert!(p.debug_at(LBracket));
 
     let m = p.start();
     p.bump();
@@ -399,7 +394,7 @@ fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Loop));
+    debug_assert!(p.debug_at(Loop));
     let m = p.start();
     p.bump();
 
@@ -409,7 +404,7 @@ fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(If));
+    debug_assert!(p.debug_at(If));
     let m = p.start();
     p.bump();
 
@@ -429,12 +424,12 @@ fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_for_in_loop(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(For));
+    debug_assert!(p.debug_at(For));
 
     let m = p.start();
 
     p.expect(For);
-    parse_ident_token(p);
+    parse_ident(p);
     p.expect(In);
 
     parse_lhs(p);
@@ -445,7 +440,7 @@ fn parse_for_in_loop(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_return(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Return));
+    debug_assert!(p.debug_at(Return));
     let m = p.start();
     p.bump();
 
@@ -465,7 +460,7 @@ fn parse_condition_expr(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_then_branch(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(LBrace)); // TODO: be fault tolerant
+    debug_assert!(p.debug_at(LBrace)); // TODO: be fault tolerant
 
     let m = p.start();
     parse_block(p);
@@ -473,7 +468,7 @@ fn parse_then_branch(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_else_branch(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(Else));
+    debug_assert!(p.debug_at(Else));
 
     let m = p.start();
     p.bump();

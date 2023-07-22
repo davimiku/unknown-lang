@@ -2,7 +2,8 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::expr::{
-    BinaryExpr, BlockExpr, CallExpr, FunctionExpr, LocalDefExpr, LocalRefExpr, UnaryExpr,
+    ArrayLiteralExpr, BinaryExpr, BlockExpr, CallExpr, FunctionExpr, IndexIntExpr, LocalDefExpr,
+    LocalRefExpr, UnaryExpr,
 };
 use crate::interner::Interner;
 use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
@@ -14,7 +15,7 @@ const DEFAULT_INDENT: usize = 4;
 /// Formats an expression into a String representation
 ///
 /// This format is not stable and should not be used in machine parsing. It is
-/// meant to be read and understood by humans, and may be used in some test cases.
+/// meant to be read and understood by humans, and may be used in some non-permanent test cases.
 pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
     let mut s = String::new();
     fmt_expr(&mut s, idx, context, 0);
@@ -24,7 +25,13 @@ pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
     s
 }
 
-pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
+/// Formats a given expression into a String representation
+///
+/// This format is not stable and should not be used in machine parsing. It is
+/// meant to be read and understood by humans, and may be used in some non-permanent test cases.
+///
+/// This function is often called recursively for expressions that nest other expressions.
+fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
     let mut indent = indent;
     let expr = context.expr(idx);
     match expr {
@@ -42,14 +49,7 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
         Expr::FloatLiteral(f) => s.push_str(&f.to_string()),
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.interner.lookup(*key))),
-        Expr::ArrayLiteral(items) => {
-            s.push('[');
-            for item in items {
-                fmt_expr(s, *item, context, indent);
-                s.push(',');
-            }
-            s.push(']');
-        }
+        Expr::ArrayLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Binary(binary) => fmt_binary_expr(s, binary, context, indent),
@@ -59,12 +59,30 @@ pub fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 
         Expr::LocalRef(LocalRefExpr { key }) => s.push_str(&key.display(context.interner)),
 
-        Expr::UnresolvedLocalRef { .. } => todo!(),
+        Expr::UnresolvedLocalRef { key } => {
+            s.push_str(&format!("<undefined {}>", context.lookup(*key)))
+        }
 
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
         Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
 
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
+        Expr::Path(_) => todo!(),
+        Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
+    }
+}
+
+fn fmt_array_literal(s: &mut String, array: &ArrayLiteralExpr, context: &Context, indent: usize) {
+    match array {
+        ArrayLiteralExpr::Empty => s.push_str("[]"),
+        ArrayLiteralExpr::NonEmpty { elements } => {
+            s.push('[');
+            for element in elements {
+                fmt_expr(s, *element, context, indent);
+                s.push(',');
+            }
+            s.push(']');
+        }
     }
 }
 
@@ -171,6 +189,13 @@ fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: usiz
         s.push_str(" else ");
         fmt_expr(s, *else_branch, context, indent)
     }
+}
+
+fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Context, indent: usize) {
+    let IndexIntExpr { subject, index } = index_expr;
+    fmt_expr(s, *subject, context, indent);
+    s.push('.');
+    fmt_expr(s, *index, context, indent);
 }
 
 pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, _indent: usize) {
