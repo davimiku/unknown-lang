@@ -15,7 +15,7 @@ The `print` function is currently a hard-coded builtin that only accepts a Strin
 
 **Scalar/Primitive** data types:
 
-- `Int`: integer (32-bit)
+- `Int`: integer (64-bit)
 - `Float`: floating point number (64-bit)
 - `Bool`: boolean value (true or false)
 - `String`: UTF-8 encoded text
