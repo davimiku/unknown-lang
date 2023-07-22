@@ -41,3 +41,17 @@ cargo run -- run examples/hello_world.prog
 ```
 
 Note that the `.prog` extension of this example is temporary and will be change when this language has a name.
+
+## Tests
+
+Unit tests can be run with:
+
+```sh
+cargo test
+```
+
+End-to-End tests can be run with:
+
+```sh
+cargo run --bin e2e_tests
+```

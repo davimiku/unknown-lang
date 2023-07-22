@@ -1,0 +1,4 @@
+let arr = [1, 0, 1]
+
+/* 0 is the Ok exit code */
+return arr.1

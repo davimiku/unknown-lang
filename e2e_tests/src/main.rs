@@ -12,6 +12,11 @@ use rayon::prelude::*;
 use vm::InterpretResult;
 pub use vm_types::{VMBool, VMFloat, VMInt};
 
+const COMPILER_ERR_PATH: &str = "compile_err";
+const RUNTIME_ERR_PATH: &str = "runtime_err";
+const RUNTIME_OK_PATH: &str = "ok";
+const RUNTIME_PANIC_PATH: &str = "panic";
+
 // TODO: catch panics from each test
 fn main() -> io::Result<()> {
     panic::set_hook(Box::new(|panic_info| {
@@ -83,7 +88,7 @@ enum TestType {
 
 /// Programs that are expected to have an exit code 0 (OK)
 fn run_ok(path: &Path) -> io::Result<(Vec<OsString>, usize)> {
-    let path = path.join("ok");
+    let path = path.join(RUNTIME_OK_PATH);
     let num_tests = fs::read_dir(path.clone())?.count();
     let mut failed_tests = vec![];
 
@@ -106,7 +111,7 @@ fn expect_ok(input: &str) -> bool {
 
 /// Programs that are expected to have a non-zero exit code (Err)
 fn run_err(path: &Path) -> io::Result<(Vec<OsString>, usize)> {
-    let path = path.join("err");
+    let path = path.join(RUNTIME_ERR_PATH);
     let num_tests = fs::read_dir(path.clone())?.count();
     let mut failed_tests = vec![];
 
@@ -130,7 +135,7 @@ fn expect_err(input: &str) -> bool {
 // Programs that are expected to panic
 // This is a panic in the language itself within the VM, not a Rust panic
 fn run_panic(path: &Path) -> io::Result<(Vec<OsString>, usize)> {
-    let path = path.join("panic");
+    let path = path.join(RUNTIME_PANIC_PATH);
     let num_tests = fs::read_dir(path.clone())?.count();
     let mut failed_tests = vec![];
 
