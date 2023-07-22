@@ -164,10 +164,20 @@ fn return_expression() {
 }
 
 #[test]
-fn array_index() {
+fn array_int_index() {
     let input = r#"let arr = [0, 1, 2]
     let one = arr.1
     print ~one"#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+fn array_string_index() {
+    let input = r#"let array = ["a", "b", "c"]
+    print array.1
+    "#;
 
     let program = generate_chunk(input);
     println!("{program}");

@@ -387,6 +387,11 @@ impl Codegen {
             (IntoString, Int) | (IntoString, IntLiteral(_)) => {
                 synth_op_u8(Op::IntoString, range, IntoStringOperand::Int as u8)
             }
+            (IntoString, String) | (IntoString, StringLiteral(_)) => Code::from_op(Op::Noop, range),
+            (IntoString, Array(_)) => {
+                todo!();
+                // synth_op_u8(Op::IntoString, range, IntoStringOperand::Array as u8)
+            }
 
             _ => unreachable!(),
         });

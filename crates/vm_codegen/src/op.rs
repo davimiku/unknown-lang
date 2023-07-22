@@ -480,6 +480,7 @@ pub enum IntoStringOperand {
     Bool,
     Float,
     Int,
+    Array,
 }
 
 #[derive(Debug)]

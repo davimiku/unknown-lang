@@ -550,9 +550,9 @@ fn infer_unary(
             | Type::Bool
             | Type::Float
             | Type::Int
-            | Type::String
-            | Type::Function(_)
-            | Type::Array(_) => Ok(Type::String),
+            // | Type::Function(_)
+            // | Type::Array(_) 
+            | Type::String=> Ok(Type::String),
 
             _ => Err(TypeDiagnostic {
                 variant: TypeDiagnosticVariant::CannotConvertIntoString { actual: inner_type },

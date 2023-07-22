@@ -321,6 +321,9 @@ impl VM {
                             let int = self.stack.pop_int();
                             self.stack.push_string(VMString::new(int.to_string()));
                         }
+                        IntoStringOperand::Array => {
+                            todo!()
+                        }
                     }
                 }
                 ConcatString => {

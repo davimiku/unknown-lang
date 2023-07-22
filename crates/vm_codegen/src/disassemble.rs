@@ -70,6 +70,7 @@ impl Op {
                     IntoStringOperand::Bool => print!("Bool"),
                     IntoStringOperand::Float => print!("Float"),
                     IntoStringOperand::Int => print!("Int"),
+                    IntoStringOperand::Array => print!("Array"),
                 }
             }
 
