@@ -160,10 +160,21 @@ impl Stack {
         output
     }
 
-    /// Pops the top `n` slots of the stack, and gives ownership
+    /// Pops the top `n` words of the stack, and gives ownership
     /// of these to the caller.
+    ///
+    /// These words are returned in _pushed_ order (not popped order)
+    /// i.e.
+    ///   - push "a"
+    ///   - push "b"
+    ///   - push "c"
+    ///   - pop_n_as_vec: gives Vec ["a", "b", "c"]
+    // TODO: avoid intermediate allocation
     pub(crate) fn pop_n_as_vec(&mut self, n: usize) -> Vec<Word> {
-        (0..n).map(|_| self.pop_word()).collect()
+        // elements are in popped order
+        let reversed: Vec<Word> = (0..n).map(|_| self.pop_word()).collect();
+
+        reversed.into_iter().rev().collect()
     }
 
     /// Removes the top `n` slots of the stack without returning the values.
