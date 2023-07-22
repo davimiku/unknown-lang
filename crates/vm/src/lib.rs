@@ -73,8 +73,8 @@ impl VM {
             let op = chunk.get_op(frame.ip)?;
             frame.ip += 1;
 
-            // #[cfg(debug_stack)]
-            // dbg!(op);
+            #[cfg(debug_stack)]
+            dbg!(op);
 
             use Op::*;
             match op {
@@ -423,8 +423,8 @@ impl VM {
                 Noop => {}
             }
 
-            // #[cfg(debug_stack)]
-            // dbg!(&self.stack);
+            #[cfg(debug_stack)]
+            dbg!(&self.stack);
         }
     }
 
