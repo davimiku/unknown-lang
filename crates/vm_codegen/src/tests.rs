@@ -9,6 +9,7 @@ fn generate_chunk(input: &str) -> ProgramChunk {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn int_literal() {
     let input = "1";
 
@@ -17,6 +18,7 @@ fn int_literal() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn string_literal() {
     let input = "\"Hello\"";
 
@@ -25,6 +27,7 @@ fn string_literal() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn multiple_string_literals() {
     let input = r#""a1"
 "b2"
@@ -36,6 +39,7 @@ fn multiple_string_literals() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn print_int() {
     let input = "print ~1";
 
@@ -44,6 +48,7 @@ fn print_int() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn print_string() {
     let input = "print \"Hello\"";
 
@@ -52,6 +57,7 @@ fn print_string() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn string_concatenation() {
     let input = r#"print ("Hello, " ++ "World!")"#;
 
@@ -60,6 +66,7 @@ fn string_concatenation() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn string_concat_local_def() {
     // if this is a block
     // then already it has 3 stack slots used
@@ -74,6 +81,7 @@ fn string_concat_local_def() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn if_else() {
     let input = r#"if true { print "Yes" } else { print "No" }"#;
 
@@ -82,6 +90,7 @@ fn if_else() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn local_def() {
     let input = r#"let a = 1234
     print ~a"#;
@@ -91,6 +100,7 @@ fn local_def() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn print_local_def() {
     let input = r#"let a = "Hello"
 print a"#;
@@ -100,6 +110,7 @@ print a"#;
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn function_def() {
     let input = r#"
 let repeat = (s: String) -> s ++ s
@@ -111,6 +122,7 @@ repeat "Hello"
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn local_defs_with_call() {
     let input = r#"
 let a = "Hello"
@@ -123,6 +135,7 @@ print a"#;
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn function_def_call() {
     let input = r#"
 let print_my_string = (s: String) -> { print s }
@@ -133,6 +146,7 @@ print_my_string "Hello ""#;
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn function_def_call_return() {
     let input = r#"
 let repeat = (s: String) -> s ++ s
@@ -144,6 +158,7 @@ print hello_hello"#;
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn unused_literals() {
     let input = r#"
 1
@@ -156,6 +171,7 @@ true
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn return_expression() {
     let input = r#"return 1"#;
 
@@ -164,6 +180,7 @@ fn return_expression() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn array_int_index() {
     let input = r#"let arr = [0, 1, 2]
     let one = arr.1
@@ -174,9 +191,40 @@ fn array_int_index() {
 }
 
 #[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
+fn array_int_index_multiple() {
+    let input = r#"let array = ["a", "b", "c"]
+
+    let first = array.0
+    let second = array.1
+    let third = array.2
+
+    print first
+    print second
+    print third
+    "#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
 fn array_string_index() {
     let input = r#"let array = ["a", "b", "c"]
     print array.1
+    "#;
+
+    let program = generate_chunk(input);
+    println!("{program}");
+}
+
+#[test]
+#[ignore = "currently a manual test, change to compare the program chunk as string or remove"]
+fn array_variable_index() {
+    let input = r#"let array = ["a", "b", "c"]
+    let i = 0
+    print array.(i)
     "#;
 
     let program = generate_chunk(input);
