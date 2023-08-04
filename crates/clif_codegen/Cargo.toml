@@ -1,0 +1,17 @@
+[package]
+name = "clif_codegen"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hir = { path = "../hir" }
+
+cranelift = "0.98.1"
+cranelift-module = "0.98.1"
+cranelift-jit = "0.98.1"
+cranelift-native = "0.98.1"
+la-arena = "0.3.0"
+text-size = "1.1.0"
+proc-macro2 = "1.0.43"
