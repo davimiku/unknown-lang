@@ -13,7 +13,7 @@ pub use op::{
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_string::VMString;
-use vm_types::{VMBool, VMFloat, VMInt};
+use vm_types::{VMArray, VMBool, VMFloat, VMInt};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
@@ -556,8 +556,7 @@ impl Codegen {
                 }
             },
             AllocType::String => code.push((Op::PopString, range)),
-            // TODO: implement Array
-            AllocType::Array => code.push((Op::Pop2, range)),
+            AllocType::Array => code.push((Op::PopArray, range)),
             AllocType::Rc => code.push((Op::PopRc, range)),
             AllocType::Gc => code.push((Op::PopGc, range)),
             AllocType::Noop => {}
@@ -829,12 +828,11 @@ impl FunctionCodegen {
         self.next_stack_slot_index += local_size;
     }
 
-    // TODO: after Arrays are implemented, this can be moved inside of `add_local`
-    // since there's nowhere that needs to call just this function
     fn push_alloc_type(&mut self, local_type: &Type) {
         let local_size = word_size_of(local_type);
         let alloc_type = match (local_type, local_size) {
             (Type::String | Type::StringLiteral(_), _) => AllocType::String,
+            (Type::Array(_), _) => AllocType::Array,
             (Type::Function(_), _) => AllocType::Rc,
 
             (_, 0) => unreachable!(),
@@ -852,7 +850,11 @@ impl FunctionCodegen {
                     self.alloc_types.push(AllocType::Noop);
                 }
             }
-            AllocType::Array => todo!(),
+            AllocType::Array => {
+                //
+                self.alloc_types.push(AllocType::Array);
+                self.alloc_types.push(AllocType::Noop); // 2nd word of array
+            }
             AllocType::String => {
                 self.alloc_types.push(AllocType::String);
                 self.alloc_types.push(AllocType::Noop); // 2nd word of string
@@ -886,7 +888,7 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Unit => 0,
 
         Type::Function(_) => 1, // pointer size
-        Type::Array(_) => 2,
+        Type::Array(_) => vm_types::word_size_of::<VMArray>(),
 
         Type::Undetermined => unreachable!(),
         Type::Error => unreachable!(),
@@ -912,7 +914,7 @@ fn pop_code_of(ty: &Type) -> Code {
         | Type::Int => Code::from_op(Op::Pop1, range),
         Type::StringLiteral(_) | Type::String => Code::from_op(Op::PopString, range),
         Type::Function(_) => Code::from_op(Op::Pop1, range),
-        Type::Array(_) => todo!(),
+        Type::Array(_) => Code::from_op(Op::PopArray, range),
 
         Type::Bottom => Code::default(),
         Type::Top => unreachable!("Top is not a constructable value"),

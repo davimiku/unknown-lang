@@ -73,7 +73,7 @@ impl VM {
             let op = chunk.get_op(frame.ip)?;
             frame.ip += 1;
 
-            #[cfg(debug_stack)]
+            // #[cfg(debug_stack)]
             dbg!(op);
 
             use Op::*;
@@ -158,7 +158,7 @@ impl VM {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword_at(slot_offset);
 
-                    self.stack.push_dword(*val);
+                    self.stack.push_dword(val);
                 }
                 GetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -169,7 +169,7 @@ impl VM {
                 GetLocalN => todo!(),
                 GetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let val = *self.stack.peek_dword_at(slot_offset);
+                    let val = self.stack.peek_dword_at(slot_offset);
                     let string = VMString::from_copy(val.into());
 
                     self.stack.push_string(string);
@@ -180,16 +180,16 @@ impl VM {
                         return Err(Panic::IndexError);
                     }
                     let index = index as usize;
-                    let VMArray { ptr, len, el_size } = self.stack.pop_array();
-                    if index >= len as usize {
+                    let array = self.stack.pop_array();
+                    if index >= array.len as usize {
                         return Err(Panic::IndexError);
                     }
-                    let el_size = el_size as usize;
+                    let el_size = array.el_size as usize;
 
                     let start = index * el_size;
                     let end = start + el_size;
 
-                    self.stack.push_slice(&ptr[start..end]);
+                    self.stack.push_slice(&array.ptr[start..end]);
                 }
                 SetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -200,7 +200,7 @@ impl VM {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
 
-                    self.stack.set_dword_at(*val, slot_offset);
+                    self.stack.set_dword_at(val, slot_offset);
                 }
                 SetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -221,7 +221,7 @@ impl VM {
                 }
                 SetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let val = *self.stack.peek_dword();
+                    let val = self.stack.peek_dword();
                     let string = VMString::from_copy(val.into());
 
                     self.stack.set_dword_at(string.into(), slot_offset);
@@ -423,7 +423,7 @@ impl VM {
                 Noop => {}
             }
 
-            #[cfg(debug_stack)]
+            // #[cfg(debug_stack)]
             dbg!(&self.stack);
         }
     }

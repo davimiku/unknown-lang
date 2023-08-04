@@ -14,3 +14,6 @@ vm_boxed_types = { path = "../vm_boxed_types" }
 vm_codegen = { path = "../vm_codegen" }
 vm_string = { path = "../vm_string" }
 vm_types = { path = "../vm_types" }
+
+[features]
+debug_stack = []
