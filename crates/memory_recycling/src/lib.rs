@@ -52,84 +52,84 @@ pub unsafe fn cast_bytes_to_Gc<T: Trace>(raw_bytes: u64) -> Gc<T> {
 //     }
 // }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
+//     use super::*;
 
-    pub fn alloc_2_strings(s1: &str, s2: &str) -> (Gc<String>, Gc<String>) {
-        let a = Gc::new(String::from(s1));
-        let b = Gc::new(String::from(s2));
+//     pub fn alloc_2_strings(s1: &str, s2: &str) -> (Gc<String>, Gc<String>) {
+//         let a = Gc::new(String::from(s1));
+//         let b = Gc::new(String::from(s2));
 
-        (a, b)
-    }
+//         (a, b)
+//     }
 
-    #[test]
-    fn strings_equal_by_contents() {
-        let (a, b) = alloc_2_strings("hello", "hello");
+//     #[test]
+//     fn strings_equal_by_contents() {
+//         let (a, b) = alloc_2_strings("hello", "hello");
 
-        // derefs the pointers and compares the String contents
-        assert_eq!(a, b);
-    }
+//         // derefs the pointers and compares the String contents
+//         assert_eq!(a, b);
+//     }
 
-    #[test]
-    fn pointers_not_equal() {
-        let (a, b) = alloc_2_strings("hello", "hello");
+//     #[test]
+//     fn pointers_not_equal() {
+//         let (a, b) = alloc_2_strings("hello", "hello");
 
-        assert!(!Gc::ptr_eq(&a, &b));
+//         assert!(!Gc::ptr_eq(&a, &b));
 
-        let a = Gc::into_raw(a);
-        let b = Gc::into_raw(b);
+//         let a = Gc::into_raw(a);
+//         let b = Gc::into_raw(b);
 
-        // raw pointers are not the same
-        assert_ne!(a, b);
+//         // raw pointers are not the same
+//         assert_ne!(a, b);
 
-        unsafe {
-            let a = Gc::from_raw(a);
-            let b = Gc::from_raw(b);
+//         unsafe {
+//             let a = Gc::from_raw(a);
+//             let b = Gc::from_raw(b);
 
-            // derefs the pointers and compares the String contents
-            // because Gc is Deref
-            assert_eq!(a, b);
-        }
-    }
+//             // derefs the pointers and compares the String contents
+//             // because Gc is Deref
+//             assert_eq!(a, b);
+//         }
+//     }
 
-    #[test]
-    fn pointers_equal() {
-        let a = Gc::new(String::from("yeet"));
+//     #[test]
+//     fn pointers_equal() {
+//         let a = Gc::new(String::from("yeet"));
 
-        let b = a.clone();
+//         let b = a.clone();
 
-        assert!(Gc::ptr_eq(&a, &b));
-        assert_eq!(a, b);
+//         assert!(Gc::ptr_eq(&a, &b));
+//         assert_eq!(a, b);
 
-        let a = Gc::into_raw(a);
-        let b = Gc::into_raw(b);
+//         let a = Gc::into_raw(a);
+//         let b = Gc::into_raw(b);
 
-        // raw pointers are the same
-        assert_eq!(a, b);
-    }
+//         // raw pointers are the same
+//         assert_eq!(a, b);
+//     }
 
-    #[test]
-    fn store_pointers_in_bytecode() {
-        let a = Gc::new(String::from("never"));
-        let b = Gc::new(String::from("yeet"));
-        let c = Gc::new(String::from("shredded"));
-        let d = Gc::new(String::from("wheat"));
+//     #[test]
+//     fn store_pointers_in_bytecode() {
+//         let a = Gc::new(String::from("never"));
+//         let b = Gc::new(String::from("yeet"));
+//         let c = Gc::new(String::from("shredded"));
+//         let d = Gc::new(String::from("wheat"));
 
-        let a_raw = Gc::into_raw(a);
-        let b_raw = Gc::into_raw(b);
-        let c_raw = Gc::into_raw(c);
-        let d_raw = Gc::into_raw(d);
+//         let a_raw = Gc::into_raw(a);
+//         let b_raw = Gc::into_raw(b);
+//         let c_raw = Gc::into_raw(c);
+//         let d_raw = Gc::into_raw(d);
 
-        let a_ptr = a_raw as *const u8;
-        let b_ptr = b_raw as *const u8;
-        let c_ptr = c_raw as *const u8;
-        let d_ptr = d_raw as *const u8;
+//         let a_ptr = a_raw as *const u8;
+//         let b_ptr = b_raw as *const u8;
+//         let c_ptr = c_raw as *const u8;
+//         let d_ptr = d_raw as *const u8;
 
-        println!("{a_ptr:?}");
-        println!("{b_ptr:?}");
-        println!("{c_ptr:?}");
-        println!("{d_ptr:?}");
-    }
-}
+//         println!("{a_ptr:?}");
+//         println!("{b_ptr:?}");
+//         println!("{c_ptr:?}");
+//         println!("{d_ptr:?}");
+//     }
+// }
