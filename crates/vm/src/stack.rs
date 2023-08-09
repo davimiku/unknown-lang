@@ -319,11 +319,10 @@ impl Stack {
 
     /// Peeks the DWord (2 Words) from the top of the stack
     #[inline]
-    pub(crate) fn peek_dword(&self) -> &DWord {
+    pub(crate) fn peek_dword(&self) -> DWord {
         let index = self.data.len() - 2;
-        let words = &[self.data[index], self.data[index + 1]];
-        // TODO: make this part of the DWord constructor and verify its safe-ness
-        unsafe { std::mem::transmute(words) }
+        let words = [self.data[index], self.data[index + 1]];
+        words.into()
     }
 
     /// Peeks the QWord (4 Words) from the top of the stack
@@ -369,11 +368,12 @@ impl Stack {
         todo!()
     }
 
-    pub(crate) fn peek_dword_at(&self, index: usize) -> &DWord {
+    /// Gets a copy of the DWord at the given index
+    pub(crate) fn peek_dword_at(&self, index: usize) -> DWord {
         let index = index + self.offset;
-        let words = &[self.data[index], self.data[index + 1]];
-        // TODO: make this part of the DWord constructor and verify its safe-ness
-        unsafe { std::mem::transmute(words) }
+        let words = [self.data[index], self.data[index + 1]];
+
+        words.into()
     }
 
     /// Peeks and copies four Words from the given
