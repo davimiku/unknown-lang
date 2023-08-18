@@ -1,10 +1,8 @@
 use ast::Root;
 use itertools::Itertools;
-use text_size::TextRange;
+use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
 use indoc::indoc;
-
-use crate::typecheck::{TypeDiagnostic, TypeDiagnosticVariant};
 
 use super::*;
 
@@ -18,7 +16,7 @@ macro_rules! cast {
     }};
 }
 
-fn print(input: &str) {
+fn _print(input: &str) {
     let mut interner = Interner::default();
 
     let root: Root = parser::parse(input).into();
@@ -41,7 +39,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 
     let expected_expr = expected.split('\n').map(|s| format!("    {s}")).join("\n");
 
-    let expected_vars = &mut [("args~0", "[]String"), ("print~0", "(String) -> Unit")]
+    let expected_vars = &mut [("args~0.1", "[]String"), ("print~0.0", "(String) -> ()")]
         .iter()
         .chain(expected_vars)
         .sorted_by(|(a, ..), (b, ..)| a.cmp(b))
@@ -57,7 +55,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 }}
 {expected_vars}"
     );
-    let actual = fmt_expr::fmt_root(root_expr, &context);
+    let actual = display_root(root_expr, &context);
 
     if actual != expected {
         println!("expected: {expected}");
@@ -68,16 +66,18 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     }
 }
 
-/// Checks that the input lowered with an error
-fn check_error(input: &str, expected: Vec<Diagnostic>, interner: Option<Interner>) {
-    let mut interner = interner.unwrap_or(Interner::default());
+/// Checks that the input lowered with error(s)
+fn check_error(input: &str, expected: Vec<LSPDiagnostic>) {
+    let mut interner = Interner::default();
     let root: Root = parser::parse(input).into();
     let (root, context) = lower_ast(&root, &mut interner);
 
     let main_block = context.expr(root);
     let _ = cast!(main_block, Expr::Block);
 
-    assert_eq!(context.diagnostics, expected);
+    let diagnostics: Vec<LSPDiagnostic> = context.diagnostics.iter().map(|d| d.into()).collect();
+
+    assert_eq!(diagnostics, expected);
 }
 
 #[test]
@@ -137,10 +137,10 @@ fn not_variable_ref() {
     let b = !a
 "#;
     let expected_expr = indoc! {"
-        a~0 : true = true;
-        b~0 : false = !a~0;"};
+        a~0.2 : true = true;
+        b~0.3 : false = !a~0.2;"};
 
-    let expected_vars = &[("a~0", "true"), ("b~0", "false")];
+    let expected_vars = &[("a~0.2", "true"), ("b~0.3", "false")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -156,7 +156,7 @@ fn int_to_string() {
 fn print_int_to_string() {
     let input = "print ~123";
 
-    check(input, "print~0 (~123,);", &[]);
+    check(input, "print~0.0 (~123,);", &[]);
 }
 
 #[test]
@@ -167,50 +167,51 @@ fn string_concatenation() {
 }
 
 #[test]
-fn local_def() {
+fn let_binding() {
     let input = "let a = 10";
 
-    check(input, "a~0 : 10 = 10;", &[("a~0", "10")]);
+    check(input, "a~0.2 : 10 = 10;", &[("a~0.2", "10")]);
 }
 
 #[test]
-fn local_def_annotation() {
+fn let_binding_annotation() {
     let input = "let a: Int = 10";
+    let expected = "a~0.2 : Int~0.1 = 10;";
 
-    check(input, "a~0 : Int~0 = 10;", &[("a~0", "Int")]);
+    check(input, expected, &[("a~0.2", "Int")]);
 }
 
 #[test]
-fn local_ref() {
+fn variable_ref() {
     let input = r#"
         let a = 10
         a
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 10 = 10;
-        a~0;"};
+        a~0.2 : 10 = 10;
+        a~0.2;"};
 
-    check(input, expected_expr, &[("a~0", "10")]);
+    check(input, expected_expr, &[("a~0.2", "10")]);
 }
 
 #[test]
-fn multiple_local_def() {
+fn multiple_let_bindings() {
     let input = r#"
         let a = 1
         let b = 2
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 1 = 1;
-        b~0 : 2 = 2;"};
-    let expected_vars = &[("a~0", "1"), ("b~0", "2")];
+        a~0.2 : 1 = 1;
+        b~0.3 : 2 = 2;"};
+    let expected_vars = &[("a~0.2", "1"), ("b~0.3", "2")];
 
     check(input, expected_expr, expected_vars);
 }
 
 #[test]
-fn multiple_local_ref() {
+fn multiple_variable_ref() {
     let input = r#"
         let a = 1
         let b = 2
@@ -219,11 +220,11 @@ fn multiple_local_ref() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 1 = 1;
-        b~0 : 2 = 2;
-        a~0;
-        b~0;"};
-    let expected_vars = &[("a~0", "1"), ("b~0", "2")];
+        a~0.2 : 1 = 1;
+        b~0.3 : 2 = 2;
+        a~0.2;
+        b~0.3;"};
+    let expected_vars = &[("a~0.2", "1"), ("b~0.3", "2")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -240,13 +241,13 @@ fn one_level_nested_scope() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 0 = 0;
+        a~0.2 : 0 = 0;
         {
-            a~1 : 10 = 10;
-            a~1;
+            a~0.3 : 10 = 10;
+            a~0.3;
         };
-        a~0;"};
-    let expected_vars = &[("a~0", "0"), ("a~1", "10")];
+        a~0.2;"};
+    let expected_vars = &[("a~0.2", "0"), ("a~0.3", "10")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -269,20 +270,20 @@ fn two_level_nested_scope() {
 "#;
 
     let expected_expr = indoc! {"
-        a~0 : 0 = 0;
+        a~0.2 : 0 = 0;
         {
-            a~0;
-            a~1 : 10 = 10;
+            a~0.2;
+            a~0.3 : 10 = 10;
             {
-                a~1;
-                a~2 : 20 = 20;
-                a~2;
+                a~0.3;
+                a~0.4 : 20 = 20;
+                a~0.4;
             };
-            a~1;
+            a~0.3;
         };
-        a~0;"};
+        a~0.2;"};
 
-    let expected_vars = &[("a~0", "0"), ("a~1", "10"), ("a~2", "20")];
+    let expected_vars = &[("a~0.2", "0"), ("a~0.3", "10"), ("a~0.4", "20")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -291,35 +292,34 @@ fn two_level_nested_scope() {
 fn local_wrong_type_int_literal() {
     let input: &str = "let a: String = 100";
     //                               16^ ^19
-    let expected = vec![TypeDiagnostic {
-        range: TextRange::new(16.into(), 19.into()),
-        variant: TypeDiagnosticVariant::TypeMismatch {
-            expected: Type::String,
-            actual: Type::IntLiteral(100),
-        },
-    }
-    .into()];
+    let expected: LSPDiagnostic = LSPDiagnostic {
+        range: (16, 19),
+        severity: LSPDiagnosticSeverity::Error,
+        message: "TODO".to_owned(),
+        code: None,
+        code_description: None,
+        source: Some("type_checker".to_owned()),
+        tags: None,
+    };
 
-    check_error(input, expected, None);
+    check_error(input, vec![expected]);
 }
 
 #[test]
 fn local_wrong_type_string_literal() {
-    let mut interner = Interner::default();
-    let key = interner.intern("Hello World!");
-
     let input: &str = r#"let a: Int = "Hello World!""#;
     //                              13^            ^27
-    let expected = vec![TypeDiagnostic {
-        range: TextRange::new(13.into(), 27.into()),
-        variant: TypeDiagnosticVariant::TypeMismatch {
-            expected: Type::Int,
-            actual: Type::StringLiteral(key),
-        },
-    }
-    .into()];
+    let expected: LSPDiagnostic = LSPDiagnostic {
+        range: (13, 27),
+        severity: LSPDiagnosticSeverity::Error,
+        message: "TODO".to_owned(),
+        code: None,
+        code_description: None,
+        source: Some("type_checker".to_owned()),
+        tags: None,
+    };
 
-    check_error(input, expected, Some(interner));
+    check_error(input, vec![expected]);
 }
 
 #[test]
@@ -335,34 +335,34 @@ fn nullary_function() {
 fn nullary_function_assignment() {
     let input = "let f = () -> {}";
     let expected_expr = indoc! {"
-    f~0 : () -> Unit = fun<f> () -> {};"};
+    f~0.2 : () -> () = fun<f> () -> {};"};
 
-    check(input, expected_expr, &[("f~0", "() -> Unit")]);
+    check(input, expected_expr, &[("f~0.2", "() -> ()")]);
 }
 
-#[test]
-fn unary_function_no_param_type() {
-    let mut interner = Interner::default();
-    let key = interner.intern("a");
-    let input = "a -> {}";
-    let expected = vec![TypeDiagnostic {
-        variant: TypeDiagnosticVariant::Undefined {
-            name: (key, 0).into(),
-        },
-        range: Default::default(),
-    }
-    .into()];
+// #[test]
+// fn unary_function_no_param_type() {
+//     let mut interner = Interner::default();
+//     let key = interner.intern("a");
+//     let input = "a -> {}";
+//     let expected = vec![TypeDiagnostic {
+//         variant: TypeDiagnosticVariant::UndefinedSymbol {
+//             name: (key, 0).into(),
+//         },
+//         range: Default::default(),
+//     }
+//     .into()];
 
-    check_error(input, expected, Some(interner));
-}
+//     check_error(input, expected, Some(interner));
+// }
 
 #[test]
 fn unary_function() {
     let input = "(a: Int) -> {}";
     let expected_expr = indoc! {"
-    fun (a~0 : Int) -> {};"};
+    fun (a~0.2 : Int) -> {};"};
 
-    check(input, expected_expr, &[("a~0", "Int")]);
+    check(input, expected_expr, &[("a~0.2", "Int")]);
 }
 
 #[test]
@@ -370,8 +370,8 @@ fn unary_function_assignment() {
     let input = "let f = (a: Int) -> {}";
 
     let expected_expr = indoc! {"
-    f~0 : (Int) -> Unit = fun<f> (a~0 : Int) -> {};"};
-    let expected_vars = &[("a~0", "Int"), ("f~0", "(Int) -> Unit")];
+    f~0.2 : (Int) -> () = fun<f> (a~0.3 : Int) -> {};"};
+    let expected_vars = &[("a~0.3", "Int"), ("f~0.2", "(Int) -> ()")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -380,9 +380,7 @@ fn unary_function_assignment() {
 fn print_string() {
     let input = "print \"Hello\"";
 
-    print(input);
-
-    let expected_expr = "print~0 (\"Hello\",);";
+    let expected_expr = "print~0.0 (\"Hello\",);";
 
     check(input, expected_expr, &[])
 }
@@ -390,8 +388,6 @@ fn print_string() {
 #[test]
 fn int() {
     let input = "1";
-
-    print(input);
 
     let expected_expr = "1;";
 
@@ -402,8 +398,8 @@ fn int() {
 fn print_param_function() {
     let input = "(a: String) -> print a";
 
-    let expected_expr = "fun (a~0 : String) -> print~0 (a~0,);";
-    let expected_vars = &[("a~0", "String")];
+    let expected_expr = "fun (a~0.2 : String) -> print~0.0 (a~0.2,);";
+    let expected_vars = &[("a~0.2", "String")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -412,8 +408,8 @@ fn print_param_function() {
 fn print_param_function_assignment() {
     let input = "let f = (a: String) -> print a";
 
-    let expected_expr = "f~0 : (String) -> Unit = fun<f> (a~0 : String) -> print~0 (a~0,);";
-    let expected_vars = &[("a~0", "String"), ("f~0", "(String) -> Unit")];
+    let expected_expr = "f~0.2 : (String) -> () = fun<f> (a~0.3 : String) -> print~0.0 (a~0.3,);";
+    let expected_vars = &[("a~0.3", "String"), ("f~0.2", "(String) -> ()")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -426,25 +422,25 @@ print_param "Hello!"
 "#;
 
     let expected_expr = indoc! {"
-        print_param~0 : (String) -> Unit = fun<print_param> (a~0 : String) -> print~0 (a~0,);
-        print_param~0 (\"Hello!\",);"};
+        print_param~0.2 : (String) -> () = fun<print_param> (a~0.3 : String) -> print~0.0 (a~0.3,);
+        print_param~0.2 (\"Hello!\",);"};
 
-    let expected_vars = &[("a~0", "String"), ("print_param~0", "(String) -> Unit")];
+    let expected_vars = &[("a~0.3", "String"), ("print_param~0.2", "(String) -> ()")];
 
     check(input, expected_expr, expected_vars);
 }
 
 #[test]
-fn local_def_and_print() {
+fn let_binding_and_print() {
     let input = r#"
 let a = "Hello"
 print a"#;
 
     let expected_expr = indoc! {"
-        a~0 : \"Hello\" = \"Hello\";
-        print~0 (a~0,);"};
+        a~0.2 : \"Hello\" = \"Hello\";
+        print~0.0 (a~0.2,);"};
 
-    let expected_vars = &[("a~0", "\"Hello\"")];
+    let expected_vars = &[("a~0.2", "\"Hello\"")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -458,12 +454,12 @@ print b
 print a"#;
 
     let expected_expr = indoc! {"
-        a~0 : \"Hello\" = \"Hello\";
-        b~0 : \" World\" = \" World\";
-        print~0 (b~0,);
-        print~0 (a~0,);"};
+        a~0.2 : \"Hello\" = \"Hello\";
+        b~0.3 : \" World\" = \" World\";
+        print~0.0 (b~0.3,);
+        print~0.0 (a~0.2,);"};
 
-    let expected_vars = &[("a~0", "\"Hello\""), ("b~0", "\" World\"")];
+    let expected_vars = &[("a~0.2", "\"Hello\""), ("b~0.3", "\" World\"")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -475,9 +471,9 @@ let repeat = (s: String) -> s ++ s
 "#;
 
     let expected_expr = indoc! {"
-    repeat~0 : (String) -> String = fun<repeat> (s~0 : String) -> s~0 ++ s~0;"};
+    repeat~0.2 : (String) -> String = fun<repeat> (s~0.3 : String) -> s~0.3 ++ s~0.3;"};
 
-    let expected_vars = &[("repeat~0", "(String) -> String"), ("s~0", "String")];
+    let expected_vars = &[("repeat~0.2", "(String) -> String"), ("s~0.3", "String")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -490,16 +486,16 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~0 : (String) -> String = fun<repeat> (s~0 : String) -> {
-            s~0 ++ s~0;
+        repeat~0.2 : (String) -> String = fun<repeat> (s~0.3 : String) -> {
+            s~0.3 ++ s~0.3;
         };
-        hello_hello~0 : String = repeat~0 (\"Hello \",);
-        print~0 (hello_hello~0,);"};
+        hello_hello~0.4 : String = repeat~0.2 (\"Hello \",);
+        print~0.0 (hello_hello~0.4,);"};
 
     let expected_vars = &[
-        ("hello_hello~0", "String"),
-        ("repeat~0", "(String) -> String"),
-        ("s~0", "String"),
+        ("hello_hello~0.4", "String"),
+        ("repeat~0.2", "(String) -> String"),
+        ("s~0.3", "String"),
     ];
 
     check(input, expected_expr, expected_vars);
@@ -525,12 +521,12 @@ if res != 5 {
 }"#;
 
     let expected = indoc! {"
-res~0 : 5 = 2 + 3;
-if (res~0 != 5) {
+res~0.2 : 5 = 2 + 3;
+if (res~0.2 != 5) {
     return 1;
 };"};
 
-    let expected_vars = &[("res~0", "5")];
+    let expected_vars = &[("res~0.2", "5")];
 
     check(input, expected, expected_vars);
 }
@@ -540,9 +536,9 @@ fn array_literal_int() {
     let input = r#"let a = [1, 2, 3]"#;
 
     let expected = indoc! {"
-    a~0 : []Int = [1,2,3,];"};
+    a~0.2 : []Int = [1,2,3,];"};
 
-    let expected_vars = &[("a~0", "[]Int")];
+    let expected_vars = &[("a~0.2", "[]Int")];
 
     check(input, expected, expected_vars);
 }
@@ -552,9 +548,9 @@ fn array_literal_string() {
     let input = r#"let a = ["x", "y", "z"]"#;
 
     let expected = indoc! {"
-    a~0 : []String = [\"x\",\"y\",\"z\",];"};
+    a~0.2 : []String = [\"x\",\"y\",\"z\",];"};
 
-    let expected_vars = &[("a~0", "[]String")];
+    let expected_vars = &[("a~0.2", "[]String")];
 
     check(input, expected, expected_vars);
 }

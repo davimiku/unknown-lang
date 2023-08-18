@@ -1,9 +1,9 @@
-mod context;
 mod database;
+mod diagnostic;
+mod display;
 mod expr;
-mod fmt_expr;
 mod interner;
-mod name_res;
+mod lowering_context;
 mod scope;
 mod type_expr;
 mod typecheck;
@@ -11,12 +11,13 @@ mod typecheck;
 #[cfg(test)]
 mod tests;
 
-pub use context::{Context, Diagnostic, COMPILER_BRAND};
+pub use diagnostic::Diagnostic;
+pub use display::display_root;
 pub use expr::{
     ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr,
-    IndexIntExpr, LocalDefExpr, LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
+    IndexIntExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
-use fmt_expr::fmt_root;
+pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FunctionType, Type};
 
 use database::Database;
@@ -37,7 +38,7 @@ pub fn lower_ast<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>,
     let program = Expr::Block(BlockExpr { exprs });
     let program = context.alloc_expr(program, None);
 
-    context.type_check(program, &Type::Top);
+    context.type_check(program, context.type_database.top());
 
     (program, context)
 }
@@ -52,10 +53,4 @@ pub fn lower_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, C
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 
     lower_ast(&root, interner)
-}
-
-pub fn fmt(ast: &ast::Root, interner: &mut Interner) -> String {
-    let (root, context) = lower_ast(ast, interner);
-
-    fmt_root(root, &context)
 }

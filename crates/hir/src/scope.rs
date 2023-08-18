@@ -1,6 +1,6 @@
 //! Scopes
 //!
-//! A scope controls the visibility of a binding. A binding may
+//! A scope controls the visibility of a definition. A definition may
 //! be "in scope" if it exists in the current scope or a (recursive)
 //! parent scope.
 //!
@@ -12,37 +12,42 @@ use std::collections::HashMap;
 use id_tree::{InsertBehavior, Node, Tree};
 
 use crate::interner::Key;
-use crate::type_expr::LocalTypeDefKey;
-use crate::{Interner, LocalDefKey};
+use crate::lowering_context::ContextDisplay;
+use crate::type_expr::TypeSymbol;
+use crate::{Context, ValueSymbol};
 
 #[derive(Debug, Default)]
 pub struct Scope {
-    /// Associates a Name with the unique key for that local definition within the context
+    /// Associates the name with the unique id for the value
     ///
-    /// TODO: handle multiple of the same Name in the same Scope (shadowed locals)
-    local_defs: HashMap<Key, LocalDefKey>,
+    /// Note: in the case of shadowed values within this scope, this
+    /// map tracks the most recent entry of that name
+    // TODO: should we use a map that efficiently can hold multiple values?
+    // or maybe it holds a SmallVec ?
+    values: HashMap<Key, ValueSymbol>,
 
-    local_type_defs: HashMap<Key, LocalTypeDefKey>,
+    /// Associates the name with the unique id for the type
+    types: HashMap<Key, TypeSymbol>,
 }
 
-impl Scope {
-    fn display(&self, interner: &Interner) -> String {
+impl ContextDisplay for Scope {
+    fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        s.push_str("local_defs: {\n");
-        for (key, local_key) in &self.local_defs {
+        s.push_str("local_values: {\n");
+        for (key, local_key) in &self.values {
             s.push_str(&format!(
                 "  {}: {}\n",
-                interner.lookup(*key),
-                local_key.display(interner)
+                context.lookup(*key),
+                local_key.display(context)
             ));
         }
         s.push_str("}\n");
-        s.push_str("local_type_defs: {\n");
-        for (key, local_key) in &self.local_type_defs {
+        s.push_str("local_types: {\n");
+        for (key, local_key) in &self.types {
             s.push_str(&format!(
                 "  {}: {}\n",
-                interner.lookup(*key),
-                local_key.display(interner)
+                context.lookup(*key),
+                local_key.display(context)
             ));
         }
         s.push_str("}\n");
@@ -52,16 +57,16 @@ impl Scope {
 }
 
 impl Scope {
-    pub(crate) fn get_local(&self, key: Key) -> Option<LocalDefKey> {
-        self.local_defs.get(&key).copied()
+    pub(crate) fn get_local(&self, key: Key) -> Option<ValueSymbol> {
+        self.values.get(&key).copied()
     }
 
-    pub(crate) fn get_local_type(&self, key: Key) -> Option<LocalTypeDefKey> {
-        self.local_type_defs.get(&key).copied()
+    pub(crate) fn get_local_type(&self, key: Key) -> Option<TypeSymbol> {
+        self.types.get(&key).copied()
     }
 }
 
-/// Holds the tree of Scope structs
+/// Holds the tree of Scope structs for a given module
 #[derive(Debug)]
 pub(crate) struct Scopes {
     /// Data of the scopes
@@ -70,22 +75,35 @@ pub(crate) struct Scopes {
     /// Useful for iterating later
     root_id: id_tree::NodeId,
 
-    /// Mutable id ofr
+    /// Mutable id of the current node
     current_node_id: id_tree::NodeId,
 
-    /// Local definition counts
-    // TODO: separate map for terms and types?
-    local_counts: HashMap<Key, u32>,
+    /// Running total of the values defined in this scope
+    value_count: u32,
+
+    /// Current id for defined value variables for the purpose
+    /// of assigning a unique id to each type variable
+    // value_ids: SymbolMap,
+
+    /// Running total of the types defined in this scope
+    type_count: u32,
+
+    /// Current id for defined type variables for the purpose
+    /// of assigning a unique id to each type variable
+    // type_ids: SymbolMap,
+
+    /// Unique id of the current module being compiled
+    module_id: u32,
 }
 
-impl Scopes {
-    pub fn display(&self, interner: &Interner) -> String {
+impl ContextDisplay for Scopes {
+    fn display(&self, context: &Context) -> String {
         let mut output = String::new();
         for node_id in self.tree.traverse_pre_order_ids(&self.root_id).unwrap() {
             output.push_str(&format!("===scope {:?}===\n", node_id));
 
             let node = self.tree.get(&node_id).unwrap();
-            output.push_str(&node.data().display(interner));
+            output.push_str(&node.data().display(context));
             output.push('\n');
         }
         output
@@ -94,7 +112,9 @@ impl Scopes {
 
 // Non-Mutating functions
 impl Scopes {
-    pub(crate) fn find_local(&self, name: Key) -> Option<LocalDefKey> {
+    /// Finds the symbol for the given name in the "value" universe
+    /// by recursively searching up from the current scope.
+    pub(crate) fn find_value(&self, name: Key) -> Option<ValueSymbol> {
         self.current().get_local(name).or(self
             .tree
             .ancestors(&self.current_node_id)
@@ -102,7 +122,9 @@ impl Scopes {
             .find_map(|scope| scope.data().get_local(name)))
     }
 
-    pub(crate) fn find_local_type(&self, name: Key) -> Option<LocalTypeDefKey> {
+    /// Finds the symbol for the given name in the "type" universe
+    /// by recursively searching up from the current scope.
+    pub(crate) fn find_type(&self, name: Key) -> Option<TypeSymbol> {
         self.current().get_local_type(name).or(self
             .tree
             .ancestors(&self.current_node_id)
@@ -139,40 +161,28 @@ impl Scopes {
         self.tree.get_mut(&self.current_node_id).unwrap().data_mut()
     }
 
-    /// Inserts a Name for a local def into the current scope and returns
-    /// a key that uniquely identifies that particular local.
-    pub(crate) fn insert_local(&mut self, name: Key) -> LocalDefKey {
-        let new_count = self.increment_count(name);
+    /// Inserts a name for a variable def into the current scope and returns
+    /// a key that uniquely identifies that particular variable.
+    pub(crate) fn insert_value(&mut self, name: Key) -> ValueSymbol {
+        let symbol = ValueSymbol::new(self.module_id, self.value_count);
+        self.value_count += 1;
 
-        let key: LocalDefKey = (name, new_count - 1).into();
-        self.current_mut().local_defs.insert(name, key);
-
-        key
+        self.current_mut().values.insert(name, symbol);
+        symbol
     }
 
-    pub(crate) fn insert_local_type(&mut self, name: Key) -> LocalTypeDefKey {
-        let new_count = self.increment_count(name);
+    pub(crate) fn insert_type(&mut self, name: Key) -> TypeSymbol {
+        let symbol = TypeSymbol::new(self.module_id, self.type_count);
+        self.type_count += 1;
 
-        let key: LocalTypeDefKey = (name, new_count - 1).into();
-        self.current_mut().local_type_defs.insert(name, key);
-
-        key
-    }
-
-    /// Adds one to the count for a local and returns the **new** count.
-    fn increment_count(&mut self, name: Key) -> u32 {
-        let new_count = self
-            .local_counts
-            .entry(name)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
-
-        *new_count
+        self.current_mut().types.insert(name, symbol);
+        symbol
     }
 }
 
 impl Scopes {
     pub(crate) fn new() -> Self {
+        let module_id = 0; // FIXME: pass in a real module id
         let root = Node::new(Scope::default());
         let mut tree = Tree::new();
         let root = tree.insert(root, InsertBehavior::AsRoot).unwrap();
@@ -180,7 +190,11 @@ impl Scopes {
             tree,
             root_id: root.clone(),
             current_node_id: root,
-            local_counts: HashMap::default(),
+            value_count: 0,
+            // value_ids: Default::default(),
+            type_count: 0,
+            // type_ids: Default::default(),
+            module_id,
         }
     }
 }

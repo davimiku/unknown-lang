@@ -1,28 +1,21 @@
-use itertools::Itertools;
 use la_arena::Idx;
 
-use crate::expr::{
-    ArrayLiteralExpr, BinaryExpr, BlockExpr, CallExpr, FunctionExpr, IndexIntExpr, LocalDefExpr,
-    LocalRefExpr, UnaryExpr,
+use crate::lowering_context::{Context, ContextDisplay};
+use crate::{
+    ArrayLiteralExpr, BinaryExpr, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, IndexIntExpr,
+    UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
-use crate::interner::Interner;
-use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::typecheck::{fmt_local_types, ArrayType, FunctionType};
-use crate::{Context, Expr, IfExpr, Type};
 
 const DEFAULT_INDENT: usize = 4;
 
-/// Formats an expression into a String representation
-///
-/// This format is not stable and should not be used in machine parsing. It is
-/// meant to be read and understood by humans, and may be used in some non-permanent test cases.
-pub(crate) fn fmt_root(idx: Idx<Expr>, context: &Context) -> String {
-    let mut s = String::new();
-    fmt_expr(&mut s, idx, context, 0);
+impl ContextDisplay for Idx<Expr> {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        let indent = 0;
+        fmt_expr(&mut s, *self, context, indent);
 
-    fmt_local_types(&mut s, &context.type_database, context.interner);
-
-    s
+        s
+    }
 }
 
 /// Formats a given expression into a String representation
@@ -48,7 +41,7 @@ fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
         Expr::BoolLiteral(b) => s.push_str(&b.to_string()),
         Expr::FloatLiteral(f) => s.push_str(&f.to_string()),
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
-        Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.interner.lookup(*key))),
+        Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.lookup(*key))),
         Expr::ArrayLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
@@ -57,14 +50,14 @@ fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
         Expr::EmptyBlock => s.push_str("{}"),
         Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
-        Expr::LocalRef(LocalRefExpr { key }) => s.push_str(&key.display(context.interner)),
+        Expr::VarRef(var_ref) => s.push_str(&var_ref.display(context)),
 
-        Expr::UnresolvedLocalRef { key } => {
+        Expr::UnresolvedVarRef { key } => {
             s.push_str(&format!("<undefined {}>", context.lookup(*key)))
         }
 
         Expr::Function(function) => fmt_function_expr(s, function, context, indent),
-        Expr::LocalDef(local_def) => fmt_local_def(s, local_def, context, indent),
+        Expr::VarDef(local_def) => fmt_var_def(s, local_def, context, indent),
 
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Path(_) => todo!(),
@@ -128,22 +121,19 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
     let FunctionExpr { params, body, name } = function;
     s.push_str("fun");
     if let Some(key) = name {
-        let name = context.interner.lookup(*key);
+        let name = context.lookup(*key);
         s.push('<');
         s.push_str(name);
         s.push('>');
     }
     s.push_str(" (");
     for param in params {
-        s.push_str(&param.name.display(context.interner));
+        s.push_str(&param.name.display(context));
         s.push_str(" : ");
-        match param.ty {
+        match param.annotation {
             Some(ty) => {
-                let ty = context
-                    .type_database
-                    .get_type_expr_type(ty)
-                    .expect("TODO: is this possible?");
-                s.push_str(&fmt_type(ty, context.interner));
+                let ty = context.type_database.get_type_expr_type(ty);
+                s.push_str(&ty.display(context));
             }
             None => s.push_str("~empty~"),
         }
@@ -152,24 +142,18 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
     fmt_expr(s, *body, context, indent);
 }
 
-fn fmt_local_def(s: &mut String, local_def: &LocalDefExpr, context: &Context, indent: usize) {
-    let LocalDefExpr {
-        key,
+fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent: usize) {
+    let VarDefExpr {
+        symbol: key,
         value,
         type_annotation,
     } = local_def;
-    let mut type_buffer = String::new();
-    if let Some(type_annotation) = type_annotation {
-        fmt_type_expr(&mut type_buffer, *type_annotation, context, indent);
+    let type_buffer = if let Some(type_annotation) = type_annotation {
+        type_annotation.display(context)
     } else {
-        let formatted_type = fmt_type(context.type_of_expr(*value), context.interner);
-        type_buffer.push_str(&formatted_type);
-    }
-    s.push_str(&format!(
-        "{} : {} = ",
-        &key.display(context.interner),
-        type_buffer
-    ));
+        context.borrow_expr_type(*value).display(context)
+    };
+    s.push_str(&format!("{} : {} = ", &key.display(context), type_buffer));
     fmt_expr(s, *value, context, indent);
     s.push(';');
 }
@@ -198,66 +182,19 @@ fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Conte
     fmt_expr(s, *index, context, indent);
 }
 
-pub(crate) fn fmt_type_expr(s: &mut String, idx: Idx<TypeExpr>, context: &Context, _indent: usize) {
-    let expr = context.type_expr(idx);
-    match expr {
-        TypeExpr::Empty => s.push_str("{{empty}}"),
-
-        TypeExpr::BoolLiteral(b) => s.push_str(&b.to_string()),
-        TypeExpr::FloatLiteral(f) => s.push_str(&f.to_string()),
-        TypeExpr::IntLiteral(i) => s.push_str(&i.to_string()),
-        TypeExpr::StringLiteral(key) => {
-            s.push_str(&format!(r#""{}""#, context.interner.lookup(*key)))
-        }
-        TypeExpr::Call(_) => todo!(),
-
-        TypeExpr::LocalDef(_) => todo!(),
-        TypeExpr::LocalRef(local_ref) => {
-            let LocalTypeRefExpr { name } = local_ref;
-            let type_name = match name {
-                LocalTypeRefName::Resolved(name) => name.display(context.interner),
-                LocalTypeRefName::Unresolved(name) => context.interner.lookup(*name).to_owned(),
-            };
-
-            s.push_str(&type_name);
-        }
-        TypeExpr::Binary(_) => todo!(),
-        TypeExpr::Unary(_) => todo!(),
+impl ContextDisplay for ValueSymbol {
+    fn display(&self, context: &Context) -> String {
+        let name = context.lookup(context.database.value_names[self]);
+        let ValueSymbol {
+            symbol_id,
+            module_id,
+        } = self;
+        format!("{name}{COMPILER_BRAND}{module_id}.{symbol_id}")
     }
 }
 
-pub(crate) fn fmt_type(ty: &Type, interner: &Interner) -> String {
-    match ty {
-        Type::Bool => "Bool".to_string(),
-        Type::BoolLiteral(b) => b.to_string(),
-        Type::Float => "Float".to_string(),
-        Type::FloatLiteral(f) => f.to_string(),
-        Type::Int => "Int".to_string(),
-        Type::IntLiteral(i) => i.to_string(),
-        Type::String => "String".to_string(),
-        Type::StringLiteral(s) => format!("\"{}\"", interner.lookup(*s)),
-
-        Type::Function(FunctionType { params, return_ty }) => {
-            let mut s = String::new();
-
-            s.push('(');
-            let params = params
-                .iter()
-                .map(|param| fmt_type(param, interner))
-                .join(", ");
-            s.push_str(&params);
-            s.push_str(") -> ");
-            s.push_str(&fmt_type(return_ty, interner));
-
-            s
-        }
-        Type::Array(ArrayType { of }) => format!("[]{}", fmt_type(of, interner)),
-        // Type::Named(name) => interner.lookup(*name).to_string(),
-        Type::Unit => "Unit".to_string(),
-        Type::Top => "Top".to_string(),
-        Type::Bottom => "Bottom".to_string(),
-
-        Type::Undetermined => "Undetermined".to_string(),
-        Type::Error => "Error".to_string(),
+impl ContextDisplay for VarRefExpr {
+    fn display(&self, context: &Context) -> String {
+        self.symbol.display(context)
     }
 }

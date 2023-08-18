@@ -1,34 +1,44 @@
-//!
-//! Type checker
+//! Type checking
 //!
 //!
 
 use la_arena::Idx;
 
 use super::infer::infer_expr;
-use super::{Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::database::Database;
-use crate::{Expr, FunctionType, Interner};
+use super::widen::widen_to_scalar;
+use super::{Type, TypeDiagnostic};
+use crate::{Context, Expr, FunctionType};
 
+/// Checks whether the provided expression is a subtype of the expected expression
+///
+/// Calls, and is called by `infer_expr` (mutual recursion) as an implementation of
+/// bidirectional type checking.
 pub(crate) fn check_expr(
-    idx: Idx<Expr>,
-    expected: &Type,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<(), TypeDiagnostic> {
-    let actual = infer_expr(idx, type_database, database, interner)?;
-    if is_subtype(&actual, expected) {
+    expr: Idx<Expr>,
+    expected: Idx<Type>,
+    context: &mut Context,
+) -> Result<(), Vec<TypeDiagnostic>> {
+    let infer_result: Result<_, _> = infer_expr(expr, context).into();
+    let actual = infer_result?;
+
+    if is_subtype(actual, expected, context) {
         Ok(())
     } else {
-        Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::TypeMismatch {
-                expected: expected.clone(),
-                actual,
-            },
-            range: database.range_of_expr(idx),
-        })
+        let range = context.database.range_of_expr(expr);
+        Err(vec![TypeDiagnostic::mismatch(expected, actual, range)])
     }
+}
+
+/// Checks whether the provided expression is a subtype of the expected expression
+///
+/// If the expected expression is a literal, it is first widened to a scalar.
+pub(crate) fn check_expr_widened(
+    actual_idx: Idx<Expr>,
+    expected_idx: Idx<Type>,
+    context: &mut Context,
+) -> Result<(), Vec<TypeDiagnostic>> {
+    let expected = widen_to_scalar(expected_idx, context);
+    check_expr(actual_idx, expected, context)
 }
 
 /// Is A a subtype of B
@@ -38,31 +48,38 @@ pub(crate) fn check_expr(
 /// For example:
 ///    FloatLiteral is a subtype of Float
 ///    If a Float was required, a FloatLiteral would suffice.
-pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
-    use Type as T;
+pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool {
     if a == b {
         return true;
     }
 
+    let a = context.type_database.type_(a);
+    let b = context.type_database.type_(b);
+    if a == b {
+        return true;
+    }
+
+    // TODO: consider widening `a` with `widen_to_scalar`, would that simplify the conditions below?
+    // would require mutable reference to TypeDatabase
     match (a, b) {
-        (_, T::Top) => true,
-        (_, T::Bottom) => false,
+        (_, Type::Top) => true,
+        (_, Type::Bottom) => false,
 
-        (T::BoolLiteral(_), T::Bool) => true,
-        (T::BoolLiteral(a), T::BoolLiteral(b)) => a == b,
+        (Type::BoolLiteral(_), Type::Bool) => true,
+        (Type::BoolLiteral(a), Type::BoolLiteral(b)) => a == b,
 
-        (T::FloatLiteral(_), T::Float) => true,
-        (T::FloatLiteral(a), T::FloatLiteral(b)) => a == b,
+        (Type::FloatLiteral(_), Type::Float) => true,
+        (Type::FloatLiteral(a), Type::FloatLiteral(b)) => a == b,
 
-        (T::IntLiteral(_), T::Int) => true,
-        (T::IntLiteral(a), T::IntLiteral(b)) => a == b,
+        (Type::IntLiteral(_), Type::Int) => true,
+        (Type::IntLiteral(a), Type::IntLiteral(b)) => a == b,
 
-        (T::StringLiteral(_), T::String) => true,
-        (T::StringLiteral(a), T::StringLiteral(b)) => a == b,
+        (Type::StringLiteral(_), Type::String) => true,
+        (Type::StringLiteral(a), Type::StringLiteral(b)) => a == b,
 
-        (T::Array(a), T::Array(b)) => is_subtype(&a.of, &b.of),
+        (Type::Array(a), Type::Array(b)) => is_subtype(a.of, b.of, context),
 
-        (T::Function(a), T::Function(b)) => is_function_subtype(a, b),
+        (Type::Function(a), Type::Function(b)) => is_function_subtype(&a, &b, context),
 
         _ => false,
     }
@@ -84,14 +101,14 @@ pub(crate) fn is_subtype(a: &Type, b: &Type) -> bool {
 /// // OK because `"hello"` is a subtype of String and return types are covariant
 /// let return_covariance: Int -> String = (a: Int) -> "hello"
 /// ```
-fn is_function_subtype(a: &FunctionType, b: &FunctionType) -> bool {
+fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) -> bool {
     let params_check = a
         .params
         .iter()
         .zip(b.params.iter())
-        .all(|(a_param, b_param)| is_subtype(b_param, a_param));
+        .all(|(a_param, b_param)| is_subtype(*b_param, *a_param, context));
 
-    let return_check = is_subtype(&a.return_ty, &b.return_ty);
+    let return_check = is_subtype(a.return_ty, b.return_ty, context);
 
     params_check && return_check
 }
