@@ -6,29 +6,32 @@
 //! - Type checks for the user's explicit annotations
 //! - Type inference for when the user does not annotate
 
-mod builtins;
 mod check;
 mod infer;
 mod types;
+mod widen;
+
 use std::collections::HashMap;
 
-use la_arena::{ArenaMap, Idx};
-use text_size::TextRange;
+use la_arena::{Arena, ArenaMap, Idx};
 pub use types::{ArrayType, FunctionType, Type};
 
-use crate::fmt_expr::fmt_type;
-use crate::interner::{Interner, Key};
-use crate::type_expr::{LocalTypeDefKey, TypeExpr};
-use crate::{BinaryOp, Diagnostic, Expr, LocalDefKey};
+use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};
+use crate::lowering_context::ContextDisplay;
+use crate::type_expr::{TypeExpr, TypeSymbol};
+use crate::{Context, Expr, ValueSymbol};
 
-pub(crate) use self::check::{check_expr, is_subtype};
+pub(crate) use self::check::check_expr;
 pub(crate) use self::infer::infer_expr;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TypeDatabase {
+    /// Allocated Type variants
+    types: Arena<Type>,
+
     /// Correctly resolved types (inferred or checked)
     /// mapped to the corresponding `Expr` index.
-    expr_types: ArenaMap<Idx<Expr>, Type>,
+    expr_types: ArenaMap<Idx<Expr>, Idx<Type>>,
 
     /// Resolved and inferred `TypeExpr` with their corresponding
     /// `Type`
@@ -44,7 +47,7 @@ pub struct TypeDatabase {
     ///
     /// The `struct ...` is a type expression that is mapped to
     /// `Type::Struct { ... }`
-    type_expr_types: ArenaMap<Idx<TypeExpr>, Type>,
+    type_expr_types: ArenaMap<Idx<TypeExpr>, Idx<Type>>,
 
     /// Types that have been inferred for local variables
     ///
@@ -57,7 +60,7 @@ pub struct TypeDatabase {
     /// ```
     /// The `abc` is mapped here to Type::Int and the `def` is
     /// mapped here to the Type variant returned by `some_func`.
-    local_defs: HashMap<LocalDefKey, Type>,
+    pub(crate) value_symbols: HashMap<ValueSymbol, Idx<Type>>,
 
     /// Types that have been assigned for local type variables.
     ///
@@ -68,31 +71,75 @@ pub struct TypeDatabase {
     /// ```
     ///
     /// `Point` local type definition is mapped here to `Type::Struct { ... }`
-    local_type_defs: HashMap<LocalTypeDefKey, Type>,
+    type_symbols: HashMap<TypeSymbol, Idx<Type>>,
+
+    /// Core types that are builtin to all programs
+    pub(crate) core: CoreTypes,
 }
 
-impl TypeDatabase {
-    pub(crate) fn display(&self, interner: &Interner) -> String {
+impl Default for TypeDatabase {
+    fn default() -> Self {
+        let mut types = Arena::new();
+        let core = CoreTypes {
+            unknown: types.alloc(Type::Unknown),
+            error: types.alloc(Type::Error),
+            top: types.alloc(Type::Top),
+            bottom: types.alloc(Type::Bottom),
+            unit: types.alloc(Type::Unit),
+            bool: types.alloc(Type::Bool),
+            float: types.alloc(Type::Float),
+            int: types.alloc(Type::Int),
+            string: types.alloc(Type::String),
+        };
+        Self {
+            types,
+            core,
+            expr_types: Default::default(),
+            type_expr_types: Default::default(),
+            value_symbols: Default::default(),
+            type_symbols: Default::default(),
+        }
+    }
+}
+
+impl ContextDisplay for TypeDatabase {
+    fn display(&self, context: &Context) -> String {
         let mut output = String::new();
 
         output.push_str("\nExpression types:\n");
         for (idx, ty) in self.expr_types.iter() {
-            output.push_str(&format!("{idx:?}: {ty:?}\n"));
+            output.push_str(&format!(
+                "{}: {}\n",
+                idx.display(context),
+                ty.display(context)
+            ));
         }
 
         output.push_str("\nType Expression types:\n");
         for (idx, ty) in self.type_expr_types.iter() {
-            output.push_str(&format!("{idx:?}: {ty:?}\n"));
+            output.push_str(&format!(
+                "{}: {}\n",
+                idx.display(context),
+                ty.display(context)
+            ));
         }
 
         output.push_str("\nLocal Defs:\n");
-        for (key, ty) in self.local_defs.iter() {
-            output.push_str(&format!("{}: {:?}\n", key.display(interner), ty));
+        for (key, ty) in self.value_symbols.iter() {
+            output.push_str(&format!(
+                "{}: {}\n",
+                key.display(context),
+                ty.display(context)
+            ));
         }
 
         output.push_str("\nLocal Type Defs:\n");
-        for (key, ty) in self.local_type_defs.iter() {
-            output.push_str(&format!("{}: {:?}\n", key.display(interner), ty));
+        for (key, ty) in self.type_symbols.iter() {
+            output.push_str(&format!(
+                "{}: {}\n",
+                key.display(context),
+                ty.display(context)
+            ));
         }
 
         output
@@ -100,106 +147,198 @@ impl TypeDatabase {
 }
 
 impl TypeDatabase {
-    pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Option<&Type> {
-        self.expr_types.get(idx)
+    /// Convenience getter to return the index for the core Int type
+    pub(crate) fn int(&self) -> Idx<Type> {
+        self.core.int
     }
 
-    pub(super) fn set_expr_type(&mut self, idx: Idx<Expr>, ty: Type) {
+    /// Convenience getter to return the index for the core Float type
+    pub(crate) fn float(&self) -> Idx<Type> {
+        self.core.float
+    }
+
+    /// Convenience getter to return the index for the core Bool type
+    pub(crate) fn bool(&self) -> Idx<Type> {
+        self.core.bool
+    }
+
+    /// Convenience getter to return the index for the core String type
+    pub(crate) fn string(&self) -> Idx<Type> {
+        self.core.string
+    }
+
+    /// Convenience getter to return the index for the core Unit type
+    pub(crate) fn unit(&self) -> Idx<Type> {
+        self.core.unit
+    }
+
+    /// Convenience getter to return the index for the core Top type
+    pub(crate) fn top(&self) -> Idx<Type> {
+        self.core.top
+    }
+
+    /// Convenience getter to return the index for the core Bottom type
+    pub(crate) fn bottom(&self) -> Idx<Type> {
+        self.core.bottom
+    }
+
+    /// Convenience getter to return the index for the core Unknown type
+    pub(crate) fn unknown(&self) -> Idx<Type> {
+        self.core.unknown
+    }
+
+    /// Convenience getter to return the index for a sentinel error
+    pub(crate) fn error(&self) -> Idx<Type> {
+        self.core.error
+    }
+}
+
+impl TypeDatabase {
+    /// Returns the Type at the given index via cloning from the database.
+    ///
+    /// Panics if the index doesn't exist. An invalid index indicates
+    /// a bug in the compiler.
+    pub(crate) fn type_(&self, idx: Idx<Type>) -> Type {
+        self.types[idx].clone()
+    }
+
+    pub(crate) fn borrow_type(&self, idx: Idx<Type>) -> &Type {
+        &self.types[idx]
+    }
+
+    pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Idx<Type> {
+        self.expr_types[idx]
+    }
+
+    pub(super) fn set_expr_type(&mut self, idx: Idx<Expr>, ty: Idx<Type>) {
         self.expr_types.insert(idx, ty);
     }
 
-    pub(super) fn get_type_expr_type(&self, idx: Idx<TypeExpr>) -> Option<&Type> {
-        self.type_expr_types.get(idx)
+    pub(super) fn get_type_expr_type(&self, idx: Idx<TypeExpr>) -> Idx<Type> {
+        self.type_expr_types[idx]
     }
 
-    pub(super) fn set_type_expr_type(&mut self, idx: Idx<TypeExpr>, ty: Type) {
+    pub(super) fn set_type_expr_type(&mut self, idx: Idx<TypeExpr>, ty: Idx<Type>) {
         self.type_expr_types.insert(idx, ty);
     }
 
-    pub(super) fn get_local(&self, key: &LocalDefKey) -> Option<&Type> {
-        self.local_defs.get(key)
+    pub(super) fn get_value_symbol(&self, key: &ValueSymbol) -> Idx<Type> {
+        self.value_symbols[key]
     }
 
-    pub(super) fn set_local(&mut self, key: LocalDefKey, ty: Type) {
-        self.local_defs.insert(key, ty);
+    pub(super) fn insert_value_symbol(&mut self, key: ValueSymbol, ty: Idx<Type>) {
+        self.value_symbols.insert(key, ty);
     }
 
-    pub(super) fn get_local_type(&self, key: &LocalTypeDefKey) -> Option<&Type> {
-        self.local_type_defs.get(key)
+    pub(super) fn get_type_symbol(&self, key: &TypeSymbol) -> Idx<Type> {
+        self.type_symbols[key]
     }
 
-    pub(super) fn set_local_type(&mut self, key: LocalTypeDefKey, ty: Type) {
-        self.local_type_defs.insert(key, ty);
+    pub(super) fn insert_type_symbol(&mut self, key: TypeSymbol, ty: Idx<Type>) {
+        self.type_symbols.insert(key, ty);
     }
 }
 
-pub(crate) fn fmt_local_types(s: &mut String, results: &TypeDatabase, interner: &Interner) {
-    s.push('\n');
-    let mut locals: Vec<_> = results
-        .local_defs
-        .iter()
-        .map(|(key, ty)| (key.display(interner), ty.clone()))
-        .collect();
-    locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
-
-    for (name, ty) in locals.iter() {
-        s.push_str(name);
-        s.push_str(" : ");
-        s.push_str(&format!("{}\n", fmt_type(ty, interner)));
+// mutating functions
+impl TypeDatabase {
+    pub(super) fn alloc_type(&mut self, ty: Type) -> Idx<Type> {
+        self.types.alloc(ty)
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TypeDiagnostic {
-    pub variant: TypeDiagnosticVariant,
-    pub range: TextRange,
-}
-
-impl From<TypeDiagnostic> for Diagnostic {
-    fn from(value: TypeDiagnostic) -> Self {
-        Diagnostic::Type(value)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TypeDiagnosticVariant {
-    ArgsMismatch { expected: u32, actual: u32 },
-    BinaryMismatch { op: BinaryOp, lhs: Type, rhs: Type },
-    // TODO: better name "tried to call something that was not a function"
-    CalleeNotFunction { actual: Type },
-    CannotConvertIntoString { actual: Type },
-    Empty { expr: Idx<Expr> },
-    Incompatible { a: Type, b: Type },
-    NoOverloadFound { name: String },
-    TypeMismatch { expected: Type, actual: Type },
-    UndefinedLocal { name: String },
-    UndefinedFunction { name: String },
-    Undefined { name: LocalDefKey },
-}
-
-impl TypeDiagnostic {
-    pub fn message(&self) -> String {
-        format!("{:?}", self)
-    }
-}
-
-struct TypeResult {
-    ty: Type,
+pub(crate) struct TypeResult {
+    ty: Idx<Type>,
     diagnostics: Vec<TypeDiagnostic>,
 }
 
-impl TypeResult {
-    fn as_result(self) -> Result<Type, Vec<TypeDiagnostic>> {
-        if self.diagnostics.is_empty() {
-            Ok(self.ty)
+impl From<TypeResult> for Result<Idx<Type>, Vec<TypeDiagnostic>> {
+    fn from(value: TypeResult) -> Self {
+        if value.diagnostics.is_empty() {
+            Ok(value.ty)
         } else {
-            Err(self.diagnostics)
+            Err(value.diagnostics)
+        }
+    }
+}
+
+impl From<Idx<Type>> for TypeResult {
+    fn from(ty: Idx<Type>) -> Self {
+        TypeResult {
+            ty,
+            diagnostics: vec![],
+        }
+    }
+}
+
+impl TypeResult {
+    fn new(type_database: &TypeDatabase) -> Self {
+        Self {
+            ty: type_database.unknown(),
+            diagnostics: vec![],
         }
     }
 
-    fn unwrap(&self) -> &Type {
-        debug_assert!(self.diagnostics.is_empty());
-
-        &self.ty
+    fn from_diag(diagnostic: TypeDiagnostic, error_ty: Idx<Type>) -> Self {
+        Self {
+            ty: error_ty,
+            diagnostics: vec![diagnostic],
+        }
     }
+
+    pub fn is_ok(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
+    fn push_diag(&mut self, diagnostic: TypeDiagnostic) {
+        self.diagnostics.push(diagnostic)
+    }
+
+    pub fn push_result<T>(&mut self, result: Result<T, Vec<TypeDiagnostic>>) {
+        if let Err(mut diagnostics) = result {
+            self.diagnostics.append(&mut diagnostics);
+        }
+    }
+
+    pub fn chain(&mut self, mut other: TypeResult) {
+        if other.diagnostics.is_empty() {
+            self.ty = other.ty;
+        } else {
+            self.diagnostics.append(&mut other.diagnostics);
+        }
+    }
+
+    pub fn diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics.into_iter().map(|d| d.into()).collect()
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CoreTypes {
+    /// Sentinel for type has not yet been inferred
+    unknown: Idx<Type>,
+
+    /// Sentinel for error occurred during type inference
+    error: Idx<Type>,
+
+    /// Top type, all values are inhabitants
+    top: Idx<Type>,
+
+    /// Bottom type, has no inhabitants
+    bottom: Idx<Type>,
+
+    /// Unit type, has only one inhabitant
+    unit: Idx<Type>,
+
+    /// Boolean, true or false
+    bool: Idx<Type>,
+
+    /// Floating point number
+    float: Idx<Type>,
+
+    /// Integer number
+    int: Idx<Type>,
+
+    /// UTF-8 encoded string
+    string: Idx<Type>,
 }

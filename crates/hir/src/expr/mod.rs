@@ -1,12 +1,13 @@
+mod display;
+
 use std::fmt;
 
 use la_arena::Idx;
 
-use crate::interner::{Interner, Key};
+use crate::interner::Key;
 use crate::type_expr::TypeExpr;
-use crate::COMPILER_BRAND;
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub enum Expr {
     /// A missing expression from the parse tree
     #[default]
@@ -43,9 +44,9 @@ pub enum Expr {
 
     Call(CallExpr),
 
-    LocalRef(LocalRefExpr),
+    VarRef(VarRefExpr),
 
-    UnresolvedLocalRef {
+    UnresolvedVarRef {
         key: Key,
     },
 
@@ -57,7 +58,8 @@ pub enum Expr {
     ///
     Function(FunctionExpr),
 
-    LocalDef(LocalDefExpr),
+    /// Variable definition
+    VarDef(VarDefExpr),
 
     // TODO: should be Match?
     If(IfExpr),
@@ -74,13 +76,13 @@ pub enum Expr {
 // convenience constructors
 // TODO: may remove
 impl Expr {
-    pub(crate) fn local_def(
-        key: LocalDefKey,
+    pub(crate) fn variable_def(
+        key: ValueSymbol,
         value: Idx<Expr>,
         type_annotation: Option<Idx<TypeExpr>>,
     ) -> Self {
-        Self::LocalDef(LocalDefExpr {
-            key,
+        Self::VarDef(VarDefExpr {
+            symbol: key,
             value,
             type_annotation,
         })
@@ -98,59 +100,58 @@ impl Expr {
 /// Local definition
 ///
 /// Defines a new variable in a given scope.
-#[derive(Debug, PartialEq, Eq)]
-pub struct LocalDefExpr {
-    pub key: LocalDefKey,
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct VarDefExpr {
+    /// Unique symbol for this value in this module
+    pub symbol: ValueSymbol,
 
-    /// Expression value assigned to the variable
+    /// Expression value of the RHS of the assignment
     pub value: Idx<Expr>,
 
     /// Optional type annotation
     pub type_annotation: Option<Idx<TypeExpr>>,
 }
 
+/// Unique identifier for a symbol that lives in the "value" universe
+///
+/// Examples of symbols are variable names, function parameter names, etc.
+///
+/// See also [TypeSymbol] for the analog that lives in the "type" universe
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LocalDefKey {
-    // name: Key,
-    pub name: Key,
+pub struct ValueSymbol {
+    /// Unique id of this symbol within this module
+    pub symbol_id: u32,
 
-    /// Unique number for this Name within this Context
-    idx: u32,
+    /// Unique id of the module where this symbol resides
+    pub module_id: u32,
 }
 
-impl LocalDefKey {
-    pub fn display(&self, interner: &Interner) -> String {
-        let name = interner.lookup(self.name);
-        let idx = self.idx;
-        format!("{name}{COMPILER_BRAND}{idx}",)
-    }
-
-    pub(crate) fn name(&self) -> Key {
-        self.name
-    }
-}
-
-impl From<(Key, u32)> for LocalDefKey {
-    fn from(value: (Key, u32)) -> Self {
+impl ValueSymbol {
+    pub fn new(module_id: u32, symbol_id: u32) -> Self {
         Self {
-            name: value.0,
-            idx: value.1,
+            module_id,
+            symbol_id,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct LocalRefExpr {
-    pub key: LocalDefKey,
+/// Reference to a variable that lives in the "value" universe
+#[derive(Debug, PartialEq, Clone)]
+pub struct VarRefExpr {
+    /// Interned string of the variable name
+    pub key: Key,
+
+    /// Unique identifier for the value symbol
+    pub symbol: ValueSymbol,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ArrayLiteralExpr {
     Empty,
     NonEmpty { elements: Vec<Idx<Expr>> },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 /// Binary expression
 pub struct BinaryExpr {
     pub op: BinaryOp,
@@ -158,18 +159,18 @@ pub struct BinaryExpr {
     pub rhs: Idx<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub expr: Idx<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BlockExpr {
     pub exprs: Vec<Idx<Expr>>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CallExpr {
     /// Expression that is being called as a function
     pub callee: Idx<Expr>,
@@ -181,7 +182,7 @@ pub struct CallExpr {
     pub args: Vec<Idx<Expr>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionExpr {
     /// Parameters to the function
     pub params: Vec<FunctionParam>,
@@ -193,11 +194,11 @@ pub struct FunctionExpr {
     pub name: Option<Key>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionParam {
-    pub name: LocalDefKey,
+    pub name: ValueSymbol,
 
-    pub ty: Option<Idx<TypeExpr>>,
+    pub annotation: Option<Idx<TypeExpr>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -209,7 +210,7 @@ pub struct ForInLoopStmt {
     pub block: Idx<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IfExpr {
     /// Condition to check before branching
     pub condition: Idx<Expr>,
@@ -221,14 +222,14 @@ pub struct IfExpr {
     pub else_branch: Option<Idx<Expr>>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PathExpr {
     pub subject: Idx<Expr>,
 
     pub member: Idx<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IndexIntExpr {
     pub subject: Idx<Expr>,
 
@@ -286,7 +287,7 @@ impl fmt::Display for BinaryOp {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum UnaryOp {
     Neg,
     Not,

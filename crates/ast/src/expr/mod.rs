@@ -160,16 +160,6 @@ impl Block {
         self.0.children().filter_map(Expr::cast)
     }
 
-    pub fn last_expr(&self) -> Option<Expr> {
-        let children = self.0.children();
-
-        for child in children {
-            println!("{child}")
-        }
-
-        None
-    }
-
     pub fn range(&self) -> TextRange {
         self.0.text_range()
     }

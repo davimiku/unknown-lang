@@ -1,430 +1,313 @@
+//! Type inference algorithm
 //!
-//! Type inference
+//! Starting with the root expression to infer, matches the variant of
+//! the expression and recursively calls infer when necessary. Base cases are
+//! for value literals and types that have already been inferred.
 
-use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
 
-use super::builtins::{get_builtin_functions, BuiltinFunctionSignature, BuiltinSignatures};
-use super::{
-    check_expr, is_subtype, FunctionType, Type, TypeDatabase, TypeDiagnostic, TypeDiagnosticVariant,
-};
-use crate::database::Database;
+use super::check::is_subtype;
+use super::widen::widen_to_scalar;
+use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, FunctionParam, IfExpr,
-    IndexIntExpr, LocalDefExpr, LocalRefExpr, UnaryExpr, UnaryOp,
+    IndexIntExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
-use crate::type_expr::{LocalTypeRefExpr, LocalTypeRefName, TypeExpr};
-use crate::{ArrayType, CallExpr, Interner};
+use crate::type_expr::{TypeExpr, TypeRefExpr};
+use crate::{ArrayType, CallExpr, Context, FunctionType};
 
-// TODO: needs to have Vec<TypeDiagnostic>
-//
-// TODO: make a newtype with a monadic bind/chain ("and_then")
-// signature that concatenates the internal Vec<TypeDiagnostic> so it can be chained/collected
-type InferResult = Result<Type, TypeDiagnostic>;
-
-struct InferResult2(Result<Type, TypeDiagnostic>);
-
-pub(crate) fn infer_expr(
-    expr_idx: Idx<Expr>,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> InferResult {
-    if let Some(already_inferred_type) = type_database.expr_types.get(expr_idx) {
-        return Ok(already_inferred_type.clone());
+pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult {
+    if let Some(already_inferred_type) = context.type_database.expr_types.get(expr_idx) {
+        return (*already_inferred_type).into();
     }
 
-    let (expr, range) = database.expr(expr_idx);
-    let builtin_signatures = get_builtin_functions();
+    let mut result = TypeResult::new(&context.type_database);
+    let (expr, range) = context.database.expr(expr_idx);
 
-    let inferred_result = match expr {
-        Expr::Empty => Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::Empty { expr: expr_idx },
-            range: *range,
-        }),
+    let expr = expr.clone();
+    let range = *range;
+
+    // each branch should mutate `result`
+    // TODO: more ergonomic if branches return a value or is this fine?
+    match expr {
+        Expr::Empty => {
+            result.push_diag(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::Empty { expr: expr_idx },
+                range,
+            });
+        }
         Expr::Statement(inner_idx) => {
-            // TODO: collect error but still return Unit for the statement itself
-            infer_expr(*inner_idx, type_database, database, interner)?;
-
-            Ok(Type::Unit)
+            result.chain(infer_expr(inner_idx, context));
+            result.ty = context.type_database.unit();
         }
         Expr::ReturnStatement(return_value) => {
-            // TODO: not `?` operator, add to diagnostics but ReturnStatement
-            // still overall has a type of Bottom
-            infer_expr(*return_value, type_database, database, interner)?;
-
-            Ok(Type::Bottom)
+            result.chain(infer_expr(return_value, context));
+            result.ty = context.type_database.bottom();
         }
 
-        Expr::BoolLiteral(b) => infer_bool_literal(*b, type_database, expr_idx),
-        Expr::FloatLiteral(f) => infer_float_literal(*f, type_database, expr_idx),
-        Expr::IntLiteral(i) => infer_int_literal(*i, type_database, expr_idx),
-        Expr::StringLiteral(key) => infer_string_literal(*key, type_database, expr_idx),
-        Expr::ArrayLiteral(array_expr) => {
-            infer_array_literal(array_expr, type_database, database, interner)
-        }
+        Expr::BoolLiteral(b) => result.chain(infer_bool_literal(expr_idx, b, context)),
+        Expr::FloatLiteral(f) => result.chain(infer_float_literal(expr_idx, f, context)),
+        Expr::IntLiteral(i) => result.chain(infer_int_literal(expr_idx, i, context)),
+        Expr::StringLiteral(key) => result.chain(infer_string_literal(expr_idx, key, context)),
+        Expr::ArrayLiteral(array_expr) => result.chain(infer_array_literal(&array_expr, context)),
 
-        Expr::LocalRef(local_ref) => infer_local_ref(local_ref, type_database, interner),
-        Expr::UnresolvedLocalRef { key } => Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::UndefinedLocal {
-                name: interner.lookup(*key).to_owned(),
-            },
-            range: *range,
+        Expr::VarRef(var_ref) => result.chain(infer_var_ref(&var_ref, context)),
+        Expr::UnresolvedVarRef { key } => result.push_diag(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::UnresolvedLocalRef { key },
+            range,
         }),
 
-        Expr::Binary(expr) => infer_binary(expr, type_database, database, interner),
-        Expr::Unary(expr) => infer_unary(expr, type_database, database, interner),
-        Expr::EmptyBlock => Ok(Type::Unit),
-        Expr::Block(block) => infer_block(expr_idx, block, type_database, database, interner),
-        Expr::Call(expr) => infer_call(
-            expr_idx,
-            expr,
-            builtin_signatures,
-            type_database,
-            database,
-            interner,
-        ),
-        Expr::Function(function) => infer_function(function, type_database, database, interner),
-        Expr::LocalDef(local_def) => infer_local_def(local_def, type_database, database, interner),
-        Expr::If(if_expr) => infer_if_expr(if_expr, type_database, database, interner),
+        Expr::Binary(expr) => result.chain(infer_binary(&expr, context)),
+        Expr::Unary(expr) => result.chain(infer_unary(expr_idx, &expr, context)),
+        Expr::EmptyBlock => result.ty = context.type_database.unit(),
+        Expr::Block(block) => result.chain(infer_block(&block, context)),
+        Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
+        Expr::Function(function) => result.chain(infer_function(&function, context)),
+        Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
+        Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Path(_) => todo!(),
-        Expr::IndexInt(index_expr) => {
-            infer_index_int_expr(index_expr, type_database, database, interner)
-        }
+        Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
 
-    // TODO: replace with Result::tap?
-    if let Ok(ref inferred_type) = inferred_result {
-        type_database.set_expr_type(expr_idx, inferred_type.clone());
-    }
-
-    inferred_result
+    context.type_database.set_expr_type(expr_idx, result.ty);
+    result
 }
 
-fn infer_type_expr(
-    idx: Idx<TypeExpr>,
-    type_expr: &TypeExpr,
-    type_database: &mut TypeDatabase,
-) -> Type {
-    let inferred_type = match type_expr {
-        TypeExpr::BoolLiteral(b) => Type::BoolLiteral(*b),
-        TypeExpr::FloatLiteral(f) => Type::FloatLiteral(*f),
-        TypeExpr::IntLiteral(i) => Type::IntLiteral(*i),
-        TypeExpr::StringLiteral(s) => Type::StringLiteral(*s),
+/// Infers a type, and if it is a literal type, then widen to the
+/// corresponding scalar type.
+///
+/// ex. StringLiteral("hello") is widened to String
+fn infer_expr_widened(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult {
+    let result = infer_expr(expr_idx, context);
+    if result.is_ok() {
+        widen_to_scalar(result.ty, context).into()
+    } else {
+        result
+    }
+}
+
+fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
+    let (type_expr, _range) = context.database.type_expr(idx);
+    let result: TypeResult = match type_expr {
+        TypeExpr::BoolLiteral(b) => context
+            .type_database
+            .alloc_type(Type::BoolLiteral(*b))
+            .into(),
+        TypeExpr::FloatLiteral(f) => context
+            .type_database
+            .alloc_type(Type::FloatLiteral(*f))
+            .into(),
+        TypeExpr::IntLiteral(i) => context
+            .type_database
+            .alloc_type(Type::IntLiteral(*i))
+            .into(),
+        TypeExpr::StringLiteral(s) => context
+            .type_database
+            .alloc_type(Type::StringLiteral(*s))
+            .into(),
 
         TypeExpr::Binary(_) => todo!(),
         TypeExpr::Unary(_) => todo!(),
 
         TypeExpr::Call(_) => todo!(),
-        TypeExpr::LocalRef(local_ref) => {
-            let LocalTypeRefExpr { name } = local_ref;
-            match name {
-                LocalTypeRefName::Resolved(key) => type_database
-                    .get_local_type(key)
-                    .cloned()
-                    .unwrap_or(Type::Error),
-                LocalTypeRefName::Unresolved(_) => Type::Error,
-            }
+        TypeExpr::VarRef(TypeRefExpr { symbol, .. }) => {
+            context.type_database.get_type_symbol(symbol).into()
         }
-        TypeExpr::LocalDef(_) => Type::Error,
+        TypeExpr::UnresolvedVarRef { .. } => todo!(),
+        TypeExpr::LocalDef(_) => todo!(),
 
-        TypeExpr::Empty => Type::Undetermined,
+        TypeExpr::Empty => todo!(),
     };
-    type_database.set_type_expr_type(idx, inferred_type.clone());
+    context.type_database.set_type_expr_type(idx, result.ty);
 
-    inferred_type
+    result
 }
 
-fn infer_local_ref(
-    expr: &LocalRefExpr,
-    type_database: &mut TypeDatabase,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    let key = expr.key;
-    type_database
-        .local_defs
-        .get(&key)
-        .ok_or(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::UndefinedLocal {
-                name: interner.lookup(key.name).to_owned(),
-            },
+fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
+    let name = expr.symbol;
+    let local_ty = context.type_database.value_symbols.get(&name);
+
+    let mut result = TypeResult::new(&context.type_database);
+    if let Some(ty) = local_ty {
+        result.ty = *ty;
+    } else {
+        result.push_diag(TypeDiagnostic {
+            variant: TypeDiagnosticVariant::UndefinedSymbol { name },
             range: TextRange::default(),
-        })
-        .cloned()
-}
-
-fn infer_function(
-    function: &FunctionExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    let FunctionExpr { params, body, name } = function;
-
-    // TODO: this really needs to collect the Err(s) into a Vec
-    let params: Result<Vec<Type>, TypeDiagnostic> = params
-        .iter()
-        .map(|param| infer_function_param(param, type_database, database))
-        .collect();
-
-    let return_ty = infer_expr(*body, type_database, database, interner);
-
-    match (params, return_ty) {
-        (Ok(params), Ok(return_ty)) => Ok(Type::Function(FunctionType {
-            params,
-            return_ty: Box::new(return_ty),
-        })),
-        (Ok(_), Err(err)) | (Err(err), Ok(_)) => Err(err),
-        (Err(param_err), Err(body_err)) => {
-            todo!();
-        }
+        });
     }
+
+    result
 }
 
-fn infer_function_param(
-    param: &FunctionParam,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-) -> Result<Type, TypeDiagnostic> {
-    let name = param.name;
-    let ty = param.ty;
+fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult {
+    let FunctionExpr { params, body, .. } = function;
+    let mut function_type = FunctionType {
+        params: vec![],
+        return_ty: context.type_database.unknown(),
+    };
 
-    ty.map(|idx| {
-        let (type_expr, range) = database.type_expr(idx);
-        let ty = infer_type_expr(idx, type_expr, type_database);
+    let mut result = TypeResult::new(&context.type_database);
 
-        type_database.local_defs.insert(name, ty.clone());
-        ty
-    })
+    for param in params {
+        result.chain(infer_function_param(param, context));
+        function_type.params.push(result.ty);
+    }
+
+    let return_type = infer_expr(*body, context);
+    result.chain(return_type);
+    function_type.return_ty = result.ty;
+
+    result.ty = context
+        .type_database
+        .alloc_type(Type::Function(function_type));
+    result
+}
+
+fn infer_function_param(param: &FunctionParam, context: &mut Context) -> TypeResult {
+    let FunctionParam { name, annotation } = param;
+
+    if let Some(idx) = annotation {
+        let param_type = infer_type_expr(*idx, context);
+        context
+            .type_database
+            .value_symbols
+            .insert(*name, param_type.ty);
+
+        param_type
+    } else {
+        context.type_database.unknown().into()
+    }
+
     // TODO: parameter types can be omitted when they could be inferred in another way
     // ex.
     // ```
     // type MyFuncType = String -> Int
     // let f: MyFuncType = s -> { /* ... */ }
     // ```
-    // here, `s` can be inferred as `String` because we know the type of `f`
+    // here, `s` should be inferred as `String` because we know the type of `f`
     // or is this not handled here, and should be handled in "check"?
-    .ok_or(TypeDiagnostic {
-        variant: TypeDiagnosticVariant::Undefined { name },
-        range: Default::default(),
-    })
 }
 
-fn infer_local_def(
-    local_def: &LocalDefExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    let LocalDefExpr {
-        key,
+fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
+    let VarDefExpr {
+        symbol: key,
         value,
         type_annotation,
-    } = local_def;
-    if let Some(idx) = type_annotation {
-        let (annotation, range) = database.type_expr(*idx);
-        let expected = infer_type_expr(*idx, annotation, type_database);
+    } = var_def;
 
-        match check_expr(*value, &expected, type_database, database, interner) {
+    let mut result = TypeResult::new(&context.type_database);
+
+    if let Some(annotation_idx) = type_annotation {
+        let expected = infer_type_expr(*annotation_idx, context);
+
+        // FIXME: doesn't work when `expected` itself errors?
+        match check_expr(*value, expected.ty, context) {
             Ok(_) => {
-                type_database.local_defs.insert(*key, expected.clone()); // TODO: use .tap for side-effect
-                Ok(Type::Unit)
+                context
+                    .type_database
+                    .value_symbols
+                    .insert(*key, expected.ty);
             }
-            Err(err) => Err(err),
+            Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
         }
     } else {
-        match infer_expr(*value, type_database, database, interner) {
-            Ok(inferred) => {
-                type_database.local_defs.insert(*key, inferred.clone()); // TODO: use .tap for side-effect
-                Ok(Type::Unit)
-            }
-            Err(err) => Err(err),
+        result.chain(infer_expr(*value, context));
+        if result.is_ok() {
+            context.type_database.value_symbols.insert(*key, result.ty);
         }
     }
+    // The full definition expression still returns Unit no matter what
+    result.ty = context.type_database.unit();
+
+    result
 }
 
-fn infer_block(
-    expr_idx: Idx<Expr>,
-    block: &BlockExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    // TODO: collect all TypeDiagnostics
-    let expr_types: Result<Vec<Type>, TypeDiagnostic> = block
-        .exprs
-        .iter()
-        .map(|arg| infer_expr(*arg, type_database, database, interner))
-        .collect();
-    let expr_types = expr_types?;
-    let tail_expr = block.exprs.last().copied();
-    let tail_type = tail_expr.and_then(|tail_expr| {
-        let (tail_expr, ..) = database.expr(tail_expr);
-        match tail_expr {
-            Expr::Statement(inner) => type_database.get_expr_type(*inner),
-            Expr::LocalDef(_) => Some(&Type::Unit),
-            e => {
-                dbg!(e);
-                unreachable!();
-            }
+fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+    let BlockExpr { exprs } = block;
+
+    for idx in exprs {
+        result.chain(infer_expr(*idx, context));
+    }
+
+    // invariant: BlockExpr is guaranteed to have at least one expression
+    // empty blocks are lowered as the `EmptyBlock` variant
+    let tail_expr = *block.exprs.last().unwrap();
+    let (tail_expr, ..) = context.database.expr(tail_expr);
+    result.ty = match tail_expr {
+        Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
+        Expr::VarDef(_) => context.type_database.unit(),
+        e => {
+            dbg!(e);
+            unreachable!();
         }
-    });
+    };
 
-    Ok(tail_type.cloned().unwrap_or(Type::Unit))
+    result
 }
 
-fn infer_call(
-    expr_idx: Idx<Expr>,
-    expr: &CallExpr,
-    builtin_signatures: BuiltinSignatures,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    // TODO: code clean-up - logic is too long, duplication
-    let CallExpr {
-        callee,
-        callee_path,
-        args,
-    } = expr;
+fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> TypeResult {
+    let range = context.database.range_of_expr(expr_idx);
+    let CallExpr { callee, args, .. } = expr;
+    let mut result = TypeResult::new(&context.type_database);
 
-    let (callee_expr, callee_range) = database.expr(*callee);
-    let callee_type = infer_expr(*callee, type_database, database, interner)?;
+    result.chain(infer_expr(*callee, context));
 
-    if let Type::Function(func_type) = callee_type {
-        let params = func_type.params;
+    if let Type::Function(FunctionType { params, return_ty }) =
+        context.type_database.type_(result.ty)
+    {
         if args.len() != params.len() {
-            return Err(TypeDiagnostic {
-                variant: TypeDiagnosticVariant::ArgsMismatch {
-                    expected: params.len() as u32,
-                    actual: args.len() as u32,
-                },
-                range: *callee_range,
-            });
+            result.push_diag(TypeDiagnostic::num_args_mismatch(
+                params.len(),
+                args.len(),
+                range,
+            ));
         }
         for (arg, param) in args.iter().zip(params) {
-            check_expr(*arg, &param, type_database, database, interner)?
+            result.push_result(check_expr(*arg, param, context))
         }
 
-        return Ok(*func_type.return_ty);
+        result.ty = return_ty;
     } else {
-        return Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::CalleeNotFunction {
-                actual: callee_type,
-            },
-            range: database.range_of_expr(*callee),
-        });
+        result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
+        result.ty = context.type_database.error()
     }
-
-    // TODO: homogenize this by injecting builtins into the primordial scope
-    // let builtin_signature = builtin_signatures.get(callee_path.as_str());
-    // match builtin_signature {
-    //     Some(signatures) => {
-    //         infer_builtin_call(callee_path, args, signatures, type_database, database)
-    //     }
-    //     // TODO: is this possible - will we already check in name resolution?
-    //     None => Err(TypeDiagnostic {
-    //         variant: TypeDiagnosticVariant::Undefined { name: *callee_expr },
-    //         range: Default::default(),
-    //     }),
-    // }
+    result
 }
 
-fn infer_builtin_call(
-    name: &str,
-    call_args: &Vec<Idx<Expr>>,
-    overloads: &Vec<BuiltinFunctionSignature>,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
-    let call_arg_types = call_args
-        .iter()
-        .map(|arg| infer_expr(*arg, type_database, database, interner).unwrap())
-        .collect_vec();
-    for overload in overloads {
-        // TODO: special-case for length 1 to provide a better diagnostic?
-        if overload.arg_types.len() == call_args.len() {
-            let overload_is_match = overload
-                .arg_types
-                .iter()
-                .zip(&call_arg_types)
-                .all(|(expected, actual)| is_subtype(actual, expected));
+fn infer_bool_literal(idx: Idx<Expr>, b: bool, context: &mut Context) -> TypeResult {
+    let inferred = Type::BoolLiteral(b);
+    let inferred = context.type_database.alloc_type(inferred);
+    context.type_database.set_expr_type(idx, inferred);
 
-            if overload_is_match {
-                return Ok(overload.return_type.clone());
-            }
-        }
-    }
-    let name = name.to_owned();
-    Err(TypeDiagnostic {
-        variant: TypeDiagnosticVariant::NoOverloadFound { name },
-        range: Default::default(),
-    })
+    inferred.into()
 }
 
-fn infer_bool_literal(
-    b: bool,
-    type_database: &mut TypeDatabase,
-    expr_idx: Idx<Expr>,
-) -> Result<Type, TypeDiagnostic> {
-    let inferred_type = Type::BoolLiteral(b);
-    type_database.set_expr_type(expr_idx, inferred_type.clone());
+fn infer_float_literal(idx: Idx<Expr>, f: f64, context: &mut Context) -> TypeResult {
+    let inferred = Type::FloatLiteral(f);
+    let inferred = context.type_database.alloc_type(inferred);
+    context.type_database.set_expr_type(idx, inferred);
 
-    Ok(inferred_type)
+    inferred.into()
 }
 
-fn infer_float_literal(
-    f: f64,
-    type_database: &mut TypeDatabase,
-    expr_idx: Idx<Expr>,
-) -> Result<Type, TypeDiagnostic> {
-    let inferred_type = Type::FloatLiteral(f);
-    type_database.set_expr_type(expr_idx, inferred_type.clone());
+fn infer_int_literal(idx: Idx<Expr>, i: i64, context: &mut Context) -> TypeResult {
+    let inferred = Type::IntLiteral(i);
+    let inferred = context.type_database.alloc_type(inferred);
+    context.type_database.set_expr_type(idx, inferred);
 
-    Ok(inferred_type)
+    inferred.into()
 }
 
-fn infer_int_literal(
-    i: i64,
-    type_database: &mut TypeDatabase,
-    expr_idx: Idx<Expr>,
-) -> Result<Type, TypeDiagnostic> {
-    let inferred_type = Type::IntLiteral(i);
-    type_database.set_expr_type(expr_idx, inferred_type.clone());
+fn infer_string_literal(idx: Idx<Expr>, key: Key, context: &mut Context) -> TypeResult {
+    let inferred = Type::StringLiteral(key);
+    let inferred = context.type_database.alloc_type(inferred);
+    context.type_database.set_expr_type(idx, inferred);
 
-    Ok(inferred_type)
-}
-
-fn infer_string_literal(
-    key: Key,
-    type_database: &mut TypeDatabase,
-    expr_idx: Idx<Expr>,
-) -> Result<Type, TypeDiagnostic> {
-    let inferred_type = Type::StringLiteral(key);
-    type_database.set_expr_type(expr_idx, inferred_type.clone());
-
-    Ok(inferred_type)
-}
-
-/// Given a Type, if it is a literal then widen to the corresponding scalar.
-/// Otherwise return the same Type.
-///
-/// This is used to handle the special/builtin subtype nature of the scalars
-fn widen_to_scalar(ty: Type) -> Type {
-    use Type as T;
-    match ty {
-        T::BoolLiteral(_) | T::Bool => T::Bool,
-        T::FloatLiteral(_) | T::Float => T::Float,
-        T::IntLiteral(_) | T::Int => T::Int,
-        T::StringLiteral(_) | T::String => T::String,
-
-        T::Array(ArrayType { of }) => T::array_of(widen_to_scalar(*of)),
-
-        t => t,
-    }
+    inferred.into()
 }
 
 /// Infers the type for an ArrayLiteral
@@ -432,114 +315,108 @@ fn widen_to_scalar(ty: Type) -> Type {
 /// Loops through the items and infers the types for each of those.
 /// The first (non-error) inferred type becomes the expected type for
 /// the rest of the elements.
-fn infer_array_literal(
-    array_expr: &ArrayLiteralExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> Result<Type, TypeDiagnostic> {
+fn infer_array_literal(array_expr: &ArrayLiteralExpr, context: &mut Context) -> TypeResult {
     match array_expr {
-        ArrayLiteralExpr::Empty => Ok(Type::array_of(Type::Bottom)),
+        ArrayLiteralExpr::Empty => context
+            .type_database
+            .alloc_type(Type::array_of(context.type_database.bottom()))
+            .into(),
         ArrayLiteralExpr::NonEmpty { elements } => {
-            let mut inner_type: Option<Type> = None;
-            for idx in elements.iter().rev() {
+            let mut result = TypeResult::new(&context.type_database);
+            let mut inner_type: Option<Idx<Type>> = None;
+            for idx in elements {
                 if let Some(ref inner_type) = inner_type {
-                    // TODO: collect error
-                    check_expr(*idx, inner_type, type_database, database, interner);
+                    result.push_result(check_expr(*idx, *inner_type, context));
                 } else {
-                    let item_ty = infer_expr(*idx, type_database, database, interner);
-                    if let Ok(ref item_ty) = item_ty {
-                        inner_type = Some(widen_to_scalar(item_ty.clone()));
-                    } else {
-                        // TODO: collect error
+                    result.chain(infer_expr(*idx, context));
+                    if result.is_ok() {
+                        inner_type = Some(widen_to_scalar(result.ty, context));
                     }
                 }
             }
-            Ok(Type::array_of(inner_type.unwrap_or(Type::Bottom)))
+
+            let inner = inner_type.unwrap_or(context.type_database.error());
+
+            result.chain(
+                context
+                    .type_database
+                    .alloc_type(Type::array_of(inner))
+                    .into(),
+            );
+            result
         }
     }
 }
 
-fn infer_index_int_expr(
-    index_expr: &IndexIntExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> InferResult {
-    let IndexIntExpr { subject, index } = index_expr;
+fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> TypeResult {
+    let IndexIntExpr { subject, .. } = index_expr;
 
-    match infer_expr(*subject, type_database, database, interner) {
-        Ok(ty) => match ty {
-            Type::Array(arr_ty) => Ok(*arr_ty.of.clone()),
+    let mut result = infer_expr(*subject, context);
 
-            _ => todo!(),
-        },
-        Err(_) => todo!(),
+    if result.is_ok() {
+        match context.type_database.type_(result.ty) {
+            // TODO: the index expr needs to be an Int also
+            Type::Array(ArrayType { of }) => result.ty = of,
+
+            _ => {
+                // TODO: add diagnostic
+                // TODO: mutate result.ty to error
+                todo!()
+            }
+        }
     }
+    result
 }
 
-fn infer_if_expr(
-    if_expr: &IfExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> InferResult {
+fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
     let IfExpr {
         condition,
         then_branch,
         else_branch,
     } = if_expr;
 
-    // TODO: collect all errors, don't short-circuit
-    let condition_ty = infer_expr(*condition, type_database, database, interner)?;
-    if !is_subtype(&condition_ty, &Type::Bool) {
-        return Err(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::TypeMismatch {
-                expected: Type::Bool,
-                actual: condition_ty,
-            },
-            range: database.range_of_expr(*condition),
-        });
-    }
-    let then_type = infer_expr(*then_branch, type_database, database, interner)?;
-    if let Some(else_branch) = else_branch {
-        let else_type = infer_expr(*else_branch, type_database, database, interner)?;
+    let mut result = TypeResult::new(&context.type_database);
 
-        infer_compatible_type(&then_type, &else_type).ok_or(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::Incompatible {
-                a: then_type,
-                b: else_type,
-            },
-            range: Default::default(),
-        })
+    result.push_result(check_expr(
+        *condition,
+        context.type_database.bool(),
+        context,
+    ));
+
+    result.chain(infer_expr_widened(*then_branch, context));
+
+    if let Some(else_branch) = else_branch {
+        result.push_result(check_expr(*else_branch, result.ty, context));
     } else {
-        Ok(Type::Unit)
+        result.ty = context.type_database.unit();
     }
+    result
 }
 
-fn infer_unary(
-    expr: &UnaryExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> InferResult {
+fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> TypeResult {
     let UnaryExpr {
         op,
         expr: inner_idx,
     } = expr;
 
-    let inner_type = infer_expr(*inner_idx, type_database, database, interner)?;
+    let mut result = infer_expr(*inner_idx, context);
+    let inner_type = context.type_database.type_(result.ty);
+
     match op {
         UnaryOp::Neg => todo!(),
-        UnaryOp::Not => {
-            check_expr(*inner_idx, &Type::Bool, type_database, database, interner).map(|_| {
-                match inner_type {
-                    Type::Bool => Type::Bool,
-                    Type::BoolLiteral(b) => Type::BoolLiteral(!b),
-                    _ => unreachable!(),
-                }
-            })
-        }
+        UnaryOp::Not => result.chain(match inner_type {
+            Type::BoolLiteral(b) => infer_bool_literal(expr_idx, !b, context),
+            Type::Bool => context.type_database.bool().into(),
+
+            _ => TypeResult::from_diag(
+                TypeDiagnostic::mismatch(
+                    context.type_database.bool(),
+                    result.ty,
+                    TextRange::default(),
+                ),
+                context.type_database.error(),
+            ),
+        }),
 
         UnaryOp::IntoString => match inner_type {
             Type::Unit
@@ -552,162 +429,141 @@ fn infer_unary(
             | Type::Int
             // | Type::Function(_)
             // | Type::Array(_) 
-            | Type::String=> Ok(Type::String),
+            | Type::String=> result.ty = context.type_database.string(),
 
-            _ => Err(TypeDiagnostic {
-                variant: TypeDiagnosticVariant::CannotConvertIntoString { actual: inner_type },
+            _ => result.push_diag(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::CannotConvertIntoString { actual: result.ty },
                 range: TextRange::default(),
-            }),
+        }),
         },
     }
+    result
 }
 
-fn infer_binary(
-    expr: &BinaryExpr,
-    type_database: &mut TypeDatabase,
-    database: &Database,
-    interner: &Interner,
-) -> InferResult {
-    // TODO: collect both errors, not early return
-    // let (lhs, lhs_range) = database.expr(expr.lhs);
-    let lhs_type = infer_expr(expr.lhs, type_database, database, interner)?;
-    // let (rhs, rhs_range) = database.expr(expr.rhs);
-    let rhs_type = infer_expr(expr.rhs, type_database, database, interner)?;
+// TODO: this should go away when operators are treated like a function
+//
+// Codegen will be responsible for lowering (Int + Int) to a specialized instruction
+// vs. (UserType + UserType) that's lowered to a function call.
+fn infer_binary(expr: &BinaryExpr, context: &mut Context) -> TypeResult {
+    // FIXME: pass in range
+    let range = TextRange::default();
+    let mut result = TypeResult::new(&context.type_database);
+
+    let lhs_result = infer_expr(expr.lhs, context);
+    let lhs_ty = lhs_result.ty;
+    result.chain(lhs_result);
+
+    let rhs_result = infer_expr(expr.rhs, context);
+    let rhs_ty = rhs_result.ty;
+    result.chain(rhs_result);
 
     use BinaryOp::*;
     match expr.op {
-        Add => infer_binary_add(&lhs_type, &rhs_type),
-        Concat => infer_binary_concat(&lhs_type, &rhs_type),
+        Add => infer_binary_add(lhs_ty, rhs_ty, range, context),
+        Concat => infer_binary_concat(lhs_ty, rhs_ty, range, context),
         Sub => todo!(),
         Mul => todo!(),
         Div => todo!(),
         Rem => todo!(),
         Exp => todo!(),
         Path => todo!(),
-        Eq | Ne => infer_binary_equality(&lhs_type, &rhs_type, expr.op),
+        Eq | Ne => infer_binary_equality(lhs_ty, rhs_ty, expr.op, context),
     }
-    .map_err(|variant| TypeDiagnostic {
-        variant,
-        range: TextRange::default(),
-    })
 }
 
-fn infer_binary_add(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
-    use Type as T;
-    Ok(match (lhs_type, rhs_type) {
-        // TODO: add overflow check
-        (T::IntLiteral(a), T::IntLiteral(b)) => T::IntLiteral(a + b),
-        (T::IntLiteral(_), T::Int) | (T::Int, T::IntLiteral(_)) | (T::Int, T::Int) => T::Int,
-        // TODO: add overflow check
-        (T::FloatLiteral(a), T::FloatLiteral(b)) => T::FloatLiteral(a + b),
-        (T::FloatLiteral(_), T::Float) | (T::Float, T::FloatLiteral(_)) | (T::Float, T::Float) => {
-            T::Float
+// TODO: this should go away when operators are treated like a function
+//
+// Codegen will be responsible for lowering (Int + Int) to a specialized instruction
+// vs. (UserType + UserType) that's lowered to a function call.
+fn infer_binary_add(
+    a: Idx<Type>,
+    b: Idx<Type>,
+    range: TextRange,
+    context: &mut Context,
+) -> TypeResult {
+    let Context { type_database, .. } = context;
+    let a_ty = type_database.type_(a);
+    let b_ty = type_database.type_(b);
+    match (a_ty, b_ty) {
+        // TODO: add overflow check?
+        (Type::IntLiteral(a), Type::IntLiteral(b)) => {
+            type_database.alloc_type(Type::IntLiteral(a + b)).into()
         }
+        (Type::IntLiteral(_), Type::Int)
+        | (Type::Int, Type::IntLiteral(_))
+        | (Type::Int, Type::Int) => type_database.int().into(),
 
-        _ => {
-            return Err(TypeDiagnosticVariant::BinaryMismatch {
-                op: BinaryOp::Add,
-                lhs: lhs_type.clone(),
-                rhs: rhs_type.clone(),
-            })
+        (Type::FloatLiteral(a), Type::FloatLiteral(b)) => {
+            type_database.alloc_type(Type::FloatLiteral(a + b)).into()
         }
-    })
+        (Type::FloatLiteral(_), Type::Float)
+        | (Type::Float, Type::FloatLiteral(_))
+        | (Type::Float, Type::Float) => type_database.float().into(),
+
+        _ => TypeResult::from_diag(
+            TypeDiagnostic::binary_mismatch(a, b, BinaryOp::Add, range),
+            type_database.error(),
+        ),
+    }
 }
 
+// TODO: this should go away when operators are treated like a function
+//
+// Codegen will be responsible for lowering (Int == Int) to a specialized instruction
+// vs. (UserType == UserType) that's lowered to a (possibly inlined) function call.
 fn infer_binary_equality(
-    lhs_type: &Type,
-    rhs_type: &Type,
+    lhs: Idx<Type>,
+    rhs: Idx<Type>,
     op: BinaryOp,
-) -> Result<Type, TypeDiagnosticVariant> {
-    if is_subtype(lhs_type, rhs_type) || is_subtype(rhs_type, lhs_type) {
-        Ok(Type::Bool)
+    context: &mut Context,
+) -> TypeResult {
+    // TODO: additional analysis here to determine true/false at compile time
+    // for literals, ex. `2 == 2` infer `true` and `2 == 3` infer false
+
+    if is_subtype(lhs, rhs, context) || is_subtype(rhs, lhs, context) {
+        context.type_database.bool().into()
     } else {
-        Err(TypeDiagnosticVariant::BinaryMismatch {
-            op,
-            lhs: lhs_type.clone(),
-            rhs: rhs_type.clone(),
-        })
+        TypeResult::from_diag(
+            TypeDiagnostic::binary_mismatch(lhs, rhs, op, TextRange::default()),
+            context.type_database.error(),
+        )
     }
 }
 
-fn infer_binary_concat(lhs_type: &Type, rhs_type: &Type) -> Result<Type, TypeDiagnosticVariant> {
-    use Type as T;
-    Ok(match (lhs_type, rhs_type) {
-        (T::StringLiteral(_), T::String)
-        | (T::String, T::StringLiteral(_))
-        | (T::String, T::String) => T::String,
+fn infer_binary_concat(
+    a: Idx<Type>,
+    b: Idx<Type>,
+    range: TextRange,
+    context: &mut Context,
+) -> TypeResult {
+    let a_ty = context.type_database.type_(a);
+    let b_ty = context.type_database.type_(b);
+    match (a_ty, b_ty) {
+        (Type::StringLiteral(_), Type::String)
+        | (Type::String, Type::StringLiteral(_))
+        | (Type::String, Type::String) => context.type_database.string().into(),
 
-        // TODO: constant folding?
-        (T::StringLiteral(a), T::StringLiteral(b)) => T::String,
+        // TODO: constant folding? Need access to the interner to deref the Key
+        (Type::StringLiteral(_), Type::StringLiteral(_)) => context.type_database.string().into(),
 
-        _ => {
-            return Err(TypeDiagnosticVariant::BinaryMismatch {
-                op: BinaryOp::Concat,
-                lhs: lhs_type.clone(),
-                rhs: rhs_type.clone(),
-            })
-        }
-    })
-}
-
-/// Determines the most specific type that is compatible with two types.
-///
-/// This is mostly to deal with the built-in subtype relationships
-/// between literals and their corresponding primitive types.
-fn infer_compatible_type(a: &Type, b: &Type) -> Option<Type> {
-    use Type as T;
-    if a == b {
-        return Some(a.clone());
-    };
-
-    #[rustfmt::skip]
-    let compatible_type = match (a, b) {
-        // widen to the primitive type when one is a primitive
-        (T::BoolLiteral(_), T::Bool) | (T::Bool, T::BoolLiteral(_)) => T::Bool,
-        (T::IntLiteral(_), T::Int) | (T::Int, T::IntLiteral(_)) => T::Int,
-        (T::FloatLiteral(_), T::Float) | (T::Float, T::FloatLiteral(_)) => T::Float,
-        (T::StringLiteral(_), T::String) | (T::String, T::StringLiteral(_)) => T::String,
-
-        // widen to the primitive type if both are literals and are not equal
-        (T::BoolLiteral(a), T::BoolLiteral(b)) => if a == b { T::BoolLiteral(*a) } else { T::Bool },
-        (T::IntLiteral(a), T::IntLiteral(b)) => if a == b { T::IntLiteral(*a) } else { T::Int },
-        (T::FloatLiteral(a), T::FloatLiteral(b)) => if a == b { T::FloatLiteral(*a) } else { T::Float },
-        (T::StringLiteral(a), T::StringLiteral(b)) => if a == b { T::StringLiteral(*a) } else { T::String },
-
-        (_, _) => return None,
-    };
-
-    Some(compatible_type)
+        _ => TypeResult::from_diag(
+            TypeDiagnostic::binary_mismatch(a, b, BinaryOp::Concat, range),
+            context.type_database.error(),
+        ),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    /// Asserts that the provided `Result` is `Ok`
-    /// and returns the unwrapped value.
-    macro_rules! assert_ok {
-        ($value:expr) => {{
-            assert!($value.is_ok());
-            $value.unwrap()
-        }};
-    }
-
-    /// Asserts that the provided `Result` is `Err`
-    /// and returns the unwrapped error.
-    macro_rules! assert_err {
-        ($value:expr) => {{
-            assert!($value.is_err());
-            $value.unwrap_err()
-        }};
-    }
 
     use la_arena::Idx;
 
-    use crate::typecheck::{TypeDatabase, TypeDiagnostic};
+    use crate::typecheck::TypeResult;
     use crate::{BlockExpr, Context, Expr, Interner, Type};
 
-    use super::{infer_expr, InferResult};
+    use super::infer_expr;
 
-    fn check(input: &str, interner: &mut Interner) -> InferResult {
+    fn check<'a>(input: &str, interner: &'a mut Interner) -> (TypeResult, Context<'a>) {
         let parsed = parser::parse(input).syntax();
         let root = ast::Root::cast(parsed).expect("valid Root node");
         let mut context = Context::new(interner);
@@ -721,29 +577,19 @@ mod tests {
         let root = Expr::Block(BlockExpr { exprs });
         let root = context.alloc_expr(root, None);
 
-        infer_expr(
-            root,
-            &mut TypeDatabase::default(),
-            &context.database,
-            interner,
-        )
+        let result = infer_expr(root, &mut context);
+
+        (result, context)
     }
 
     fn check_infer_type(input: &str, expected: Type, interner: Option<Interner>) {
         let mut interner = interner.unwrap_or_default();
-        let result = check(input, &mut interner);
+        let (result, context) = check(input, &mut interner);
 
-        let actual = assert_ok!(result);
+        assert!(result.is_ok());
+        let actual = context.type_database.type_(result.ty);
+
         assert_eq!(expected, actual);
-    }
-
-    fn check_infer_error(input: &str, expected: TypeDiagnostic, interner: Option<Interner>) {
-        let mut interner = interner.unwrap_or_default();
-
-        let result = check(input, &mut interner);
-
-        let actual = assert_err!(result);
-        assert_eq!(expected, actual)
     }
 
     #[test]

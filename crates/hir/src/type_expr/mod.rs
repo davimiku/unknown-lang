@@ -1,7 +1,9 @@
+mod display;
+
 use la_arena::Idx;
 
-use crate::interner::{Interner, Key};
-use crate::{BinaryOp, UnaryOp, COMPILER_BRAND};
+use crate::interner::Key;
+use crate::{BinaryOp, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum TypeExpr {
@@ -28,8 +30,16 @@ pub enum TypeExpr {
     // Block(BlockExpr),
     Call(CallExpr),
 
-    LocalRef(LocalTypeRefExpr),
-    LocalDef(LocalTypeDefExpr),
+    /// Reference to a type variable
+    VarRef(TypeRefExpr),
+
+    /// Reference to a type variable not defined in the current scope
+    UnresolvedVarRef {
+        key: Key,
+    },
+
+    /// Definition of a local type variable
+    LocalDef(TypeDefExpr),
     // Call(CallExpr),
     // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?
@@ -63,47 +73,37 @@ pub struct CallExpr {
 ///
 /// Defines a new type in a given scope.
 #[derive(Debug, PartialEq, Eq)]
-pub struct LocalTypeDefExpr {
-    pub key: LocalTypeDefKey,
+pub struct TypeDefExpr {
+    pub key: TypeSymbol,
 
     /// Expression value assigned to the type
     pub value: Idx<TypeExpr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LocalTypeDefKey {
-    name: Key,
+pub struct TypeSymbol {
+    /// Unique id of this symbol within this module
+    symbol_id: u32,
 
-    /// Unique number for this Name within this Context
-    idx: u32,
+    /// Unique id of the module where this symbol resides
+    module_id: u32,
 }
 
-impl LocalTypeDefKey {
-    pub(crate) fn display(&self, interner: &Interner) -> String {
-        let name = interner.lookup(self.name);
-        let idx = self.idx;
-
-        format!("{name}{COMPILER_BRAND}{idx}")
-    }
-}
-
-impl From<(Key, u32)> for LocalTypeDefKey {
-    fn from(value: (Key, u32)) -> Self {
+impl TypeSymbol {
+    pub fn new(module_id: u32, symbol_id: u32) -> Self {
         Self {
-            name: value.0,
-            idx: value.1,
+            module_id,
+            symbol_id,
         }
     }
 }
 
+/// Reference to a variable that lives in the "type" universe
 #[derive(Debug, PartialEq)]
-pub struct LocalTypeRefExpr {
-    pub name: LocalTypeRefName,
-}
+pub struct TypeRefExpr {
+    /// Interned string of the type name
+    pub key: Key,
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LocalTypeRefName {
-    // TODO: handle `a`, `a.b`, `a.b.c`, etc.
-    Resolved(LocalTypeDefKey),
-    Unresolved(Key),
+    /// Unique identifier for the type symbol
+    pub symbol: TypeSymbol,
 }
