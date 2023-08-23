@@ -24,7 +24,7 @@ pub const COMPILER_BRAND: char = '~';
 
 // TODO: rename to LoweringContext? and have a TypecheckContext?
 #[derive(Debug)]
-pub struct Context<'a> {
+pub struct Context {
     /// Database holding the lowered expressions and associated data
     pub(crate) database: Database,
 
@@ -36,7 +36,7 @@ pub struct Context<'a> {
 
     pub(crate) scopes: Scopes,
 
-    pub interner: &'a mut Interner,
+    pub interner: Interner,
 }
 
 /// Types implementing this trait can be processed into string messages
@@ -46,8 +46,8 @@ pub trait ContextDisplay {
     fn display(&self, context: &Context) -> String;
 }
 
-impl<'a> Context<'a> {
-    pub(crate) fn new(interner: &'a mut Interner) -> Self {
+impl Context {
+    pub(crate) fn new(mut interner: Interner) -> Self {
         let mut database = Database::default();
 
         let bool_key = interner.intern("Bool");
@@ -101,7 +101,7 @@ impl<'a> Context<'a> {
     }
 }
 
-impl fmt::Display for Context<'_> {
+impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let database = self.database.display(self);
         f.write_str(&database)?;
@@ -115,7 +115,7 @@ impl fmt::Display for Context<'_> {
 }
 
 // Public functions
-impl<'a> Context<'a> {
+impl Context {
     pub(crate) fn type_check(&mut self, root: Idx<Expr>, expected_type: Idx<Type>) {
         let mut result = typecheck::infer_expr(root, self);
 
@@ -179,7 +179,7 @@ impl<'a> Context<'a> {
     }
 }
 
-impl<'a> Context<'a> {
+impl Context {
     pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         self.database.alloc_expr(expr, ast)
     }
@@ -198,7 +198,7 @@ impl<'a> Context<'a> {
 }
 
 // Lowering functions - Expr
-impl<'a> Context<'a> {
+impl Context {
     pub(crate) fn lower_expr_statement(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         let inner = self.lower_expr(ast.clone());
 
@@ -575,7 +575,7 @@ impl<'a> Context<'a> {
 }
 
 // Lowering functions - TypeExpr
-impl<'a> Context<'a> {
+impl Context {
     fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>) -> Idx<TypeExpr> {
         use ast::TypeExpr::*;
         if let Some(ast) = ast {
