@@ -36,13 +36,13 @@ pub(crate) struct FunctionTranslator<'a> {
     /// Currently defined variables in this function
     ///
     /// Maps between the HIR and CLIF identifiers for variables
-    variables: HashMap<hir::LocalDefKey, Variable>,
+    variables: HashMap<hir::ValueSymbol, Variable>,
 
     /// Reference to the module that this function is being constructed inside of
     module: &'a mut JITModule,
 
     /// Lowered and typechecked HIR context
-    context: &'a hir::Context<'a>,
+    context: &'a hir::Context,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -77,26 +77,24 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Block(expr) => self.translate_block(expr),
             Expr::EmptyBlock => todo!(),
             Expr::Call(_) => todo!(),
-            Expr::LocalRef(_) => todo!(),
-            Expr::UnresolvedLocalRef { .. } => unreachable!(),
+            Expr::VarRef(_) => todo!(),
+            Expr::UnresolvedVarRef { .. } => unreachable!(),
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
-            Expr::Function(f) => todo!(),
-            Expr::LocalDef(_) => todo!(),
+            // will not need this hack after implementing MIR (control flow graph)
+            Expr::Function(f) => unreachable!("function would have already been translated"),
+            Expr::VarDef(_) => todo!(),
             Expr::If(_) => todo!(),
             Expr::Statement(expr) => self.translate_expr(*expr),
             Expr::ReturnStatement(_) => todo!(),
         }
     }
 
-    pub(crate) fn translate_function(&mut self, func: &hir::FunctionExpr) -> Value {
+    pub(crate) fn translate_function(&mut self, func: &hir::FunctionExpr) {
         let hir::FunctionExpr { params, body, name } = func;
         for param in params {
             let name = param.name;
-            let ty = self
-                .context
-                .type_of_local(&name)
-                .expect("types to be inferred");
+            let ty = self.context.borrow_type_of_value(&name);
             let clif_ty = match ty {
                 hir::Type::BoolLiteral(_) | hir::Type::Bool => self.types.bool,
                 hir::Type::FloatLiteral(_) | hir::Type::Float => self.types.float,
@@ -111,37 +109,43 @@ impl<'a> FunctionTranslator<'a> {
                 .params
                 .push(AbiParam::new(clif_ty));
         }
+
+        // TEMP: hard-coded for a test
+        self.builder
+            .func
+            .signature
+            .returns
+            .push(AbiParam::new(self.types.int));
+
         let entry_block = self.builder.create_block();
         self.builder
             .append_block_params_for_function_params(entry_block);
         self.builder.switch_to_block(entry_block);
         self.builder.seal_block(entry_block);
 
-        self.translate_expr(*body);
+        let ret_val = self.translate_expr(*body);
 
-        self.builder.ins().return_(&[])
-
-        // TODO: return the tail value
+        self.builder.ins().return_(&[ret_val]);
     }
 
     fn translate_block(&mut self, block: &hir::BlockExpr) -> Value {
         let hir::BlockExpr { exprs } = block;
         assert!(!exprs.is_empty());
 
-        // dummy value, guaranteed to be overwritten
-        let mut value = Value::from_u32(0);
-        for expr in exprs {
-            value = self.translate_expr(*expr);
-        }
-        value
+        let values = exprs
+            .iter()
+            .map(|expr| self.translate_expr(*expr))
+            .collect::<Vec<_>>();
+
+        *values.last().unwrap()
     }
 
     fn translate_binary(&mut self, binary: &hir::BinaryExpr) -> Value {
         let hir::BinaryExpr { op, lhs, rhs } = binary;
-        let lhs_type = self.context.type_of_expr(*lhs);
+        let lhs_type = self.context.borrow_expr_type(*lhs);
         let lhs = self.translate_expr(*lhs);
 
-        let rhs_type = self.context.type_of_expr(*rhs);
+        let rhs_type = self.context.expr_type_idx(*rhs);
         let rhs = self.translate_expr(*rhs);
 
         match op {

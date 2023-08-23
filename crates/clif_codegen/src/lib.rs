@@ -1,4 +1,4 @@
-use hir::{lower_input, Interner};
+use hir::lower;
 use jit::JIT;
 
 mod builtins;
@@ -8,9 +8,8 @@ mod jit;
 mod tests;
 mod translate;
 
-pub fn compile(input: &str) -> Result<*const u8, String> {
-    let mut interner = Interner::default();
-    let (program, context) = lower_input(input, &mut interner);
+pub fn compile_function(input: &str) -> Result<*const u8, String> {
+    let (function, context) = lower(input, hir::LowerTarget::Function);
 
     if !context.diagnostics.is_empty() {
         for diag in context.diagnostics {
@@ -19,20 +18,14 @@ pub fn compile(input: &str) -> Result<*const u8, String> {
         panic!("Found diagnostics while lowering")
     }
 
-    let program = context.expr(program);
-    let program_block = crate::assert_matches!(program, hir::Expr::Block);
-    let first = program_block.exprs[0];
-    let first = crate::assert_matches!(context.expr(first), hir::Expr::Statement);
-    let function = context.expr(*first);
+    let function = context.expr(function);
     let function = crate::assert_matches!(function, hir::Expr::Function);
 
     let mut jit = JIT::with_builtins();
     jit.compile_function(function, &context).map_err(|e| {
         dbg!(&e);
         e.to_string()
-    });
-
-    todo!()
+    })
 }
 
 /// Asserts that the provided enum is the provided variant,
@@ -49,17 +42,3 @@ macro_rules! assert_matches {
     }};
 }
 pub(crate) use assert_matches;
-
-#[cfg(test)]
-mod testz {
-    use crate::compile;
-
-    #[test]
-    fn test_int() {
-        let input = r#"() -> {
-            2 + 3
-        }"#;
-
-        compile(input);
-    }
-}
