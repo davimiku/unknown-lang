@@ -29,7 +29,7 @@ impl HeapVMString {
         Self { ptr }
     }
 
-    /// Creates an instance from raw_bytse that had been previously created
+    /// Creates an instance from raw_bytes that had been previously created
     /// by calling `into_raw`.
     ///
     /// This does not increase the strong count of this allocation, unlike `from_copy`.

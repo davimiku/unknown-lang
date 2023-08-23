@@ -17,7 +17,7 @@ use memory_recycling::{Gc, Trace};
 use vm_codegen::FunctionChunk;
 use vm_string::VMString;
 use vm_types::words::{DWord, DWordBytes, QWord, Word, ZERO_WORD};
-use vm_types::{VMBool, VMFloat, VMInt};
+use vm_types::{VMArray, VMBool, VMFloat, VMInt};
 
 /// Maximum size of the stack in Slots
 const STACK_MAX: usize = 256;
@@ -72,6 +72,11 @@ impl Stack {
     }
 
     #[inline]
+    pub(crate) fn push_slice(&mut self, value: &[Word]) {
+        self.extend(value.iter().copied());
+    }
+
+    #[inline]
     pub(crate) fn push_bool<B: Into<VMBool>>(&mut self, val: B) {
         self.push_word(val.into());
     }
@@ -91,6 +96,12 @@ impl Stack {
     pub(crate) fn push_string(&mut self, s: VMString) {
         let q: DWord = s.into();
         self.push_dword(q);
+    }
+
+    #[inline]
+    pub(crate) fn push_array(&mut self, array: VMArray) {
+        let words: DWord = array.into();
+        self.push_dword(words);
     }
 
     #[inline]
@@ -149,10 +160,21 @@ impl Stack {
         output
     }
 
-    /// Pops the top `n` slots of the stack, and gives ownership
+    /// Pops the top `n` words of the stack, and gives ownership
     /// of these to the caller.
+    ///
+    /// These words are returned in _pushed_ order (not popped order)
+    /// i.e.
+    ///   - push "a"
+    ///   - push "b"
+    ///   - push "c"
+    ///   - pop_n_as_vec: gives Vec ["a", "b", "c"]
+    // TODO: avoid intermediate allocation
     pub(crate) fn pop_n_as_vec(&mut self, n: usize) -> Vec<Word> {
-        (0..n).map(|_| self.pop_word()).collect()
+        // elements are in popped order
+        let reversed: Vec<Word> = (0..n).map(|_| self.pop_word()).collect();
+
+        reversed.into_iter().rev().collect()
     }
 
     /// Removes the top `n` slots of the stack without returning the values.
@@ -184,6 +206,11 @@ impl Stack {
     pub(crate) fn pop_string(&mut self) -> VMString {
         let bytes: DWordBytes = self.pop_dword().into();
         VMString::from_raw(bytes)
+    }
+
+    #[inline]
+    pub(crate) fn pop_array(&mut self) -> VMArray {
+        self.pop_dword().into()
     }
 
     #[inline]
@@ -292,11 +319,10 @@ impl Stack {
 
     /// Peeks the DWord (2 Words) from the top of the stack
     #[inline]
-    pub(crate) fn peek_dword(&self) -> &DWord {
+    pub(crate) fn peek_dword(&self) -> DWord {
         let index = self.data.len() - 2;
-        let words = &[self.data[index], self.data[index + 1]];
-        // TODO: make this part of the DWord constructor and verify its safe-ness
-        unsafe { std::mem::transmute(words) }
+        let words = [self.data[index], self.data[index + 1]];
+        words.into()
     }
 
     /// Peeks the QWord (4 Words) from the top of the stack
@@ -342,11 +368,12 @@ impl Stack {
         todo!()
     }
 
-    pub(crate) fn peek_dword_at(&self, index: usize) -> &DWord {
+    /// Gets a copy of the DWord at the given index
+    pub(crate) fn peek_dword_at(&self, index: usize) -> DWord {
         let index = index + self.offset;
-        let words = &[self.data[index], self.data[index + 1]];
-        // TODO: make this part of the DWord constructor and verify its safe-ness
-        unsafe { std::mem::transmute(words) }
+        let words = [self.data[index], self.data[index + 1]];
+
+        words.into()
     }
 
     /// Peeks and copies four Words from the given

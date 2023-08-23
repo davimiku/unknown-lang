@@ -181,6 +181,13 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.peek() == Some(kind)
     }
 
+    /// Checks if the parser is at a certain kind of valid token
+    ///
+    /// Does not add to the list of expected tokens.
+    pub(crate) fn debug_at(&mut self, kind: TokenKind) -> bool {
+        self.peek() == Some(kind)
+    }
+
     pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {
         self.peek().map_or(false, |k| set.contains(&k))
     }

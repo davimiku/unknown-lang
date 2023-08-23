@@ -7,14 +7,15 @@ use exitcode::ExitCode;
 use stack::Stack;
 use std::mem::size_of;
 use std::ops::{Add, Mul, Sub};
+use std::rc::Rc;
 use vm_boxed_types::VMFunction;
 use vm_codegen::{
-    BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op, ProgramChunk,
-    PushStringOperand,
+    AllocArrayOperand, BytecodeRead, FunctionChunk, IntoStringOperand, InvalidOpError, Op,
+    ProgramChunk, PushStringOperand,
 };
 use vm_string::VMString;
-use vm_types::words::Word;
-use vm_types::{word_size_of, VMBool, VMFloat, VMInt};
+use vm_types::words::{DWord, Word};
+use vm_types::{word_size_of, VMArray, VMBool, VMFloat, VMInt};
 
 mod builtins;
 mod macros;
@@ -73,7 +74,7 @@ impl VM {
             frame.ip += 1;
 
             // #[cfg(debug_stack)]
-            // dbg!(op);
+            dbg!(op);
 
             use Op::*;
             match op {
@@ -86,7 +87,10 @@ impl VM {
                     self.stack.push_float(constant);
                 }
                 PushString => {
-                    let PushStringOperand { len, offset } = frame.read::<PushStringOperand>();
+                    let PushStringOperand {
+                        bytes_len: len,
+                        offset,
+                    } = frame.read::<PushStringOperand>();
                     let start = offset as usize;
                     let end = (offset + len) as usize;
                     let constants =
@@ -96,6 +100,19 @@ impl VM {
                     let string = unsafe { String::from_utf8_unchecked(bytes.to_owned()) };
 
                     self.stack.push_string(VMString::new(string));
+                }
+                AllocArray => {
+                    let AllocArrayOperand { len, el_size } = frame.read::<AllocArrayOperand>();
+
+                    if len == 0 {
+                        self.stack.push_dword(DWord::default());
+                    } else {
+                        let values = self.stack.pop_n_as_vec(len as usize * el_size as usize);
+                        let ptr = Rc::new(values);
+                        let array = VMArray { ptr, len, el_size };
+
+                        self.stack.push_array(array);
+                    }
                 }
                 PushTrue => {
                     self.stack.push_bool(true);
@@ -120,6 +137,10 @@ impl VM {
                     let _ = self.stack.pop_string();
                     // VMString drops, including its internal Rc for Rc-managed strings
                 }
+                PopArray => {
+                    let _ = self.stack.pop_array();
+                    // VMArray drops, including its internal Rc for the data
+                }
                 PopRc => {
                     let _ = self.stack.pop_rc::<u8>();
                     // Rc drops, reduces strong count
@@ -137,7 +158,7 @@ impl VM {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword_at(slot_offset);
 
-                    self.stack.push_dword(*val);
+                    self.stack.push_dword(val);
                 }
                 GetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -148,10 +169,27 @@ impl VM {
                 GetLocalN => todo!(),
                 GetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let val = *self.stack.peek_dword_at(slot_offset);
+                    let val = self.stack.peek_dword_at(slot_offset);
                     let string = VMString::from_copy(val.into());
 
                     self.stack.push_string(string);
+                }
+                GetArrayIndex => {
+                    let index = self.stack.pop_int();
+                    if index < 0 {
+                        return Err(Panic::IndexError);
+                    }
+                    let index = index as usize;
+                    let array = self.stack.pop_array();
+                    if index >= array.len as usize {
+                        return Err(Panic::IndexError);
+                    }
+                    let el_size = array.el_size as usize;
+
+                    let start = index * el_size;
+                    let end = start + el_size;
+
+                    self.stack.push_slice(&array.ptr[start..end]);
                 }
                 SetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -162,7 +200,7 @@ impl VM {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
 
-                    self.stack.set_dword_at(*val, slot_offset);
+                    self.stack.set_dword_at(val, slot_offset);
                 }
                 SetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
@@ -183,11 +221,12 @@ impl VM {
                 }
                 SetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
-                    let val = *self.stack.peek_dword();
+                    let val = self.stack.peek_dword();
                     let string = VMString::from_copy(val.into());
 
                     self.stack.set_dword_at(string.into(), slot_offset);
                 }
+                SetArrayIndex => {}
                 PushLocalFunc => {
                     let idx = frame.read::<u32>() as usize;
                     let function = &self.functions[idx] as *const FunctionChunk;
@@ -281,6 +320,9 @@ impl VM {
                         IntoStringOperand::Int => {
                             let int = self.stack.pop_int();
                             self.stack.push_string(VMString::new(int.to_string()));
+                        }
+                        IntoStringOperand::Array => {
+                            todo!()
                         }
                     }
                 }
@@ -382,7 +424,7 @@ impl VM {
             }
 
             // #[cfg(debug_stack)]
-            // dbg!(&self.stack);
+            dbg!(&self.stack);
         }
     }
 
@@ -515,8 +557,8 @@ pub enum Panic {
     /// The number of Call Frames exceeded the available amount
     CallFrameOverflowError,
 
-    /// Out of range access or out of bounds index
-    RangeError,
+    /// Out of bounds index
+    IndexError,
 
     /// Division by zero
     DivideByZero,

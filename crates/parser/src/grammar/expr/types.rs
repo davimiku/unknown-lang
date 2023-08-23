@@ -1,13 +1,11 @@
-use lexer::TokenKind;
+use lexer::TokenKind::*;
 
-use crate::grammar::expr::parse_ident_token;
+use crate::grammar::expr::parse_ident;
 use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use super::{
-    expr_binding_power, parse_bool_literal, parse_int_literal, parse_path, parse_string_literal,
-};
+use super::{expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal};
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
@@ -18,20 +16,22 @@ pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
-    let cm = if p.at(TokenKind::IntLiteral) {
+    let cm = if p.at(IntLiteral) {
         parse_int_literal(p)
-    } else if p.at(TokenKind::StringLiteral) {
+    } else if p.at(StringLiteral) {
         parse_string_literal(p)
-    } else if p.at(TokenKind::False) || p.at(TokenKind::True) {
+    } else if p.at(False) || p.at(True) {
         parse_bool_literal(p)
-    } else if p.at(TokenKind::Ident) {
-        parse_path(p)
-    } else if p.at(TokenKind::Union) {
+    } else if p.at(Ident) {
+        parse_ident(p)
+    } else if p.at(Union) {
         parse_union(p)
-    } else if p.at(TokenKind::Struct) {
+    } else if p.at(Struct) {
         parse_struct(p)
-    } else if p.at(TokenKind::LParen) {
+    } else if p.at(LParen) {
         parse_paren_expr_or_function_params(p)
+    } else if p.at(LBracket) {
+        parse_array_type(p)
     } else {
         p.error();
         return None;
@@ -47,13 +47,13 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 // 1 param with explicit type: (Int)
 // N params with explicit types: (Int, Int)
 fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::LParen));
+    debug_assert!(p.debug_at(LParen));
 
     let m = p.start();
     p.bump();
 
     // early exit for `()`
-    if p.at(TokenKind::RParen) {
+    if p.at(RParen) {
         p.bump();
         return m.complete(p, SyntaxKind::ParenExpr);
     }
@@ -65,20 +65,33 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
             break;
         }
 
-        if p.at(TokenKind::Comma) {
+        if p.at(Comma) {
             p.bump();
         } else {
             break;
         }
     }
 
-    p.expect(TokenKind::RParen);
+    p.expect(RParen);
 
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
+fn parse_array_type(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.debug_at(LBracket));
+
+    let m = p.start();
+
+    p.bump();
+    p.expect(RBracket);
+
+    parse_lhs(p);
+
+    m.complete(p, SyntaxKind::ArrayType)
+}
+
 fn parse_union(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::Union));
+    debug_assert!(p.debug_at(Union));
 
     let m = p.start();
     p.bump();
@@ -87,7 +100,7 @@ fn parse_union(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::Struct));
+    debug_assert!(p.debug_at(Struct));
 
     let m = p.start();
     p.bump();
@@ -98,7 +111,7 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 /// Parses a "compound type block"
 // TODO: better name?
 fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::LBrace));
+    debug_assert!(p.debug_at(LBrace));
 
     let m = p.start();
     p.bump();
@@ -107,26 +120,26 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
         parse_compound_type_item(p);
         p.bump_all_space();
 
-        if p.at(TokenKind::RBrace) || p.at_end() {
-            p.bump_if(TokenKind::Comma);
+        if p.at(RBrace) || p.at_end() {
+            p.bump_if(Comma);
             break;
         } else {
-            p.expect(TokenKind::Comma);
+            p.expect(Comma);
         }
     }
 
-    p.expect(TokenKind::RBrace);
+    p.expect(RBrace);
 
     m.complete(p, SyntaxKind::CompoundTypeBlock)
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at(TokenKind::Ident));
+    debug_assert!(p.debug_at(Ident));
 
     let m = p.start();
 
-    parse_ident_token(p);
-    p.expect(TokenKind::Colon);
+    parse_ident(p);
+    p.expect(Colon);
     expr_binding_power(p, 0, parse_lhs);
 
     m.complete(p, SyntaxKind::CompoundTypeItem)

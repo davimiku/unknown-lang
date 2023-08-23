@@ -1,7 +1,7 @@
 use std::mem::size_of;
 
 use crate::{
-    op::{IntoStringOperand, PushStringOperand},
+    op::{AllocArrayOperand, IntoStringOperand, PushStringOperand},
     BytecodeRead, FunctionChunk, Op, VMFloat, VMInt,
 };
 
@@ -45,8 +45,10 @@ impl Op {
                 print!("{float}");
             }
             Op::PushString => {
-                let PushStringOperand { len, offset: idx } =
-                    read::<PushStringOperand>(chunk, &mut offset);
+                let PushStringOperand {
+                    bytes_len: len,
+                    offset: idx,
+                } = read::<PushStringOperand>(chunk, &mut offset);
                 let start = idx as usize;
                 let end = start + len as usize;
                 let bytes = chunk.constants_slice(start..end);
@@ -55,6 +57,12 @@ impl Op {
 
                 print!("\"{s}\"");
             }
+            Op::AllocArray => {
+                let AllocArrayOperand { len, el_size } =
+                    read::<AllocArrayOperand>(chunk, &mut offset);
+
+                print!("len: {len}, el_size: {el_size}");
+            }
             Op::IntoString => {
                 let kind = read::<IntoStringOperand>(chunk, &mut offset);
 
@@ -62,6 +70,7 @@ impl Op {
                     IntoStringOperand::Bool => print!("Bool"),
                     IntoStringOperand::Float => print!("Float"),
                     IntoStringOperand::Int => print!("Int"),
+                    IntoStringOperand::Array => print!("Array"),
                 }
             }
 

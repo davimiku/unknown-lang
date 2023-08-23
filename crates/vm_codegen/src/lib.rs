@@ -6,20 +6,22 @@
 //! - Constants pool for constants not encoded into operands, ex. strings
 pub use chunks::{FunctionChunk, ProgramChunk};
 use code::Code;
-pub use op::{IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnType};
+pub use op::{
+    AllocArrayOperand, IntoStringOperand, InvalidOpError, Op, PushStringOperand, ReturnType,
+};
 
 use la_arena::Idx;
 use text_size::TextRange;
 use vm_string::VMString;
-use vm_types::{VMBool, VMFloat, VMInt};
+use vm_types::{VMArray, VMBool, VMFloat, VMInt};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, LocalDefKey, LocalRefExpr, Type,
-    UnaryExpr, UnaryOp,
+    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, IndexIntExpr, Type,
+    UnaryExpr, UnaryOp, ValueSymbol, VarRefExpr,
 };
 
 mod chunks;
@@ -156,8 +158,8 @@ impl Codegen {
             Statement(expr_idx) => {
                 let mut code = self.synth_expr(*expr_idx, context);
 
-                let ty = context.type_of_expr(*expr_idx);
-                code.append(pop_code_of(ty));
+                let ty = context.borrow_expr_type(*expr_idx);
+                code.append(pop_code_of(&ty));
 
                 code
             }
@@ -171,17 +173,15 @@ impl Codegen {
             Function(expr) => {
                 let name = expr.name.map_or("", |key| context.lookup(key));
 
-                let mut param_types: BTreeMap<LocalDefKey, &Type> = BTreeMap::default();
+                let mut param_types: BTreeMap<ValueSymbol, &Type> = BTreeMap::default();
                 for param in expr.params.iter() {
                     let param_key = param.name;
-                    let ty = context
-                        .type_of_local(&param_key)
-                        .expect("type of parameter is known");
+                    let ty = context.borrow_type_of_value(&param_key);
 
                     param_types.insert(param_key, ty);
                 }
-                let return_ty = &cast!(context.type_of_expr(expr_idx), Type::Function).return_ty;
-                let return_slots = word_size_of(return_ty);
+                let return_idx = cast!(context.expr_type(expr_idx), Type::Function).return_ty;
+                let return_slots = word_size_of(context.borrow_type(return_idx));
 
                 let id = self.finished_functions.len();
                 let parameter_slots: u16 = param_types.values().map(|ty| word_size_of(ty)).sum();
@@ -203,13 +203,18 @@ impl Codegen {
             FloatLiteral(f) => synth_float_constant(*f, range),
             IntLiteral(i) => synth_int_constant(*i, range),
             StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
+            ArrayLiteral(expr) => self.synth_array_literal(expr_idx, expr, context),
+
+            Path(_) => todo!(),
+            // (expr) => todo!(),
+            IndexInt(expr) => self.synth_index_int_expr(expr_idx, expr, context),
 
             Binary(expr) => self.synth_binary_expr(expr_idx, expr, context),
             Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
-            LocalDef(expr) => self.synth_local_def(expr.key, expr.value, context),
+            VarDef(expr) => self.synth_local_def(expr.symbol, expr.value, context),
             Call(expr) => self.synth_call_expr(expr_idx, expr, context),
-            LocalRef(expr) => self.synth_local_ref(expr_idx, expr, context),
-            UnresolvedLocalRef { key: _ } => unreachable!(),
+            VarRef(expr) => self.synth_local_ref(expr_idx, expr, context),
+            UnresolvedVarRef { key: _ } => unreachable!(),
             EmptyBlock => Code::default(),
             Block(expr) => self.synth_block_expr(expr, context),
             If(expr) => self.synth_if_expr(expr, context),
@@ -230,11 +235,59 @@ impl Codegen {
         code.push((Op::PushString, range));
 
         let operand = PushStringOperand {
-            len,
+            bytes_len: len,
             offset: idx as u32,
         };
 
         code.extend_from_slice(&operand.to_bytes());
+
+        code
+    }
+
+    #[must_use]
+    fn synth_array_literal(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &ArrayLiteralExpr,
+        context: &hir::Context,
+    ) -> Code {
+        let mut code = Code::default();
+        let range = context.range_of(expr_idx);
+
+        let operand = match expr {
+            ArrayLiteralExpr::Empty => AllocArrayOperand { len: 0, el_size: 0 },
+            ArrayLiteralExpr::NonEmpty { elements } => {
+                for el in elements {
+                    code.append(self.synth_expr(*el, context));
+                }
+
+                let el_type = context.borrow_expr_type(elements[0]);
+                AllocArrayOperand {
+                    len: elements.len() as u32,
+                    el_size: word_size_of(el_type) as u32,
+                }
+            }
+        };
+
+        code.push((Op::AllocArray, range));
+        code.extend_from_slice(&operand.to_bytes());
+
+        code
+    }
+
+    #[must_use]
+    fn synth_index_int_expr(
+        &mut self,
+        expr_idx: Idx<Expr>,
+        expr: &IndexIntExpr,
+        context: &hir::Context,
+    ) -> Code {
+        let IndexIntExpr { subject, index } = expr;
+        let mut code = Code::default();
+        code.append(self.synth_expr(*subject, context));
+        code.append(self.synth_expr(*index, context));
+
+        code.append(Code::from_op(Op::GetArrayIndex, context.range_of(expr_idx)));
 
         code
     }
@@ -248,7 +301,7 @@ impl Codegen {
     ) -> Code {
         let BinaryExpr { op, lhs, rhs } = expr;
         let range = context.range_of(expr_idx);
-        let lhs_type = context.type_of_expr(*lhs);
+        let lhs_type = context.borrow_expr_type(*lhs);
 
         let mut code = self.synth_expr(*lhs, context);
         code.append(self.synth_expr(*rhs, context));
@@ -310,7 +363,7 @@ impl Codegen {
         context: &hir::Context,
     ) -> Code {
         let UnaryExpr { op, expr: idx } = expr;
-        let expr_type = context.type_of_expr(*idx);
+        let expr_type = context.borrow_expr_type(*idx);
         let range = context.range_of(expr_idx);
 
         let mut code = self.synth_expr(*idx, context);
@@ -332,6 +385,11 @@ impl Codegen {
             (IntoString, Int) | (IntoString, IntLiteral(_)) => {
                 synth_op_u8(Op::IntoString, range, IntoStringOperand::Int as u8)
             }
+            (IntoString, String) | (IntoString, StringLiteral(_)) => Code::from_op(Op::Noop, range),
+            (IntoString, Array(_)) => {
+                todo!();
+                // synth_op_u8(Op::IntoString, range, IntoStringOperand::Array as u8)
+            }
 
             _ => unreachable!(),
         });
@@ -342,13 +400,13 @@ impl Codegen {
     #[must_use]
     fn synth_local_def(
         &mut self,
-        local_key: LocalDefKey,
+        local_key: ValueSymbol,
         value: Idx<Expr>,
         context: &hir::Context,
     ) -> Code {
         let mut code = self.synth_expr(value, context);
 
-        let local_type = context.type_of_expr(value);
+        let local_type = context.borrow_expr_type(value);
         let local_size = word_size_of(local_type);
 
         // TODO: is this needed...?
@@ -496,8 +554,7 @@ impl Codegen {
                 }
             },
             AllocType::String => code.push((Op::PopString, range)),
-            // TODO: implement Array
-            AllocType::Array => code.push((Op::Pop2, range)),
+            AllocType::Array => code.push((Op::PopArray, range)),
             AllocType::Rc => code.push((Op::PopRc, range)),
             AllocType::Gc => code.push((Op::PopGc, range)),
             AllocType::Noop => {}
@@ -564,15 +621,18 @@ impl Codegen {
             args,
             callee_path,
         } = expr;
-        let return_ty = &cast!(context.type_of_expr(*callee), Type::Function).return_ty;
-        let return_slots = word_size_of(return_ty);
+        let return_ty = &cast!(context.borrow_expr_type(*callee), Type::Function).return_ty;
+        let return_slots = word_size_of(context.borrow_type(*return_ty));
 
         let mut code = Code::default();
 
         for arg in args {
             code.append(self.synth_expr(*arg, context));
         }
-        let arg_types: Vec<&Type> = args.iter().map(|idx| context.type_of_expr(*idx)).collect();
+        let arg_types: Vec<&Type> = args
+            .iter()
+            .map(|idx| context.borrow_expr_type(*idx))
+            .collect();
 
         // TODO: putting builtins into a "core" library and loading them into a "prelude" for name resolution
         if callee_path == "print" {
@@ -590,11 +650,11 @@ impl Codegen {
     fn synth_local_ref(
         &mut self,
         expr_idx: Idx<Expr>,
-        expr: &LocalRefExpr,
+        expr: &VarRefExpr,
         context: &hir::Context,
     ) -> Code {
-        let (slot_number, slot_size) = self.curr().stack_slots[&expr.key];
-        let ty = context.type_of_expr(expr_idx);
+        let (slot_number, slot_size) = self.curr().stack_slots[&expr.symbol];
+        let ty = context.borrow_expr_type(expr_idx);
         let op = match (ty, slot_size) {
             (Type::String | Type::StringLiteral(_), _) => Op::GetLocalString,
             (_, 0) => unreachable!("or could a variable be assigned to unit?"),
@@ -739,7 +799,7 @@ pub struct FunctionCodegen {
     next_stack_slot_index: u16,
 
     /// Map from a unique LocalDef to (slot_number, slot_size) in the stack
-    stack_slots: HashMap<LocalDefKey, (u16, u16)>,
+    stack_slots: HashMap<ValueSymbol, (u16, u16)>,
 
     /// Keeps track of values to be able to emit specific pop instructions
     ///
@@ -763,18 +823,17 @@ impl FunctionCodegen {
         }
     }
 
-    fn add_local(&mut self, local_key: LocalDefKey, local_size: u16) {
+    fn add_local(&mut self, local_key: ValueSymbol, local_size: u16) {
         self.stack_slots
             .insert(local_key, (self.next_stack_slot_index, local_size));
         self.next_stack_slot_index += local_size;
     }
 
-    // TODO: after Arrays are implemented, this can be moved inside of `add_local`
-    // since there's nowhere that needs to call just this function
     fn push_alloc_type(&mut self, local_type: &Type) {
         let local_size = word_size_of(local_type);
         let alloc_type = match (local_type, local_size) {
             (Type::String | Type::StringLiteral(_), _) => AllocType::String,
+            (Type::Array(_), _) => AllocType::Array,
             (Type::Function(_), _) => AllocType::Rc,
 
             (_, 0) => unreachable!(),
@@ -792,7 +851,11 @@ impl FunctionCodegen {
                     self.alloc_types.push(AllocType::Noop);
                 }
             }
-            AllocType::Array => todo!(),
+            AllocType::Array => {
+                //
+                self.alloc_types.push(AllocType::Array);
+                self.alloc_types.push(AllocType::Noop); // 2nd word of array
+            }
             AllocType::String => {
                 self.alloc_types.push(AllocType::String);
                 self.alloc_types.push(AllocType::Noop); // 2nd word of string
@@ -826,9 +889,9 @@ fn word_size_of(ty: &Type) -> u16 {
         Type::Unit => 0,
 
         Type::Function(_) => 1, // pointer size
-        Type::Array(_) => 2,
+        Type::Array(_) => vm_types::word_size_of::<VMArray>(),
 
-        Type::Undetermined => unreachable!(),
+        Type::Unknown => unreachable!(),
         Type::Error => unreachable!(),
         Type::Top => 0,
         Type::Bottom => 0,
@@ -852,11 +915,11 @@ fn pop_code_of(ty: &Type) -> Code {
         | Type::Int => Code::from_op(Op::Pop1, range),
         Type::StringLiteral(_) | Type::String => Code::from_op(Op::PopString, range),
         Type::Function(_) => Code::from_op(Op::Pop1, range),
-        Type::Array(_) => todo!(),
+        Type::Array(_) => Code::from_op(Op::PopArray, range),
 
         Type::Bottom => Code::default(),
         Type::Top => unreachable!("Top is not a constructable value"),
-        Type::Undetermined | Type::Error => unreachable!(),
+        Type::Unknown | Type::Error => unreachable!(),
     }
 }
 
@@ -877,4 +940,5 @@ unsafe impl BytecodeRead for VMInt {}
 unsafe impl BytecodeRead for VMFloat {}
 unsafe impl BytecodeRead for IntoStringOperand {}
 unsafe impl BytecodeRead for PushStringOperand {}
+unsafe impl BytecodeRead for AllocArrayOperand {}
 unsafe impl BytecodeRead for ReturnType {}

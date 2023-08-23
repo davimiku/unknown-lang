@@ -1,9 +1,9 @@
-mod context;
 mod database;
+mod diagnostic;
+mod display;
 mod expr;
-mod fmt_expr;
 mod interner;
-mod name_res;
+mod lowering_context;
 mod scope;
 mod type_expr;
 mod typecheck;
@@ -11,12 +11,13 @@ mod typecheck;
 #[cfg(test)]
 mod tests;
 
-pub use context::{Context, Diagnostic, COMPILER_BRAND};
+pub use diagnostic::Diagnostic;
+pub use display::display_root;
 pub use expr::{
-    BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, LocalDefExpr,
-    LocalDefKey, LocalRefExpr, UnaryExpr, UnaryOp,
+    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr,
+    IndexIntExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
-use fmt_expr::fmt_root;
+pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FunctionType, Type};
 
 use database::Database;
@@ -26,7 +27,8 @@ use interner::Key;
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
-pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+fn lower_module(ast: &ast::Root) -> (Idx<Expr>, Context) {
+    let interner = Interner::default();
     let mut context = Context::new(interner);
 
     let exprs: Vec<Idx<Expr>> = ast
@@ -37,12 +39,25 @@ pub fn lower<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Con
     let program = Expr::Block(BlockExpr { exprs });
     let program = context.alloc_expr(program, None);
 
-    context.type_check(program, &Type::Top);
+    context.type_check(program, context.type_database.top());
 
     (program, context)
 }
 
-pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+fn lower_function(ast: &ast::Root) -> (Idx<Expr>, Context) {
+    let interner = Interner::default();
+    let mut context = Context::new(interner);
+
+    let ast_function = ast.exprs().next().unwrap();
+    let function_idx = context.lower_expr(Some(ast_function));
+    let function = context.expr(function_idx);
+
+    assert!(matches!(function, Expr::Function(_)));
+
+    (function_idx, context)
+}
+
+pub fn lower(input: &str, target: LowerTarget) -> (Idx<Expr>, Context) {
     let parsed = parser::parse(input);
     if !parsed.errors().is_empty() {
         panic!("found errors while parsing");
@@ -50,11 +65,16 @@ pub fn lower_from_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Exp
 
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 
-    lower(&root, interner)
+    match target {
+        LowerTarget::Function => lower_function(&root),
+        LowerTarget::Module => lower_module(&root),
+    }
 }
 
-pub fn fmt(ast: &ast::Root, interner: &mut Interner) -> String {
-    let (root, context) = lower(ast, interner);
+pub enum LowerTarget {
+    /// The AST to lower is for a single function
+    Function,
 
-    fmt_root(root, &context)
+    /// The AST to lower is a list of statements representing a module
+    Module,
 }

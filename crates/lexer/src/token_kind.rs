@@ -13,8 +13,7 @@ pub enum TokenKind {
     #[regex("(?&decimal)")]
     IntLiteral,
 
-    // Allowed to omit digit before decimal (i.e. zero)
-    #[regex(r#"((?&decimal)\.(?&decimal)?|\.(?&decimal))"#)]
+    #[regex(r#"(?&decimal)\.(?&decimal)?"#)]
     FloatLiteral,
 
     #[regex("\"[^\"\n]*\"")]
@@ -38,6 +37,10 @@ pub enum TokenKind {
     /// `if`
     #[token("if")]
     If,
+
+    /// `in`
+    #[token("in")]
+    In,
 
     /// `let`
     #[token("let")]
@@ -249,6 +252,7 @@ impl fmt::Display for TokenKind {
             Self::Else => "‘else’",
             Self::For => "‘for’",
             Self::If => "‘if’",
+            Self::In => "‘in’",
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
             Self::Module => "‘module’",
@@ -371,11 +375,6 @@ mod tests {
     }
 
     #[test]
-    fn lex_float_no_leading_digit() {
-        check(".123", TokenKind::FloatLiteral);
-    }
-
-    #[test]
     fn lex_float_with_separators() {
         check("123_456.789", TokenKind::FloatLiteral);
     }
@@ -408,6 +407,11 @@ mod tests {
     #[test]
     fn lex_if_keyword() {
         check("if", TokenKind::If);
+    }
+
+    #[test]
+    fn lex_in_keyword() {
+        check("in", TokenKind::In);
     }
 
     #[test]

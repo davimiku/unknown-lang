@@ -46,6 +46,16 @@ pub enum Op {
     /// Stack: **=>** String
     PushString,
 
+    /// Allocates an array of the given size and
+    /// pushes the (ptr, len) pair onto the stack.
+    ///
+    /// TODO: do we just need the size of the array here?
+    ///
+    /// Operands:
+    ///         len: number of elements
+    ///         el_size: size of elements
+    AllocArray,
+
     /// Pops 1 "slot" off the stack
     ///
     /// Operands:
@@ -80,6 +90,13 @@ pub enum Op {
     ///
     /// Stack: VMString **=>**
     PopString,
+
+    /// Pops a VM Array off the stack.
+    ///
+    /// Operands:
+    ///
+    /// Stack: VMArray **=>**
+    PopArray,
 
     /// Pops an object from the stack that is memory-managed with
     /// reference counting (Rc).
@@ -138,6 +155,11 @@ pub enum Op {
     /// Stack: **=>** String value
     GetLocalString,
 
+    /// Gets the value of an array at the given index
+    ///
+    /// Stack: (ptr, len), idx **=>** value
+    GetArrayIndex,
+
     /// Peeks the top 1 slot size from the stack and sets
     /// that value into the stack at the given offset.
     /// The peeked value is not popped off the stack.
@@ -183,6 +205,11 @@ pub enum Op {
     ///
     /// Stack: value **=>** value
     SetLocalString,
+
+    /// Sets the value of an array at the given index
+    ///
+    /// Stack: arr_ptr, idx, value **=>**
+    SetArrayIndex,
 
     /// Unary `!` operator for Bool.
     ///
@@ -418,13 +445,32 @@ impl TryFrom<u8> for Op {
 #[derive(Debug)]
 #[repr(C)]
 pub struct PushStringOperand {
-    pub len: u32,
+    /// String length in the constants pool
+    pub bytes_len: u32,
+
+    /// Offset from the beginning of the constants pool, i.e. the start position
     pub offset: u32,
 }
 
 impl PushStringOperand {
     pub(crate) fn to_bytes(&self) -> [u8; 8] {
-        bytemuck::cast([self.len, self.offset])
+        bytemuck::cast([self.bytes_len, self.offset])
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct AllocArrayOperand {
+    /// Number of elements of the array
+    pub len: u32,
+
+    /// Size of each element, in VM words
+    pub el_size: u32,
+}
+
+impl AllocArrayOperand {
+    pub(crate) fn to_bytes(&self) -> [u8; 8] {
+        bytemuck::cast([self.len, self.el_size])
     }
 }
 
@@ -434,6 +480,7 @@ pub enum IntoStringOperand {
     Bool,
     Float,
     Int,
+    Array,
 }
 
 #[derive(Debug)]

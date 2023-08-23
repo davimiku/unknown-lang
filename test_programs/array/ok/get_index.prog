@@ -1,0 +1,5 @@
+let arr = [20, 30, 40]
+let expected = 40
+let result = arr.2
+
+if result != expected { return 1 }

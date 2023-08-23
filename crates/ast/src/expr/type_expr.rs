@@ -1,7 +1,7 @@
 use parser::{SyntaxKind, SyntaxNode};
 use text_size::TextRange;
 
-use super::{BoolLiteral, CallExpr, FloatLiteral, IntLiteral, PathExpr, StringLiteral};
+use super::{BoolLiteral, CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
 
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
@@ -11,6 +11,7 @@ pub enum TypeExpr {
     Function(Function),
     Path(PathExpr),
     Call(CallExpr),
+    Ident(Ident),
     // If(IfExpr), // todo
     IntLiteral(IntLiteral),
     // Paren(ParenExpr), // parameterize to work on either Expr | TypeExpr
@@ -31,11 +32,12 @@ impl TypeExpr {
             SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
             SyntaxKind::FloatLiteralExpr => Self::FloatLiteral(FloatLiteral(node)),
-            SyntaxKind::InfixExpr => Self::cast_binary(node),
+            SyntaxKind::Ident => Self::Ident(Ident(node)),
+            SyntaxKind::InfixExpr => Self::cast_infix(node),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
             // SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             // SyntaxKind::NotExpr => Self::Unary(Unary(node)),
-            SyntaxKind::Path => Self::Path(PathExpr(node)),
+            SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             // SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
             _ => return None,
@@ -50,16 +52,17 @@ impl TypeExpr {
             Call(e) => e.range(),
             FloatLiteral(e) => e.range(),
             Function(e) => e.range(),
+            Ident(e) => e.range(),
+            IntLiteral(e) => e.range(),
             Path(e) => e.range(),
             // If(e) => e.range(),
-            IntLiteral(e) => e.range(),
             // Paren(e) => e.range(),
             StringLiteral(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
 
-    fn cast_binary(node: SyntaxNode) -> Self {
+    fn cast_infix(node: SyntaxNode) -> Self {
         let is_function = node.children().any(|node| node.kind() == SyntaxKind::Arrow);
 
         if is_function {
@@ -74,8 +77,6 @@ impl TypeExpr {
 #[derive(Debug, Clone)]
 pub struct Function(SyntaxNode);
 
-// TODO: what of these need to be Option ?
-// prefer not to panic if possible, and create a proper diagnostic
 impl Function {
     pub fn param_list(&self) -> Vec<TypeExpr> {
         self.0.children().filter_map(TypeExpr::cast).collect()
@@ -91,5 +92,33 @@ impl Function {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+// TODO: rename to member expression?
+// TODO: parameterize to have Expr/TypeExpr use the same struct?
+#[derive(Debug, Clone)]
+pub struct PathExpr(SyntaxNode);
+
+impl PathExpr {
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+
+    /// The expression to the left of the dot
+    ///
+    /// The subject is the noun that drives the action of the sentence, ex.
+    /// "Karl runs", Karl is the subject. i.e. in `karl.runs`, karl is the subject.
+    pub fn subject(&self) -> Option<TypeExpr> {
+        self.0.first_child().and_then(TypeExpr::cast)
+    }
+
+    pub fn member(&self) -> Option<TypeExpr> {
+        self.0
+            .children()
+            .by_ref()
+            .take_while(|p| p.kind() == SyntaxKind::Dot)
+            .next()
+            .and_then(TypeExpr::cast)
     }
 }
