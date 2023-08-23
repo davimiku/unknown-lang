@@ -1,4 +1,3 @@
-use ast::Root;
 use itertools::Itertools;
 use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
@@ -17,10 +16,7 @@ macro_rules! cast {
 }
 
 fn _print(input: &str) {
-    let mut interner = Interner::default();
-
-    let root: Root = parser::parse(input).into();
-    let (root_expr, context) = lower_ast(&root, &mut interner);
+    let (root_expr, context) = lower(input, LowerTarget::Module);
 
     let root_expr = cast!(context.expr(root_expr), Expr::Block);
     for expr in root_expr.exprs.iter() {
@@ -30,10 +26,7 @@ fn _print(input: &str) {
 }
 
 fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
-    let mut interner = Interner::default();
-
-    let root: Root = parser::parse(input).into();
-    let (root_expr, context) = lower_ast(&root, &mut interner);
+    let (root_expr, context) = lower(input, LowerTarget::Module);
 
     assert_eq!(context.diagnostics, vec![]);
 
@@ -68,9 +61,7 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 
 /// Checks that the input lowered with error(s)
 fn check_error(input: &str, expected: Vec<LSPDiagnostic>) {
-    let mut interner = Interner::default();
-    let root: Root = parser::parse(input).into();
-    let (root, context) = lower_ast(&root, &mut interner);
+    let (root, context) = lower(input, LowerTarget::Module);
 
     let main_block = context.expr(root);
     let _ = cast!(main_block, Expr::Block);

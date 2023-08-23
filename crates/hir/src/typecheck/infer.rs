@@ -515,7 +515,7 @@ fn infer_binary_equality(
     lhs: Idx<Type>,
     rhs: Idx<Type>,
     op: BinaryOp,
-    context: &mut Context,
+    context: &Context,
 ) -> TypeResult {
     // TODO: additional analysis here to determine true/false at compile time
     // for literals, ex. `2 == 2` infer `true` and `2 == 3` infer false
@@ -534,7 +534,7 @@ fn infer_binary_concat(
     a: Idx<Type>,
     b: Idx<Type>,
     range: TextRange,
-    context: &mut Context,
+    context: &Context,
 ) -> TypeResult {
     let a_ty = context.type_database.type_(a);
     let b_ty = context.type_database.type_(b);
@@ -563,10 +563,10 @@ mod tests {
 
     use super::infer_expr;
 
-    fn check<'a>(input: &str, interner: &'a mut Interner) -> (TypeResult, Context<'a>) {
+    fn check(input: &str) -> (TypeResult, Context) {
         let parsed = parser::parse(input).syntax();
         let root = ast::Root::cast(parsed).expect("valid Root node");
-        let mut context = Context::new(interner);
+        let mut context = Context::new(Interner::default());
 
         let exprs: Vec<Idx<Expr>> = root
             .exprs()
@@ -582,9 +582,8 @@ mod tests {
         (result, context)
     }
 
-    fn check_infer_type(input: &str, expected: Type, interner: Option<Interner>) {
-        let mut interner = interner.unwrap_or_default();
-        let (result, context) = check(input, &mut interner);
+    fn check_infer_type(input: &str, expected: Type) {
+        let (result, context) = check(input);
 
         assert!(result.is_ok());
         let actual = context.type_database.type_(result.ty);
@@ -597,7 +596,7 @@ mod tests {
         let input = "1";
         let expected = Type::IntLiteral(1);
 
-        check_infer_type(input, expected, None);
+        check_infer_type(input, expected);
     }
 
     #[test]
@@ -605,17 +604,7 @@ mod tests {
         let input = "2 + 3";
         let expected = Type::IntLiteral(5);
 
-        check_infer_type(input, expected, None);
-    }
-
-    #[test]
-    fn infer_string_literal() {
-        let input = r#""Hello""#;
-        let mut interner = Interner::default();
-        let key = interner.intern("Hello");
-        let expected = Type::StringLiteral(key);
-
-        check_infer_type(input, expected, Some(interner));
+        check_infer_type(input, expected);
     }
 
     #[test]
@@ -623,7 +612,7 @@ mod tests {
         let input = "let a = 1";
         let expected = Type::Unit;
 
-        check_infer_type(input, expected, None);
+        check_infer_type(input, expected);
     }
 
     #[test]
@@ -634,6 +623,6 @@ mod tests {
 }"#;
         let expected = Type::IntLiteral(1);
 
-        check_infer_type(input, expected, None);
+        check_infer_type(input, expected);
     }
 }

@@ -12,12 +12,12 @@ pub enum Diagnostic {
     Type(TypeDiagnostic),
 }
 
-impl TypeDiagnostic {
-    fn to_lsp(self) -> LSPDiagnostic {
-        LSPDiagnostic {
-            range: (self.range.start().into(), self.range.end().into()),
+impl From<TypeDiagnostic> for LSPDiagnostic {
+    fn from(value: TypeDiagnostic) -> Self {
+        Self {
+            range: (value.range.start().into(), value.range.end().into()),
             severity: LSPDiagnosticSeverity::Error,
-            message: todo!(),
+            message: String::from("TODO!"),
             code: None,
             code_description: None,
             source: None,

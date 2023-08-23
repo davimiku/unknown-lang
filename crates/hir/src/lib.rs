@@ -27,7 +27,8 @@ use interner::Key;
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
-pub fn lower_ast<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+fn lower_module(ast: &ast::Root) -> (Idx<Expr>, Context) {
+    let interner = Interner::default();
     let mut context = Context::new(interner);
 
     let exprs: Vec<Idx<Expr>> = ast
@@ -43,8 +44,20 @@ pub fn lower_ast<'a>(ast: &ast::Root, interner: &'a mut Interner) -> (Idx<Expr>,
     (program, context)
 }
 
-// TODO: remove this, only used for codegen tests
-pub fn lower_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, Context<'a>) {
+fn lower_function(ast: &ast::Root) -> (Idx<Expr>, Context) {
+    let interner = Interner::default();
+    let mut context = Context::new(interner);
+
+    let ast_function = ast.exprs().next().unwrap();
+    let function_idx = context.lower_expr(Some(ast_function));
+    let function = context.expr(function_idx);
+
+    assert!(matches!(function, Expr::Function(_)));
+
+    (function_idx, context)
+}
+
+pub fn lower(input: &str, target: LowerTarget) -> (Idx<Expr>, Context) {
     let parsed = parser::parse(input);
     if !parsed.errors().is_empty() {
         panic!("found errors while parsing");
@@ -52,5 +65,16 @@ pub fn lower_input<'a>(input: &str, interner: &'a mut Interner) -> (Idx<Expr>, C
 
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 
-    lower_ast(&root, interner)
+    match target {
+        LowerTarget::Function => lower_function(&root),
+        LowerTarget::Module => lower_module(&root),
+    }
+}
+
+pub enum LowerTarget {
+    /// The AST to lower is for a single function
+    Function,
+
+    /// The AST to lower is a list of statements representing a module
+    Module,
 }

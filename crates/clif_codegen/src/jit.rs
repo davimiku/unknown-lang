@@ -81,6 +81,14 @@ impl JIT {
 }
 
 impl JIT {
+    /// Compiles the full program and returns a pointer to `main`
+    ///
+    /// In normal mode, the `main` function is defined by the user.
+    /// TODO: will it always be `[]String -> Int` or can the user define it with
+    /// arbitrary parameter/return types?
+    ///
+    /// In script mode, `main` is a synthetic function that wraps the script,
+    /// takes a `[]String` argument for the CLI args, and `return 0` on success.
     pub fn compile(
         &mut self,
         expr: Idx<Expr>,
@@ -89,7 +97,7 @@ impl JIT {
         todo!()
     }
 
-    /// Compiles an expression that is
+    /// Compiles a function expression within this module
     pub fn compile_function(
         &mut self,
         func: &hir::FunctionExpr,
@@ -99,26 +107,24 @@ impl JIT {
         let builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
         let mut translator = FunctionTranslator::new(builder, &mut self.module, context);
 
-        let value = translator.translate_function(func);
+        translator.translate_function(func);
 
-        let func_name = func
-            .name
-            .map_or("{anonymous}", |key| context.interner.lookup(key));
+        let func_name = func.name.map_or("{anonymous}", |key| context.lookup(key));
 
-        let adder_printer_id =
+        let func_id =
             self.module
                 .declare_function(func_name, Linkage::Export, &self.ctx.func.signature)?;
 
-        self.module
-            .define_function(adder_printer_id, &mut self.ctx)?;
+        self.module.define_function(func_id, &mut self.ctx)?;
 
         self.module.clear_context(&mut self.ctx);
 
         self.module.finalize_definitions()?;
 
+        #[cfg(test)]
         println!("{}", self.ctx.func);
 
-        let code = self.module.get_finalized_function(adder_printer_id);
+        let code = self.module.get_finalized_function(func_id);
 
         Ok(code)
     }

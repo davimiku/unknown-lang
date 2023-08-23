@@ -198,3 +198,9 @@ impl ContextDisplay for VarRefExpr {
         self.symbol.display(context)
     }
 }
+
+impl ContextDisplay for FunctionExpr {
+    fn display(&self, context: &Context) -> String {
+        todo!()
+    }
+}

@@ -123,7 +123,7 @@ Function syntax is:
   - Example: `(a: Int, b: String)`
 - Followed by an arrow `->`
 - Followed by the return type
-  - If the function returns `Unit` (doesn't return anything), that can be omitted
+  - If the function returns `()` (doesn't return anything), that can be omitted
 - Followed by the block expression that is the function body
 
 ```txt

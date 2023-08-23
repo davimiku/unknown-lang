@@ -1,10 +1,13 @@
 use std::fmt;
 
 /// Language `Float` is a Rust `i64`
-type Int = i64;
+pub(crate) type XInt = i64;
 
 /// Language `Float` is a Rust `f64`
-type Float = f64;
+pub(crate) type XFloat = f64;
+
+/// Language `Bool` is a Rust `i64`
+pub(crate) type XBool = i64;
 
 #[repr(i64)]
 #[derive(Default, Debug)]
@@ -27,11 +30,11 @@ pub(crate) const PRINT_INT: &str = "__print_int";
 pub(crate) const PRINT_FLOAT: &str = "__print_float";
 pub(crate) const PRINT_BOOL: &str = "__print_bool";
 
-pub(crate) fn print_int(i: Int) {
+pub(crate) fn print_int(i: XInt) {
     println!("{i}");
 }
 
-pub(crate) fn print_float(f: Float) {
+pub(crate) fn print_float(f: XFloat) {
     println!("{f}");
 }
 
