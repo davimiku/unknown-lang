@@ -1,5 +1,4 @@
 mod args;
-mod lsp_diagnostic;
 
 use std::{
     env, fs,
@@ -9,7 +8,6 @@ use std::{
 
 use clap::Parser;
 use exitcode::ExitCode;
-use lsp_diagnostic::LSPDiagnostic;
 use path_clean::PathClean;
 
 use crate::args::{Args, Commands, EntryPath};
