@@ -1,6 +1,10 @@
 # Build
 target
 dist
+**/out/*.js
+**/out/*.js.map
+**/out/*.d.ts
+tsconfig.tsbuildinfo
 
 # Dependencies
 # Ignore Cargo.lock for libs

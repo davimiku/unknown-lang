@@ -1,0 +1,66 @@
+{
+  "name": "foo-language",
+  "displayName": "Foo language",
+  "description": "Language support for the Foo language",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davimiku/unknown-lang"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "foo",
+        "extensions": [
+          ".foo"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "foo-markdown"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "foo",
+        "scopeName": "source.foo",
+        "path": "./syntaxes/foo.tmLanguage.json"
+      },
+      {
+        "language": "foo-markdown",
+        "scopeName": "markdown.foo.codeblock",
+        "path": "./syntaxes/foo-markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.foo": "foo"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "install-self": "code --install-extension foo-language-0.0.1.vsix",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.19.0",
+    "@types/node": "^20.2.5",
+    "@types/vscode": "^1.75.1",
+    "@vscode/test-electron": "^2.2.3",
+    "prettier": "^2.8.8",
+    "typescript": "^5.0.4"
+  }
+}
