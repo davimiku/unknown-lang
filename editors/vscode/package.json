@@ -1,7 +1,7 @@
 {
-  "name": "walrus-language",
-  "displayName": "Walrus language",
-  "description": "Language support for the Walrus language",
+  "name": "foo-language",
+  "displayName": "Foo language",
+  "description": "Language support for the Foo language",
   "version": "0.0.1",
   "repository": {
     "type": "git",
@@ -16,31 +16,31 @@
   "contributes": {
     "languages": [
       {
-        "id": "walrus",
+        "id": "foo",
         "extensions": [
-          ".walrus"
+          ".foo"
         ],
         "configuration": "./language-configuration.json"
       },
       {
-        "id": "walrus-markdown"
+        "id": "foo-markdown"
       }
     ],
     "grammars": [
       {
-        "language": "walrus",
-        "scopeName": "source.walrus",
-        "path": "./syntaxes/walrus.tmLanguage.json"
+        "language": "foo",
+        "scopeName": "source.foo",
+        "path": "./syntaxes/foo.tmLanguage.json"
       },
       {
-        "language": "walrus-markdown",
-        "scopeName": "markdown.walrus.codeblock",
-        "path": "./syntaxes/walrus-markdown.tmLanguage.json",
+        "language": "foo-markdown",
+        "scopeName": "markdown.foo.codeblock",
+        "path": "./syntaxes/foo-markdown.tmLanguage.json",
         "injectTo": [
           "text.html.markdown"
         ],
         "embeddedLanguages": {
-          "meta.embedded.block.walrus": "walrus"
+          "meta.embedded.block.foo": "foo"
         }
       }
     ]
@@ -48,7 +48,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "install-self": "code --install-extension walrus-language-0.0.1.vsix",
+    "install-self": "code --install-extension foo-language-0.0.1.vsix",
     "compile": "tsc -b",
     "watch": "tsc -b -w"
   },

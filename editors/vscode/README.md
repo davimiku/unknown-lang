@@ -1,6 +1,6 @@
-# walrus-language README
+# foo-language README
 
-Walrus language
+Foo language
 
 ## Features
 

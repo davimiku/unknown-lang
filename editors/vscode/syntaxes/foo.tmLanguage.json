@@ -1,7 +1,7 @@
 {
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-	"name": "walrus",
-	"scopeName": "source.walrus",
+	"name": "foo",
+	"scopeName": "source.foo",
 	"patterns": [
 		{
 			"include": "#block_comment"
@@ -20,17 +20,17 @@
 		},
 		{
 			"comment": "Floating point literal (fraction)",
-			"name": "constant.numeric.float.walrus",
+			"name": "constant.numeric.float.foo",
 			"match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*\\b"
 		},
 		{
 			"comment": "Integer literal (decimal)",
-			"name": "constant.numeric.integer.decimal.walrus",
+			"name": "constant.numeric.integer.decimal.foo",
 			"match": "\\b[0-9][0-9_]*\\b"
 		},
 		{
 			"comment": "Boolean constant",
-			"name": "constant.language.boolean.walrus",
+			"name": "constant.language.boolean.foo",
 			"match": "\\b(true|false)\\b"
 		},
 		{
@@ -47,7 +47,7 @@
 	"repository": {
 		"block_comment": {
 			"comment": "Block comment",
-			"name": "comment.block.walrus",
+			"name": "comment.block.foo",
 			"begin": "/\\*",
 			"end": "\\*/",
 			"patterns": [
@@ -58,83 +58,83 @@
 		},
 		"line_comment": {
 			"comment": "Single-line comment",
-			"name": "comment.line.double-slash.walrus",
+			"name": "comment.line.double-slash.foo",
 			"begin": "//",
 			"end": "$"
 		},
 		"keywords": {
 			"patterns": [
 				{
-				"name": "keyword.control.walrus",
+				"name": "keyword.control.foo",
 				"match": "\\b(break|do|else|if|loop|match|while|yeet)\\b"
 			},
 			{
 				"comment": "Comparison keywords (part 1 for precedence)",
-				"name": "keyword.operator.comparison.walrus",
+				"name": "keyword.operator.comparison.foo",
 				"match": "(==|!=|in|!in)"
 			},
 			{
 				"comment": "Arithmetic operators",
-				"name": "keyword.operator.arithmetic.walrus",
+				"name": "keyword.operator.arithmetic.foo",
 				"match": "(!|\\+\\+|\\+|-|/|\\*|%|\\^)"
 			},
 			{
 				"comment": "Comparison keywords (part 2 for precedence)",
-				"name": "keyword.operator.comparison.walrus",
+				"name": "keyword.operator.comparison.foo",
 				"match": "(<=|>=|<|>)"
 			},
 			{
 				"comment": "Logical keywords",
-				"name": "keyword.logical.walrus",
+				"name": "keyword.logical.foo",
 				"match": "\\b(and|or)\\b"
 			},
 			{
 				"comment": "Bindings keywords (creates new bindings)",
-				"name": "keyword.binding.walrus",
+				"name": "keyword.binding.foo",
 				"match": "\\b(let|type)\\b"
 			},
 			{
 				"comment": "Type constructor keywords",
-				"name": "keyword.type.walrus",
+				"name": "keyword.type.foo",
 				"match": "\\b(struct|union|module|effect)\\b"
 			}
 		]
 		},
 		"string_literal": {
 			"comment": "Double-quote string literal",
-			"name": "string.quoted.double.walrus",
+			"name": "string.quoted.double.foo",
 			"begin": "\"",
 			"end": "\"",
 			"patterns": [
 				{
-					"name": "constant.character.escape.walrus",
+					"name": "constant.character.escape.foo",
 					"match": "\\\\."
 				}
 			]
 		},
 		"mutable": {
 			"comment": "Mutable storage modifier",
-			"name": "storage.modifier.mutable.walrus",
+			"name": "storage.modifier.mutable.foo",
 			"match": "\\bmutable\\b"
 		},
 		"self": {
 			"comment": "Reserved variable for `self`",
-			"name": "variable.language.walrus",
+			"name": "variable.language.foo",
 			"match": "\\bself\\b"
 		},
 		"core_scalar_types": {
 			"comment": "Built-in / core scalar type",
-			"name": "storage.type.core.walrus",
+			"name": "storage.type.core.foo",
 			"match": "\\b(Bool|Int|Float|String)\\b"
 		},
 		"core_compound_types": {
 			"comment": "Built-in / core compound (sum/product) types",
-			"name": "storage.class.core.walrus",
+			"name": "storage.class.core.foo",
 			"match": "\\b(Option|Result|List|Map)\\b"
 		},
 		"core_vars": {
 			"comment": "Core variables",
-			"name": "support.constant.core.walrus",
+			"name": "support.constant.core.foo",
 			"match": "\\b(Some|None|Ok|Err)\\b"
 		}
 	}
