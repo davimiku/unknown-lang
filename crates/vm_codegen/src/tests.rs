@@ -1,4 +1,4 @@
-use super::*;
+use crate::{codegen, ProgramChunk};
 
 fn generate_chunk(input: &str) -> ProgramChunk {
     let (root, mut context) = hir::lower(input, hir::LowerTarget::Module);

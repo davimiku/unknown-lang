@@ -457,17 +457,17 @@ fn infer_binary(expr: &BinaryExpr, context: &mut Context) -> TypeResult {
     let rhs_ty = rhs_result.ty;
     result.chain(rhs_result);
 
-    use BinaryOp::*;
+    use BinaryOp as O;
     match expr.op {
-        Add => infer_binary_add(lhs_ty, rhs_ty, range, context),
-        Concat => infer_binary_concat(lhs_ty, rhs_ty, range, context),
-        Sub => todo!(),
-        Mul => todo!(),
-        Div => todo!(),
-        Rem => todo!(),
-        Exp => todo!(),
-        Path => todo!(),
-        Eq | Ne => infer_binary_equality(lhs_ty, rhs_ty, expr.op, context),
+        O::Add => infer_binary_add(lhs_ty, rhs_ty, range, context),
+        O::Concat => infer_binary_concat(lhs_ty, rhs_ty, range, context),
+        O::Sub => todo!(),
+        O::Mul => todo!(),
+        O::Div => todo!(),
+        O::Rem => todo!(),
+        O::Exp => todo!(),
+        O::Path => todo!(),
+        O::Eq | O::Ne => infer_binary_equality(lhs_ty, rhs_ty, expr.op, context),
     }
 }
 

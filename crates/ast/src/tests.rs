@@ -1,4 +1,4 @@
-use super::*;
+use crate::{Expr, TypeExpr};
 
 /// Asserts that the provided `Option` is `Some`
 /// and returns the unwrapped value.

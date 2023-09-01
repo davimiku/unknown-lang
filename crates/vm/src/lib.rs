@@ -76,17 +76,16 @@ impl VM {
             // #[cfg(debug_stack)]
             dbg!(op);
 
-            use Op::*;
             match op {
-                PushInt => {
+                Op::PushInt => {
                     let constant = frame.read::<VMInt>();
                     self.stack.push_int(constant);
                 }
-                PushFloat => {
+                Op::PushFloat => {
                     let constant = frame.read::<VMFloat>();
                     self.stack.push_float(constant);
                 }
-                PushString => {
+                Op::PushString => {
                     let PushStringOperand {
                         bytes_len: len,
                         offset,
@@ -101,7 +100,7 @@ impl VM {
 
                     self.stack.push_string(VMString::new(string));
                 }
-                AllocArray => {
+                Op::AllocArray => {
                     let AllocArrayOperand { len, el_size } = frame.read::<AllocArrayOperand>();
 
                     if len == 0 {
@@ -114,67 +113,67 @@ impl VM {
                         self.stack.push_array(array);
                     }
                 }
-                PushTrue => {
+                Op::PushTrue => {
                     self.stack.push_bool(true);
                 }
-                PushFalse => {
+                Op::PushFalse => {
                     self.stack.push_bool(false);
                 }
-                Pop1 => {
+                Op::Pop1 => {
                     self.stack.pop_word();
                 }
-                Pop2 => {
+                Op::Pop2 => {
                     self.stack.pop_dword();
                 }
-                Pop4 => {
+                Op::Pop4 => {
                     self.stack.pop_qword();
                 }
-                PopN => {
+                Op::PopN => {
                     let num_slots = frame.read::<u16>();
                     self.stack.pop_n_discard(num_slots as usize);
                 }
-                PopString => {
+                Op::PopString => {
                     let _ = self.stack.pop_string();
                     // VMString drops, including its internal Rc for Rc-managed strings
                 }
-                PopArray => {
+                Op::PopArray => {
                     let _ = self.stack.pop_array();
                     // VMArray drops, including its internal Rc for the data
                 }
-                PopRc => {
+                Op::PopRc => {
                     let _ = self.stack.pop_rc::<u8>();
                     // Rc drops, reduces strong count
                 }
-                PopGc => {
+                Op::PopGc => {
                     let _ = self.stack.pop_gc::<u8>();
                     // Gc drops, possibly marking for later cleanup
                 }
-                GetLocal => {
+                Op::GetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_word_at(slot_offset);
                     self.stack.push_word(*val);
                 }
-                GetLocal2 => {
+                Op::GetLocal2 => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword_at(slot_offset);
 
                     self.stack.push_dword(val);
                 }
-                GetLocal4 => {
+                Op::GetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_qword_at(slot_offset);
 
                     self.stack.push_qword(*val);
                 }
-                GetLocalN => todo!(),
-                GetLocalString => {
+                Op::GetLocalN => todo!(),
+                Op::GetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword_at(slot_offset);
                     let string = VMString::from_copy(val.into());
 
                     self.stack.push_string(string);
                 }
-                GetArrayIndex => {
+                Op::GetArrayIndex => {
                     let index = self.stack.pop_int();
                     if index < 0 {
                         return Err(Panic::IndexError);
@@ -191,18 +190,18 @@ impl VM {
 
                     self.stack.push_slice(&array.ptr[start..end]);
                 }
-                SetLocal => {
+                Op::SetLocal => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let word = self.stack.peek_word();
                     self.stack.set_word_at(*word, slot_offset);
                 }
-                SetLocal2 => {
+                Op::SetLocal2 => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
 
                     self.stack.set_dword_at(val, slot_offset);
                 }
-                SetLocal4 => {
+                Op::SetLocal4 => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_qword();
                     let words: [Word; 4] = (*val).into();
@@ -211,7 +210,7 @@ impl VM {
                         self.stack.set_word_at(*word, slot_offset + i);
                     }
                 }
-                SetLocalN => {
+                Op::SetLocalN => {
                     let _slot_offset = frame.read::<u16>();
                     let _num_slots = frame.read::<u16>();
 
@@ -219,21 +218,21 @@ impl VM {
 
                     todo!()
                 }
-                SetLocalString => {
+                Op::SetLocalString => {
                     let slot_offset = frame.read::<u16>() as usize;
                     let val = self.stack.peek_dword();
                     let string = VMString::from_copy(val.into());
 
                     self.stack.set_dword_at(string.into(), slot_offset);
                 }
-                SetArrayIndex => {}
-                PushLocalFunc => {
+                Op::SetArrayIndex => {}
+                Op::PushLocalFunc => {
                     let idx = frame.read::<u32>() as usize;
                     let function = &self.functions[idx] as *const FunctionChunk;
 
                     self.stack.push_raw_ptr(function);
                 }
-                NotBool => {
+                Op::NotBool => {
                     let top = self.stack.peek_bool();
 
                     match top {
@@ -242,10 +241,10 @@ impl VM {
                         _ => unreachable!("invalid stack value for Bool"),
                     }
                 }
-                AddInt => int_bin_op!(self, add),
-                SubInt => int_bin_op!(self, sub),
-                MulInt => int_bin_op!(self, mul),
-                DivInt => {
+                Op::AddInt => int_bin_op!(self, add),
+                Op::SubInt => int_bin_op!(self, sub),
+                Op::MulInt => int_bin_op!(self, mul),
+                Op::DivInt => {
                     let b = self.stack.pop_int();
                     let a = self.stack.pop_int();
                     if b == 0 {
@@ -255,27 +254,27 @@ impl VM {
                     let res = a / b;
                     self.stack.push_int(res);
                 }
-                NegateInt => {
+                Op::NegateInt => {
                     let top = self.stack.peek_int();
                     self.stack.replace_top_word(-top);
                 }
-                RemInt => todo!(),
-                EqInt => {
+                Op::RemInt => todo!(),
+                Op::EqInt => {
                     let b = self.stack.pop_int();
                     let a = self.stack.pop_int();
 
                     self.stack.push_bool(a == b);
                 }
-                NeInt => {
+                Op::NeInt => {
                     let b = self.stack.pop_int();
                     let a = self.stack.pop_int();
 
                     self.stack.push_bool(a != b);
                 }
-                AddFloat => float_bin_op!(self, add),
-                SubFloat => float_bin_op!(self, sub),
-                MulFloat => float_bin_op!(self, mul),
-                DivFloat => {
+                Op::AddFloat => float_bin_op!(self, add),
+                Op::SubFloat => float_bin_op!(self, sub),
+                Op::MulFloat => float_bin_op!(self, mul),
+                Op::DivFloat => {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
                     if b == 0.0 {
@@ -285,23 +284,23 @@ impl VM {
                     let res = a / b;
                     self.stack.push_float(res);
                 }
-                NegateFloat => {
+                Op::NegateFloat => {
                     let top = self.stack.peek_float();
                     self.stack.replace_top_word(-top);
                 }
-                EqFloat => {
+                Op::EqFloat => {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
 
                     self.stack.push_bool(a == b);
                 }
-                NeFloat => {
+                Op::NeFloat => {
                     let b = self.stack.pop_float();
                     let a = self.stack.pop_float();
 
                     self.stack.push_bool(a != b);
                 }
-                IntoString => {
+                Op::IntoString => {
                     let kind = frame.read::<IntoStringOperand>();
                     match kind {
                         IntoStringOperand::Bool => {
@@ -326,25 +325,25 @@ impl VM {
                         }
                     }
                 }
-                ConcatString => {
+                Op::ConcatString => {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
                     self.stack.push_string(a + b);
                 }
-                EqString => {
+                Op::EqString => {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
                     self.stack.push_bool(a == b);
                 }
-                NeString => {
+                Op::NeString => {
                     let b = self.stack.pop_string();
                     let a = self.stack.pop_string();
 
                     self.stack.push_bool(a != b);
                 }
-                CallFunction => {
+                Op::CallFunction => {
                     let return_slots = frame.read::<u16>() as usize;
                     let func_ptr = self.stack.pop_func_ptr();
                     let return_address = frame.ip;
@@ -363,7 +362,7 @@ impl VM {
                     // Safety: a frame was just pushed, so there is a last frame to unwrap
                     frame = unsafe { self.frames.last_mut().unwrap_unchecked() };
                 }
-                CallBuiltin => {
+                Op::CallBuiltin => {
                     let builtin_idx = frame.read::<u8>();
                     match builtin_idx {
                         0 => unreachable!("no builtin at the zero byte"),
@@ -395,18 +394,18 @@ impl VM {
                     // TODO: remove when reworking how builtins are called
                     // self.call_builtin(builtin_idx);
                 }
-                Jump => {
+                Op::Jump => {
                     let offset = frame.read::<u32>();
                     frame.ip += offset as usize;
                 }
-                JumpIfFalse => {
+                Op::JumpIfFalse => {
                     let offset = frame.read::<u32>();
                     let condition = self.stack.pop_bool();
                     if condition == 0 {
                         frame.ip += offset as usize;
                     }
                 }
-                Return => {
+                Op::Return => {
                     let _ = self.stack.pop_func_ptr();
 
                     let return_address = frame.return_address;
@@ -420,7 +419,7 @@ impl VM {
                     frame.ip = return_address;
                     self.stack.offset = frame.stack_offset;
                 }
-                Noop => {}
+                Op::Noop => {}
             }
 
             // #[cfg(debug_stack)]

@@ -271,18 +271,18 @@ pub enum BinaryOp {
 
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use BinaryOp::*;
+        use BinaryOp as O;
         match self {
-            Add => write!(f, "+"),
-            Sub => write!(f, "-"),
-            Mul => write!(f, "*"),
-            Div => write!(f, "/"),
-            Concat => write!(f, "++"),
-            Rem => write!(f, "%"),
-            Exp => write!(f, "^"),
-            Path => write!(f, "."),
-            Eq => write!(f, "=="),
-            Ne => write!(f, "!="),
+            O::Add => write!(f, "+"),
+            O::Sub => write!(f, "-"),
+            O::Mul => write!(f, "*"),
+            O::Div => write!(f, "/"),
+            O::Concat => write!(f, "++"),
+            O::Rem => write!(f, "%"),
+            O::Exp => write!(f, "^"),
+            O::Path => write!(f, "."),
+            O::Eq => write!(f, "=="),
+            O::Ne => write!(f, "!="),
         }
     }
 }

@@ -150,12 +150,12 @@ impl Codegen {
     /// Generates the bytecode and `TextRange`s for an expression.
     #[must_use]
     fn synth_expr(&mut self, expr_idx: Idx<Expr>, context: &hir::Context) -> Code {
-        use Expr::*;
+        use Expr as E;
 
         let expr = context.expr(expr_idx);
         let range = context.range_of(expr_idx);
         match expr {
-            Statement(expr_idx) => {
+            E::Statement(expr_idx) => {
                 let mut code = self.synth_expr(*expr_idx, context);
 
                 let ty = context.borrow_expr_type(*expr_idx);
@@ -163,14 +163,14 @@ impl Codegen {
 
                 code
             }
-            ReturnStatement(return_value) => {
+            E::ReturnStatement(return_value) => {
                 let mut code = self.synth_expr(*return_value, context);
                 code.append(self.synth_return(false));
 
                 code
             }
             // TODO: clean up this messy logic, extract to a separate function
-            Function(expr) => {
+            E::Function(expr) => {
                 let name = expr.name.map_or("", |key| context.lookup(key));
 
                 let mut param_types: BTreeMap<ValueSymbol, &Type> = BTreeMap::default();
@@ -199,29 +199,27 @@ impl Codegen {
                 synth_op_u32(Op::PushLocalFunc, range, id as u32)
             }
 
-            BoolLiteral(b) => synth_bool_constant(*b, range),
-            FloatLiteral(f) => synth_float_constant(*f, range),
-            IntLiteral(i) => synth_int_constant(*i, range),
-            StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
-            ArrayLiteral(expr) => self.synth_array_literal(expr_idx, expr, context),
+            E::BoolLiteral(b) => synth_bool_constant(*b, range),
+            E::FloatLiteral(f) => synth_float_constant(*f, range),
+            E::IntLiteral(i) => synth_int_constant(*i, range),
+            E::StringLiteral(key) => self.synth_string_constant(context.lookup(*key), range),
+            E::ArrayLiteral(expr) => self.synth_array_literal(expr_idx, expr, context),
 
-            Path(_) => todo!(),
+            E::Path(_) => todo!(),
             // (expr) => todo!(),
-            IndexInt(expr) => self.synth_index_int_expr(expr_idx, expr, context),
+            E::IndexInt(expr) => self.synth_index_int_expr(expr_idx, expr, context),
 
-            Binary(expr) => self.synth_binary_expr(expr_idx, expr, context),
-            Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
-            VarDef(expr) => self.synth_local_def(expr.symbol, expr.value, context),
-            Call(expr) => self.synth_call_expr(expr_idx, expr, context),
-            VarRef(expr) => self.synth_local_ref(expr_idx, expr, context),
-            UnresolvedVarRef { key: _ } => unreachable!(),
-            EmptyBlock => Code::default(),
-            Block(expr) => self.synth_block_expr(expr, context),
-            If(expr) => self.synth_if_expr(expr, context),
+            E::Unary(expr) => self.synth_unary_expr(expr_idx, expr, context),
+            E::VarDef(expr) => self.synth_local_def(expr.symbol, expr.value, context),
+            E::Call(expr) => self.synth_call_expr(expr_idx, expr, context),
+            E::VarRef(expr) => self.synth_local_ref(expr_idx, expr, context),
+            E::UnresolvedVarRef { key: _ } => unreachable!(),
+            E::Block(expr) => self.synth_block_expr(expr, context),
+            E::If(expr) => self.synth_if_expr(expr, context),
 
             // This should be unreachable, codegen should never start if lowering failed
             // TODO: add some machinery for some debug output and gracefully abort
-            Empty => unreachable!("encountered Empty expression during codegen"),
+            E::Empty => unreachable!("encountered Empty expression during codegen"),
         }
     }
 
@@ -306,47 +304,47 @@ impl Codegen {
         let mut code = self.synth_expr(*lhs, context);
         code.append(self.synth_expr(*rhs, context));
 
-        use BinaryOp::*;
-        use Type::*;
+        use BinaryOp as B;
+        use Type as T;
         code.push(match op {
-            Add => match lhs_type {
-                Float | FloatLiteral(_) => (Op::AddFloat, range),
-                Int | IntLiteral(_) => (Op::AddInt, range),
+            B::Add => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::AddFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::AddInt, range),
                 _ => unreachable!(),
             },
-            Sub => match lhs_type {
-                Float | FloatLiteral(_) => (Op::SubFloat, range),
-                Int | IntLiteral(_) => (Op::SubInt, range),
+            B::Sub => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::SubFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::SubInt, range),
                 _ => unreachable!(),
             },
-            Mul => match lhs_type {
-                Float | FloatLiteral(_) => (Op::MulFloat, range),
-                Int | IntLiteral(_) => (Op::MulInt, range),
+            B::Mul => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::MulFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::MulInt, range),
                 _ => unreachable!(),
             },
-            Div => match lhs_type {
-                Float | FloatLiteral(_) => (Op::DivFloat, range),
-                Int | IntLiteral(_) => (Op::DivInt, range),
+            B::Div => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::DivFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::DivInt, range),
                 _ => unreachable!(),
             },
-            Concat => match lhs_type {
-                String | StringLiteral(_) => (Op::ConcatString, range),
+            B::Concat => match lhs_type {
+                T::String | T::StringLiteral(_) => (Op::ConcatString, range),
                 _ => unreachable!(),
             },
-            Rem => todo!(),
-            Exp => todo!(),
-            Path => todo!(),
-            Eq => match lhs_type {
-                Float | FloatLiteral(_) => (Op::EqFloat, range),
-                Int | IntLiteral(_) => (Op::EqInt, range),
-                String | StringLiteral(_) => (Op::EqString, range),
+            B::Rem => todo!(),
+            B::Exp => todo!(),
+            B::Path => todo!(),
+            B::Eq => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::EqFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::EqInt, range),
+                T::String | T::StringLiteral(_) => (Op::EqString, range),
 
                 _ => unreachable!(),
             },
-            Ne => match lhs_type {
-                Float | FloatLiteral(_) => (Op::NeFloat, range),
-                Int | IntLiteral(_) => (Op::NeInt, range),
-                String | StringLiteral(_) => (Op::NeString, range),
+            B::Ne => match lhs_type {
+                T::Float | T::FloatLiteral(_) => (Op::NeFloat, range),
+                T::Int | T::IntLiteral(_) => (Op::NeInt, range),
+                T::String | T::StringLiteral(_) => (Op::NeString, range),
 
                 _ => unreachable!(),
             },
@@ -368,25 +366,29 @@ impl Codegen {
 
         let mut code = self.synth_expr(*idx, context);
 
-        use Type::*;
-        use UnaryOp::*;
+        use Type as T;
+        use UnaryOp as U;
         code.append(match (op, expr_type) {
-            (Neg, Int) | (Neg, IntLiteral(_)) => synth_op(Op::NegateInt, range).into(),
-            (Neg, Float) | (Neg, FloatLiteral(_)) => synth_op(Op::NegateFloat, range).into(),
+            (U::Neg, T::Int) | (U::Neg, T::IntLiteral(_)) => synth_op(Op::NegateInt, range).into(),
+            (U::Neg, T::Float) | (U::Neg, T::FloatLiteral(_)) => {
+                synth_op(Op::NegateFloat, range).into()
+            }
 
-            (Not, Bool) | (Not, BoolLiteral(_)) => synth_op(Op::NotBool, range).into(),
+            (U::Not, T::Bool) | (U::Not, T::BoolLiteral(_)) => synth_op(Op::NotBool, range).into(),
 
-            (IntoString, Bool) | (IntoString, BoolLiteral(_)) => {
+            (U::IntoString, T::Bool) | (U::IntoString, T::BoolLiteral(_)) => {
                 synth_op_u8(Op::IntoString, range, IntoStringOperand::Bool as u8)
             }
-            (IntoString, Float) | (IntoString, FloatLiteral(_)) => {
+            (U::IntoString, T::Float) | (U::IntoString, T::FloatLiteral(_)) => {
                 synth_op_u8(Op::IntoString, range, IntoStringOperand::Float as u8)
             }
-            (IntoString, Int) | (IntoString, IntLiteral(_)) => {
+            (U::IntoString, T::Int) | (U::IntoString, T::IntLiteral(_)) => {
                 synth_op_u8(Op::IntoString, range, IntoStringOperand::Int as u8)
             }
-            (IntoString, String) | (IntoString, StringLiteral(_)) => Code::from_op(Op::Noop, range),
-            (IntoString, Array(_)) => {
+            (U::IntoString, T::String) | (U::IntoString, T::StringLiteral(_)) => {
+                Code::from_op(Op::Noop, range)
+            }
+            (U::IntoString, T::Array(_)) => {
                 todo!();
                 // synth_op_u8(Op::IntoString, range, IntoStringOperand::Array as u8)
             }

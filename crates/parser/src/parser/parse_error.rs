@@ -42,8 +42,12 @@ impl fmt::Display for ParseError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ops::Range as StdRange;
+
+    use lexer::TokenKind;
+    use text_size::TextRange;
+
+    use crate::parser::ParseError;
 
     fn check(
         expected: Vec<TokenKind>,

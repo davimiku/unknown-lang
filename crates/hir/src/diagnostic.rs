@@ -153,23 +153,23 @@ pub enum TypeDiagnosticVariant {
 
 impl ContextDisplay for TypeDiagnosticVariant {
     fn display(&self, context: &Context) -> String {
-        use TypeDiagnosticVariant::*;
+        use TypeDiagnosticVariant as V;
         match self {
-            ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
-            BinaryMismatch { op, lhs, rhs } => {
+            V::ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
+            V::BinaryMismatch { op, lhs, rhs } => {
                 let lhs = context.borrow_type(*lhs);
                 let rhs = context.borrow_type(*rhs);
                 binary_mismatch_message(*op, lhs.display(context), rhs.display(context))
             }
-            CalleeNotFunction { actual } => todo!(),
-            CannotConvertIntoString { actual } => todo!(),
-            Empty { expr } => todo!(),
-            Incompatible { a, b } => todo!(),
-            NoOverloadFound { name } => todo!(),
-            TypeMismatch { expected, actual } => todo!(),
-            UndefinedFunction { name } => todo!(),
-            UnresolvedLocalRef { key } => todo!(),
-            UndefinedSymbol { name } => todo!(),
+            V::CalleeNotFunction { actual } => todo!(),
+            V::CannotConvertIntoString { actual } => todo!(),
+            V::Empty { expr } => todo!(),
+            V::Incompatible { a, b } => todo!(),
+            V::NoOverloadFound { name } => todo!(),
+            V::TypeMismatch { expected, actual } => todo!(),
+            V::UndefinedFunction { name } => todo!(),
+            V::UnresolvedVarRef { key } => todo!(),
+            V::UndefinedSymbol { name } => todo!(),
         }
     }
 }

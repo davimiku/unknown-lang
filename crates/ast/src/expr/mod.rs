@@ -61,26 +61,26 @@ impl Expr {
     }
 
     pub fn range(self) -> TextRange {
-        use Expr::*;
+        use Expr as E;
         match self {
-            ArrayLiteral(e) => e.range(),
-            Block(e) => e.range(),
-            Binary(e) => e.range(),
-            BoolLiteral(e) => e.range(),
-            Call(e) => e.range(),
-            FloatLiteral(e) => e.range(),
-            ForInLoop(e) => e.range(),
-            Function(e) => e.range(),
-            Ident(e) => e.range(),
-            If(e) => e.range(),
-            IntLiteral(e) => e.range(),
-            LetBinding(e) => e.range(),
-            Loop(e) => e.range(),
-            Paren(e) => e.range(),
-            Path(e) => e.range(),
-            Return(e) => e.range(),
-            StringLiteral(e) => e.range(),
-            Unary(e) => e.range(),
+            E::ArrayLiteral(e) => e.range(),
+            E::Block(e) => e.range(),
+            E::Binary(e) => e.range(),
+            E::BoolLiteral(e) => e.range(),
+            E::Call(e) => e.range(),
+            E::FloatLiteral(e) => e.range(),
+            E::ForInLoop(e) => e.range(),
+            E::Function(e) => e.range(),
+            E::Ident(e) => e.range(),
+            E::If(e) => e.range(),
+            E::IntLiteral(e) => e.range(),
+            E::LetBinding(e) => e.range(),
+            E::Loop(e) => e.range(),
+            E::Paren(e) => e.range(),
+            E::Path(e) => e.range(),
+            E::Return(e) => e.range(),
+            E::StringLiteral(e) => e.range(),
+            E::Unary(e) => e.range(),
         }
     }
 }
@@ -296,16 +296,16 @@ pub enum FunParam {
 
 impl FunParam {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        use SyntaxKind::*;
+        use SyntaxKind as S;
 
         match node.kind() {
             // (aaa: A, bbb: B) ->
             //  ^^^^^^
-            ParenExprItem => Some(Self::WithType(node)),
+            S::ParenExprItem => Some(Self::WithType(node)),
 
             // aaa ->
             // ^^^
-            Path => Some(Self::WithoutType(node)),
+            // S::Path => Some(Self::WithoutType(node)),
 
             // (aaa) ->
             // ^^^^^

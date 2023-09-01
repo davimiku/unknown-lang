@@ -46,11 +46,14 @@ pub struct Token<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::token_kind::TokenKind::*;
-    use super::*;
+    use text_size::{TextRange, TextSize};
+
+    use crate::{Lexer, Token};
+
+    use super::token_kind::TokenKind as T;
 
     impl<'a> Token<'a> {
-        fn new(kind: TokenKind, text: &'a str, range: TextRange) -> Self {
+        fn new(kind: T, text: &'a str, range: TextRange) -> Self {
             Token { kind, text, range }
         }
     }
@@ -62,10 +65,10 @@ mod tests {
     #[test]
     fn test_basic_operators() {
         let expected = vec![
-            Token::new(Plus, "+", range(0, 1)),
-            Token::new(Dash, "-", range(1, 2)),
-            Token::new(Star, "*", range(2, 3)),
-            Token::new(Slash, "/", range(3, 4)),
+            Token::new(T::Plus, "+", range(0, 1)),
+            Token::new(T::Dash, "-", range(1, 2)),
+            Token::new(T::Star, "*", range(2, 3)),
+            Token::new(T::Slash, "/", range(3, 4)),
         ];
         let lexer = Lexer::new("+-*/");
 
