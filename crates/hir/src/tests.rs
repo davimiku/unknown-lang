@@ -3,7 +3,7 @@ use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
 use indoc::indoc;
 
-use super::*;
+use crate::{display_root, lower, BlockExpr, Expr, LowerTarget};
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -19,9 +19,11 @@ fn _print(input: &str) {
     let (root_expr, context) = lower(input, LowerTarget::Module);
 
     let root_expr = cast!(context.expr(root_expr), Expr::Block);
-    for expr in root_expr.exprs.iter() {
-        let expr = context.expr(*expr);
-        println!("{expr:?}");
+    if let BlockExpr::NonEmpty { exprs } = root_expr {
+        for expr in exprs {
+            let expr = context.expr(*expr);
+            println!("{expr:?}");
+        }
     }
 }
 

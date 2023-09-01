@@ -406,7 +406,7 @@ impl Default for Stack {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::stack::Stack;
 
     #[test]
     fn push_value() {

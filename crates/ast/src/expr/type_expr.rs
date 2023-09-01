@@ -45,19 +45,19 @@ impl TypeExpr {
     }
 
     pub fn range(&self) -> TextRange {
-        use TypeExpr::*;
+        use TypeExpr as T;
         match self {
             // Binary(e) => e.range(),
-            BoolLiteral(e) => e.range(),
-            Call(e) => e.range(),
-            FloatLiteral(e) => e.range(),
-            Function(e) => e.range(),
-            Ident(e) => e.range(),
-            IntLiteral(e) => e.range(),
-            Path(e) => e.range(),
+            T::BoolLiteral(e) => e.range(),
+            T::Call(e) => e.range(),
+            T::FloatLiteral(e) => e.range(),
+            T::Function(e) => e.range(),
+            T::Ident(e) => e.range(),
+            T::IntLiteral(e) => e.range(),
+            T::Path(e) => e.range(),
             // If(e) => e.range(),
             // Paren(e) => e.range(),
-            StringLiteral(e) => e.range(),
+            T::StringLiteral(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }

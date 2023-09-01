@@ -1,4 +1,4 @@
-use lexer::TokenKind::*;
+use lexer::TokenKind as T;
 
 use crate::grammar::expr::parse_ident;
 use crate::parser::marker::CompletedMarker;
@@ -16,21 +16,21 @@ pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
-    let cm = if p.at(IntLiteral) {
+    let cm = if p.at(T::IntLiteral) {
         parse_int_literal(p)
-    } else if p.at(StringLiteral) {
+    } else if p.at(T::StringLiteral) {
         parse_string_literal(p)
-    } else if p.at(False) || p.at(True) {
+    } else if p.at(T::False) || p.at(T::True) {
         parse_bool_literal(p)
-    } else if p.at(Ident) {
+    } else if p.at(T::Ident) {
         parse_ident(p)
-    } else if p.at(Union) {
+    } else if p.at(T::Union) {
         parse_union(p)
-    } else if p.at(Struct) {
+    } else if p.at(T::Struct) {
         parse_struct(p)
-    } else if p.at(LParen) {
+    } else if p.at(T::LParen) {
         parse_paren_expr_or_function_params(p)
-    } else if p.at(LBracket) {
+    } else if p.at(T::LBracket) {
         parse_array_type(p)
     } else {
         p.error();
@@ -47,13 +47,13 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 // 1 param with explicit type: (Int)
 // N params with explicit types: (Int, Int)
 fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(LParen));
+    debug_assert!(p.debug_at(T::LParen));
 
     let m = p.start();
     p.bump();
 
     // early exit for `()`
-    if p.at(RParen) {
+    if p.at(T::RParen) {
         p.bump();
         return m.complete(p, SyntaxKind::ParenExpr);
     }
@@ -65,25 +65,25 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
             break;
         }
 
-        if p.at(Comma) {
+        if p.at(T::Comma) {
             p.bump();
         } else {
             break;
         }
     }
 
-    p.expect(RParen);
+    p.expect(T::RParen);
 
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
 fn parse_array_type(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(LBracket));
+    debug_assert!(p.debug_at(T::LBracket));
 
     let m = p.start();
 
     p.bump();
-    p.expect(RBracket);
+    p.expect(T::RBracket);
 
     parse_lhs(p);
 
@@ -91,7 +91,7 @@ fn parse_array_type(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_union(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(Union));
+    debug_assert!(p.debug_at(T::Union));
 
     let m = p.start();
     p.bump();
@@ -100,7 +100,7 @@ fn parse_union(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(Struct));
+    debug_assert!(p.debug_at(T::Struct));
 
     let m = p.start();
     p.bump();
@@ -111,7 +111,7 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 /// Parses a "compound type block"
 // TODO: better name?
 fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(LBrace));
+    debug_assert!(p.debug_at(T::LBrace));
 
     let m = p.start();
     p.bump();
@@ -120,26 +120,26 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
         parse_compound_type_item(p);
         p.bump_all_space();
 
-        if p.at(RBrace) || p.at_end() {
-            p.bump_if(Comma);
+        if p.at(T::RBrace) || p.at_end() {
+            p.bump_if(T::Comma);
             break;
         } else {
-            p.expect(Comma);
+            p.expect(T::Comma);
         }
     }
 
-    p.expect(RBrace);
+    p.expect(T::RBrace);
 
     m.complete(p, SyntaxKind::CompoundTypeBlock)
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(Ident));
+    debug_assert!(p.debug_at(T::Ident));
 
     let m = p.start();
 
     parse_ident(p);
-    p.expect(Colon);
+    p.expect(T::Colon);
     expr_binding_power(p, 0, parse_lhs);
 
     m.complete(p, SyntaxKind::CompoundTypeItem)

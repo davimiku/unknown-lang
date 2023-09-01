@@ -3,7 +3,12 @@ use std::mem;
 use static_assertions::const_assert;
 use vm_types::words::DWORD_SIZE;
 
-use super::*;
+use crate::{
+    as_str::AsStr,
+    embedded::{EmbeddedVMString, MAX_EMBEDDED_LENGTH},
+    heap::HeapVMString,
+    VMString, EMBEDDED_DISCRIMINANT, HEAP_DISCRIMINANT,
+};
 
 const HEAP_STRING: &str = "123456789";
 const_assert!(HEAP_STRING.len() > MAX_EMBEDDED_LENGTH);

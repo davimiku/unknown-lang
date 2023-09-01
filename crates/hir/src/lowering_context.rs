@@ -212,27 +212,27 @@ impl Context {
     }
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
-        use ast::Expr::*;
+        use ast::Expr as E;
         let expr = if let Some(ast) = ast.clone() {
             match ast {
-                ArrayLiteral(ast) => self.lower_array_literal(ast),
-                Binary(ast) => self.lower_binary(ast),
-                Block(ast) => self.lower_block(ast),
-                BoolLiteral(ast) => self.lower_bool_literal(ast),
-                Call(ast) => self.lower_call(ast),
-                FloatLiteral(ast) => self.lower_float_literal(ast),
-                Function(ast) => self.lower_function_expr(ast),
-                ForInLoop(ast) => self.lower_for_in_loop(ast),
-                Ident(ast) => self.lower_name_ref(&ast.as_string()),
-                If(ast) => self.lower_if_expr(ast),
-                IntLiteral(ast) => self.lower_int_literal(ast),
-                LetBinding(ast) => self.lower_let_binding(ast),
-                Loop(ast) => self.lower_loop(ast),
-                Paren(ast) => return self.lower_expr(ast.expr()),
-                Path(ast) => self.lower_path(ast),
-                Return(ast) => self.lower_return_statement(ast),
-                StringLiteral(ast) => self.lower_string_literal(ast),
-                Unary(ast) => self.lower_unary(ast),
+                E::ArrayLiteral(ast) => self.lower_array_literal(ast),
+                E::Binary(ast) => self.lower_binary(ast),
+                E::Block(ast) => self.lower_block(ast),
+                E::BoolLiteral(ast) => self.lower_bool_literal(ast),
+                E::Call(ast) => self.lower_call(ast),
+                E::FloatLiteral(ast) => self.lower_float_literal(ast),
+                E::Function(ast) => self.lower_function_expr(ast),
+                E::ForInLoop(ast) => self.lower_for_in_loop(ast),
+                E::Ident(ast) => self.lower_name_ref(&ast.as_string()),
+                E::If(ast) => self.lower_if_expr(ast),
+                E::IntLiteral(ast) => self.lower_int_literal(ast),
+                E::LetBinding(ast) => self.lower_let_binding(ast),
+                E::Loop(ast) => self.lower_loop(ast),
+                E::Paren(ast) => return self.lower_expr(ast.expr()),
+                E::Path(ast) => self.lower_path(ast),
+                E::Return(ast) => self.lower_return_statement(ast),
+                E::StringLiteral(ast) => self.lower_string_literal(ast),
+                E::Unary(ast) => self.lower_unary(ast),
             }
         } else {
             Expr::Empty
@@ -577,19 +577,18 @@ impl Context {
 // Lowering functions - TypeExpr
 impl Context {
     fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>) -> Idx<TypeExpr> {
-        use ast::TypeExpr::*;
+        use ast::TypeExpr as TE;
         if let Some(ast) = ast {
             let range = ast.range();
             let type_expr = match ast {
-                BoolLiteral(ast) => self.lower_type_bool_literal(ast),
-                FloatLiteral(ast) => self.lower_type_float_literal(ast),
-                IntLiteral(ast) => self.lower_type_int_literal(ast),
-                StringLiteral(ast) => self.lower_type_string_literal(ast),
-
-                Ident(ast) => self.lower_type_ident(ast),
-                Function(_) => todo!(),
-                Path(ast) => self.lower_type_path(ast),
-                Call(ast) => self.lower_type_call(ast),
+                TE::BoolLiteral(ast) => self.lower_type_bool_literal(ast),
+                TE::FloatLiteral(ast) => self.lower_type_float_literal(ast),
+                TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
+                TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
+                TE::Ident(ast) => self.lower_type_ident(ast),
+                TE::Function(_) => todo!(),
+                TE::Path(ast) => self.lower_type_path(ast),
+                TE::Call(ast) => self.lower_type_call(ast),
             };
             self.alloc_type_expr(type_expr, range)
         } else {
