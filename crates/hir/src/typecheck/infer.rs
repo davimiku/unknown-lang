@@ -227,15 +227,16 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
 
 fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
-    let BlockExpr { exprs } = block;
-
+    match block {
+        BlockExpr::Empty => result.ty = context.type_database.unit(),
+        BlockExpr::NonEmpty { exprs } => {
     for idx in exprs {
         result.chain(infer_expr(*idx, context));
     }
 
     // invariant: BlockExpr is guaranteed to have at least one expression
     // empty blocks are lowered as the `EmptyBlock` variant
-    let tail_expr = *block.exprs.last().unwrap();
+            let tail_expr = *exprs.last().unwrap();
     let (tail_expr, ..) = context.database.expr(tail_expr);
     result.ty = match tail_expr {
         Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
@@ -243,6 +244,8 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
         e => {
             dbg!(e);
             unreachable!();
+        }
+            }
         }
     };
 
@@ -574,7 +577,11 @@ mod tests {
             .collect();
 
         // wrap everything in a block
-        let root = Expr::Block(BlockExpr { exprs });
+        let root = Expr::Block(if exprs.is_empty() {
+            BlockExpr::Empty
+        } else {
+            BlockExpr::NonEmpty { exprs }
+        });
         let root = context.alloc_expr(root, None);
 
         let result = infer_expr(root, &mut context);
