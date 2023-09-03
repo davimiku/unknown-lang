@@ -446,21 +446,24 @@ impl Codegen {
 
     #[must_use]
     fn synth_block_expr(&mut self, expr: &BlockExpr, context: &hir::Context) -> Code {
-        let BlockExpr { exprs } = expr;
+        match expr {
+            BlockExpr::Empty => Code::default(),
+            BlockExpr::NonEmpty { exprs } => {
+                let start_stack_slot_size = self.curr().next_stack_slot_index;
 
-        let start_stack_slot_size = self.curr().next_stack_slot_index;
+                let mut code = Code::default();
+                for expr in exprs {
+                    code.append(self.synth_expr(*expr, context));
+                }
 
-        let mut code = Code::default();
-        for expr in exprs {
-            code.append(self.synth_expr(*expr, context));
+                // TODO: handle return value
+                let slots_to_pop = self.curr().next_stack_slot_index - start_stack_slot_size;
+                code.append(self.synth_pops(slots_to_pop, TextRange::default(), true));
+                self.curr_mut().next_stack_slot_index = start_stack_slot_size;
+
+                code
+            }
         }
-
-        // TODO: handle return value
-        let slots_to_pop = self.curr().next_stack_slot_index - start_stack_slot_size;
-        code.append(self.synth_pops(slots_to_pop, TextRange::default(), true));
-        self.curr_mut().next_stack_slot_index = start_stack_slot_size;
-
-        code
     }
 
     #[must_use]
