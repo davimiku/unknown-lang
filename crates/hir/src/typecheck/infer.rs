@@ -7,12 +7,11 @@
 use la_arena::Idx;
 use text_size::TextRange;
 
-use super::check::is_subtype;
 use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
-    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, Expr, FunctionExpr, FunctionParam, IfExpr,
-    IndexIntExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionParam, IfExpr, IndexIntExpr,
+    UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
@@ -55,13 +54,11 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         Expr::VarRef(var_ref) => result.chain(infer_var_ref(&var_ref, context)),
         Expr::UnresolvedVarRef { key } => result.push_diag(TypeDiagnostic {
-            variant: TypeDiagnosticVariant::UnresolvedLocalRef { key },
+            variant: TypeDiagnosticVariant::UnresolvedVarRef { key },
             range,
         }),
 
-        Expr::Binary(expr) => result.chain(infer_binary(&expr, context)),
         Expr::Unary(expr) => result.chain(infer_unary(expr_idx, &expr, context)),
-        Expr::EmptyBlock => result.ty = context.type_database.unit(),
         Expr::Block(block) => result.chain(infer_block(&block, context)),
         Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
@@ -230,21 +227,21 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
     match block {
         BlockExpr::Empty => result.ty = context.type_database.unit(),
         BlockExpr::NonEmpty { exprs } => {
-    for idx in exprs {
-        result.chain(infer_expr(*idx, context));
-    }
+            for idx in exprs {
+                result.chain(infer_expr(*idx, context));
+            }
 
-    // invariant: BlockExpr is guaranteed to have at least one expression
-    // empty blocks are lowered as the `EmptyBlock` variant
+            // invariant: BlockExpr is guaranteed to have at least one expression
+            // empty blocks are lowered as the `EmptyBlock` variant
             let tail_expr = *exprs.last().unwrap();
-    let (tail_expr, ..) = context.database.expr(tail_expr);
-    result.ty = match tail_expr {
-        Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
-        Expr::VarDef(_) => context.type_database.unit(),
-        e => {
-            dbg!(e);
-            unreachable!();
-        }
+            let (tail_expr, ..) = context.database.expr(tail_expr);
+            result.ty = match tail_expr {
+                Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
+                Expr::VarDef(_) => context.type_database.unit(),
+                e => {
+                    dbg!(e);
+                    unreachable!();
+                }
             }
         }
     };
@@ -270,7 +267,7 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
             ));
         }
         for (arg, param) in args.iter().zip(params) {
-            result.push_result(check_expr(*arg, param, context))
+            result.check(*arg, param, context)
         }
 
         result.ty = return_ty;
@@ -329,7 +326,7 @@ fn infer_array_literal(array_expr: &ArrayLiteralExpr, context: &mut Context) -> 
             let mut inner_type: Option<Idx<Type>> = None;
             for idx in elements {
                 if let Some(ref inner_type) = inner_type {
-                    result.push_result(check_expr(*idx, *inner_type, context));
+                    result.check(*idx, *inner_type, context);
                 } else {
                     result.chain(infer_expr(*idx, context));
                     if result.is_ok() {
@@ -380,16 +377,12 @@ fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
 
     let mut result = TypeResult::new(&context.type_database);
 
-    result.push_result(check_expr(
-        *condition,
-        context.type_database.bool(),
-        context,
-    ));
+    result.check(*condition, context.type_database.bool(), context);
 
     result.chain(infer_expr_widened(*then_branch, context));
 
     if let Some(else_branch) = else_branch {
-        result.push_result(check_expr(*else_branch, result.ty, context));
+        result.check(*else_branch, result.ty, context);
     } else {
         result.ty = context.type_database.unit();
     }
@@ -441,119 +434,6 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
         },
     }
     result
-}
-
-// TODO: this should go away when operators are treated like a function
-//
-// Codegen will be responsible for lowering (Int + Int) to a specialized instruction
-// vs. (UserType + UserType) that's lowered to a function call.
-fn infer_binary(expr: &BinaryExpr, context: &mut Context) -> TypeResult {
-    // FIXME: pass in range
-    let range = TextRange::default();
-    let mut result = TypeResult::new(&context.type_database);
-
-    let lhs_result = infer_expr(expr.lhs, context);
-    let lhs_ty = lhs_result.ty;
-    result.chain(lhs_result);
-
-    let rhs_result = infer_expr(expr.rhs, context);
-    let rhs_ty = rhs_result.ty;
-    result.chain(rhs_result);
-
-    use BinaryOp as O;
-    match expr.op {
-        O::Add => infer_binary_add(lhs_ty, rhs_ty, range, context),
-        O::Concat => infer_binary_concat(lhs_ty, rhs_ty, range, context),
-        O::Sub => todo!(),
-        O::Mul => todo!(),
-        O::Div => todo!(),
-        O::Rem => todo!(),
-        O::Exp => todo!(),
-        O::Path => todo!(),
-        O::Eq | O::Ne => infer_binary_equality(lhs_ty, rhs_ty, expr.op, context),
-    }
-}
-
-// TODO: this should go away when operators are treated like a function
-//
-// Codegen will be responsible for lowering (Int + Int) to a specialized instruction
-// vs. (UserType + UserType) that's lowered to a function call.
-fn infer_binary_add(
-    a: Idx<Type>,
-    b: Idx<Type>,
-    range: TextRange,
-    context: &mut Context,
-) -> TypeResult {
-    let Context { type_database, .. } = context;
-    let a_ty = type_database.type_(a);
-    let b_ty = type_database.type_(b);
-    match (a_ty, b_ty) {
-        // TODO: add overflow check?
-        (Type::IntLiteral(a), Type::IntLiteral(b)) => {
-            type_database.alloc_type(Type::IntLiteral(a + b)).into()
-        }
-        (Type::IntLiteral(_), Type::Int)
-        | (Type::Int, Type::IntLiteral(_))
-        | (Type::Int, Type::Int) => type_database.int().into(),
-
-        (Type::FloatLiteral(a), Type::FloatLiteral(b)) => {
-            type_database.alloc_type(Type::FloatLiteral(a + b)).into()
-        }
-        (Type::FloatLiteral(_), Type::Float)
-        | (Type::Float, Type::FloatLiteral(_))
-        | (Type::Float, Type::Float) => type_database.float().into(),
-
-        _ => TypeResult::from_diag(
-            TypeDiagnostic::binary_mismatch(a, b, BinaryOp::Add, range),
-            type_database.error(),
-        ),
-    }
-}
-
-// TODO: this should go away when operators are treated like a function
-//
-// Codegen will be responsible for lowering (Int == Int) to a specialized instruction
-// vs. (UserType == UserType) that's lowered to a (possibly inlined) function call.
-fn infer_binary_equality(
-    lhs: Idx<Type>,
-    rhs: Idx<Type>,
-    op: BinaryOp,
-    context: &Context,
-) -> TypeResult {
-    // TODO: additional analysis here to determine true/false at compile time
-    // for literals, ex. `2 == 2` infer `true` and `2 == 3` infer false
-
-    if is_subtype(lhs, rhs, context) || is_subtype(rhs, lhs, context) {
-        context.type_database.bool().into()
-    } else {
-        TypeResult::from_diag(
-            TypeDiagnostic::binary_mismatch(lhs, rhs, op, TextRange::default()),
-            context.type_database.error(),
-        )
-    }
-}
-
-fn infer_binary_concat(
-    a: Idx<Type>,
-    b: Idx<Type>,
-    range: TextRange,
-    context: &Context,
-) -> TypeResult {
-    let a_ty = context.type_database.type_(a);
-    let b_ty = context.type_database.type_(b);
-    match (a_ty, b_ty) {
-        (Type::StringLiteral(_), Type::String)
-        | (Type::String, Type::StringLiteral(_))
-        | (Type::String, Type::String) => context.type_database.string().into(),
-
-        // TODO: constant folding? Need access to the interner to deref the Key
-        (Type::StringLiteral(_), Type::StringLiteral(_)) => context.type_database.string().into(),
-
-        _ => TypeResult::from_diag(
-            TypeDiagnostic::binary_mismatch(a, b, BinaryOp::Concat, range),
-            context.type_database.error(),
-        ),
-    }
 }
 
 #[cfg(test)]
@@ -609,7 +489,8 @@ mod tests {
     #[test]
     fn infer_int_addition() {
         let input = "2 + 3";
-        let expected = Type::IntLiteral(5);
+        // TODO: is it possible to overload `+` for IntLiteral to return an IntLiteral ?
+        let expected = Type::Int;
 
         check_infer_type(input, expected);
     }

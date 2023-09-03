@@ -1,6 +1,7 @@
 use la_arena::Idx;
 
-use crate::{lowering_context::ContextDisplay, Context, Expr, Type};
+use crate::lowering_context::{ContextDisplay, CORE_MODULE_ID};
+use crate::{Context, Expr, Type};
 
 /// Formats an expression into a String representation
 ///
@@ -21,7 +22,9 @@ pub(crate) fn fmt_local_types(s: &mut String, context: &Context) {
         .type_database
         .value_symbols
         .iter()
-        .map(|(key, ty)| (key.display(context), *ty))
+        .filter_map(|(key, ty)| {
+            (key.module_id != CORE_MODULE_ID).then(|| (key.display(context), *ty))
+        })
         .collect();
     locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
 

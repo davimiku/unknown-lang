@@ -20,8 +20,8 @@ use std::fmt::Debug;
 
 pub use hir::COMPILER_BRAND;
 use hir::{
-    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, IfExpr, IndexIntExpr, Type,
-    UnaryExpr, UnaryOp, ValueSymbol, VarRefExpr,
+    ArrayLiteralExpr, BlockExpr, CallExpr, Expr, IfExpr, IndexIntExpr, Type, UnaryExpr, UnaryOp,
+    ValueSymbol, VarRefExpr,
 };
 
 mod chunks;
@@ -159,7 +159,7 @@ impl Codegen {
                 let mut code = self.synth_expr(*expr_idx, context);
 
                 let ty = context.borrow_expr_type(*expr_idx);
-                code.append(pop_code_of(&ty));
+                code.append(pop_code_of(ty));
 
                 code
             }
@@ -286,69 +286,6 @@ impl Codegen {
         code.append(self.synth_expr(*index, context));
 
         code.append(Code::from_op(Op::GetArrayIndex, context.range_of(expr_idx)));
-
-        code
-    }
-
-    #[must_use]
-    fn synth_binary_expr(
-        &mut self,
-        expr_idx: Idx<Expr>,
-        expr: &BinaryExpr,
-        context: &hir::Context,
-    ) -> Code {
-        let BinaryExpr { op, lhs, rhs } = expr;
-        let range = context.range_of(expr_idx);
-        let lhs_type = context.borrow_expr_type(*lhs);
-
-        let mut code = self.synth_expr(*lhs, context);
-        code.append(self.synth_expr(*rhs, context));
-
-        use BinaryOp as B;
-        use Type as T;
-        code.push(match op {
-            B::Add => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::AddFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::AddInt, range),
-                _ => unreachable!(),
-            },
-            B::Sub => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::SubFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::SubInt, range),
-                _ => unreachable!(),
-            },
-            B::Mul => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::MulFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::MulInt, range),
-                _ => unreachable!(),
-            },
-            B::Div => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::DivFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::DivInt, range),
-                _ => unreachable!(),
-            },
-            B::Concat => match lhs_type {
-                T::String | T::StringLiteral(_) => (Op::ConcatString, range),
-                _ => unreachable!(),
-            },
-            B::Rem => todo!(),
-            B::Exp => todo!(),
-            B::Path => todo!(),
-            B::Eq => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::EqFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::EqInt, range),
-                T::String | T::StringLiteral(_) => (Op::EqString, range),
-
-                _ => unreachable!(),
-            },
-            B::Ne => match lhs_type {
-                T::Float | T::FloatLiteral(_) => (Op::NeFloat, range),
-                T::Int | T::IntLiteral(_) => (Op::NeInt, range),
-                T::String | T::StringLiteral(_) => (Op::NeString, range),
-
-                _ => unreachable!(),
-            },
-        });
 
         code
     }

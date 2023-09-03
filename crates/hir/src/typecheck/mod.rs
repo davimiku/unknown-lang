@@ -294,12 +294,21 @@ impl TypeResult {
         self.diagnostics.push(diagnostic)
     }
 
+    /// Checks the expression for the expected type, accumulating diagnostic(s)
+    /// if not the expected type.
+    // TODO: should this also set `self.ty` ?
+    fn check(&mut self, expr: Idx<Expr>, expected: Idx<Type>, context: &mut Context) {
+        self.push_result(check_expr(expr, expected, context))
+    }
+
     pub fn push_result<T>(&mut self, result: Result<T, Vec<TypeDiagnostic>>) {
         if let Err(mut diagnostics) = result {
             self.diagnostics.append(&mut diagnostics);
         }
     }
 
+    /// Chains two results together, applying the newer inferred type,
+    /// or accumulating the diagnostics if these exist.
     pub fn chain(&mut self, mut other: TypeResult) {
         if other.diagnostics.is_empty() {
             self.ty = other.ty;
@@ -313,32 +322,32 @@ impl TypeResult {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct CoreTypes {
     /// Sentinel for type has not yet been inferred
-    unknown: Idx<Type>,
+    pub(crate) unknown: Idx<Type>,
 
     /// Sentinel for error occurred during type inference
-    error: Idx<Type>,
+    pub(crate) error: Idx<Type>,
 
     /// Top type, all values are inhabitants
-    top: Idx<Type>,
+    pub(crate) top: Idx<Type>,
 
     /// Bottom type, has no inhabitants
-    bottom: Idx<Type>,
+    pub(crate) bottom: Idx<Type>,
 
     /// Unit type, has only one inhabitant
-    unit: Idx<Type>,
+    pub(crate) unit: Idx<Type>,
 
     /// Boolean, true or false
-    bool: Idx<Type>,
+    pub(crate) bool: Idx<Type>,
 
     /// Floating point number
-    float: Idx<Type>,
+    pub(crate) float: Idx<Type>,
 
     /// Integer number
-    int: Idx<Type>,
+    pub(crate) int: Idx<Type>,
 
     /// UTF-8 encoded string
-    string: Idx<Type>,
+    pub(crate) string: Idx<Type>,
 }

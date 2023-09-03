@@ -1,10 +1,11 @@
+mod display;
+
 use la_arena::Idx;
 use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 use text_size::TextRange;
 
-use crate::{
-    interner::Key, lowering_context::ContextDisplay, BinaryOp, Context, Expr, Type, ValueSymbol,
-};
+use crate::interner::Key;
+use crate::{BinaryOp, Expr, Type, ValueSymbol};
 
 #[derive(Debug, PartialEq)]
 pub enum Diagnostic {
@@ -143,47 +144,10 @@ pub enum TypeDiagnosticVariant {
         // TODO: use interned key?
         name: String,
     },
-    UnresolvedLocalRef {
+    UnresolvedVarRef {
         key: Key,
     },
     UndefinedSymbol {
         name: ValueSymbol,
     },
-}
-
-impl ContextDisplay for TypeDiagnosticVariant {
-    fn display(&self, context: &Context) -> String {
-        use TypeDiagnosticVariant as V;
-        match self {
-            V::ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
-            V::BinaryMismatch { op, lhs, rhs } => {
-                let lhs = context.borrow_type(*lhs);
-                let rhs = context.borrow_type(*rhs);
-                binary_mismatch_message(*op, lhs.display(context), rhs.display(context))
-            }
-            V::CalleeNotFunction { actual } => todo!(),
-            V::CannotConvertIntoString { actual } => todo!(),
-            V::Empty { expr } => todo!(),
-            V::Incompatible { a, b } => todo!(),
-            V::NoOverloadFound { name } => todo!(),
-            V::TypeMismatch { expected, actual } => todo!(),
-            V::UndefinedFunction { name } => todo!(),
-            V::UnresolvedVarRef { key } => todo!(),
-            V::UndefinedSymbol { name } => todo!(),
-        }
-    }
-}
-
-// Below are functions to construct the message strings themselves, which are useful
-// for unit tests. Parameters to these functions must be Display.
-pub fn args_mismatch_message(expected: u32, actual: u32) -> String {
-    format!("Expected {expected} arguments, received {actual}")
-}
-
-pub fn binary_mismatch_message(op: BinaryOp, lhs: String, rhs: String) -> String {
-    format!("Cannot apply operation ‘{op}’ to ‘{lhs}’ and ‘{rhs}’")
-}
-
-pub fn callee_not_function_message(actual: String) -> String {
-    format!("Tried to call a function, but found an expression with type {actual}")
 }

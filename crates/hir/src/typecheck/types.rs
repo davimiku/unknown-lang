@@ -42,6 +42,10 @@ impl Type {
     pub(crate) fn array_of(of: Idx<Type>) -> Self {
         Self::Array(ArrayType { of })
     }
+
+    pub(crate) fn func(params: Vec<Idx<Type>>, return_ty: Idx<Type>) -> Self {
+        Self::Function(FunctionType { params, return_ty })
+    }
 }
 
 impl ContextDisplay for Idx<Type> {

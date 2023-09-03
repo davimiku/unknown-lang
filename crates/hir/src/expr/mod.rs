@@ -28,9 +28,6 @@ pub enum Expr {
     /// Array literal value, ex. `[1, 2, 3]`
     ArrayLiteral(ArrayLiteralExpr),
 
-    /// Binary expression, ex. `a + b`, `c ^ d`
-    Binary(BinaryExpr),
-
     /// Unary expression, ex. `-a`, `!b`
     Unary(UnaryExpr),
 
@@ -115,11 +112,11 @@ pub struct VarDefExpr {
 /// See also [TypeSymbol] for the analog that lives in the "type" universe
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueSymbol {
-    /// Unique id of this symbol within this module
-    pub symbol_id: u32,
-
     /// Unique id of the module where this symbol resides
     pub module_id: u32,
+
+    /// Unique id of this symbol within this module
+    pub symbol_id: u32,
 }
 
 impl ValueSymbol {
@@ -145,14 +142,6 @@ pub struct VarRefExpr {
 pub enum ArrayLiteralExpr {
     Empty,
     NonEmpty { elements: Vec<Idx<Expr>> },
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-/// Binary expression
-pub struct BinaryExpr {
-    pub op: BinaryOp,
-    pub lhs: Idx<Expr>,
-    pub rhs: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
