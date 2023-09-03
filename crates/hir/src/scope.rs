@@ -68,7 +68,7 @@ impl Scope {
 
 /// Holds the tree of Scope structs for a given module
 #[derive(Debug)]
-pub(crate) struct Scopes {
+pub(crate) struct ModuleScopes {
     /// Data of the scopes
     tree: id_tree::Tree<Scope>,
 
@@ -96,11 +96,12 @@ pub(crate) struct Scopes {
     module_id: u32,
 }
 
-impl ContextDisplay for Scopes {
+impl ContextDisplay for ModuleScopes {
     fn display(&self, context: &Context) -> String {
         let mut output = String::new();
+        output.push_str(&format!("=== module {:?} ===\n", self.module_id));
         for node_id in self.tree.traverse_pre_order_ids(&self.root_id).unwrap() {
-            output.push_str(&format!("===scope {:?}===\n", node_id));
+            output.push_str(&format!("===scope {:?} ===\n", node_id));
 
             let node = self.tree.get(&node_id).unwrap();
             output.push_str(&node.data().display(context));
@@ -110,9 +111,21 @@ impl ContextDisplay for Scopes {
     }
 }
 
+impl ContextDisplay for Vec<ModuleScopes> {
+    fn display(&self, context: &Context) -> String {
+        let mut output = String::new();
+        output.push_str("{{\n");
+        for module_scopes in self {
+            output.push_str(&module_scopes.display(context));
+        }
+        output.push_str("}}\n");
+        output
+    }
+}
+
 // Non-Mutating functions
-impl Scopes {
-    /// Finds the symbol for the given name in the "value" universe
+impl ModuleScopes {
+    /// Finds the symbol for the given name in the "value" namespace
     /// by recursively searching up from the current scope.
     pub(crate) fn find_value(&self, name: Key) -> Option<ValueSymbol> {
         self.current().get_local(name).or(self
@@ -122,7 +135,7 @@ impl Scopes {
             .find_map(|scope| scope.data().get_local(name)))
     }
 
-    /// Finds the symbol for the given name in the "type" universe
+    /// Finds the symbol for the given name in the "type" namespace
     /// by recursively searching up from the current scope.
     pub(crate) fn find_type(&self, name: Key) -> Option<TypeSymbol> {
         self.current().get_local_type(name).or(self
@@ -138,7 +151,7 @@ impl Scopes {
 }
 
 // Mutating functions
-impl Scopes {
+impl ModuleScopes {
     pub(crate) fn push(&mut self) {
         let new_node = Node::new(Scope::default());
         let new_id = self
@@ -180,9 +193,8 @@ impl Scopes {
     }
 }
 
-impl Scopes {
-    pub(crate) fn new() -> Self {
-        let module_id = 0; // FIXME: pass in a real module id
+impl ModuleScopes {
+    pub(crate) fn new(module_id: u32) -> Self {
         let root = Node::new(Scope::default());
         let mut tree = Tree::new();
         let root = tree.insert(root, InsertBehavior::AsRoot).unwrap();

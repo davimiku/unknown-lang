@@ -2,8 +2,8 @@ use la_arena::Idx;
 
 use crate::lowering_context::{Context, ContextDisplay};
 use crate::{
-    ArrayLiteralExpr, BinaryExpr, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, IndexIntExpr,
-    UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
+    ArrayLiteralExpr, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, IndexIntExpr, UnaryExpr,
+    ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
 const DEFAULT_INDENT: usize = 4;
@@ -45,9 +45,7 @@ fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
         Expr::ArrayLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
-        Expr::Binary(binary) => fmt_binary_expr(s, binary, context, indent),
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
-        Expr::EmptyBlock => s.push_str("{}"),
         Expr::Block(block_expr) => fmt_block_expr(s, block_expr, context, &mut indent),
 
         Expr::VarRef(var_ref) => s.push_str(&var_ref.display(context)),
@@ -91,13 +89,6 @@ fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usi
     s.push(')');
 }
 
-fn fmt_binary_expr(s: &mut String, binary: &BinaryExpr, context: &Context, indent: usize) {
-    let BinaryExpr { op, lhs, rhs, .. } = binary;
-    fmt_expr(s, *lhs, context, indent);
-    s.push_str(&format!(" {op} "));
-    fmt_expr(s, *rhs, context, indent)
-}
-
 fn fmt_unary_expr(s: &mut String, unary: &UnaryExpr, context: &Context, indent: usize) {
     let UnaryExpr { op, expr, .. } = unary;
     s.push_str(&format!("{op}"));
@@ -105,16 +96,20 @@ fn fmt_unary_expr(s: &mut String, unary: &UnaryExpr, context: &Context, indent: 
 }
 
 fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: &mut usize) {
-    let BlockExpr { exprs } = block;
-    s.push_str("{\n");
-    *indent += DEFAULT_INDENT;
-    for idx in exprs {
-        s.push_str(&" ".repeat(*indent));
-        fmt_expr(s, *idx, context, *indent);
-        s.push('\n');
+    match block {
+        BlockExpr::Empty => s.push_str("{}"),
+        BlockExpr::NonEmpty { exprs } => {
+            s.push_str("{\n");
+            *indent += DEFAULT_INDENT;
+            for idx in exprs {
+                s.push_str(&" ".repeat(*indent));
+                fmt_expr(s, *idx, context, *indent);
+                s.push('\n');
+            }
+            *indent -= DEFAULT_INDENT;
+            s.push_str(&format!("{}}}", " ".repeat(*indent)));
+        }
     }
-    *indent -= DEFAULT_INDENT;
-    s.push_str(&format!("{}}}", " ".repeat(*indent)));
 }
 
 fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
@@ -185,6 +180,17 @@ fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Conte
 impl ContextDisplay for ValueSymbol {
     fn display(&self, context: &Context) -> String {
         let name = context.lookup(context.database.value_names[self]);
+        let name = match name {
+            "+" => "`+`",
+            "-" => "`-`",
+            "*" => "`*`",
+            "/" => "`/`",
+            "++" => "`++`",
+            "==" => "`==`",
+            "!=" => "`!=`",
+
+            s => s,
+        };
         let ValueSymbol {
             symbol_id,
             module_id,
