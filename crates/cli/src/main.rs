@@ -35,12 +35,13 @@ fn main() -> io::Result<()> {
 // TODO: lower, do not codegen
 // TODO: replace with LSPDiagnostic
 // fn check(path: Option<EntryPath>) -> io::Result<Vec<LSPDiagnostic>> {
-fn check(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
-    let program = get_program_input(path)?;
-    Ok(match compiler::compile(&program, true) {
-        Ok(_) => Vec::new(),
-        Err(diagnostics) => diagnostics,
-    })
+fn check(path: Option<EntryPath>) -> io::Result<Vec<()>> {
+    todo!();
+    // let program = get_program_input(path)?;
+    // Ok(match compiler::compile(&program, true) {
+    //     Ok(_) => Vec::new(),
+    //     Err(diagnostics) => diagnostics,
+    // })
 
     // let diagnostics: Vec<LSPDiagnostic> = match compiler::compile(&program) {
     //     Ok(_) => vec![],
@@ -50,34 +51,37 @@ fn check(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
     // Ok(diagnostics)
 }
 
-fn build(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
-    let program = get_program_input(path)?;
-    Ok(match compiler::compile(&program, true) {
-        Ok(_) => Vec::new(),
-        Err(diagnostics) => diagnostics,
-    })
+fn build(path: Option<EntryPath>) -> io::Result<Vec<()>> {
+    todo!();
+    // let program = get_program_input(path)?;
+    // Ok(match compiler::compile(&program, true) {
+    //     Ok(_) => Vec::new(),
+    //     Err(diagnostics) => diagnostics,
+    // })
 }
 
-fn run(path: Option<EntryPath>) -> io::Result<Vec<compiler::Diagnostic>> {
-    let program = get_program_input(path)?;
+fn run(path: Option<EntryPath>) -> io::Result<Vec<()>> {
+    todo!();
+    // let program = get_program_input(path)?;
 
-    Ok(match compiler::compile(&program, false) {
-        Ok(program) => {
-            let run_result = vm::run(program);
-            match run_result {
-                Ok(exit_code) => {
-                    if exit_code != exitcode::OK {
-                        eprintln!("Exit code: {exit_code}");
-                    }
-                }
-                Err(panic) => {
-                    eprintln!("Panic: {panic:?}");
-                }
-            }
-            vec![]
-        }
-        Err(diagnostics) => diagnostics,
-    })
+    // Ok(match compiler::compile(&program, false) {
+    //     Ok(program) => {
+    //         println!("{program}");
+    //         // let run_result = run(program);
+    //         // match run_result {
+    //         //     Ok(exit_code) => {
+    //         //         if exit_code != exitcode::OK {
+    //         //             eprintln!("Exit code: {exit_code}");
+    //         //         }
+    //         //     }
+    //         //     Err(panic) => {
+    //         //         eprintln!("Panic: {panic:?}");
+    //         //     }
+    //         // }
+    //         vec![]
+    //     }
+    //     Err(diagnostics) => diagnostics,
+    // })
 }
 
 #[cfg(test)]

@@ -9,8 +9,6 @@ use exitcode::is_error;
 use exitcode::is_success;
 use exitcode::ExitCode;
 use rayon::prelude::*;
-use vm::InterpretResult;
-pub use vm_types::{VMBool, VMFloat, VMInt};
 
 const COMPILER_ERR_PATH: &str = "compile_err";
 const RUNTIME_ERR_PATH: &str = "runtime_err";
@@ -158,9 +156,6 @@ fn expect_panic(input: &str /*, expected: Panic */) -> bool {
     // result.is_err_and(|panic| panic == expected)
 }
 
-fn run(input: &str) -> InterpretResult<ExitCode> {
-    let chunk = compiler::compile(input, false);
-    let chunk = chunk.expect("valid program for this test");
-
-    vm::run(chunk)
+fn run(input: &str) -> Result<ExitCode, ()> {
+    todo!();
 }
