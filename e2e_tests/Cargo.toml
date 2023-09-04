@@ -8,7 +8,4 @@ edition = "2021"
 [dependencies]
 exitcode = "1.1.2"
 
-compiler = { path = "../crates/compiler" }
-vm = { path = "../crates/vm" }
-vm_types = { path = "../crates/vm_types" }
 rayon = "1.7.0"

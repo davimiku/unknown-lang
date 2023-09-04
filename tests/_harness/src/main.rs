@@ -1,8 +1,6 @@
 use std::{fs, io};
 
 use exitcode::ExitCode;
-use vm::InterpretResult;
-pub use vm_types::{VMBool, VMFloat, VMInt};
 
 // TODO: run tests in parallel
 fn main() -> Result<(), io::Error> {
@@ -67,8 +65,5 @@ fn expect_panic(input: &str /*, expected: Panic */) {
 }
 
 fn run(input: &str) -> InterpretResult<ExitCode> {
-    let chunk = compiler::compile(input);
-    let chunk = chunk.expect("valid program for this test");
-
-    vm::run(chunk)
+    todo!();
 }

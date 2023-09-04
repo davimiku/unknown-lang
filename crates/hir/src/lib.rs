@@ -14,8 +14,8 @@ mod tests;
 pub use diagnostic::Diagnostic;
 pub use display::display_root;
 pub use expr::{
-    ArrayLiteralExpr, BinaryExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr,
-    IndexIntExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
+    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, IndexIntExpr,
+    UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FunctionType, Type};

@@ -12,7 +12,5 @@ exitcode = "1.1.2"
 path-clean = "1.0.1"
 text-size = "1.1.0"
 
-compiler = { path = "../compiler" }
-hir = { path = "../hir" }           # TEMP - remove when Diagnostic is replaced with LSPDiagnostic
+hir = { path = "../hir" }       # TEMP - remove when Diagnostic is replaced with LSPDiagnostic
 parser = { path = "../parser" }
-vm = { path = "../vm" }
