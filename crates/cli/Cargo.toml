@@ -7,10 +7,10 @@ default-run = "cli"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.3.3", features = ["derive"] }
+clap = { version = "4.4.2", features = ["derive"] }
 exitcode = "1.1.2"
 path-clean = "1.0.1"
-text-size = "1.1.0"
+text-size = "1.1.1"
 
 hir = { path = "../hir" }       # TEMP - remove when Diagnostic is replaced with LSPDiagnostic
 parser = { path = "../parser" }
