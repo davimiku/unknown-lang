@@ -66,6 +66,12 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
+        Expr::Module(exprs) => {
+            for expr in exprs {
+                result.chain(infer_expr(expr, context));
+            }
+            result.ty = context.type_database.top();
+        }
     };
 
     context.type_database.set_expr_type(expr_idx, result.ty);
@@ -164,14 +170,16 @@ fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult 
 }
 
 fn infer_function_param(param: &FunctionParam, context: &mut Context) -> TypeResult {
-    let FunctionParam { name, annotation } = param;
+    let FunctionParam {
+        symbol, annotation, ..
+    } = param;
 
     if let Some(idx) = annotation {
         let param_type = infer_type_expr(*idx, context);
         context
             .type_database
             .value_symbols
-            .insert(*name, param_type.ty);
+            .insert(*symbol, param_type.ty);
 
         param_type
     } else {
@@ -193,6 +201,7 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
         symbol: key,
         value,
         type_annotation,
+        ..
     } = var_def;
 
     let mut result = TypeResult::new(&context.type_database);

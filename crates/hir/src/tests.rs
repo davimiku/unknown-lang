@@ -37,8 +37,6 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     }
     assert_eq!(context.diagnostics, vec![]);
 
-    let expected_expr = expected.split('\n').map(|s| format!("    {s}")).join("\n");
-
     let mut expected_vars = expected_vars
         .iter()
         .sorted_by(|(a, ..), (b, ..)| a.cmp(b))
@@ -49,9 +47,8 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
     }
 
     let expected = format!(
-        "{{
-{expected_expr}
-}}
+        "{expected}
+
 {expected_vars}"
     );
     let actual = display_root(root_expr, &context);
@@ -70,7 +67,7 @@ fn check_error(input: &str, expected: Vec<LSPDiagnostic>) {
     let (root, context) = lower(input, LowerTarget::Module);
 
     let main_block = context.expr(root);
-    let _ = cast!(main_block, Expr::Block);
+    let _ = cast!(main_block, Expr::Module);
 
     let diagnostics: Vec<LSPDiagnostic> = context.diagnostics.iter().map(|d| d.into()).collect();
 

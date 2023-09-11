@@ -60,6 +60,12 @@ fn fmt_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
+        Expr::Module(exprs) => {
+            for expr in exprs {
+                fmt_expr(s, *expr, context, indent);
+                s.push('\n');
+            }
+        }
     }
 }
 
@@ -123,7 +129,7 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
     }
     s.push_str(" (");
     for param in params {
-        s.push_str(&param.name.display(context));
+        s.push_str(&param.symbol.display(context));
         s.push_str(" : ");
         match param.annotation {
             Some(ty) => {
@@ -139,7 +145,7 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
 
 fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent: usize) {
     let VarDefExpr {
-        symbol: key,
+        symbol,
         value,
         type_annotation,
     } = local_def;
@@ -148,7 +154,11 @@ fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent
     } else {
         context.borrow_expr_type(*value).display(context)
     };
-    s.push_str(&format!("{} : {} = ", &key.display(context), type_buffer));
+    s.push_str(&format!(
+        "{} : {} = ",
+        &symbol.display(context),
+        type_buffer
+    ));
     fmt_expr(s, *value, context, indent);
     s.push(';');
 }
@@ -207,6 +217,8 @@ impl ContextDisplay for VarRefExpr {
 
 impl ContextDisplay for FunctionExpr {
     fn display(&self, context: &Context) -> String {
-        todo!()
+        let mut s = String::new();
+        fmt_function_expr(&mut s, self, context, 0);
+        s
     }
 }

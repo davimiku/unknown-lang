@@ -25,7 +25,7 @@ pub struct Database {
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
 
     /// Reverse mapping between every symbol defining a value (i.e. variable)
-    /// and its interned string name.
+    /// and its original (interned) name.
     pub(crate) value_names: HashMap<ValueSymbol, Key>,
 
     /// Reverse mapping between every symbol defining a type (i.e. type variable)

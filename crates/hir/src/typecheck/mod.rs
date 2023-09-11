@@ -8,6 +8,7 @@
 
 mod check;
 mod infer;
+mod traits;
 mod types;
 mod widen;
 

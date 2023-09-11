@@ -5,7 +5,6 @@
 use la_arena::Idx;
 
 use super::infer::infer_expr;
-use super::widen::widen_to_scalar;
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType};
 
@@ -27,18 +26,6 @@ pub(crate) fn check_expr(
         let range = context.database.range_of_expr(expr);
         Err(vec![TypeDiagnostic::mismatch(expected, actual, range)])
     }
-}
-
-/// Checks whether the provided expression is a subtype of the expected expression
-///
-/// If the expected expression is a literal, it is first widened to a scalar.
-pub(crate) fn check_expr_widened(
-    actual_idx: Idx<Expr>,
-    expected_idx: Idx<Type>,
-    context: &mut Context,
-) -> Result<(), Vec<TypeDiagnostic>> {
-    let expected = widen_to_scalar(expected_idx, context);
-    check_expr(actual_idx, expected, context)
 }
 
 /// Is A a subtype of B
