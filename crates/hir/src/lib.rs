@@ -36,16 +36,12 @@ fn lower_module(ast: &ast::Root) -> (Idx<Expr>, Context) {
         .map(|expr| context.lower_expr_statement(Some(expr)))
         .collect();
 
-    let program = if exprs.is_empty() {
-        Expr::Block(BlockExpr::Empty)
-    } else {
-        Expr::Block(BlockExpr::NonEmpty { exprs })
-    };
-    let program = context.alloc_expr(program, None);
+    let module = Expr::Module(exprs);
+    let module = context.alloc_expr(module, None);
 
-    context.type_check(program, context.type_database.top());
+    context.type_check(module, context.type_database.top());
 
-    (program, context)
+    (module, context)
 }
 
 fn lower_function(ast: &ast::Root) -> (Idx<Expr>, Context) {

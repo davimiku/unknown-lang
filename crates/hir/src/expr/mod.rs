@@ -29,6 +29,7 @@ pub enum Expr {
     ArrayLiteral(ArrayLiteralExpr),
 
     /// Unary expression, ex. `-a`, `!b`
+    // TODO: remove and use a Call instead (unary function call)
     Unary(UnaryExpr),
 
     /// Block expression. Contains other expressions, and the
@@ -37,8 +38,11 @@ pub enum Expr {
 
     Call(CallExpr),
 
+    /// Name / reference to a variable that was resolved/found in
+    /// the current scope.
     VarRef(VarRefExpr),
 
+    /// Name of a variable that was not resolved/found in the current scope.
     UnresolvedVarRef {
         key: Key,
     },
@@ -48,34 +52,39 @@ pub enum Expr {
     IndexInt(IndexIntExpr),
     // IndexString(IndexStringExpr), // string literals, ex. for named tuples
     // Index(IndexExpr), // arbitrary expressions
+    /// Function definition, including parameters and body.
     ///
+    /// A function is inherently anonymous, but if created inside of a VarDef
+    /// the variable name is captured.
     Function(FunctionExpr),
 
     /// Variable definition
     VarDef(VarDefExpr),
 
-    // TODO: should be Match?
+    /// Branch based on boolean condition, with possible "else" branch
     If(IfExpr),
 
-    /// "Expression statement", an expression that the return value
-    /// is unused
+    /// "Expression statement", an expression that the return value is unused
     Statement(Idx<Expr>),
 
-    /// "Return statement" doesn't produce a value itself. It mutates
-    /// the runtime state (stack, call frame)
+    /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
+
+    /// Represents the container around a module
+    Module(Vec<Idx<Expr>>),
 }
 
 // convenience constructors
-// TODO: may remove
+// rustfmt has a habit of splitting struct initialization across multiple lines,
+// even with property shorthand notation. I think often a single line is more readable
 impl Expr {
     pub(crate) fn variable_def(
-        key: ValueSymbol,
+        symbol: ValueSymbol,
         value: Idx<Expr>,
         type_annotation: Option<Idx<TypeExpr>>,
     ) -> Self {
         Self::VarDef(VarDefExpr {
-            symbol: key,
+            symbol,
             value,
             type_annotation,
         })
@@ -131,9 +140,6 @@ impl ValueSymbol {
 /// Reference to a variable that lives in the "value" universe
 #[derive(Debug, PartialEq, Clone)]
 pub struct VarRefExpr {
-    /// Interned string of the variable name
-    pub key: Key,
-
     /// Unique identifier for the value symbol
     pub symbol: ValueSymbol,
 }
@@ -142,6 +148,15 @@ pub struct VarRefExpr {
 pub enum ArrayLiteralExpr {
     Empty,
     NonEmpty { elements: Vec<Idx<Expr>> },
+}
+
+impl ArrayLiteralExpr {
+    pub fn elements(&self) -> &[Idx<Expr>] {
+        match self {
+            Self::Empty => &[],
+            Self::NonEmpty { elements } => elements,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -154,6 +169,15 @@ pub struct UnaryExpr {
 pub enum BlockExpr {
     Empty,
     NonEmpty { exprs: Vec<Idx<Expr>> },
+}
+
+impl BlockExpr {
+    pub fn exprs(&self) -> &[Idx<Expr>] {
+        match self {
+            BlockExpr::Empty => &[],
+            BlockExpr::NonEmpty { exprs } => exprs,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -182,8 +206,13 @@ pub struct FunctionExpr {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionParam {
-    pub name: ValueSymbol,
+    /// Original name of the parameter
+    pub name: Key,
 
+    /// Unique identifier for this parameter
+    pub symbol: ValueSymbol,
+
+    /// Type annotation if provided
     pub annotation: Option<Idx<TypeExpr>>,
 }
 
