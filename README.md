@@ -1,12 +1,12 @@
 # Unknown Language
 
-This project is the beginning phase of the implementation of a new statically typed, imperative programming language. Currently, this language does not have a name. The language is implemented with a bytecode compiler and stack-based virtual machine to interpret the bytecode.
-
-> In this early phase, I typically develop on the [dev branch](https://github.com/davimiku/unknown-lang/tree/dev). That branch will have the latest commits, but there is no guarantee that anything is working as expected.
+This project is the beginning phase of the implementation of a new statically typed, imperative programming language. Currently, this language does not have a name. The primary output of the compiler is Cranelift Intermediate Format (CLIF), which is used by the [Cranelift](https://cranelift.dev/) compiler to generate machine code.
 
 ## Project Status
 
 Although a fair amount of work has been put into this project, it is **not in a workable state**.
+
+Currently, the main backend has just changed from a custom bytecode VM to generating native code using [Cranelift](https://cranelift.dev/), meaning that basic functionality does not currently work. A compile-to-javascript backend may also be added at some point in the future.
 
 ## Documentation
 
