@@ -127,10 +127,13 @@ impl<'t, 'input> Parser<'t, 'input> {
 
     /// Bumps the parser if it's at the given token
     /// Useful for optional tokens, such as trailing commas
-    pub(crate) fn bump_if(&mut self, kind: TokenKind) {
+    pub(crate) fn bump_if(&mut self, kind: TokenKind) -> bool {
         self.bump_all_space();
         if self.at(kind) {
             self.bump();
+            true
+        } else {
+            false
         }
     }
 
@@ -184,8 +187,8 @@ impl<'t, 'input> Parser<'t, 'input> {
     /// Checks if the parser is at a certain kind of valid token
     ///
     /// Does not add to the list of expected tokens.
-    pub(crate) fn debug_at(&mut self, kind: TokenKind) -> bool {
-        self.peek() == Some(kind)
+    pub(crate) fn debug_assert_at(&mut self, kind: TokenKind) {
+        debug_assert_eq!(self.peek(), Some(kind))
     }
 
     pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {

@@ -1,5 +1,7 @@
 use crate::{Expr, TypeExpr};
 
+mod functions;
+
 /// Asserts that the provided `Option` is `Some`
 /// and returns the unwrapped value.
 macro_rules! assert_some {
@@ -8,6 +10,7 @@ macro_rules! assert_some {
         $value.unwrap()
     }};
 }
+pub(crate) use assert_some;
 
 /// Asserts that the provided enum is the provided variant,
 /// and extracts the inner value.
@@ -22,25 +25,11 @@ macro_rules! assert_matches {
         }
     }};
 }
+pub(crate) use assert_matches;
 
 fn parse_expr(input: &str) -> Expr {
     let node = parser::test_parse_expr(input).syntax();
     Expr::cast(node).unwrap()
-}
-
-fn check_function(parsed: Expr, expected_idents: &[&str], expected_type_idents: &[&str]) {
-    let function = assert_matches!(parsed, Expr::Function);
-    let param_list = function.param_list();
-    let params = param_list.params();
-    for (i, param) in params.enumerate() {
-        let ident = assert_some!(param.ident());
-        assert_eq!(ident.as_string(), expected_idents[i]);
-
-        if let Some(TypeExpr::Path(path)) = param.type_expr() {
-            let ident = assert_matches!(assert_some!(path.subject()), TypeExpr::Ident);
-            assert_eq!(ident.as_string(), expected_type_idents[i]);
-        }
-    }
 }
 
 #[test]
@@ -126,61 +115,6 @@ fn call_path_no_args() {
     let member = assert_matches!(assert_some!(path.member()), Expr::Path);
     let member = assert_matches!(assert_some!(member.subject()), Expr::Ident);
     assert_eq!(member.as_string(), "my_func");
-}
-
-#[test]
-fn empty_function() {
-    let input = "() -> { }";
-    let expected_idents = [];
-    let expected_type_idents = [];
-
-    let parsed = parse_expr(input);
-
-    check_function(parsed, &expected_idents, &expected_type_idents);
-}
-
-#[test]
-fn unary_function() {
-    let input = "a -> {}";
-    let expected_idents = ["a"];
-    let expected_type_idents = [];
-
-    let parsed = parse_expr(input);
-
-    check_function(parsed, &expected_idents, &expected_type_idents);
-}
-
-#[test]
-fn unary_function_with_parens() {
-    let input = "(a) -> {}";
-    let expected_idents = ["a"];
-    let expected_type_idents = [];
-
-    let parsed = parse_expr(input);
-
-    check_function(parsed, &expected_idents, &expected_type_idents);
-}
-
-#[test]
-fn unary_function_with_param_type() {
-    let input = "(a: A) -> {}";
-    let expected_idents = ["a"];
-    let expected_type_idents = ["A"];
-
-    let parsed = parse_expr(input);
-
-    check_function(parsed, &expected_idents, &expected_type_idents);
-}
-
-#[test]
-fn binary_function_with_explicit_param_type() {
-    let input = "(a: A, b: B) -> { }";
-    let expected_idents = ["a", "b"];
-    let expected_type_idents = ["A", "B"];
-
-    let parsed = parse_expr(input);
-
-    check_function(parsed, &expected_idents, &expected_type_idents);
 }
 
 #[test]

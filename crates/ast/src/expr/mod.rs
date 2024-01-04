@@ -263,6 +263,10 @@ impl Function {
             .expect("function to have parameter list")
     }
 
+    pub fn return_type(&self) -> Option<TypeExpr> {
+        self.0.children().find_map(TypeExpr::cast)
+    }
+
     pub fn body(&self) -> Option<Expr> {
         self.0
             .children_with_tokens()
@@ -357,25 +361,11 @@ pub struct FunParamList(SyntaxNode);
 
 impl FunParamList {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        use SyntaxKind::*;
-
-        matches!(node.kind(), ParenExpr | PathExpr).then_some(Self(node))
+        (node.kind() == SyntaxKind::FunParamList).then_some(Self(node))
     }
 
-    pub fn params(&self) -> Box<dyn Iterator<Item = FunParam>> {
-        if self.0.kind() == SyntaxKind::PathExpr {
-            let iter = self
-                .0
-                .parent()
-                .unwrap()
-                .children()
-                .filter_map(FunParam::cast)
-                .take(1);
-            Box::new(iter)
-        } else {
-            let iter = self.0.children().filter_map(FunParam::cast);
-            Box::new(iter)
-        }
+    pub fn params(&self) -> impl Iterator<Item = FunParam> {
+        self.0.children().filter_map(FunParam::cast)
     }
 
     pub fn range(&self) -> TextRange {

@@ -29,7 +29,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(T::Struct) {
         parse_struct(p)
     } else if p.at(T::LParen) {
-        parse_paren_expr_or_function_params(p)
+        parse_paren_expr(p)
     } else if p.at(T::LBracket) {
         parse_array_type(p)
     } else {
@@ -40,14 +40,26 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     Some(cm)
 }
 
-// paren expr or function params
-// paren expr: (1 + 2) * 3
-//
-// empty paren expr == 0 params: ()
-// 1 param with explicit type: (Int)
-// N params with explicit types: (Int, Int)
-fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::LParen));
+/// Parses a type expression beginning with a LParen
+///
+/// This expression could be any one of a "regular" parenthesized expression,
+/// a unit (empty tuple/record), a tuple, or a record.
+///
+/// ```text
+/// (Texpr + Texpr) * Texpr // paren type expr
+/// ^^^^^^^^^^^^^^^
+///
+/// () // unit type
+/// ^^
+///
+/// (Texpr, Texpr, Texpr) // tuple type
+/// ^^^^^^^^^^^^^^^^^^^^^
+///
+/// (a: Texpr, b: Texpr, c: Texpr) // pair list for union or record types
+/// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
+fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::LParen);
 
     let m = p.start();
     p.bump();
@@ -78,7 +90,7 @@ fn parse_paren_expr_or_function_params(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_array_type(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::LBracket));
+    p.debug_assert_at(T::LBracket);
 
     let m = p.start();
 
@@ -91,7 +103,7 @@ fn parse_array_type(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_union(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::Union));
+    p.debug_assert_at(T::Union);
 
     let m = p.start();
     p.bump();
@@ -100,7 +112,7 @@ fn parse_union(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::Struct));
+    p.debug_assert_at(T::Struct);
 
     let m = p.start();
     p.bump();
@@ -111,7 +123,7 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 /// Parses a "compound type block"
 // TODO: better name?
 fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::LBrace));
+    p.debug_assert_at(T::LBrace);
 
     let m = p.start();
     p.bump();
@@ -134,7 +146,7 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(T::Ident));
+    p.debug_assert_at(T::Ident);
 
     let m = p.start();
 

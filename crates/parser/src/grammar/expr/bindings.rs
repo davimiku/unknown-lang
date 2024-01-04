@@ -21,7 +21,7 @@ use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
 pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(TokenKind::Let));
+    p.debug_assert_at(TokenKind::Let);
     let m = p.start();
     p.bump();
 
@@ -47,7 +47,7 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
 }
 
 pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.debug_at(TokenKind::Type));
+    p.debug_assert_at(TokenKind::Type);
     let m = p.start();
     p.bump();
 
