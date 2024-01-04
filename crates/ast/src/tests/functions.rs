@@ -1,5 +1,5 @@
 use crate::tests::{assert_matches, assert_some};
-use crate::{Expr, TypeExpr};
+use crate::{Expr, Function, TypeExpr};
 
 use super::parse_expr;
 
@@ -8,7 +8,7 @@ fn check_function(
     expected_idents: &[&str],
     expected_type_idents: &[&str],
     expected_return_type: Option<&str>,
-) {
+) -> Function {
     let function = super::assert_matches!(parsed, Expr::Function);
     let param_list = function.param_list();
     let params = param_list.params();
@@ -17,6 +17,7 @@ fn check_function(
         let expected_type_ident = expected_type_idents.get(i);
         let ident = assert_some!(param.ident());
         assert_eq!(ident.as_string(), *expected_ident);
+        // TODO: only works for simple idents
         if let Some(expected_type_ident) = expected_type_ident {
             let type_ident = assert_matches!(assert_some!(param.type_expr()), TypeExpr::Ident);
             assert_eq!(type_ident.as_string(), *expected_type_ident);
@@ -32,6 +33,8 @@ fn check_function(
             panic!("expected a return type");
         }
     }
+
+    function
 }
 
 #[test]
@@ -104,4 +107,26 @@ fn binary_function_with_return_type() {
         &expected_type_idents,
         expected_return_type,
     );
+}
+
+#[test]
+fn unary_function_with_body() {
+    let input = "fun (a: Int) -> Int { a }";
+    let expected_idents = ["a"];
+    let expected_type_idents = ["Int"];
+    let expected_return_type = Some("Int");
+
+    let parsed = parse_expr(input);
+
+    let function = check_function(
+        parsed,
+        &expected_idents,
+        &expected_type_idents,
+        expected_return_type,
+    );
+    let body = function.body().and_then(|body| body.expr());
+    let body = assert_some!(body);
+    let body = assert_matches!(body, Expr::Block);
+    let body_expr = body.exprs().take(1).next().unwrap();
+    assert_matches!(body_expr, Expr::Path);
 }

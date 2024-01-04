@@ -575,7 +575,10 @@ impl Context {
             })
             .collect();
 
-        let body = function_ast.body().map(|body| self.lower_expr(Some(body)));
+        let body = function_ast
+            .body()
+            .and_then(|body| body.expr())
+            .map(|body| self.lower_expr(Some(body)));
         let body = body.expect("TODO: handle missing function body");
         self.pop_scope();
 

@@ -63,6 +63,10 @@ impl Database {
         (&self.exprs[idx], &self.expr_ranges[idx])
     }
 
+    /// Returns a clone of the expression at the given index.    
+    ///
+    /// Panics if the index doesn't exist. An invalid index indicates
+    /// a bug in the compiler.
     pub(crate) fn expr_cloned(&self, idx: Idx<Expr>) -> (Expr, TextRange) {
         (self.exprs[idx].clone(), self.expr_ranges[idx])
     }

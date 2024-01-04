@@ -3,7 +3,8 @@ use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
 use indoc::indoc;
 
-use crate::{display_root, lower, lowering_context::ContextDisplay, BlockExpr, Expr, LowerTarget};
+use crate::lowering_context::ContextDisplay;
+use crate::{display_root, lower, BlockExpr, Expr, LowerTarget};
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -352,7 +353,7 @@ fn nullary_function_assignment() {
 
 #[test]
 fn unary_function() {
-    let input = "(a: Int) -> {}";
+    let input = "fun (a: Int) -> {}";
     let expected_expr = indoc! {"
     fun (a~1.0 : Int) -> {};"};
 
@@ -361,7 +362,7 @@ fn unary_function() {
 
 #[test]
 fn unary_function_assignment() {
-    let input = "let f = (a: Int) -> {}";
+    let input = "let f = fun (a: Int) -> {}";
 
     let expected_expr = indoc! {"
     f~1.0 : (Int) -> () = fun<f> (a~1.1 : Int) -> {};"};
@@ -381,7 +382,7 @@ fn print_string() {
 
 #[test]
 fn print_param_function() {
-    let input = "(a: String) -> print a";
+    let input = "fun (a: String) -> print a";
 
     let expected_expr = "fun (a~1.0 : String) -> print~0.0 (a~1.0,);";
     let expected_vars = &[("a~1.0", "String")];
@@ -391,7 +392,7 @@ fn print_param_function() {
 
 #[test]
 fn print_param_function_assignment() {
-    let input = "let f = (a: String) -> print a";
+    let input = "let f = fun (a: String) -> print a";
 
     let expected_expr = "f~1.0 : (String) -> () = fun<f> (a~1.1 : String) -> print~0.0 (a~1.1,);";
     let expected_vars = &[("a~1.1", "String"), ("f~1.0", "(String) -> ()")];
@@ -402,7 +403,7 @@ fn print_param_function_assignment() {
 #[test]
 fn print_param_with_call() {
     let input = r#"
-let print_param = (a: String) -> print a
+let print_param = fun (a: String) -> print a
 print_param "Hello!"
 "#;
 
@@ -463,7 +464,7 @@ fn concat_strings() {
 #[test]
 fn concat_in_function() {
     let input = r#"
-let repeat = (s: String) -> s ++ s
+let repeat = fun (s: String) -> s ++ s
 "#;
 
     let expected_expr = indoc! {"
@@ -477,7 +478,7 @@ let repeat = (s: String) -> s ++ s
 #[test]
 fn concat_function_call() {
     let input = r#"
-let repeat = (s: String) -> { s ++ s }
+let repeat = fun (s: String) -> String { s ++ s }
 let hello_hello = repeat "Hello "
 print hello_hello"#;
 

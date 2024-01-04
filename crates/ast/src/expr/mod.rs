@@ -256,10 +256,10 @@ pub struct Function(SyntaxNode);
 // TODO: what of these need to be Option ?
 // prefer not to panic if possible, and create a proper diagnostic
 impl Function {
-    pub fn param_list(&self) -> FunParamList {
+    pub fn param_list(&self) -> FunctionParamList {
         self.0
             .children()
-            .find_map(FunParamList::cast)
+            .find_map(FunctionParamList::cast)
             .expect("function to have parameter list")
     }
 
@@ -267,16 +267,8 @@ impl Function {
         self.0.children().find_map(TypeExpr::cast)
     }
 
-    pub fn body(&self) -> Option<Expr> {
-        self.0
-            .children_with_tokens()
-            .skip_while(|child| match child.as_token() {
-                Some(token) => token.kind() != SyntaxKind::Arrow,
-                None => true,
-            })
-            .skip(1) // consume the arrow
-            .filter_map(SyntaxElement::into_node)
-            .find_map(Expr::cast)
+    pub fn body(&self) -> Option<FunctionBody> {
+        self.0.children().find_map(FunctionBody::cast)
     }
 
     pub fn name(&self) -> Option<String> {
@@ -293,12 +285,12 @@ impl Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FunParam {
+pub enum FunctionParam {
     WithoutType(SyntaxNode),
     WithType(SyntaxNode),
 }
 
-impl FunParam {
+impl FunctionParam {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         use SyntaxKind as S;
 
@@ -335,8 +327,8 @@ impl FunParam {
 
     pub fn type_expr(&self) -> Option<TypeExpr> {
         match self {
-            FunParam::WithoutType(_) => None,
-            FunParam::WithType(node) => node
+            FunctionParam::WithoutType(_) => None,
+            FunctionParam::WithType(node) => node
                 .children()
                 .find(|child| child.kind() == SyntaxKind::TypeExpr)
                 .and_then(TypeExpr::cast),
@@ -349,23 +341,40 @@ impl FunParam {
 
     fn node(&self) -> SyntaxNode {
         match self {
-            FunParam::WithoutType(node) => node,
-            FunParam::WithType(node) => node,
+            FunctionParam::WithoutType(node) => node,
+            FunctionParam::WithType(node) => node,
         }
         .clone()
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FunParamList(SyntaxNode);
+pub struct FunctionParamList(SyntaxNode);
 
-impl FunParamList {
+impl FunctionParamList {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::FunParamList).then_some(Self(node))
     }
 
-    pub fn params(&self) -> impl Iterator<Item = FunParam> {
-        self.0.children().filter_map(FunParam::cast)
+    pub fn params(&self) -> impl Iterator<Item = FunctionParam> {
+        self.0.children().filter_map(FunctionParam::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionBody(SyntaxNode);
+
+impl FunctionBody {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::FunBody).then_some(Self(node))
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.0.children().find_map(Expr::cast)
     }
 
     pub fn range(&self) -> TextRange {

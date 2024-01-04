@@ -22,8 +22,7 @@ pub use typecheck::{ArrayType, FunctionType, Type};
 
 use database::Database;
 
-pub use interner::Interner;
-use interner::Key;
+pub use interner::{Interner, Key};
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
