@@ -9,7 +9,7 @@ edition = "2021"
 ast = { path = "../ast" }
 id_tree = "1.8.0"
 itertools = "0.10.5"
-la-arena = "0.3.0"
+la-arena = "0.3.1"
 lasso = "0.6.0"
 lsp_diagnostic = { path = "../lsp_diagnostic" }
 parser = { path = "../parser" }
