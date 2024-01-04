@@ -120,7 +120,7 @@ fn call_path_no_args() {
 #[test]
 fn add_int_and_function() {
     // not a valid expression by the type checker, but should still produce a valid AST
-    let input = "1 + (() -> { })";
+    let input = "1 + (fun () -> { })";
     let expected_lhs = "1";
     let expected_rhs_param_list = None;
 

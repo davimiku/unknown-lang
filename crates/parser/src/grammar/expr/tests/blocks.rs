@@ -47,7 +47,7 @@ BlockExpr@0..35
   Newline@1..2 "\n"
   Emptyspace@2..4 "  "
   LetBinding@4..13
-    Let@4..7 "let"
+    LetKw@4..7 "let"
     Emptyspace@7..8 " "
     Ident@8..10
       Ident@8..9 "x"
@@ -59,7 +59,7 @@ BlockExpr@0..35
   Newline@13..14 "\n"
   Emptyspace@14..16 "  "
   LetBinding@16..25
-    Let@16..19 "let"
+    LetKw@16..19 "let"
     Emptyspace@19..20 " "
     Ident@20..22
       Ident@20..21 "y"

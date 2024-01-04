@@ -8,7 +8,7 @@ fn parse_empty_loop() {
         "loop {}",
         expect![[r#"
 LoopExpr@0..7
-  Loop@0..4 "loop"
+  LoopKw@0..4 "loop"
   Emptyspace@4..5 " "
   BlockExpr@5..7
     LBrace@5..6 "{"
@@ -22,12 +22,12 @@ fn parse_empty_for_loop() {
         "for x in xs {}",
         expect![[r#"
             ForInLoop@0..14
-              For@0..3 "for"
+              ForKw@0..3 "for"
               Emptyspace@3..4 " "
               Ident@4..6
                 Ident@4..5 "x"
                 Emptyspace@5..6 " "
-              In@6..8 "in"
+              InKw@6..8 "in"
               Emptyspace@8..9 " "
               PathExpr@9..12
                 Ident@9..12

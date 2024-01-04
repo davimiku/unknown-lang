@@ -94,7 +94,7 @@ where
             T::And => BinaryOp::And,
             T::Or => BinaryOp::Or,
             T::Dot => BinaryOp::Path,
-            // T::Arrow => BinaryOp::Function,
+            T::Arrow => BinaryOp::Function,
             T::EqualsEquals => BinaryOp::Eq,
             T::BangEquals => BinaryOp::Ne,
 

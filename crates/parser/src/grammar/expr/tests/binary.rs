@@ -182,7 +182,7 @@ InfixExpr@0..14
   BoolLiteralExpr@0..5
     TrueLiteral@0..4 "true"
     Emptyspace@4..5 " "
-  And@5..8 "and"
+  AndKw@5..8 "and"
   Emptyspace@8..9 " "
   BoolLiteralExpr@9..14
     FalseLiteral@9..14 "false""#]],
@@ -198,7 +198,7 @@ InfixExpr@0..13
   BoolLiteralExpr@0..5
     TrueLiteral@0..4 "true"
     Emptyspace@4..5 " "
-  Or@5..7 "or"
+  OrKw@5..7 "or"
   Emptyspace@7..8 " "
   BoolLiteralExpr@8..13
     FalseLiteral@8..13 "false""#]],

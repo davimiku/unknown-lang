@@ -165,7 +165,7 @@ fn type_union() {
         expect![[r#"
 TypeExpr@0..20
   UnionTypeExpr@0..20
-    Union@0..5 "union"
+    UnionKw@0..5 "union"
     Emptyspace@5..6 " "
     CompoundTypeBlock@6..20
       LBrace@6..7 "{"
@@ -199,7 +199,7 @@ fn type_struct() {
         expect![[r#"
 TypeExpr@0..21
   StructTypeExpr@0..21
-    Struct@0..6 "struct"
+    StructKw@0..6 "struct"
     Emptyspace@6..7 " "
     CompoundTypeBlock@7..21
       LBrace@7..8 "{"
