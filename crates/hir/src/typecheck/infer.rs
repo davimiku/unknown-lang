@@ -118,7 +118,10 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
         TypeExpr::VarRef(TypeRefExpr { symbol, .. }) => {
             context.type_database.get_type_symbol(symbol).into()
         }
-        TypeExpr::UnresolvedVarRef { .. } => todo!(),
+        TypeExpr::UnresolvedVarRef { key } => {
+            println!("unresolved type key '{}'", context.lookup(*key));
+            todo!()
+        }
         TypeExpr::LocalDef(_) => todo!(),
 
         TypeExpr::Empty => todo!(),

@@ -34,7 +34,8 @@ fn parse_unary_function_with_explicit_param_type() {
               FunParamList@4..11
                 LParen@4..5 "("
                 FunParam@5..9
-                  Ident@5..6 "a"
+                  Ident@5..6
+                    Ident@5..6 "a"
                   Colon@6..7 ":"
                   Emptyspace@7..8 " "
                   TypeExpr@8..9
@@ -62,8 +63,9 @@ fn parse_unary_function_without_param_type() {
               Emptyspace@3..4 " "
               FunParamList@4..7
                 FunParam@4..7
-                  Ident@4..6 "id"
-                  Emptyspace@6..7 " "
+                  Ident@4..7
+                    Ident@4..6 "id"
+                    Emptyspace@6..7 " "
               Arrow@7..9 "->"
               Emptyspace@9..10 " "
               FunBody@10..13
@@ -85,7 +87,8 @@ fn parse_unary_function_with_paren() {
               FunParamList@4..9
                 LParen@4..5 "("
                 FunParam@5..7
-                  Ident@5..7 "id"
+                  Ident@5..7
+                    Ident@5..7 "id"
                 RParen@7..8 ")"
                 Emptyspace@8..9 " "
               Arrow@9..11 "->"
@@ -108,11 +111,13 @@ fn parse_binary_function_without_param_types() {
               FunParamList@4..11
                 LParen@4..5 "("
                 FunParam@5..6
-                  Ident@5..6 "a"
+                  Ident@5..6
+                    Ident@5..6 "a"
                 Comma@6..7 ","
                 Emptyspace@7..8 " "
                 FunParam@8..9
-                  Ident@8..9 "b"
+                  Ident@8..9
+                    Ident@8..9 "b"
                 RParen@9..10 ")"
                 Emptyspace@10..11 " "
               Arrow@11..13 "->"
@@ -136,7 +141,8 @@ fn parse_binary_function_with_param_types() {
               FunParamList@4..17
                 LParen@4..5 "("
                 FunParam@5..9
-                  Ident@5..6 "a"
+                  Ident@5..6
+                    Ident@5..6 "a"
                   Colon@6..7 ":"
                   Emptyspace@7..8 " "
                   TypeExpr@8..9
@@ -145,7 +151,8 @@ fn parse_binary_function_with_param_types() {
                 Comma@9..10 ","
                 Emptyspace@10..11 " "
                 FunParam@11..15
-                  Ident@11..12 "b"
+                  Ident@11..12
+                    Ident@11..12 "b"
                   Colon@12..13 ":"
                   Emptyspace@13..14 " "
                   TypeExpr@14..15
@@ -164,7 +171,7 @@ fn parse_binary_function_with_param_types() {
 }
 
 #[test]
-fn parse_binary_function_with_explicit_param_and_return_types() {
+fn parse_binary_function_with_param_and_return_types() {
     check_expr(
         "fun (a: A, b: B) -> C { }",
         expect![[r#"
@@ -174,7 +181,8 @@ fn parse_binary_function_with_explicit_param_and_return_types() {
               FunParamList@4..17
                 LParen@4..5 "("
                 FunParam@5..9
-                  Ident@5..6 "a"
+                  Ident@5..6
+                    Ident@5..6 "a"
                   Colon@6..7 ":"
                   Emptyspace@7..8 " "
                   TypeExpr@8..9
@@ -183,7 +191,8 @@ fn parse_binary_function_with_explicit_param_and_return_types() {
                 Comma@9..10 ","
                 Emptyspace@10..11 " "
                 FunParam@11..15
-                  Ident@11..12 "b"
+                  Ident@11..12
+                    Ident@11..12 "b"
                   Colon@12..13 ":"
                   Emptyspace@13..14 " "
                   TypeExpr@14..15
@@ -248,7 +257,8 @@ fn parse_immediately_invoked_function_expression_one_arg() {
                   FunParamList@5..14
                     LParen@5..6 "("
                     FunParam@6..12
-                      Ident@6..7 "a"
+                      Ident@6..7
+                        Ident@6..7 "a"
                       Colon@7..8 ":"
                       Emptyspace@8..9 " "
                       TypeExpr@9..12
@@ -296,7 +306,8 @@ fn parse_immediately_invoked_function_expression_two_args() {
                   FunParamList@5..22
                     LParen@5..6 "("
                     FunParam@6..12
-                      Ident@6..7 "a"
+                      Ident@6..7
+                        Ident@6..7 "a"
                       Colon@7..8 ":"
                       Emptyspace@8..9 " "
                       TypeExpr@9..12
@@ -305,7 +316,8 @@ fn parse_immediately_invoked_function_expression_two_args() {
                     Comma@12..13 ","
                     Emptyspace@13..14 " "
                     FunParam@14..20
-                      Ident@14..15 "b"
+                      Ident@14..15
+                        Ident@14..15 "b"
                       Colon@15..16 ":"
                       Emptyspace@16..17 " "
                       TypeExpr@17..20

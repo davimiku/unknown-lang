@@ -6,6 +6,8 @@ use crate::{
     ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
+use super::FunctionParam;
+
 const DEFAULT_INDENT: usize = 4;
 
 impl ContextDisplay for Idx<Expr> {
@@ -105,15 +107,21 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
     match block {
         BlockExpr::Empty => s.push_str("{}"),
         BlockExpr::NonEmpty { exprs } => {
-            s.push_str("{\n");
-            *indent += DEFAULT_INDENT;
-            for idx in exprs {
-                s.push_str(&" ".repeat(*indent));
-                fmt_expr(s, *idx, context, *indent);
-                s.push('\n');
+            if exprs.len() == 1 {
+                s.push_str("{ ");
+                fmt_expr(s, exprs[0], context, *indent);
+                s.push_str(" }");
+            } else {
+                s.push_str("{\n");
+                *indent += DEFAULT_INDENT;
+                for idx in exprs {
+                    s.push_str(&" ".repeat(*indent));
+                    fmt_expr(s, *idx, context, *indent);
+                    s.push('\n');
+                }
+                *indent -= DEFAULT_INDENT;
+                s.push_str(&format!("{}}}", " ".repeat(*indent)));
             }
-            *indent -= DEFAULT_INDENT;
-            s.push_str(&format!("{}}}", " ".repeat(*indent)));
         }
     }
 }
@@ -219,6 +227,19 @@ impl ContextDisplay for FunctionExpr {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
         fmt_function_expr(&mut s, self, context, 0);
+        s
+    }
+}
+
+impl ContextDisplay for FunctionParam {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        // s.push_str(context.lookup(self.name));
+        s.push_str(&self.symbol.display(context));
+
+        // s.push_str(": ");
+        // TODO: print annotation type expression
+
         s
     }
 }

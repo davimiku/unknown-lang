@@ -573,7 +573,7 @@ impl Context {
                     annotation,
                 }
             })
-            .collect();
+            .collect_vec();
 
         let body = function_ast
             .body()

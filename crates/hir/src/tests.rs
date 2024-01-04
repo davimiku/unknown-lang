@@ -16,6 +16,7 @@ macro_rules! cast {
     }};
 }
 
+// TODO: remove when the tests are more solidified
 fn _print(input: &str) {
     let (root_expr, context) = lower(input, LowerTarget::Module);
 
@@ -319,7 +320,7 @@ fn local_wrong_type_string_literal() {
 
 #[test]
 fn nullary_function() {
-    let input = "() -> {}";
+    let input = "fun () -> {}";
     let expected_expr = indoc! {"
     fun () -> {};"};
 
@@ -328,7 +329,7 @@ fn nullary_function() {
 
 #[test]
 fn nullary_function_assignment() {
-    let input = "let f = () -> {}";
+    let input = "let f = fun () -> {}";
     let expected_expr = indoc! {"
     f~1.0 : () -> () = fun<f> () -> {};"};
 
@@ -339,7 +340,7 @@ fn nullary_function_assignment() {
 // fn unary_function_no_param_type() {
 //     let mut interner = Interner::default();
 //     let key = interner.intern("a");
-//     let input = "a -> {}";
+//     let input = "fun a -> {}";
 //     let expected = vec![TypeDiagnostic {
 //         variant: TypeDiagnosticVariant::UndefinedSymbol {
 //             name: (key, 0).into(),
@@ -382,9 +383,9 @@ fn print_string() {
 
 #[test]
 fn print_param_function() {
-    let input = "fun (a: String) -> print a";
+    let input = "fun (a: String) -> { print a }";
 
-    let expected_expr = "fun (a~1.0 : String) -> print~0.0 (a~1.0,);";
+    let expected_expr = "fun (a~1.0 : String) -> { print~0.0 (a~1.0,); };";
     let expected_vars = &[("a~1.0", "String")];
 
     check(input, expected_expr, expected_vars);
@@ -392,9 +393,10 @@ fn print_param_function() {
 
 #[test]
 fn print_param_function_assignment() {
-    let input = "let f = fun (a: String) -> print a";
+    let input = "let f = fun (a: String) -> { print a }";
 
-    let expected_expr = "f~1.0 : (String) -> () = fun<f> (a~1.1 : String) -> print~0.0 (a~1.1,);";
+    let expected_expr =
+        "f~1.0 : (String) -> () = fun<f> (a~1.1 : String) -> { print~0.0 (a~1.1,); };";
     let expected_vars = &[("a~1.1", "String"), ("f~1.0", "(String) -> ()")];
 
     check(input, expected_expr, expected_vars);
@@ -403,12 +405,12 @@ fn print_param_function_assignment() {
 #[test]
 fn print_param_with_call() {
     let input = r#"
-let print_param = fun (a: String) -> print a
+let print_param = fun (a: String) -> { print a }
 print_param "Hello!"
 "#;
 
     let expected_expr = indoc! {"
-        print_param~1.0 : (String) -> () = fun<print_param> (a~1.1 : String) -> print~0.0 (a~1.1,);
+        print_param~1.0 : (String) -> () = fun<print_param> (a~1.1 : String) -> { print~0.0 (a~1.1,); };
         print_param~1.0 (\"Hello!\",);"};
 
     let expected_vars = &[("a~1.1", "String"), ("print_param~1.0", "(String) -> ()")];
@@ -464,11 +466,11 @@ fn concat_strings() {
 #[test]
 fn concat_in_function() {
     let input = r#"
-let repeat = fun (s: String) -> s ++ s
+let repeat = fun (s: String) -> { s ++ s }
 "#;
 
     let expected_expr = indoc! {"
-    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> `++`~0.3 (s~1.1,s~1.1,);"};
+    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> { `++`~0.3 (s~1.1,s~1.1,); };"};
 
     let expected_vars = &[("repeat~1.0", "(String) -> String"), ("s~1.1", "String")];
 
@@ -483,9 +485,7 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> {
-            `++`~0.3 (s~1.1,s~1.1,);
-        };
+        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> { `++`~0.3 (s~1.1,s~1.1,); };
         hello_hello~1.2 : String = repeat~1.0 (\"Hello \",);
         print~0.0 (hello_hello~1.2,);"};
 
@@ -519,9 +519,7 @@ if res {
 
     let expected = indoc! {"
 res~1.0 : true = true;
-if (res~1.0) {
-    return 1;
-};"};
+if (res~1.0) { return 1; };"};
 
     let expected_vars = &[("res~1.0", "true")];
 

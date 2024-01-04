@@ -518,10 +518,9 @@ fn parse_function_param_list(p: &mut Parser) -> CompletedMarker {
 fn parse_function_param(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::Ident);
     let m = p.start();
-    p.bump();
+    parse_ident(p);
 
-    if p.at(T::Colon) {
-        p.bump();
+    if p.bump_if(T::Colon) {
         parse_type_expr(p);
     }
 

@@ -285,29 +285,11 @@ impl Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FunctionParam {
-    WithoutType(SyntaxNode),
-    WithType(SyntaxNode),
-}
+pub struct FunctionParam(SyntaxNode);
 
 impl FunctionParam {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        use SyntaxKind as S;
-
-        match node.kind() {
-            // (aaa: A, bbb: B) ->
-            //  ^^^^^^
-            S::ParenExprItem => Some(Self::WithType(node)),
-
-            // aaa ->
-            // ^^^
-            // S::Path => Some(Self::WithoutType(node)),
-
-            // (aaa) ->
-            // ^^^^^
-            // TODO: ParenExpr, pull out just the PathExpr?
-            _ => None,
-        }
+        (node.kind() == SyntaxKind::FunParam).then_some(Self(node))
     }
 
     // TODO: would be incorrect if a param was `: Int` ?
@@ -315,36 +297,18 @@ impl FunctionParam {
     // TODO: eventually may support destructuring (patterns!)
     // here and then it's no longer meaningful to get an "ident" here
     pub fn ident(&self) -> Option<Ident> {
-        if let Some(path) = PathExpr::cast(self.node().clone()) {
-            path.subject_as_ident()
-        } else {
-            self.node()
-                .children()
-                .find_map(PathExpr::cast)
-                .and_then(|path| path.subject_as_ident())
-        }
+        self.0.children().find_map(Ident::cast)
     }
 
     pub fn type_expr(&self) -> Option<TypeExpr> {
-        match self {
-            FunctionParam::WithoutType(_) => None,
-            FunctionParam::WithType(node) => node
-                .children()
-                .find(|child| child.kind() == SyntaxKind::TypeExpr)
-                .and_then(TypeExpr::cast),
-        }
+        self.0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::TypeExpr)
+            .and_then(TypeExpr::cast)
     }
 
     pub fn range(&self) -> TextRange {
-        self.node().text_range()
-    }
-
-    fn node(&self) -> SyntaxNode {
-        match self {
-            FunctionParam::WithoutType(node) => node,
-            FunctionParam::WithType(node) => node,
-        }
-        .clone()
+        self.0.text_range()
     }
 }
 
