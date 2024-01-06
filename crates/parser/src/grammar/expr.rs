@@ -94,6 +94,7 @@ where
             T::And => BinaryOp::And,
             T::Or => BinaryOp::Or,
             T::Dot => BinaryOp::Path,
+            // TODO: Arrow only applies for type expressions, should this be handled differently?
             T::Arrow => BinaryOp::Function,
             T::EqualsEquals => BinaryOp::Eq,
             T::BangEquals => BinaryOp::Ne,

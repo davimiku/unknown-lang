@@ -2,7 +2,7 @@
 
 use expect_test::expect;
 
-use crate::check_expr;
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_function_call_unit_arg() {

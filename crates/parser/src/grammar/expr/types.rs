@@ -43,7 +43,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 /// Parses a type expression beginning with a LParen
 ///
 /// This expression could be any one of a "regular" parenthesized expression,
-/// a unit (empty tuple/record), a tuple, or a record.
+/// a unit type, tuple type, or
 ///
 /// ```text
 /// (Texpr + Texpr) * Texpr // paren type expr
@@ -54,9 +54,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 ///
 /// (Texpr, Texpr, Texpr) // tuple type
 /// ^^^^^^^^^^^^^^^^^^^^^
-///
-/// (a: Texpr, b: Texpr, c: Texpr) // pair list for union or record types
-/// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LParen);
@@ -121,14 +118,46 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 }
 
 /// Parses a "compound type block"
+///
+/// This is a parenthesized list of identifiers with optional
+/// type expressions after a colon.
+///
+/// ```text
+/// union ( a, b )
+///       ^^^^^^^^
+///
+/// union ( a, b: B )
+///       ^^^^^^^^^^^
+/// ```
+///
+/// TODO: remove the notes below after syntax of default parameters is finalized
+/// Note that this could potentially be reused as function parameter syntax,
+/// but there is an open design decision on default parameters
+/// ```txt
+/// fun (a: Int = 42) -> { ... }
+/// ```
+///
+/// This likely could be re-used given that the `= X` is optional and could
+/// even be useful for default initialization of struct members.
+///
+/// ```txt
+/// type A = struct ( a: Int = 42 )
+///
+/// let a1 = A (a=1)
+/// let a42 = A ()
+/// ```
 // TODO: better name?
 fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::LBrace);
+    p.debug_assert_at(T::LParen);
 
     let m = p.start();
     p.bump();
     loop {
-        p.bump_all_space();
+        if p.bump_if(T::RParen) {
+            break;
+        }
+
+        // FIXME: assumes at Ident, make more robust?
         parse_compound_type_item(p);
         p.bump_all_space();
 
@@ -140,8 +169,6 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
         }
     }
 
-    p.expect(T::RBrace);
-
     m.complete(p, SyntaxKind::CompoundTypeBlock)
 }
 
@@ -150,9 +177,20 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
 
     let m = p.start();
 
+    let ident_marker = p.start();
     parse_ident(p);
-    p.expect(T::Colon);
-    expr_binding_power(p, 0, parse_lhs);
+    ident_marker.complete(p, SyntaxKind::CompoundTypeItemIdent);
+
+    if p.bump_if(T::Colon) {
+        let type_marker = p.start();
+        expr_binding_power(p, 0, parse_lhs);
+        type_marker.complete(p, SyntaxKind::CompoundTypeItemType);
+    }
+    if p.bump_if(T::Equals) {
+        let default_marker = p.start();
+        expr_binding_power(p, 0, parse_lhs);
+        default_marker.complete(p, SyntaxKind::CompoundTypeItemDefault);
+    }
 
     m.complete(p, SyntaxKind::CompoundTypeItem)
 }

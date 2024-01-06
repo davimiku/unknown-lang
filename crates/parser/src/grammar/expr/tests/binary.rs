@@ -1,6 +1,6 @@
 use expect_test::expect;
 
-use crate::check_expr;
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_simple_infix_expression() {

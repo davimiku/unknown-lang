@@ -4,6 +4,7 @@ mod bindings;
 mod blocks;
 mod call;
 mod compound_literals;
+mod compound_types;
 mod functions;
 mod if_else;
 mod loops;
@@ -12,8 +13,9 @@ mod scalar_literals;
 mod types;
 mod unary;
 
-use crate::check_expr;
 use expect_test::expect;
+
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_nested_parentheses() {

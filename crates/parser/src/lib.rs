@@ -67,34 +67,3 @@ impl Parse {
         &self.errors
     }
 }
-
-#[cfg(test)]
-fn check(input: &str, expected_tree: expect_test::Expect) {
-    let parse = parse(input);
-
-    expected_tree.assert_eq(&parse.debug_tree());
-}
-
-#[cfg(test)]
-fn check_error(input: &str, expected_tree: expect_test::Expect, expected_errors: Vec<ParseError>) {
-    let parse = parse(input);
-
-    expected_tree.assert_eq(&parse.debug_tree());
-    assert_eq!(parse.errors, expected_errors);
-}
-
-// Convenience function to test expression parsing directly
-#[cfg(test)]
-fn check_expr(input: &str, expected_tree: expect_test::Expect) {
-    let parse = test_parse_expr(input);
-
-    expected_tree.assert_eq(&parse.debug_tree());
-}
-
-// Convenience function to test type expression parsing directly.
-#[cfg(test)]
-fn check_type_expr(input: &str, expected_tree: expect_test::Expect) {
-    let parse = test_parse_type_expr(input);
-
-    expected_tree.assert_eq(&parse.debug_tree());
-}

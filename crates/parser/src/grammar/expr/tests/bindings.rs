@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::check;
     use expect_test::expect;
+
+    use crate::grammar::check;
 
     #[test]
     fn parse_let_binding() {

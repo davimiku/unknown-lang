@@ -114,6 +114,9 @@ pub enum SyntaxKind {
     // Type components
     CompoundTypeBlock,
     CompoundTypeItem,
+    CompoundTypeItemIdent,
+    CompoundTypeItemType,
+    CompoundTypeItemDefault,
 
     // Function components
     FunBody,

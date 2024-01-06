@@ -1,5 +1,6 @@
-use crate::check_expr;
 use expect_test::expect;
+
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_nullary_function() {
