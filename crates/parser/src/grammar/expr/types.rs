@@ -157,22 +157,20 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
             break;
         }
 
-        // FIXME: assumes at Ident, make more robust?
         parse_compound_type_item(p);
-        p.bump_all_space();
 
-        if p.at(T::RBrace) || p.at_end() {
-            p.bump_if(T::Comma);
+        if p.bump_if(T::RParen) {
             break;
-        } else {
-            p.expect(T::Comma);
         }
+
+        p.expect(T::Comma);
     }
 
     m.complete(p, SyntaxKind::CompoundTypeBlock)
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
+    // FIXME: remove assertion because it's not true?
     p.debug_assert_at(T::Ident);
 
     let m = p.start();
