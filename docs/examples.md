@@ -2,7 +2,7 @@
 
 ## Hello World
 
-```
+```rs
 // `print` is a built-in function
 // Text within quote marks are strings
 print 1
@@ -37,19 +37,19 @@ There is one kind of sum type in this language which is known as a "tagged union
 
 Minimal example:
 
-```txt
+```rs
 union { a: A, b: B, c: C }
 ```
 
 Binding to a type variable:
 
-```txt
+```rs
 type Example = union { a: A, b: B, c: C }
 ```
 
 Practical example:
 
-```txt
+```rs
 type Event = union {
     login: LoginEvent,
     logout: LogoutEvent,
@@ -77,19 +77,19 @@ There is one kind of product type in this language which is known as a "structur
 
 Minimal example:
 
-```txt
+```rs
 struct { a: A, b: B, c: C }
 ```
 
 Binding to a type variable:
 
-```txt
+```rs
 type Example = struct { a: A, b: B, c: C }
 ```
 
 Practical example:
 
-```txt
+```rs
 type CartAddEvent = struct {
     user: User,
     product: Product,
@@ -102,7 +102,7 @@ As shown in this example, unions and structs can be freely composed with each ot
 
 ## Variables
 
-```txt
+```rs
 // variables are declared with the `let` keyword
 let x = 4
 let message = "Hello World"
@@ -126,15 +126,15 @@ Function syntax is:
   - If the function returns `()` (doesn't return anything), that can be omitted
 - Followed by the block expression that is the function body
 
-```txt
+```rs
 // The "nothing" function, empty inputs and no output
 let do_nothing = () -> { }
 
 // no inputs, always returns `16`
-let returns_sixteen = () ->  16
+let returns_sixteen = () -> { 16 }
 
 // one Int input, returns Int
-let square = (input: Int) -> input * input
+let square = (input: Int) -> { input * input }
 
 // one String input, no return
 let shout = (input: String) -> {
@@ -149,7 +149,7 @@ In addition to the value parameters described above, there can also be type para
 
 Type parameters are listed first in the parameter list, and the identifier starts with an apostrophe `'`
 
-```
+```rs
 // The canonical "identity" function that just returns its input
 let identity = ('a, input: 'a) -> { input }
 
@@ -166,6 +166,7 @@ let output_two = identity 2
 Interesting example, the type signature for a function that just puts its input into a list/array.
 
 ```ts
+// typescript
 type MakeArray = <T>(input: T) => T[];
 
 function _makeArray<T>(input: T) {
@@ -197,14 +198,14 @@ type MakeGenericList = ('a; 'a) -> List 'a
 // type parameters in a separate list
 type MakeGenericList = ('a)('a) -> List 'a
 
-// type parameters outside the function
-type MakeGenericList = ('a)('a -> List 'a)
-
 // type parameters in a separate list, but with square brackets!
 type MakeGenericList = ['a]('a) -> List 'a
 
 // type parameters in a separate list, but with less than and greater than operators!
 type MakeGenericList = <'a>('a) -> List 'a
+
+// type parameters outside the function
+type MakeGenericList = ('a)('a -> List 'a)
 
 // let there be type parameters without defining them first? Is that ambiguous?
 type MakeGenericList = 'a -> List 'a

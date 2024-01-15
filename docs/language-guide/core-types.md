@@ -93,13 +93,13 @@ let high_score = "High score: {scores.max}"
 The expression inside of the `{` and `}` delimiters can be any valid expression, including a [block](). However, carefully consider code readability and prefer to only use simple expressions in string interpolation.
 
 ```rs
-// Hard to read
+// Hard to read, don't do this
 let total_score_message = "Total score: {{
     let mut total = 0
     for score in scores {
         total += score
     }
-    score
+    total
 }}"
 
 // Instead, consider separating complex expressions to a separate variable
@@ -108,7 +108,7 @@ let total_score = {
     for score in scores {
         total += score
     }
-    score
+    total
 }
 let total_score_message = "Total score: {total_score}"
 ```
