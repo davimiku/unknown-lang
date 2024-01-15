@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 hir = { path = "../hir" }
 
-cranelift = "0.99.1"
-cranelift-module = "0.99.1"
-cranelift-jit = "0.99.1"
-cranelift-native = "0.99.1"
+cranelift = "0.103.0"
+cranelift-module = "0.103.0"
+cranelift-jit = "0.103.0"
+cranelift-native = "0.103.0"
 la-arena = "0.3.1"
 text-size = "1.1.1"
 proc-macro2 = "1.0.43"
