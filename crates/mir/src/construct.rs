@@ -1,0 +1,336 @@
+//! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
+
+use std::any::Any;
+
+use hir::ContextDisplay;
+use hir::Expr;
+use hir::IntrinsicExpr;
+use la_arena::Idx;
+
+use crate::syntax::BinOp;
+use crate::syntax::Local;
+use crate::syntax::Mutability;
+use crate::syntax::{BasicBlock, Constant, Operand, Place, Rvalue, Statement, Terminator};
+use crate::{Builder, Function};
+use util_macros::assert_matches;
+
+impl Builder {
+    // allocates new function
+    fn construct_new_function(
+        &mut self,
+        function_expr: &hir::FunctionExpr,
+        context: &hir::Context,
+    ) -> Idx<Function> {
+        self.functions.alloc(Function::new(function_expr.name));
+
+        self.construct_function(function_expr, context)
+    }
+
+    // construct into existing allocated Function
+    pub(crate) fn construct_function(
+        &mut self,
+        function_expr: &hir::FunctionExpr,
+        context: &hir::Context,
+    ) -> Idx<Function> {
+        let func = self.current_function_mut();
+        func.name = function_expr.name;
+
+        let return_ty = context.expr_type(function_expr.body);
+        func.return_ty = return_ty.clone();
+        self.make_local(return_ty.clone(), Mutability::Mut);
+
+        for param in function_expr.params.iter() {
+            let param_type = context.type_of_value(&param.symbol);
+            self.make_local(param_type, Mutability::Not);
+        }
+
+        let body = assert_matches!(context.expr(function_expr.body), Expr::Block);
+        let statements = body.exprs();
+        for statement in statements.iter() {
+            dbg!(statement.display(context));
+        }
+        self.construct_block(statements, context);
+
+        self.current_block_mut().terminator = Terminator::Return;
+
+        self.current_function
+    }
+
+    fn new_block(&mut self) -> Idx<BasicBlock> {
+        self.current_block = self.current_function_mut().new_block();
+        self.current_block
+    }
+
+    fn construct_new_block(
+        &mut self,
+        statements: &[Idx<Expr>],
+        context: &hir::Context,
+    ) -> Idx<BasicBlock> {
+        let created_block = self.new_block();
+        self.construct_block(statements, context);
+
+        created_block
+    }
+
+    /// Constructs the provided statements into the current Basic Block
+    fn construct_block(&mut self, statements: &[Idx<Expr>], context: &hir::Context) {
+        let statements_iter = statements
+            .iter()
+            .enumerate()
+            .map(|(i, el)| (el, i == statements.len() - 1));
+
+        for (hir_statement, is_last) in statements_iter {
+            self.construct_statement(*hir_statement, context, is_last);
+        }
+    }
+
+    // TODO: Statements that boil down to side-effect free stuff can be
+    // removed.
+    // Do it as an optimization pass to set up the infrastructure for such passes
+    // and have a good / straightforward use case to start with
+    //
+    // example: statement `1 + 2` can be optimized out because it's not being assigned
+    // and makes no side-effects. TODO: can purity be inferred? for builtins at least
+    // ```
+    // 1 + 2 // --> call: `+`(1, 2)
+    // ```
+    fn construct_statement(&mut self, statement: Idx<Expr>, context: &hir::Context, is_last: bool) {
+        let statement = context.expr(statement);
+        let statement = assert_matches!(statement, Expr::Statement);
+
+        let statement_expr = context.expr(*statement);
+
+        match statement_expr {
+            // TODO: still construct these so that another pass can report
+            // the unused code
+            Expr::BoolLiteral(_)
+            | Expr::FloatLiteral(_)
+            | Expr::IntLiteral(_)
+            | Expr::StringLiteral(_) => todo!(),
+
+            // can't ignore because elements may cause side-effects
+            // ex. [do_thing (), do_thing (), do_thing ()]
+            // couldn't be optimized away unless do_thing could be proven to
+            // be side-effect free
+            // TODO: optimization pass to remove if elements are literals
+            Expr::ArrayLiteral(_) => todo!(),
+
+            // TODO: will be removed in favor of Call
+            Expr::Unary(_) => todo!(),
+
+            Expr::Block(block) => {
+                self.construct_block(block.exprs(), context);
+                // FIXME: new_block terminator needs to be set to the next block
+                // TODO: there could be a return value here
+                // fun () => {
+                //     // stuff...
+                //     { return_val }
+                // }
+                // i.e. it is a "statement block" but it is the last statement of another
+                // block therefore it should assign the _0 return
+                todo!()
+            }
+
+            Expr::Call(call) => {
+                // FIXME: pull return_place only if is last statement of the *function*
+                // otherwise make a new place/local for assigning
+                let place = self.current_function().return_place();
+
+                // FIXME: create try_make_binop_rvalue or whatever and use that here
+                if let Some(binop) = try_get_binop(call, context) {
+                    let arg1 = context.expr(call.args[0]);
+                    // TODO: make a TryFrom impl
+                    let constant1 = match arg1 {
+                        Expr::BoolLiteral(b) => Some(Constant::Int(*b as i64)),
+                        Expr::FloatLiteral(f) => Some(Constant::Float(*f)),
+                        Expr::IntLiteral(i) => Some(Constant::Int(*i)),
+                        Expr::StringLiteral(key) => Some(Constant::StringLiteral(*key)),
+                        _ => None,
+                    };
+
+                    let arg2 = context.expr(call.args[1]);
+                    // TODO: make a TryFrom impl
+                    let constant2 = match arg2 {
+                        Expr::BoolLiteral(b) => Some(Constant::Int(*b as i64)),
+                        Expr::FloatLiteral(f) => Some(Constant::Float(*f)),
+                        Expr::IntLiteral(i) => Some(Constant::Int(*i)),
+                        Expr::StringLiteral(key) => Some(Constant::StringLiteral(*key)),
+                        _ => None,
+                    };
+                    let operand1 = Operand::Constant(constant1.unwrap());
+                    let operand2 = Operand::Constant(constant2.unwrap());
+                    let rvalue = Rvalue::BinaryOp(binop, Box::new((operand1, operand2)));
+                    let assign_statement = Statement::Assign(Box::new((place, rvalue)));
+
+                    self.current_block_mut().statements.push(assign_statement);
+                }
+
+                // FIXME: otherwise, create a Call terminator (direct vs. indirect?)
+            }
+
+            Expr::VarRef(var_ref) => todo!(),
+            Expr::Path(_) => todo!(),
+            Expr::IndexInt(_) => todo!(),
+            Expr::Function(_) => todo!(),
+            Expr::If(_) => todo!(),
+
+            Expr::VarDef(var_def) => {
+                todo!()
+            }
+            Expr::Statement(_) => {
+                // HIR should have just 1 expression nested inside a statement
+                // so the expression should have already been pulled out
+                unreachable!("Compiler bug (MIR): Found hir::Expr::Statement directly nested inside hir::Expr::Statement")
+            }
+            Expr::ReturnStatement(ret) => todo!(),
+
+            _ => {
+                eprintln!("Compiler Bug (MIR): Unknown expression {statement_expr:?}");
+                unreachable!()
+            }
+        }
+    }
+
+    fn construct_expr(&mut self, expr: Idx<Expr>, context: &hir::Context) {
+        let expr = context.expr(expr);
+        match expr {
+            Expr::Empty => unreachable!(
+                "compiler bug: MIR construction should not have been called with Empty expression"
+            ),
+            Expr::UnresolvedVarRef { .. } => {
+                unreachable!("compiler bug: MIR construction should not have been called with unresolved variables")
+            }
+
+            Expr::BoolLiteral(b) => {
+                let constant = Constant::Int(*b as i64);
+            }
+            Expr::FloatLiteral(f) => {
+                let constant = Constant::Float(*f);
+            }
+            Expr::IntLiteral(i) => {
+                let constant = Constant::Int(*i);
+            }
+            Expr::StringLiteral(s) => {
+                todo!("need to think more about the representation of strings in MIR")
+            }
+
+            Expr::ArrayLiteral(_) => todo!(),
+
+            // TODO: will be removed in favor of Call
+            Expr::Unary(_) => unreachable!("remove me after converting HIR to Call"),
+
+            Expr::Block(block) => {
+                let old_block = self.current_block;
+                let created_block = self.construct_new_block(block.exprs(), context);
+
+                self.block_mut(old_block).terminator = Terminator::Goto {
+                    target: created_block,
+                }
+            }
+
+            Expr::Call(call) => {
+                let curr_idx = self.current_block;
+                let next_block = self.new_block();
+
+                let func: Operand = todo!();
+                let args: Box<[Operand]> = todo!();
+                let destination: Place = todo!();
+                let target: Option<Idx<BasicBlock>> = todo!();
+
+                self.block_mut(curr_idx).terminator = Terminator::Call {
+                    func,
+                    args,
+                    destination,
+                    target,
+                };
+                // call.
+                todo!()
+            }
+
+            Expr::VarRef(var_ref) => {}
+            Expr::Path(_) => todo!(),
+            Expr::IndexInt(_) => todo!(),
+            Expr::Function(_) => todo!(),
+            Expr::If(_) => todo!(),
+
+            Expr::VarDef(var_def) => {
+                let var_type = context.expr_type(var_def.value);
+
+                // TODO: use the user's `mut` keyword
+                let local = self.make_local(var_type, Mutability::Not);
+                let place = Place {
+                    local,
+                    projection: vec![],
+                };
+
+                let r_value = context.expr(var_def.value);
+                let r_value = self.construct_rvalue(r_value);
+
+                let statement = Statement::Assign(Box::new((place, r_value)));
+
+                let curr_block = self.current_block_mut();
+                curr_block.statements.push(statement);
+            }
+
+            Expr::Statement(_) => {
+                // HIR should have just 1 expression nested inside a statement
+                // so the expression should have already been pulled out
+                unreachable!("Compiler bug (MIR): Found hir::Expr::Statement directly nested inside hir::Expr::Statement")
+            }
+            Expr::ReturnStatement(_) => todo!(),
+
+            _ => {
+                eprintln!("Compiler Bug (MIR): Unknown expression {expr:?}");
+            }
+        }
+    }
+
+    fn construct_rvalue(&self, expr: &Expr) -> Rvalue {
+        todo!()
+    }
+
+    fn construct_operand(&self, expr: &Expr) -> Operand {
+        let constant = self.construct_constant(expr);
+        if let Some(c) = constant {
+            return Operand::Constant(c);
+        }
+
+        todo!()
+    }
+
+    fn construct_constant(&self, expr: &Expr) -> Option<Constant> {
+        match expr {
+            Expr::BoolLiteral(b) => Some(Constant::Int(*b as i64)),
+            Expr::FloatLiteral(f) => Some(Constant::Float(*f)),
+            Expr::IntLiteral(i) => Some(Constant::Int(*i)),
+
+            _ => None,
+        }
+    }
+
+    fn make_local(&mut self, ty: hir::Type, mutability: Mutability) -> Idx<Local> {
+        let local = Local { mutability, ty };
+        let local = self.current_function_mut().locals.alloc(local);
+        self.local_count += 1;
+
+        local
+    }
+}
+
+fn try_get_binop(call: &hir::CallExpr, context: &hir::Context) -> Option<BinOp> {
+    if let Some(symbol) = call.symbol {
+        if let Some(f) = context.lookup_function_symbol(symbol) {
+            if let Expr::Intrinsic(intrinsic) = context.expr(f) {
+                return match intrinsic {
+                    IntrinsicExpr::Add => BinOp::Add,
+                    IntrinsicExpr::Sub => BinOp::Sub,
+                    IntrinsicExpr::Mul => BinOp::Mul,
+                    IntrinsicExpr::Div => BinOp::Div,
+                    IntrinsicExpr::Rem => BinOp::Rem,
+                }
+                .into();
+            }
+        }
+    }
+    None
+}
