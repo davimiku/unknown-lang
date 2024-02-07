@@ -1,5 +1,5 @@
 [package]
-name = "lsp-server"
+name = "lsp_server"
 version = "0.1.0"
 edition = "2021"
 
