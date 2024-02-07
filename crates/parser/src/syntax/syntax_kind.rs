@@ -213,7 +213,7 @@ impl From<TokenKind> for SyntaxKind {
 }
 
 impl fmt::Display for SyntaxKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             // Keywords
             // Literals
