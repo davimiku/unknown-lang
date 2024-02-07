@@ -1,5 +1,5 @@
-use crate::tests::{assert_matches, assert_some};
 use crate::{Expr, Function, TypeExpr};
+use util_macros::{assert_matches, assert_some};
 
 use super::parse_expr;
 
@@ -9,7 +9,7 @@ fn check_function(
     expected_type_idents: &[&str],
     expected_return_type: Option<&str>,
 ) -> Function {
-    let function = super::assert_matches!(parsed, Expr::Function);
+    let function = assert_matches!(parsed, Expr::Function);
     let param_list = function.param_list();
     let params = param_list.params();
 

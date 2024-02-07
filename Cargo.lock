@@ -94,6 +94,7 @@ version = "0.1.0"
 dependencies = [
  "parser",
  "text-size",
+ "util_macros",
 ]
 
 [[package]]
@@ -239,8 +240,8 @@ dependencies = [
  "cranelift-jit",
  "cranelift-module",
  "cranelift-native",
- "hir",
  "la-arena",
+ "mir",
  "proc-macro2",
  "text-size",
 ]
@@ -678,6 +679,7 @@ dependencies = [
  "parser",
  "text-diff",
  "text-size",
+ "util_macros",
 ]
 
 [[package]]
@@ -822,13 +824,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lsp-server"
-version = "0.1.0"
-dependencies = [
- "tower-lsp",
-]
-
-[[package]]
 name = "lsp-types"
 version = "0.94.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -847,6 +842,13 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lsp_server"
+version = "0.1.0"
+dependencies = [
+ "tower-lsp",
 ]
 
 [[package]]
@@ -904,6 +906,7 @@ version = "0.1.0"
 dependencies = [
  "hir",
  "la-arena",
+ "util_macros",
 ]
 
 [[package]]
@@ -1490,6 +1493,10 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
+
+[[package]]
+name = "util_macros"
+version = "0.1.0"
 
 [[package]]
 name = "version_check"

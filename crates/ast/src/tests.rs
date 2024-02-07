@@ -1,31 +1,7 @@
 use crate::{Expr, TypeExpr};
+use util_macros::{assert_matches, assert_some};
 
 mod functions;
-
-/// Asserts that the provided `Option` is `Some`
-/// and returns the unwrapped value.
-macro_rules! assert_some {
-    ($value:expr) => {{
-        assert!($value.is_some());
-        $value.unwrap()
-    }};
-}
-pub(crate) use assert_some;
-
-/// Asserts that the provided enum is the provided variant,
-/// and extracts the inner value.
-macro_rules! assert_matches {
-    ($value:expr, $variant:path) => {{
-        assert!(matches!($value, $variant(_)));
-
-        if let $variant(x) = $value {
-            x
-        } else {
-            unreachable!()
-        }
-    }};
-}
-pub(crate) use assert_matches;
 
 fn parse_expr(input: &str) -> Expr {
     let node = parser::test_parse_expr(input).syntax();
