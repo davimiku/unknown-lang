@@ -72,6 +72,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             }
             result.ty = context.type_database.top();
         }
+        Expr::Intrinsic(_) => unreachable!("intrinsic shouldn't actually be checked/inferred"),
     };
 
     context.type_database.set_expr_type(expr_idx, result.ty);

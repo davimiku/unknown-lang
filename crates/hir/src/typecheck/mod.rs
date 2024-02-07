@@ -18,9 +18,8 @@ use la_arena::{Arena, ArenaMap, Idx};
 pub use types::{ArrayType, FunctionType, Type};
 
 use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::lowering_context::ContextDisplay;
 use crate::type_expr::{TypeExpr, TypeSymbol};
-use crate::{Context, Expr, ValueSymbol};
+use crate::{Context, ContextDisplay, Expr, ValueSymbol};
 
 pub(crate) use self::check::check_expr;
 pub(crate) use self::infer::infer_expr;
@@ -148,47 +147,50 @@ impl ContextDisplay for TypeDatabase {
 }
 
 impl TypeDatabase {
-    /// Convenience getter to return the index for the core Int type
+    /// Convenience getter to return the index for the core `Int` type
     pub(crate) fn int(&self) -> Idx<Type> {
         self.core.int
     }
 
-    /// Convenience getter to return the index for the core Float type
+    /// Convenience getter to return the index for the core `Float` type
     pub(crate) fn float(&self) -> Idx<Type> {
         self.core.float
     }
 
-    /// Convenience getter to return the index for the core Bool type
+    /// Convenience getter to return the index for the core `Bool` type
     pub(crate) fn bool(&self) -> Idx<Type> {
         self.core.bool
     }
 
-    /// Convenience getter to return the index for the core String type
+    /// Convenience getter to return the index for the core `String` type
     pub(crate) fn string(&self) -> Idx<Type> {
         self.core.string
     }
 
-    /// Convenience getter to return the index for the core Unit type
+    /// Convenience getter to return the index for the core `Unit` type
     pub(crate) fn unit(&self) -> Idx<Type> {
         self.core.unit
     }
 
-    /// Convenience getter to return the index for the core Top type
+    /// Convenience getter to return the index for the core `Top` type
     pub(crate) fn top(&self) -> Idx<Type> {
         self.core.top
     }
 
-    /// Convenience getter to return the index for the core Bottom type
+    /// Convenience getter to return the index for the core `Bottom` type
     pub(crate) fn bottom(&self) -> Idx<Type> {
         self.core.bottom
     }
 
-    /// Convenience getter to return the index for the core Unknown type
+    /// Convenience getter to return the index for the core `Unknown` type
     pub(crate) fn unknown(&self) -> Idx<Type> {
         self.core.unknown
     }
 
     /// Convenience getter to return the index for a sentinel error
+    ///
+    /// Note that this represents an error of the type checking process,
+    /// not an "error type" that might exist in user code.
     pub(crate) fn error(&self) -> Idx<Type> {
         self.core.error
     }

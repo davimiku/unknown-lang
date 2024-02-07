@@ -12,9 +12,8 @@ use std::collections::HashMap;
 use id_tree::{InsertBehavior, Node, Tree};
 
 use crate::interner::Key;
-use crate::lowering_context::ContextDisplay;
 use crate::type_expr::TypeSymbol;
-use crate::{Context, ValueSymbol};
+use crate::{Context, ContextDisplay, ValueSymbol};
 
 #[derive(Debug, Default)]
 pub struct Scope {

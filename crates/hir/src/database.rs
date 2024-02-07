@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{
-    interner::Key, lowering_context::ContextDisplay, type_expr::TypeSymbol, Context, Expr,
-    TypeExpr, ValueSymbol,
-};
+use crate::interner::Key;
+use crate::type_expr::TypeSymbol;
+use crate::{Context, ContextDisplay, Expr, TypeExpr, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
 
@@ -23,6 +22,16 @@ pub struct Database {
     /// Text ranges of the expressions from `type_exprs`
     /// Invariant: The indexes must be kept in sync
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
+
+    /// Symbols that are function definitions (static/constant).
+    ///
+    /// Typically (?) these are defined at the top level and must be immutable
+    /// bindings with no dynamic captures.
+    ///
+    /// In the JIT backend, calls of these symbols are translated into a direct
+    /// function call (rather than an indirect call) and the "size" of these are
+    /// a zero-sized type (rather than pointer-sized for an indirect call).
+    pub(crate) function_defs: HashMap<ValueSymbol, Idx<Expr>>,
 
     /// Reverse mapping between every symbol defining a value (i.e. variable)
     /// and its original (interned) name.
@@ -94,10 +103,16 @@ impl Database {
     pub(crate) fn range_of_type_expr(&self, idx: Idx<TypeExpr>) -> TextRange {
         self.type_expr_ranges[idx]
     }
+
+    pub(crate) fn function_def(&self, symbol: ValueSymbol) -> Option<Idx<Expr>> {
+        self.function_defs.get(&symbol).copied()
+    }
 }
 
 // Mutating functions
 impl Database {
+    /// Allocates a term expression into the database, returning an index to store
+    /// for later use.
     pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
 
@@ -107,6 +122,8 @@ impl Database {
         idx
     }
 
+    /// Allocates a type expression into the database, returning an index to store
+    /// for later use.
     pub(crate) fn alloc_type_expr(&mut self, expr: TypeExpr, range: TextRange) -> Idx<TypeExpr> {
         let idx = self.type_exprs.alloc(expr);
         self.type_expr_ranges.insert(idx, range);

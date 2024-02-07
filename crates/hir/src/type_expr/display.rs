@@ -1,6 +1,6 @@
 use la_arena::Idx;
 
-use crate::{lowering_context::ContextDisplay, Context, COMPILER_BRAND};
+use crate::{Context, ContextDisplay, COMPILER_BRAND};
 
 use super::{TypeExpr, TypeRefExpr, TypeSymbol};
 

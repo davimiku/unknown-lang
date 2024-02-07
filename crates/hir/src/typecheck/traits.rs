@@ -1,5 +1,4 @@
-use crate::{lowering_context::ContextDisplay, Expr, FunctionType, Type};
-
+use crate::{ContextDisplay, Expr, Type};
 pub(crate) struct Trait {
     // type parameters
     /// functions that need to be implemented

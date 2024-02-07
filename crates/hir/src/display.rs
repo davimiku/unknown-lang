@@ -1,7 +1,15 @@
 use la_arena::Idx;
 
-use crate::lowering_context::{ContextDisplay, CORE_MODULE_ID};
+use crate::lowering_context::CORE_MODULE_ID;
 use crate::{Context, Expr, Type};
+
+/// Types implementing this trait can be processed into string messages
+/// with the information available in a Context
+pub trait ContextDisplay {
+    /// Display `self` with the information available in a `Context`
+    #[must_use]
+    fn display(&self, context: &Context) -> String;
+}
 
 /// Formats an expression into a String representation
 ///

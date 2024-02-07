@@ -1,6 +1,5 @@
 use super::{Diagnostic, LoweringDiagnostic, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::lowering_context::ContextDisplay;
-use crate::{BinaryOp, Context};
+use crate::{BinaryOp, Context, ContextDisplay};
 
 impl ContextDisplay for Diagnostic {
     fn display(&self, context: &Context) -> String {

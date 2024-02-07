@@ -72,11 +72,15 @@ pub enum Expr {
 
     /// Represents the container around a module
     Module(Vec<Idx<Expr>>),
+
+    /// An expression that is only known to by the compiler
+    Intrinsic(IntrinsicExpr),
 }
 
 // convenience constructors
 // rustfmt has a habit of splitting struct initialization across multiple lines,
 // even with property shorthand notation. I think often a single line is more readable
+// especially when there's a bunch of other code to consider
 impl Expr {
     pub(crate) fn variable_def(
         symbol: ValueSymbol,
@@ -90,11 +94,15 @@ impl Expr {
         })
     }
 
-    pub(crate) fn call(callee: Idx<Expr>, callee_path: String, args: Vec<Idx<Expr>>) -> Self {
+    pub(crate) fn call(
+        callee: Idx<Expr>,
+        args: Box<[Idx<Expr>]>,
+        symbol: Option<ValueSymbol>,
+    ) -> Self {
         Self::Call(CallExpr {
             callee,
-            callee_path,
             args,
+            symbol,
         })
     }
 }
@@ -126,6 +134,7 @@ pub struct ValueSymbol {
 
     /// Unique id of this symbol within this module
     pub symbol_id: u32,
+    // TODO: package id?
 }
 
 impl ValueSymbol {
@@ -185,11 +194,11 @@ pub struct CallExpr {
     /// Expression that is being called as a function
     pub callee: Idx<Expr>,
 
-    // FIXME: this is temporary until builtins are applied like other functions
-    pub callee_path: String,
-
     /// Arguments that the function are applied to
-    pub args: Vec<Idx<Expr>>,
+    pub args: Box<[Idx<Expr>]>,
+
+    /// Symbol being called, if any. This would be None for anonymous function calls
+    pub symbol: Option<ValueSymbol>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -202,6 +211,7 @@ pub struct FunctionExpr {
 
     /// Name of the function, if available
     pub name: Option<Key>,
+    // ValueSymbol ????
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -249,6 +259,15 @@ pub struct IndexIntExpr {
     pub subject: Idx<Expr>,
 
     pub index: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum IntrinsicExpr {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

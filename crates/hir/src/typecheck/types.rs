@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use la_arena::Idx;
 
-use crate::{lowering_context::ContextDisplay, Context, Key};
+use crate::{Context, ContextDisplay, Key};
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Type {

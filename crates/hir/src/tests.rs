@@ -3,8 +3,7 @@ use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
 use indoc::indoc;
 
-use crate::lowering_context::ContextDisplay;
-use crate::{display_root, lower, BlockExpr, Expr, LowerTarget};
+use crate::{display_root, lower, ContextDisplay, Expr, LowerTarget};
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -14,19 +13,6 @@ macro_rules! cast {
             panic!("mismatch variant when cast to {}", stringify!($pat));
         }
     }};
-}
-
-// TODO: remove when the tests are more solidified
-fn _print(input: &str) {
-    let (root_expr, context) = lower(input, LowerTarget::Module);
-
-    let root_expr = cast!(context.expr(root_expr), Expr::Block);
-    if let BlockExpr::NonEmpty { exprs } = root_expr {
-        for expr in exprs {
-            let expr = context.expr(*expr);
-            println!("{expr:?}");
-        }
-    }
 }
 
 fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
@@ -560,4 +546,46 @@ fn array_literal_index() {
     let expected_vars = &[];
 
     check(input, expected, expected_vars);
+}
+
+mod typecheck_tests {
+    use util_macros::assert_matches;
+
+    use crate::{lower, ContextDisplay, Expr, LowerTarget, Type};
+
+    fn check(input: &str, expected_return_type: &Type) {
+        let (root_expr, context) = lower(input, LowerTarget::Script);
+
+        if !context.diagnostics.is_empty() {
+            for diag in context.diagnostics.iter() {
+                eprintln!("{}", diag.display(&context));
+            }
+        }
+        assert_eq!(context.diagnostics, vec![]);
+
+        println!("{}", root_expr.display(&context));
+        let root_expr = context.expr(root_expr);
+        let root_func = assert_matches!(root_expr, Expr::Function);
+
+        let return_type = context.expr_type(root_func.body);
+        assert_eq!(return_type, *expected_return_type);
+    }
+
+    #[test]
+    fn int_literal() {
+        let input = "1";
+
+        let expected_return_type = Type::IntLiteral(1);
+
+        check(input, &expected_return_type);
+    }
+
+    #[test]
+    fn int_addition() {
+        let input = "1 + 2";
+
+        let expected_return_type = Type::Int;
+
+        check(input, &expected_return_type);
+    }
 }
