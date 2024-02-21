@@ -80,6 +80,7 @@ pub struct TypeDatabase {
 impl Default for TypeDatabase {
     fn default() -> Self {
         let mut types = Arena::new();
+        // TODO: preallocate Array versions of all the types below
         let core = CoreTypes {
             unknown: types.alloc(Type::Unknown),
             error: types.alloc(Type::Error),
@@ -147,65 +148,7 @@ impl ContextDisplay for TypeDatabase {
 }
 
 impl TypeDatabase {
-    /// Convenience getter to return the index for the core `Int` type
-    pub(crate) fn int(&self) -> Idx<Type> {
-        self.core.int
-    }
-
-    /// Convenience getter to return the index for the core `Float` type
-    pub(crate) fn float(&self) -> Idx<Type> {
-        self.core.float
-    }
-
-    /// Convenience getter to return the index for the core `Bool` type
-    pub(crate) fn bool(&self) -> Idx<Type> {
-        self.core.bool
-    }
-
-    /// Convenience getter to return the index for the core `String` type
-    pub(crate) fn string(&self) -> Idx<Type> {
-        self.core.string
-    }
-
-    /// Convenience getter to return the index for the core `Unit` type
-    pub(crate) fn unit(&self) -> Idx<Type> {
-        self.core.unit
-    }
-
-    /// Convenience getter to return the index for the core `Top` type
-    pub(crate) fn top(&self) -> Idx<Type> {
-        self.core.top
-    }
-
-    /// Convenience getter to return the index for the core `Bottom` type
-    pub(crate) fn bottom(&self) -> Idx<Type> {
-        self.core.bottom
-    }
-
-    /// Convenience getter to return the index for the core `Unknown` type
-    pub(crate) fn unknown(&self) -> Idx<Type> {
-        self.core.unknown
-    }
-
-    /// Convenience getter to return the index for a sentinel error
-    ///
-    /// Note that this represents an error of the type checking process,
-    /// not an "error type" that might exist in user code.
-    pub(crate) fn error(&self) -> Idx<Type> {
-        self.core.error
-    }
-}
-
-impl TypeDatabase {
-    /// Returns the Type at the given index via cloning from the database.
-    ///
-    /// Panics if the index doesn't exist. An invalid index indicates
-    /// a bug in the compiler.
-    pub(crate) fn type_(&self, idx: Idx<Type>) -> Type {
-        self.types[idx].clone()
-    }
-
-    pub(crate) fn borrow_type(&self, idx: Idx<Type>) -> &Type {
+    pub(crate) fn type_(&self, idx: Idx<Type>) -> &Type {
         &self.types[idx]
     }
 
@@ -277,7 +220,7 @@ impl From<Idx<Type>> for TypeResult {
 impl TypeResult {
     fn new(type_database: &TypeDatabase) -> Self {
         Self {
-            ty: type_database.unknown(),
+            ty: type_database.core.unknown,
             diagnostics: vec![],
         }
     }

@@ -568,7 +568,7 @@ mod typecheck_tests {
         let root_func = assert_matches!(root_expr, Expr::Function);
 
         let return_type = context.expr_type(root_func.body);
-        assert_eq!(return_type, *expected_return_type);
+        assert_eq!(return_type, expected_return_type);
     }
 
     #[test]

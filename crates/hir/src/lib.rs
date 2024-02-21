@@ -37,7 +37,7 @@ fn lower_module(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
     let module = Expr::Module(exprs);
     let module = context.alloc_expr(module, None);
 
-    context.type_check(module, context.type_database.top());
+    context.type_check(module, context.core_types().top);
 
     (module, context)
 }
@@ -54,7 +54,7 @@ fn lower_function(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context)
 
     assert!(matches!(function, Expr::Function(_)));
 
-    context.type_check(function_idx, context.type_database.top());
+    context.type_check(function_idx, context.core_types().top);
 
     (function_idx, context)
 }
@@ -80,7 +80,7 @@ fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
     });
     let function_idx = context.alloc_expr(function, None);
 
-    context.type_check(function_idx, context.type_database.top());
+    context.type_check(function_idx, context.core_types().top);
 
     (function_idx, context)
 }

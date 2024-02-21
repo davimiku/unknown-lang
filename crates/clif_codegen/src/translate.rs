@@ -168,7 +168,7 @@ impl<'a> FunctionTranslator<'a> {
         }
 
         let return_ty = self.context.type_(self.func.return_ty());
-        let return_ty = self.translate_type(&return_ty);
+        let return_ty = self.translate_type(return_ty);
         self.builder
             .func
             .signature
@@ -286,7 +286,7 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_type_idx(&mut self, idx: Idx<HType>) -> ClifType {
         let ty = self.context.type_(idx);
-        self.translate_type(&ty)
+        self.translate_type(ty)
     }
 
     fn translate_type(&mut self, ty: &HType) -> ClifType {

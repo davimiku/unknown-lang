@@ -33,8 +33,7 @@ pub struct Function {
 
     /// Parameters to the function, with their types
     ///
-    /// TODO: add source location info for potential error reporting
-    /// TODO: store Idx<Type> instead
+    /// TODO: add source location info for potential error reporting?
     pub params: Vec<Idx<Type>>,
 
     /// Temporary variables
@@ -289,7 +288,7 @@ impl Local {
     }
 
     pub fn type_<'a>(&self, context: &'a hir::Context) -> &'a Type {
-        context.borrow_type(self.ty)
+        context.type_(self.ty)
     }
 }
 

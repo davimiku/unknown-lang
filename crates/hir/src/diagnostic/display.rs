@@ -28,8 +28,8 @@ impl ContextDisplay for TypeDiagnosticVariant {
         match self {
             V::ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
             V::BinaryMismatch { op, lhs, rhs } => {
-                let lhs = context.borrow_type(*lhs);
-                let rhs = context.borrow_type(*rhs);
+                let lhs = context.type_(*lhs);
+                let rhs = context.type_(*rhs);
                 binary_mismatch_message(*op, &lhs.display(context), &rhs.display(context))
             }
             V::CalleeNotFunction { actual } => todo!(),

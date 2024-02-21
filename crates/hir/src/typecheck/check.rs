@@ -40,8 +40,8 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         return true;
     }
 
-    let a = context.type_database.type_(a);
-    let b = context.type_database.type_(b);
+    let a = context.type_(a);
+    let b = context.type_(b);
     if a == b {
         return true;
     }
@@ -66,7 +66,7 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 
         (Type::Array(a), Type::Array(b)) => is_subtype(a.of, b.of, context),
 
-        (Type::Function(a), Type::Function(b)) => is_function_subtype(&a, &b, context),
+        (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
 
         _ => false,
     }

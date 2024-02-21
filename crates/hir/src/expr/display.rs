@@ -174,7 +174,7 @@ fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent
     let type_buffer = if let Some(type_annotation) = type_annotation {
         type_annotation.display(context)
     } else {
-        context.borrow_expr_type(*value).display(context)
+        context.expr_type(*value).display(context)
     };
     s.push_str(&format!(
         "{} : {} = ",

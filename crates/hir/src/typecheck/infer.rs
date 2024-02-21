@@ -39,11 +39,11 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         }
         Expr::Statement(inner_idx) => {
             result.chain(infer_expr(inner_idx, context));
-            result.ty = context.type_database.unit();
+            result.ty = context.core_types().unit;
         }
         Expr::ReturnStatement(return_value) => {
             result.chain(infer_expr(return_value, context));
-            result.ty = context.type_database.bottom();
+            result.ty = context.core_types().bottom;
         }
 
         Expr::BoolLiteral(b) => result.chain(infer_bool_literal(expr_idx, b, context)),
@@ -70,7 +70,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             for expr in exprs {
                 result.chain(infer_expr(expr, context));
             }
-            result.ty = context.type_database.top();
+            result.ty = context.core_types().top;
         }
         Expr::Intrinsic(_) => unreachable!("intrinsic shouldn't actually be checked/inferred"),
     };
@@ -153,7 +153,7 @@ fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult 
     let FunctionExpr { params, body, .. } = function;
     let mut function_type = FunctionType {
         params: vec![],
-        return_ty: context.type_database.unknown(),
+        return_ty: context.core_types().unknown,
     };
 
     let mut result = TypeResult::new(&context.type_database);
@@ -187,7 +187,7 @@ fn infer_function_param(param: &FunctionParam, context: &mut Context) -> TypeRes
 
         param_type
     } else {
-        context.type_database.unknown().into()
+        context.core_types().unknown.into()
     }
 
     // TODO: parameter types can be omitted when they could be inferred in another way
@@ -230,7 +230,7 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
         }
     }
     // The full definition expression still returns Unit no matter what
-    result.ty = context.type_database.unit();
+    result.ty = context.core_types().unit;
 
     result
 }
@@ -238,7 +238,7 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
 fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
     match block {
-        BlockExpr::Empty => result.ty = context.type_database.unit(),
+        BlockExpr::Empty => result.ty = context.core_types().unit,
         BlockExpr::NonEmpty { exprs } => {
             for idx in exprs {
                 result.chain(infer_expr(*idx, context));
@@ -250,7 +250,7 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
             let (tail_expr, ..) = context.database.expr(tail_expr);
             result.ty = match tail_expr {
                 Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
-                Expr::VarDef(_) => context.type_database.unit(),
+                Expr::VarDef(_) => context.core_types().unit,
                 e => {
                     dbg!(e);
                     unreachable!();
@@ -269,9 +269,8 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
 
     result.chain(infer_expr(*callee, context));
 
-    if let Type::Function(FunctionType { params, return_ty }) =
-        context.type_database.type_(result.ty)
-    {
+    let result_type = context.type_(result.ty).clone();
+    if let Type::Function(FunctionType { params, return_ty }) = result_type {
         if args.len() != params.len() {
             result.push_diag(TypeDiagnostic::num_args_mismatch(
                 params.len(),
@@ -286,7 +285,7 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
         result.ty = return_ty;
     } else {
         result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
-        result.ty = context.type_database.error()
+        result.ty = context.core_types().error
     }
     result
 }
@@ -332,7 +331,7 @@ fn infer_array_literal(array_expr: &ArrayLiteralExpr, context: &mut Context) -> 
     match array_expr {
         ArrayLiteralExpr::Empty => context
             .type_database
-            .alloc_type(Type::array_of(context.type_database.bottom()))
+            .alloc_type(Type::array_of(context.core_types().bottom))
             .into(),
         ArrayLiteralExpr::NonEmpty { elements } => {
             let mut result = TypeResult::new(&context.type_database);
@@ -348,7 +347,7 @@ fn infer_array_literal(array_expr: &ArrayLiteralExpr, context: &mut Context) -> 
                 }
             }
 
-            let inner = inner_type.unwrap_or(context.type_database.error());
+            let inner = inner_type.unwrap_or(context.core_types().error);
 
             result.chain(
                 context
@@ -367,9 +366,9 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
     let mut result = infer_expr(*subject, context);
 
     if result.is_ok() {
-        match context.type_database.type_(result.ty) {
+        match context.type_(result.ty) {
             // TODO: the index expr needs to be an Int also
-            Type::Array(ArrayType { of }) => result.ty = of,
+            Type::Array(ArrayType { of }) => result.ty = *of,
 
             _ => {
                 // TODO: add diagnostic
@@ -390,14 +389,14 @@ fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
 
     let mut result = TypeResult::new(&context.type_database);
 
-    result.check(*condition, context.type_database.bool(), context);
+    result.check(*condition, context.core_types().bool, context);
 
     result.chain(infer_expr_widened(*then_branch, context));
 
     if let Some(else_branch) = else_branch {
         result.check(*else_branch, result.ty, context);
     } else {
-        result.ty = context.type_database.unit();
+        result.ty = context.core_types().unit;
     }
     result
 }
@@ -409,21 +408,21 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
     } = expr;
 
     let mut result = infer_expr(*inner_idx, context);
-    let inner_type = context.type_database.type_(result.ty);
+    let inner_type = context.type_(result.ty);
 
     match op {
         UnaryOp::Neg => todo!(),
         UnaryOp::Not => result.chain(match inner_type {
             Type::BoolLiteral(b) => infer_bool_literal(expr_idx, !b, context),
-            Type::Bool => context.type_database.bool().into(),
+            Type::Bool => context.core_types().bool.into(),
 
             _ => TypeResult::from_diag(
                 TypeDiagnostic::mismatch(
-                    context.type_database.bool(),
+                    context.core_types().bool,
                     result.ty,
                     TextRange::default(),
                 ),
-                context.type_database.error(),
+                context.core_types().error,
             ),
         }),
 
@@ -438,7 +437,7 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
             | Type::Int
             // | Type::Function(_)
             // | Type::Array(_) 
-            | Type::String=> result.ty = context.type_database.string(),
+            | Type::String=> result.ty = context.core_types().string,
 
             _ => result.push_diag(TypeDiagnostic {
                 variant: TypeDiagnosticVariant::CannotConvertIntoString { actual: result.ty },
@@ -482,11 +481,11 @@ mod tests {
         (result, context)
     }
 
-    fn check_infer_type(input: &str, expected: Type) {
+    fn check_infer_type(input: &str, expected: &Type) {
         let (result, context) = check(input);
 
         assert!(result.is_ok());
-        let actual = context.type_database.type_(result.ty);
+        let actual = context.type_(result.ty);
 
         assert_eq!(actual, expected);
     }
@@ -496,7 +495,7 @@ mod tests {
         let input = "1";
         let expected = Type::IntLiteral(1);
 
-        check_infer_type(input, expected);
+        check_infer_type(input, &expected);
     }
 
     #[test]
@@ -505,7 +504,7 @@ mod tests {
         // TODO: is it possible to overload `+` for IntLiteral to return an IntLiteral ?
         let expected = Type::Int;
 
-        check_infer_type(input, expected);
+        check_infer_type(input, &expected);
     }
 
     #[test]
@@ -513,7 +512,7 @@ mod tests {
         let input = "let a = 1";
         let expected = Type::Unit;
 
-        check_infer_type(input, expected);
+        check_infer_type(input, &expected);
     }
 
     #[test]
@@ -524,6 +523,6 @@ mod tests {
 }"#;
         let expected = Type::IntLiteral(1);
 
-        check_infer_type(input, expected);
+        check_infer_type(input, &expected);
     }
 }

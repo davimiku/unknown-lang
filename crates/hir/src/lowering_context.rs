@@ -64,8 +64,8 @@ impl Context {
 
             core_type!(keys.bool, t.bool);
             core_type!(keys.int, t.int);
-            core_type!(keys.float, type_database.float());
-            core_type!(keys.string, type_database.string());
+            core_type!(keys.float, t.float);
+            core_type!(keys.string, t.string);
 
             macro_rules! core_value {
                 ($key:expr, $fn_type:expr) => {{
@@ -116,11 +116,6 @@ impl fmt::Display for Context {
     }
 }
 
-// Public functions
-
-// TODO: standardize on naming conventions and input/output types / signature
-// TODO: remove all functions that return a cloned Type
-//       only provide returning a &Type, the caller can clone if they want
 impl Context {
     pub(crate) fn type_check(&mut self, root: Idx<Expr>, expected_type: Idx<Type>) {
         let mut result = infer_expr(root, self);
@@ -131,7 +126,12 @@ impl Context {
 
         self.diagnostics.append(&mut result.diagnostics())
     }
+}
 
+// Public functions
+// TODO: standardize on naming conventions and input/output types / signature
+// Current thought is "foo" means get a &Foo and "foo_idx" means get a Idx<Foo>
+impl Context {
     /// Returns the expression at the given index
     pub fn expr(&self, idx: Idx<Expr>) -> &Expr {
         &self.database.exprs[idx]
@@ -146,37 +146,24 @@ impl Context {
         self.interner.lookup(key)
     }
 
+    pub fn expr_type(&self, idx: Idx<Expr>) -> &Type {
+        self.type_database.type_(self.expr_type_idx(idx))
+    }
+
     pub fn expr_type_idx(&self, idx: Idx<Expr>) -> Idx<Type> {
         self.type_database.get_expr_type(idx)
     }
 
-    pub fn expr_type(&self, idx: Idx<Expr>) -> Type {
-        self.type_database.type_(self.expr_type_idx(idx))
-    }
-
-    pub fn borrow_expr_type(&self, idx: Idx<Expr>) -> &Type {
-        self.type_database.borrow_type(self.expr_type_idx(idx))
-    }
-
-    pub fn type_(&self, idx: Idx<Type>) -> Type {
+    pub fn type_(&self, idx: Idx<Type>) -> &Type {
         self.type_database.type_(idx)
-    }
-
-    pub fn borrow_type(&self, idx: Idx<Type>) -> &Type {
-        self.type_database.borrow_type(idx)
     }
 
     pub fn type_idx_of_value(&self, value: &ValueSymbol) -> Idx<Type> {
         self.type_database.get_value_symbol(value)
     }
 
-    pub fn type_of_value(&self, value: &ValueSymbol) -> Type {
-        self.type_(self.type_idx_of_value(value))
-    }
-
     pub fn borrow_type_of_value(&self, value: &ValueSymbol) -> &Type {
-        self.type_database
-            .borrow_type(self.type_idx_of_value(value))
+        self.type_database.type_(self.type_idx_of_value(value))
     }
 
     pub fn range_of(&self, idx: Idx<Expr>) -> TextRange {

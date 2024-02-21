@@ -50,7 +50,7 @@ impl Type {
 
 impl ContextDisplay for Idx<Type> {
     fn display(&self, context: &Context) -> String {
-        let ty = context.borrow_type(*self);
+        let ty = context.type_(*self);
 
         ty.display(context)
     }
