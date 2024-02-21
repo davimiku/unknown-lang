@@ -1,5 +1,7 @@
-use hir::lower;
+use std::io::stdout;
+
 use jit::JIT;
+use mir::MirWrite;
 
 mod builtins;
 mod ext;
@@ -9,36 +11,28 @@ mod tests;
 mod translate;
 
 pub fn compile_function(input: &str) -> Result<*const u8, String> {
-    let (function, context) = lower(input, hir::LowerTarget::Function);
+    let (program, context) = mir::construct_function(input);
 
-    if !context.diagnostics.is_empty() {
-        for diag in context.diagnostics {
-            eprintln!("{diag:?}");
-        }
-        panic!("Found diagnostics while lowering")
+    #[cfg(test)]
+    {
+        let mut stdout = stdout().lock();
+        let _ = program.write(&mut stdout, context, &mut 0);
     }
-
-    let function = context.expr(function);
-    let function = crate::assert_matches!(function, hir::Expr::Function);
-
     let mut jit = JIT::with_builtins();
-    jit.compile_function(function, &context).map_err(|e| {
+    let func = program.main();
+    jit.compile_function(func, context).map_err(|e| {
         dbg!(&e);
         e.to_string()
     })
 }
 
-/// Asserts that the provided enum is the provided variant,
-/// and extracts the inner value.
-macro_rules! assert_matches {
-    ($value:expr, $variant:path) => {{
-        assert!(matches!($value, $variant(_)));
+pub fn compile_script(input: &str) -> Result<*const u8, String> {
+    let (program, context) = mir::construct_script(input);
 
-        if let $variant(x) = $value {
-            x
-        } else {
-            unreachable!()
-        }
-    }};
+    let mut jit = JIT::with_builtins();
+    let func = program.main();
+    jit.compile_function(func, context).map_err(|e| {
+        dbg!(&e);
+        e.to_string()
+    })
 }
-pub(crate) use assert_matches;

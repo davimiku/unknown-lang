@@ -1,10 +1,9 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
-use std::any::Any;
-
-use hir::ContextDisplay;
 use hir::Expr;
+use hir::FunctionParam;
 use hir::IntrinsicExpr;
+use hir::VarDefExpr;
 use la_arena::Idx;
 
 use crate::syntax::BinOp;
@@ -36,24 +35,26 @@ impl Builder {
         func.name = function_expr.name;
 
         let return_ty = context.expr_type(function_expr.body);
-        func.return_ty = return_ty.clone();
         self.make_local(return_ty.clone(), Mutability::Mut);
 
         for param in function_expr.params.iter() {
-            let param_type = context.type_of_value(&param.symbol);
-            self.make_local(param_type, Mutability::Not);
+            self.construct_param(param, context);
         }
 
         let body = assert_matches!(context.expr(function_expr.body), Expr::Block);
         let statements = body.exprs();
-        for statement in statements.iter() {
-            dbg!(statement.display(context));
-        }
         self.construct_block(statements, context);
 
         self.current_block_mut().terminator = Terminator::Return;
 
         self.current_function
+    }
+
+    fn construct_param(&mut self, param: &FunctionParam, context: &hir::Context) {
+        let ty_idx = context.type_idx_of_value(&param.symbol);
+        self.current_function_mut().params.push(ty_idx);
+        let ty = context.type_of_value(&param.symbol);
+        self.make_local(ty, Mutability::Not); // TODO: depends on the param
     }
 
     fn new_block(&mut self) -> Idx<BasicBlock> {
@@ -80,7 +81,7 @@ impl Builder {
             .map(|(i, el)| (el, i == statements.len() - 1));
 
         for (hir_statement, is_last) in statements_iter {
-            self.construct_statement(*hir_statement, context, is_last);
+            self.construct_statement_like(*hir_statement, context, is_last);
         }
     }
 
@@ -94,19 +95,56 @@ impl Builder {
     // ```
     // 1 + 2 // --> call: `+`(1, 2)
     // ```
-    fn construct_statement(&mut self, statement: Idx<Expr>, context: &hir::Context, is_last: bool) {
+    fn construct_statement_like(
+        &mut self,
+        statement: Idx<Expr>,
+        context: &hir::Context,
+        is_last: bool,
+    ) {
         let statement = context.expr(statement);
-        let statement = assert_matches!(statement, Expr::Statement);
 
-        let statement_expr = context.expr(*statement);
+        if let Expr::VarDef(var_def) = statement {
+            self.construct_var_def(var_def, context);
+        } else {
+            let statement = assert_matches!(statement, Expr::Statement);
+            self.construct_statement(*statement, context, is_last)
+        }
+    }
+
+    fn construct_var_def(&mut self, var_def: &VarDefExpr, context: &hir::Context) {
+        // TODO: capture mutability in parser, AST, HIR, and through here
+        let local = self.make_local(context.expr_type(var_def.value), Mutability::Not);
+        let place = Place {
+            local,
+            projection: vec![],
+        };
+        let rvalue = self.construct_rvalue(context.expr(var_def.value));
+        let statement = Statement::Assign(Box::new((place, rvalue)));
+        self.current_block_mut().statements.push(statement);
+    }
+
+    fn construct_statement(
+        &mut self,
+        statement_expr: Idx<Expr>,
+        context: &hir::Context,
+        is_last: bool,
+    ) {
+        let statement_expr = context.expr(statement_expr);
 
         match statement_expr {
-            // TODO: still construct these so that another pass can report
-            // the unused code
-            Expr::BoolLiteral(_)
-            | Expr::FloatLiteral(_)
-            | Expr::IntLiteral(_)
-            | Expr::StringLiteral(_) => todo!(),
+            Expr::BoolLiteral(_) | Expr::FloatLiteral(_) | Expr::StringLiteral(_) => todo!(),
+
+            Expr::IntLiteral(i) => {
+                // FIXME
+                let is_last = true;
+                if is_last {
+                    let operand = Operand::Constant(Constant::Int(*i));
+                    let rvalue = Rvalue::Use(operand);
+                    let place = self.current_function().return_place();
+                    let assign = Statement::Assign(Box::new((place, rvalue)));
+                    self.current_block_mut().statements.push(assign);
+                }
+            }
 
             // can't ignore because elements may cause side-effects
             // ex. [do_thing (), do_thing (), do_thing ()]
@@ -168,7 +206,24 @@ impl Builder {
                 // FIXME: otherwise, create a Call terminator (direct vs. indirect?)
             }
 
-            Expr::VarRef(var_ref) => todo!(),
+            Expr::VarRef(var_ref) => {
+                todo!()
+                // if is_last
+                // let operand = Operand::Copy(place);
+                // let rvalue = Rvalue::Use(operand);
+
+                // let local = Local {
+                //     mutability: todo!(),
+                //     ty: todo!(),
+                // };
+                // let place = Place {
+                //     local,
+                //     projection: vec![],
+                // };
+                // let assign = Statement::Assign(Box::new((place, rvalue)));
+                // var_ref.symbol;
+                // self.construct_rvalue(expr);
+            }
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
@@ -293,6 +348,21 @@ impl Builder {
         let constant = self.construct_constant(expr);
         if let Some(c) = constant {
             return Operand::Constant(c);
+        }
+
+        match expr {
+            Expr::VarRef(var_ref) => {
+                let local = Local {
+                    mutability: todo!(),
+                    ty: todo!(),
+                };
+                let place = Place {
+                    local: todo!(),
+                    projection: todo!(),
+                };
+                return Operand::Copy(place);
+            }
+            _ => {}
         }
 
         todo!()

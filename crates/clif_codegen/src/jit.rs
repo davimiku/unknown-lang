@@ -1,15 +1,17 @@
 use std::collections::HashMap;
+use std::io::stdout;
 
-use cranelift::prelude::{types::*, *};
+use cranelift::codegen::write::{decorate_function, PlainWriter};
+use cranelift::codegen::write_function;
+use cranelift::prelude::types::*;
+use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleResult};
-use hir::Expr;
-use la_arena::Idx;
 
 use crate::builtins;
 use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
-use crate::translate::{CommonTypes, FunctionTranslator};
+use crate::translate::FunctionTranslator;
 
 /// The basic JIT class.
 #[allow(clippy::upper_case_acronyms)]
@@ -91,25 +93,28 @@ impl JIT {
     /// takes a `[]String` argument for the CLI args, and `return 0` on success.
     pub fn compile(
         &mut self,
-        expr: Idx<Expr>,
-        context: &hir::Context,
-    ) -> Result<*const u8, String> {
+        // expr: Idx<Expr>,
+        context: &mir::Builder,
+    ) -> ModuleResult<*const u8> {
         todo!()
     }
 
     /// Compiles a function expression within this module
     pub fn compile_function(
         &mut self,
-        func: &hir::FunctionExpr,
-        context: &hir::Context,
+        func: &mir::Function,
+        hir_context: &hir::Context,
     ) -> ModuleResult<*const u8> {
         let mut fn_builder_ctx = FunctionBuilderContext::new();
-        let builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
-        let mut translator = FunctionTranslator::new(builder, &mut self.module, context);
+        let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
+        let mut translator =
+            FunctionTranslator::new(&mut builder, &mut self.module, hir_context, func);
 
-        translator.translate_function(func);
+        translator.translate_function();
 
-        let func_name = func.name.map_or("{anonymous}", |key| context.lookup(key));
+        let func_name = func
+            .name
+            .map_or("{anonymous}", |(key, ..)| hir_context.lookup(key));
 
         let func_id =
             self.module
@@ -121,8 +126,16 @@ impl JIT {
 
         self.module.finalize_definitions()?;
 
+        self.module.declarations();
+
         #[cfg(test)]
-        println!("{}", self.ctx.func);
+        {
+            let mut s = String::new();
+            write_function(&mut s, &self.ctx.func).unwrap_or_else(|err| {
+                dbg!(err);
+            });
+            println!("{s}");
+        }
 
         let code = self.module.get_finalized_function(func_id);
 

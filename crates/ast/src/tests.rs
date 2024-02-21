@@ -106,8 +106,8 @@ fn add_int_and_function() {
 
     let lhs = assert_some!(binary.lhs());
     let lhs = assert_matches!(lhs, Expr::IntLiteral);
-    let lhs = assert_some!(lhs.as_string());
-    assert_eq!(expected_lhs, lhs);
+    let actual_lhs = assert_some!(lhs.as_string());
+    assert_eq!(actual_lhs, expected_lhs);
 
     let rhs = assert_some!(binary.rhs());
     let rhs = assert_matches!(rhs, Expr::Paren);
@@ -234,7 +234,7 @@ fn array_literal_int() {
     let expected: Vec<i64> = vec![1, 2, 3];
     let actual: Vec<i64> = items.iter().map(|item| item.as_i64().unwrap()).collect();
 
-    assert_eq!(expected, actual);
+    assert_eq!(actual, expected);
 }
 
 #[test]

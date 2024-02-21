@@ -10,7 +10,7 @@ impl Codegen {
     pub(super) fn write_function_literal(&mut self, func: &FunctionExpr, context: &Context) {
         let FunctionExpr { params, body, name } = func;
         self.push("(function ");
-        if let Some(key) = name {
+        if let Some((key, ..)) = name {
             let name = context.lookup(*key);
             self.push(name);
         }

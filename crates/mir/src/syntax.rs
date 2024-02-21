@@ -1,5 +1,5 @@
-use hir::{Key, Type};
-use la_arena::{Arena, Idx, RawIdx};
+use hir::{Key, Type, ValueSymbol};
+use la_arena::{Arena, Idx};
 
 // rustc calls a function "Body"
 // TODO: is that a good name?
@@ -25,8 +25,8 @@ use la_arena::{Arena, Idx, RawIdx};
 
 #[derive(Debug)]
 pub struct Function {
-    /// Interned string name of the function, or None for anonymous functions
-    pub name: Option<Key>,
+    /// Interned string name of the function with the symbol, or None for anonymous functions
+    pub name: Option<(Key, ValueSymbol)>,
 
     /// Blocks that represent the control flow through this function
     pub blocks: Arena<BasicBlock>,
@@ -34,12 +34,11 @@ pub struct Function {
     /// Parameters to the function, with their types
     ///
     /// TODO: add source location info for potential error reporting
-    pub params: Vec<Type>,
-
-    /// Return type of the function
-    pub return_ty: Type,
+    /// TODO: store Idx<Type> instead
+    pub params: Vec<Idx<Type>>,
 
     /// Temporary variables
+    // TODO: does this need to track Place too?
     pub locals: Arena<Local>,
 }
 
@@ -53,14 +52,13 @@ impl Default for Function {
             name: None,
             blocks,
             params: Vec::new(),
-            return_ty: Type::default(),
             locals: Arena::new(),
         }
     }
 }
 
 impl Function {
-    pub fn new(name: Option<Key>) -> Self {
+    pub fn new(name: Option<(Key, ValueSymbol)>) -> Self {
         Self {
             name,
             ..Default::default()
@@ -77,7 +75,7 @@ impl Function {
     ///
     /// The invariant of always having an initial block is maintained by the only
     /// public constructor allocating an initial block (via Default trait impl)
-    pub fn initial_block(&self) -> Idx<BasicBlock> {
+    pub fn entry_block(&self) -> Idx<BasicBlock> {
         self.blocks
             .iter()
             .next()
@@ -86,15 +84,25 @@ impl Function {
     }
 
     pub fn return_place(&self) -> Place {
-        // TODO: is there a better way than to construct this from "raw"?
-        // The return value is always local 0 is OK to assume, but is it OK
-        // to assume this local is initialized (probably OK, should be taken care
-        // of when initializing the function)
-        let local = Idx::from_raw(RawIdx::from_u32(0));
+        let (local_idx, _) = self.return_local();
         Place {
-            local,
+            local: local_idx,
             projection: vec![],
         }
+    }
+
+    pub fn return_local(&self) -> (Idx<Local>, &Local) {
+        self.locals
+            .iter()
+            .next()
+            .expect("local _0 should always exist which is the return value")
+    }
+
+    // TODO: when Local is changed to store an Idx instead of a clone of Type
+    // the context needs to be passed into .ty()
+    pub fn return_ty(&self, context: &hir::Context) -> &Type {
+        let (_, return_local) = self.return_local();
+        return_local.ty()
     }
 }
 
@@ -115,9 +123,9 @@ pub enum Statement {
 
     StorageLive(Idx<Local>),
     StorageDead(Idx<Local>),
-    // TODO: do we need this here? or would we convert to intrinsics
-    // during codegen
-    Intrinsic(Box<NonDivergingIntrinsic>),
+    // TODO: decide if we need this, was copied from rustc
+    // Intrinsic(Box<NonDivergingIntrinsic>),
+    Intrinsic(Box<()>),
     // / This statement exists to preserve a trace of a scrutinee matched against a wildcard binding.
     // / This is especially useful for `let _ = PLACE;` bindings that desugar to a single
     // / `PlaceMention(PLACE)`.
@@ -272,10 +280,19 @@ pub enum ProjectionElem<V, T> {
     OpaqueCast(T),
 }
 
+// TODO: optimize size by storing an Idx<Type> instead
+// we should have access to the hir::Context everywhere that
+// the Type is needed, lookup by Idx can give us a &Type which is fine
 #[derive(Debug)]
 pub struct Local {
     pub(crate) mutability: Mutability,
     pub(crate) ty: Type,
+}
+
+impl Local {
+    pub fn ty(&self) -> &Type {
+        &self.ty
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -405,6 +422,19 @@ pub enum Operand {
     // move semantics won't be added for a while and would apply only
     // to "resource types" (file handles, socket handles, etc.)
     Move(Place),
+}
+
+impl Operand {
+    pub fn type_of(&self, context: &hir::Context) -> &Type {
+        match self {
+            Operand::Copy(place) | Operand::Move(place) => todo!(),
+            Operand::Constant(constant) => match constant {
+                Constant::Int(_) => &Type::Int,
+                Constant::Float(_) => &Type::Float,
+                Constant::StringLiteral(_) => todo!(),
+            },
+        }
+    }
 }
 
 #[derive(Debug)]

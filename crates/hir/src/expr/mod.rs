@@ -5,6 +5,7 @@ use std::fmt;
 use la_arena::Idx;
 
 use crate::interner::Key;
+use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
 
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -130,11 +131,11 @@ pub struct VarDefExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueSymbol {
     /// Unique id of the module where this symbol resides
-    pub module_id: u32,
+    module_id: u32,
 
     /// Unique id of this symbol within this module
-    pub symbol_id: u32,
-    // TODO: package id?
+    symbol_id: u32,
+    // TODO: package id? or have a separate map between module_id and package_id ?
 }
 
 impl ValueSymbol {
@@ -143,6 +144,25 @@ impl ValueSymbol {
             module_id,
             symbol_id,
         }
+    }
+
+    /// Symbol to represent the "main" function if it is synthetically generated,
+    /// such as in "script mode".
+    pub fn synthetic_main() -> Self {
+        Self {
+            module_id: 0,
+            symbol_id: u32::MAX,
+        }
+    }
+
+    pub fn in_core_module(&self) -> bool {
+        self.module_id == CORE_MODULE_ID
+    }
+}
+
+impl From<ValueSymbol> for (u32, u32) {
+    fn from(value: ValueSymbol) -> Self {
+        (value.module_id, value.symbol_id)
     }
 }
 
@@ -210,8 +230,7 @@ pub struct FunctionExpr {
     pub body: Idx<Expr>,
 
     /// Name of the function, if available
-    pub name: Option<Key>,
-    // ValueSymbol ????
+    pub name: Option<(Key, ValueSymbol)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

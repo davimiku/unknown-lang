@@ -14,8 +14,8 @@ mod tests;
 pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
-    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, IfExpr, IndexIntExpr,
-    IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
+    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionParam, IfExpr,
+    IndexIntExpr, IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FunctionType, Type};
@@ -49,8 +49,6 @@ fn lower_function(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context)
         .next()
         .expect("the first expression to be the function to lower");
 
-    // FIXME: assert that there is only 1 top-level expression? (the function)
-
     let function_idx = context.lower_expr(Some(ast_function));
     let function = context.expr(function_idx);
 
@@ -72,10 +70,13 @@ fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
     // FIXME: this doesn't seem to handle an empty script
     let body = Expr::Block(BlockExpr::NonEmpty { exprs });
     let body = context.alloc_expr(body, None);
+    let main_symbol = ValueSymbol::synthetic_main();
+    let main_name = context.interner.intern("main");
+
     let function = Expr::Function(FunctionExpr {
         params: vec![], // FIXME: `args: Array String` for CLI scripts?
         body,
-        name: Some(context.interner.intern("main")),
+        name: Some((main_name, main_symbol)),
     });
     let function_idx = context.alloc_expr(function, None);
 

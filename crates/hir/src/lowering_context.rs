@@ -119,6 +119,8 @@ impl fmt::Display for Context {
 // Public functions
 
 // TODO: standardize on naming conventions and input/output types / signature
+// TODO: remove all functions that return a cloned Type
+//       only provide returning a &Type, the caller can clone if they want
 impl Context {
     pub(crate) fn type_check(&mut self, root: Idx<Expr>, expected_type: Idx<Type>) {
         let mut result = infer_expr(root, self);
@@ -596,7 +598,12 @@ impl Context {
         let body = body.expect("TODO: handle missing function body");
         self.pop_scope();
 
-        let name = function_ast.name().map(|s| self.interner.intern(&s));
+        let name = function_ast.name().map(|ast_name| {
+            let key = self.interner.intern(&ast_name);
+            let symbol = self.current_scopes_mut().insert_value(key);
+            self.database.value_names.insert(symbol, key);
+            (key, symbol)
+        });
 
         Expr::Function(FunctionExpr { params, body, name })
     }

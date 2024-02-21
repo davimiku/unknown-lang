@@ -488,7 +488,7 @@ mod tests {
         assert!(result.is_ok());
         let actual = context.type_database.type_(result.ty);
 
-        assert_eq!(expected, actual);
+        assert_eq!(actual, expected);
     }
 
     #[test]

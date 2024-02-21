@@ -1,9 +1,5 @@
 use cranelift::prelude::*;
 
-pub(crate) trait FunctionBuilderExt {
-    //
-}
+pub(crate) trait FunctionBuilderExt {}
 
-impl FunctionBuilderExt for FunctionBuilder<'_> {
-    //
-}
+impl FunctionBuilderExt for FunctionBuilder<'_> {}

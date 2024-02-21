@@ -24,13 +24,17 @@ mod syntax;
 #[cfg(test)]
 mod tests;
 
-use hir::ContextDisplay;
-use std::collections::HashMap;
+use syntax::Place;
 
+pub use display::MirWrite;
 use hir::Expr;
 use la_arena::{Arena, Idx};
-pub use syntax::{BasicBlock, Function};
-pub fn construct(root: Idx<Expr>, context: &hir::Context) -> Program {
+pub use syntax::{
+    BasicBlock, BinOp, Constant, Function, Local, Operand, Rvalue, Statement, Terminator, UnOp,
+};
+
+pub fn construct(root: Idx<Expr>, context: &hir::Context) -> (Program, &hir::Context) {
+    assert!(context.diagnostics.is_empty());
     let mut builder = Builder::default();
 
     let root = context.expr(root);
@@ -38,18 +42,35 @@ pub fn construct(root: Idx<Expr>, context: &hir::Context) -> Program {
     if let Expr::Module(exprs) = root {
         todo!("implement module constructing")
     } else if let Expr::Function(func) = root {
-        dbg!(func.display(context));
         builder.construct_function(func, context);
     } else {
         panic!("Compiler Bug (MIR): expected a Module or Function at the root")
     }
 
-    builder.build()
+    let program = builder.build();
+    (program, context)
 }
 
-pub fn construct_from_input(input: &str) -> Program {
+pub fn construct_script(input: &str) -> (Program, &hir::Context) {
+    let (root, hir_context) = hir::lower(input, hir::LowerTarget::Script);
+
+    // I solemnly swear I am up to no good
+    // FIXME: in a batch compiler maybe... but definitely not in
+    // a language server or server that JIT compiles scripts as plugins
+    let hir_context = Box::leak(Box::new(hir_context));
+
+    construct(root, hir_context)
+}
+
+pub fn construct_function(input: &str) -> (Program, &hir::Context) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Function);
-    construct(root, &hir_context)
+
+    // I solemnly swear I am up to no good
+    // FIXME: in a batch compiler maybe... but definitely not in
+    // a language server or server that JIT compiles scripts as plugins
+    let hir_context = Box::leak(Box::new(hir_context));
+
+    construct(root, hir_context)
 }
 
 // TODO: decide if a Builder will be one-per-module? for later parallelization
@@ -73,13 +94,13 @@ pub struct Builder {
     /// Tracks whether the current statement being built should assign
     /// to the return value of the function being built
     /// TODO: check rustc, perhaps for a better way to track (enum?)
-    should_assign_return: bool,
+    tail_assign_place: Option<Place>,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         let func = Function::default();
-        let initial_block = func.initial_block();
+        let initial_block = func.entry_block();
         let mut functions = Arena::new();
         let initial_function = functions.alloc(func);
         Self {
@@ -87,7 +108,7 @@ impl Default for Builder {
             current_function: initial_function,
             current_block: initial_block,
             local_count: 0,
-            should_assign_return: false,
+            tail_assign_place: None,
         }
     }
 }
@@ -131,4 +152,12 @@ pub struct Program {
     // entry_function: Idx<Function>,
     // TODO: consts, in normal mode you should be able to set constants
     // and call constant functions at the module top-level
+}
+
+impl Program {
+    // FIXME: Assumes that the first function is main which is true for
+    // "script mode" or "function mode" but not normal/module mode
+    pub fn main(&self) -> &Function {
+        self.functions.values().next().unwrap()
+    }
 }

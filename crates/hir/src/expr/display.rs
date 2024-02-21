@@ -143,7 +143,7 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
 fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
     let FunctionExpr { params, body, name } = function;
     s.push_str("fun");
-    if let Some(key) = name {
+    if let Some((key, ..)) = name {
         let name = context.lookup(*key);
         s.push('<');
         s.push_str(name);

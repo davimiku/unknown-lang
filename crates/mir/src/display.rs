@@ -12,7 +12,7 @@ use crate::{BasicBlock, Function, Program};
 type Indent = usize;
 const INDENT_SIZE: usize = 4;
 
-pub(crate) trait MirWrite {
+pub trait MirWrite {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
@@ -97,7 +97,7 @@ fn write_signature<W: io::Write>(
 ) -> io::Result<()> {
     let function_name = function
         .name
-        .map_or("{anonymous}", |key| context.lookup(key));
+        .map_or("{anonymous}", |(key, ..)| context.lookup(key));
     write!(buf, "fun {function_name}:")?;
     write_line_and_indent(buf, indent)?;
 

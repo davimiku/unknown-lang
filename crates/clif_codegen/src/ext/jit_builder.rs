@@ -17,7 +17,7 @@ impl JITBuilderExt for JITBuilder {
         });
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
-            .unwrap();
+            .unwrap_or_else(|foo| panic!("ISA error: {foo}"));
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
         builder.symbol(builtins::PRINT_INT, builtins::print_int as *const u8);

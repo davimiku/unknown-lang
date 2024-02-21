@@ -1,6 +1,5 @@
 use la_arena::Idx;
 
-use crate::lowering_context::CORE_MODULE_ID;
 use crate::{Context, Expr, Type};
 
 /// Types implementing this trait can be processed into string messages
@@ -30,9 +29,8 @@ pub(crate) fn fmt_local_types(s: &mut String, context: &Context) {
         .type_database
         .value_symbols
         .iter()
-        .filter_map(|(key, ty)| {
-            (key.module_id != CORE_MODULE_ID).then(|| (key.display(context), *ty))
-        })
+        .filter(|(symbol, _)| !symbol.in_core_module())
+        .map(|(symbol, ty)| (symbol.display(context), *ty))
         .collect();
     locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
 
