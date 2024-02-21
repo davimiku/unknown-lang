@@ -101,14 +101,17 @@ fn write_signature<W: io::Write>(
     write!(buf, "fun {function_name}:")?;
     write_line_and_indent(buf, indent)?;
 
-    write!(buf, "params: (")?;
+    write!(buf, "params: ")?;
     if function.params.is_empty() {
-        write!(buf, "none")?;
+        write!(buf, "{{none}}")?;
     }
+    let len = function.params.len();
     for (i, _) in function.params.iter().enumerate() {
-        write!(buf, "_{i}, ")?;
+        write!(buf, "_{}", i + 1)?;
+        if i < len - 1 {
+            write!(buf, ", ")?;
+        }
     }
-    write!(buf, ")")?;
     write_line(buf, indent)
 }
 

@@ -115,7 +115,7 @@ impl<'a> FunctionTranslator<'a> {
         for (idx, local) in locals.iter() {
             let var_index = idx.into_raw().into_u32() as usize;
             let var = Variable::new(var_index);
-            let var_ty = self.translate_type(local.ty());
+            let var_ty = self.translate_type(local.type_(self.context));
             self.builder.declare_var(var, var_ty);
             self.variables.insert(idx, var);
         }
@@ -167,7 +167,8 @@ impl<'a> FunctionTranslator<'a> {
                 .push(AbiParam::new(clif_ty));
         }
 
-        let return_ty = self.translate_type(self.func.return_ty(self.context));
+        let return_ty = self.context.type_(self.func.return_ty());
+        let return_ty = self.translate_type(&return_ty);
         self.builder
             .func
             .signature

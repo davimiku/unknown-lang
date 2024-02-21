@@ -98,11 +98,9 @@ impl Function {
             .expect("local _0 should always exist which is the return value")
     }
 
-    // TODO: when Local is changed to store an Idx instead of a clone of Type
-    // the context needs to be passed into .ty()
-    pub fn return_ty(&self, context: &hir::Context) -> &Type {
+    pub fn return_ty(&self) -> Idx<Type> {
         let (_, return_local) = self.return_local();
-        return_local.ty()
+        return_local.ty_idx()
     }
 }
 
@@ -197,8 +195,7 @@ pub enum Terminator {
     /// Drops a value from memory
     ///
     /// TODO: what will this be used for?
-    /// in the future, when `resource` is added, this
-    /// should call the disposal function?
+    /// in the future, when `resource` is added, this should call the disposal function?
     /// Is this applicable for values with Rc heap allocations like strings?
     Drop {
         place: Place,
@@ -280,18 +277,19 @@ pub enum ProjectionElem<V, T> {
     OpaqueCast(T),
 }
 
-// TODO: optimize size by storing an Idx<Type> instead
-// we should have access to the hir::Context everywhere that
-// the Type is needed, lookup by Idx can give us a &Type which is fine
 #[derive(Debug)]
 pub struct Local {
     pub(crate) mutability: Mutability,
-    pub(crate) ty: Type,
+    pub(crate) ty: Idx<Type>,
 }
 
 impl Local {
-    pub fn ty(&self) -> &Type {
-        &self.ty
+    pub fn ty_idx(&self) -> Idx<Type> {
+        self.ty
+    }
+
+    pub fn type_<'a>(&self, context: &'a hir::Context) -> &'a Type {
+        context.borrow_type(self.ty)
     }
 }
 
@@ -419,19 +417,22 @@ pub enum Operand {
     Constant(Constant),
 
     /// Moves ownership of the resource from the given Place
-    // move semantics won't be added for a while and would apply only
-    // to "resource types" (file handles, socket handles, etc.)
+    ///
+    /// This applies only to `resource` types which are not yet
+    /// implemented. It should be an error to reference this place
+    /// again after the resource has been moved.
     Move(Place),
 }
 
 impl Operand {
-    pub fn type_of(&self, context: &hir::Context) -> &Type {
+    pub fn type_of(&self, context: &hir::Context) -> Idx<Type> {
+        let core = context.core_types();
         match self {
             Operand::Copy(place) | Operand::Move(place) => todo!(),
             Operand::Constant(constant) => match constant {
-                Constant::Int(_) => &Type::Int,
-                Constant::Float(_) => &Type::Float,
-                Constant::StringLiteral(_) => todo!(),
+                Constant::Int(_) => core.int,
+                Constant::Float(_) => core.float,
+                Constant::StringLiteral(_) => core.string,
             },
         }
     }

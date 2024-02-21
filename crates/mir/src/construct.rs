@@ -34,8 +34,8 @@ impl Builder {
         let func = self.current_function_mut();
         func.name = function_expr.name;
 
-        let return_ty = context.expr_type(function_expr.body);
-        self.make_local(return_ty.clone(), Mutability::Mut);
+        let return_ty = context.expr_type_idx(function_expr.body);
+        self.make_local(return_ty, Mutability::Mut);
 
         for param in function_expr.params.iter() {
             self.construct_param(param, context);
@@ -53,7 +53,7 @@ impl Builder {
     fn construct_param(&mut self, param: &FunctionParam, context: &hir::Context) {
         let ty_idx = context.type_idx_of_value(&param.symbol);
         self.current_function_mut().params.push(ty_idx);
-        let ty = context.type_of_value(&param.symbol);
+        let ty = context.type_idx_of_value(&param.symbol);
         self.make_local(ty, Mutability::Not); // TODO: depends on the param
     }
 
@@ -74,6 +74,7 @@ impl Builder {
     }
 
     /// Constructs the provided statements into the current Basic Block
+    // FIXME: how do we capture the `place` of `let place = { ... }`
     fn construct_block(&mut self, statements: &[Idx<Expr>], context: &hir::Context) {
         let statements_iter = statements
             .iter()
@@ -81,7 +82,16 @@ impl Builder {
             .map(|(i, el)| (el, i == statements.len() - 1));
 
         for (hir_statement, is_last) in statements_iter {
-            self.construct_statement_like(*hir_statement, context, is_last);
+            let return_place = if is_last {
+                if self.scope_depth == 0 {
+                    Some(self.current_function().return_place())
+                } else {
+                    todo!("capture the assignplace in `let a = {{ ... }}`")
+                }
+            } else {
+                None
+            };
+            self.construct_statement_like(*hir_statement, context, return_place);
         }
     }
 
@@ -99,7 +109,7 @@ impl Builder {
         &mut self,
         statement: Idx<Expr>,
         context: &hir::Context,
-        is_last: bool,
+        assign_place: Option<Place>,
     ) {
         let statement = context.expr(statement);
 
@@ -107,13 +117,14 @@ impl Builder {
             self.construct_var_def(var_def, context);
         } else {
             let statement = assert_matches!(statement, Expr::Statement);
-            self.construct_statement(*statement, context, is_last)
+            self.construct_statement(*statement, context, assign_place)
         }
     }
 
     fn construct_var_def(&mut self, var_def: &VarDefExpr, context: &hir::Context) {
         // TODO: capture mutability in parser, AST, HIR, and through here
-        let local = self.make_local(context.expr_type(var_def.value), Mutability::Not);
+        let ty = context.expr_type_idx(var_def.value);
+        let local = self.make_local(ty, Mutability::Not);
         let place = Place {
             local,
             projection: vec![],
@@ -127,7 +138,8 @@ impl Builder {
         &mut self,
         statement_expr: Idx<Expr>,
         context: &hir::Context,
-        is_last: bool,
+        // TODO: decide if this is the best way to indicate when the statement is the "return value" of the function/block
+        assign_place: Option<Place>,
     ) {
         let statement_expr = context.expr(statement_expr);
 
@@ -207,19 +219,14 @@ impl Builder {
             }
 
             Expr::VarRef(var_ref) => {
-                todo!()
-                // if is_last
+                todo!();
+                // var_ref.symbol;
+                // if let Some(assign_place) = assign_place {
+                //     //
+                // };
                 // let operand = Operand::Copy(place);
                 // let rvalue = Rvalue::Use(operand);
 
-                // let local = Local {
-                //     mutability: todo!(),
-                //     ty: todo!(),
-                // };
-                // let place = Place {
-                //     local,
-                //     projection: vec![],
-                // };
                 // let assign = Statement::Assign(Box::new((place, rvalue)));
                 // var_ref.symbol;
                 // self.construct_rvalue(expr);
@@ -309,10 +316,10 @@ impl Builder {
             Expr::If(_) => todo!(),
 
             Expr::VarDef(var_def) => {
-                let var_type = context.expr_type(var_def.value);
+                let ty = context.expr_type_idx(var_def.value);
 
                 // TODO: use the user's `mut` keyword
-                let local = self.make_local(var_type, Mutability::Not);
+                let local = self.make_local(ty, Mutability::Not);
                 let place = Place {
                     local,
                     projection: vec![],
@@ -378,7 +385,7 @@ impl Builder {
         }
     }
 
-    fn make_local(&mut self, ty: hir::Type, mutability: Mutability) -> Idx<Local> {
+    fn make_local(&mut self, ty: Idx<hir::Type>, mutability: Mutability) -> Idx<Local> {
         let local = Local { mutability, ty };
         let local = self.current_function_mut().locals.alloc(local);
         self.local_count += 1;

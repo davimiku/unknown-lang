@@ -326,31 +326,31 @@ impl TypeResult {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CoreTypes {
+pub struct CoreTypes {
     /// Sentinel for type has not yet been inferred
-    pub(crate) unknown: Idx<Type>,
+    pub unknown: Idx<Type>,
 
     /// Sentinel for error occurred during type inference
-    pub(crate) error: Idx<Type>,
+    pub error: Idx<Type>,
 
     /// Top type, all values are inhabitants
-    pub(crate) top: Idx<Type>,
+    pub top: Idx<Type>,
 
     /// Bottom type, has no inhabitants
-    pub(crate) bottom: Idx<Type>,
+    pub bottom: Idx<Type>,
 
     /// Unit type, has only one inhabitant
-    pub(crate) unit: Idx<Type>,
+    pub unit: Idx<Type>,
 
     /// Boolean, true or false
-    pub(crate) bool: Idx<Type>,
+    pub bool: Idx<Type>,
 
     /// Floating point number
-    pub(crate) float: Idx<Type>,
+    pub float: Idx<Type>,
 
     /// Integer number
-    pub(crate) int: Idx<Type>,
+    pub int: Idx<Type>,
 
     /// UTF-8 encoded string
-    pub(crate) string: Idx<Type>,
+    pub string: Idx<Type>,
 }

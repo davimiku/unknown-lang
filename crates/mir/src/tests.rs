@@ -37,16 +37,19 @@ fn check_function(input: &str) -> String {
 #[test]
 fn basic_arithmetic() {
     let input = "3 + 5";
-    let expected = r#"fun main:
-    params: (none)
+    let expected = r#"
+fun main:
+    params: {none}
     mut _0: Int
     
     BB0:
         _0 = Add(const 3, const 5)
-        return"#;
+        return
+"#;
 
     let actual = check_script(input);
-    assert_eq!(actual, expected);
+
+    assert_eq!(actual.trim(), expected.trim());
 }
 
 #[test]
@@ -59,15 +62,17 @@ fn assignment() {
 #[test]
 fn identity_int() {
     let input = "fun (i: Int) -> { i }";
-    let expected = r#"fun main:
-    params: Int
+    let expected = r#"
+fun main:
+    params: _1
     mut _0: Int
     _1: Int
     
     BB0:
         _0 = _1
-        return"#;
+        return
+"#;
 
     let actual = check_function(input);
-    assert_eq!(actual, expected);
+    assert_eq!(actual.trim(), expected.trim());
 }

@@ -87,6 +87,10 @@ pub struct Builder {
     /// user-defined locals, and compiler-created locals ("temps")
     local_count: u32,
 
+    /// Current (mutable) scope level tracked by the builder throughout the function
+    /// Zero is the top-level function scope
+    scope_depth: u32,
+
     // invariant: the current_block must belong to the current_function
     current_function: Idx<Function>,
     current_block: Idx<BasicBlock>,
@@ -108,6 +112,7 @@ impl Default for Builder {
             current_function: initial_function,
             current_block: initial_block,
             local_count: 0,
+            scope_depth: 0,
             tail_assign_place: None,
         }
     }
