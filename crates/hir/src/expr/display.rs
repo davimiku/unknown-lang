@@ -2,7 +2,7 @@ use la_arena::Idx;
 
 use crate::{
     ArrayLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
-    IndexIntExpr, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
+    IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
 use super::FunctionParam;
@@ -162,6 +162,14 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
         }
     }
     s.push_str(") -> ");
+    let body_ty = &context.expr_type(function.body);
+    if matches!(body_ty, Type::Unit) {
+        // write nothing for Unit return
+    } else {
+        let body_ty = body_ty.display(context);
+        s.push_str(&body_ty);
+        s.push(' ');
+    }
     fmt_idx_expr(s, *body, context, indent);
 }
 

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::io::stdout;
 
-use cranelift::codegen::write::{decorate_function, PlainWriter};
+#[cfg(test)]
 use cranelift::codegen::write_function;
 use cranelift::prelude::types::*;
 use cranelift::prelude::*;
@@ -122,12 +121,6 @@ impl JIT {
 
         self.module.define_function(func_id, &mut self.ctx)?;
 
-        self.module.clear_context(&mut self.ctx);
-
-        self.module.finalize_definitions()?;
-
-        self.module.declarations();
-
         #[cfg(test)]
         {
             let mut s = String::new();
@@ -136,6 +129,9 @@ impl JIT {
             });
             println!("{s}");
         }
+
+        self.module.clear_context(&mut self.ctx);
+        self.module.finalize_definitions()?;
 
         let code = self.module.get_finalized_function(func_id);
 

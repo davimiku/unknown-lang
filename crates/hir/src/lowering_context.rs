@@ -40,6 +40,14 @@ pub struct Context {
     pub(crate) current_module_id: u32,
 
     pub interner: Interner,
+
+    // HACK: when lowering a let binding for a function like this:
+    // `let identity = fun (i: Int) -> { i }`
+    // It's useful to store the Key/Symbol of "identity" with the FuncExpr for later use
+    // This is reset to None at the start of lowering each "statement"
+    // TODO: doesn't feel great to introduce mutable state like this to track
+    // Do we already have this information available in the AST?
+    current_let_binding_symbol: Option<(Key, ValueSymbol)>,
 }
 
 impl Context {
@@ -99,6 +107,7 @@ impl Context {
             current_module_id,
             module_scopes: vec![scopes, ModuleScopes::new(current_module_id)],
             interner,
+            current_let_binding_symbol: None,
         }
     }
 }
@@ -142,14 +151,19 @@ impl Context {
         &self.database.type_exprs[idx]
     }
 
+    /// Gets an interned key by its string
+    //
+    // TODO: keep this public? or offer more specific getters only
     pub fn lookup(&self, key: Key) -> &str {
         self.interner.lookup(key)
     }
 
+    /// Gets a reference to the type for an expression
     pub fn expr_type(&self, idx: Idx<Expr>) -> &Type {
         self.type_database.type_(self.expr_type_idx(idx))
     }
 
+    /// Gets the index of a type for an expression
     pub fn expr_type_idx(&self, idx: Idx<Expr>) -> Idx<Type> {
         self.type_database.get_expr_type(idx)
     }
@@ -158,16 +172,20 @@ impl Context {
         self.type_database.type_(idx)
     }
 
+    pub fn type_of_value(&self, value: &ValueSymbol) -> &Type {
+        self.type_database.type_(self.type_idx_of_value(value))
+    }
+
     pub fn type_idx_of_value(&self, value: &ValueSymbol) -> Idx<Type> {
         self.type_database.get_value_symbol(value)
     }
 
-    pub fn borrow_type_of_value(&self, value: &ValueSymbol) -> &Type {
-        self.type_database.type_(self.type_idx_of_value(value))
+    pub fn range_of_expr(&self, idx: Idx<Expr>) -> TextRange {
+        self.database.expr_ranges[idx]
     }
 
-    pub fn range_of(&self, idx: Idx<Expr>) -> TextRange {
-        self.database.expr_ranges[idx]
+    pub fn range_of_type_expr(&self, idx: Idx<TypeExpr>) -> TextRange {
+        self.database.type_expr_ranges[idx]
     }
 
     pub fn find_local(&mut self, name: &str) -> Option<ValueSymbol> {
@@ -176,12 +194,14 @@ impl Context {
         self.find_value(key)
     }
 
-    pub fn lookup_value_symbol(&self, symbol: ValueSymbol) -> &str {
+    /// Gets the interned string for a value symbol
+    pub fn value_symbol_str(&self, symbol: ValueSymbol) -> &str {
         let key = self.database.value_names[&symbol];
         self.lookup(key)
     }
 
-    pub fn lookup_type_symbol(&self, symbol: TypeSymbol) -> &str {
+    /// Gets the interned string for a type symbol
+    pub fn type_symbol_str(&self, symbol: TypeSymbol) -> &str {
         let key = self.database.type_names[&symbol];
         self.lookup(key)
     }
@@ -242,6 +262,7 @@ impl Context {
 // Lowering functions - Expr
 impl Context {
     pub(crate) fn lower_expr_statement(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
+        self.current_let_binding_symbol = None;
         let inner = self.lower_expr(ast.clone());
 
         match self.expr(inner) {
@@ -286,16 +307,21 @@ impl Context {
     fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
         // TODO: desugar patterns into separate definitions
         let name = ast.name().unwrap().text().to_string();
-        let name = self.interner.intern(&name);
+        let key = self.interner.intern(&name);
 
-        let symbol = self.current_scopes_mut().insert_value(name);
-        self.database.value_names.insert(symbol, name);
+        let symbol = self.current_scopes_mut().insert_value(key);
+        self.database.value_names.insert(symbol, key);
+        self.current_let_binding_symbol = Some((key, symbol));
 
         let value = self.lower_expr(ast.value());
 
         let type_annotation = ast
             .type_annotation()
             .map(|type_expr| self.lower_type_expr(type_expr.into()));
+
+        if let Expr::Function(_) = self.expr(value) {
+            self.database.function_defs.insert(symbol, value);
+        }
 
         Expr::variable_def(symbol, value, type_annotation)
     }
@@ -461,13 +487,14 @@ impl Context {
 
     fn lower_call(&mut self, ast: ast::CallExpr) -> Expr {
         let callee = ast.callee().unwrap();
-        let symbol = if let ast::Expr::Ident(ident) = &callee {
-            // TODO: ValueSymbol from a path? ex. `List.map`
-            // TODO: ValueSymbol from an imported symbol? assign them to imports?
-            let key = self.interner.intern(&ident.as_string());
-            self.find_value(key)
-        } else {
-            None
+        let symbol = match &callee {
+            ast::Expr::Ident(ident) => {
+                let key = self.interner.intern(&ident.as_string());
+                self.find_value(key)
+            }
+            ast::Expr::Path(path) => None,
+
+            _ => None,
         };
         let callee = self.lower_expr(Some(callee));
 
@@ -559,6 +586,7 @@ impl Context {
     }
 
     fn lower_function_expr(&mut self, function_ast: ast::Function) -> Expr {
+        let func_name = self.current_let_binding_symbol;
         self.push_scope();
         let params = function_ast
             .param_list()
@@ -589,14 +617,18 @@ impl Context {
         let body = body.expect("TODO: handle missing function body");
         self.pop_scope();
 
-        let name = function_ast.name().map(|ast_name| {
-            let key = self.interner.intern(&ast_name);
-            let symbol = self.current_scopes_mut().insert_value(key);
-            self.database.value_names.insert(symbol, key);
-            (key, symbol)
-        });
+        // let name = function_ast.name().map(|ast_name| {
+        //     let key = self.interner.intern(&ast_name);
+        //     let symbol = self.current_scopes_mut().insert_value(key);
+        //     self.database.value_names.insert(symbol, key);
+        //     (key, symbol)
+        // });
 
-        Expr::Function(FunctionExpr { params, body, name })
+        Expr::Function(FunctionExpr {
+            params,
+            body,
+            name: func_name,
+        })
     }
 
     fn lower_if_expr(&mut self, ast: ast::If) -> Expr {

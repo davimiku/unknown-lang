@@ -43,7 +43,10 @@ impl ContextDisplay for TypeDiagnosticVariant {
                 let name = context.lookup(*key);
                 format!("Unable to resolve variable ‘{name}’")
             }
-            V::UndefinedSymbol { name } => todo!(),
+            V::UndefinedSymbol { name } => {
+                let name = name.display(context);
+                panic!("unexpected undefined symbol: ‘{name}’")
+            }
         }
     }
 }

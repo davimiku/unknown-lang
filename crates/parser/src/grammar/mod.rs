@@ -108,58 +108,58 @@ Root@0..19
         let input = r#"let print_param = fun (a: String) -> { print a }
         print_param "Hello!""#;
         let expected = expect![[r#"
-            Root@0..77
-              LetBinding@0..48
-                LetKw@0..3 "let"
-                Emptyspace@3..4 " "
-                Ident@4..16
-                  Ident@4..15 "print_param"
-                  Emptyspace@15..16 " "
-                Equals@16..17 "="
-                Emptyspace@17..18 " "
-                FunExpr@18..48
-                  FunKw@18..21 "fun"
-                  Emptyspace@21..22 " "
-                  FunParamList@22..34
-                    LParen@22..23 "("
-                    FunParam@23..32
-                      Ident@23..24
-                        Ident@23..24 "a"
-                      Colon@24..25 ":"
-                      Emptyspace@25..26 " "
-                      TypeExpr@26..32
-                        Ident@26..32
-                          Ident@26..32 "String"
-                    RParen@32..33 ")"
-                    Emptyspace@33..34 " "
-                  Arrow@34..36 "->"
-                  Emptyspace@36..37 " "
-                  FunBody@37..48
-                    BlockExpr@37..48
-                      LBrace@37..38 "{"
-                      Emptyspace@38..39 " "
-                      Call@39..47
-                        PathExpr@39..45
-                          Ident@39..45
-                            Ident@39..44 "print"
-                            Emptyspace@44..45 " "
-                        CallArgs@45..47
-                          PathExpr@45..47
-                            Ident@45..47
-                              Ident@45..46 "a"
-                              Emptyspace@46..47 " "
-                      RBrace@47..48 "}"
-              Newline@48..57
-                Newline@48..49 "\n"
-                Emptyspace@49..57 "        "
-              Call@57..77
-                PathExpr@57..69
-                  Ident@57..69
-                    Ident@57..68 "print_param"
-                    Emptyspace@68..69 " "
-                CallArgs@69..77
-                  StringLiteralExpr@69..77
-                    StringLiteralExpr@69..77 "\"Hello!\"""#]];
+Root@0..77
+  LetBinding@0..48
+    LetKw@0..3 "let"
+    Emptyspace@3..4 " "
+    Ident@4..16
+      Ident@4..15 "print_param"
+      Emptyspace@15..16 " "
+    Equals@16..17 "="
+    Emptyspace@17..18 " "
+    FunExpr@18..48
+      FunKw@18..21 "fun"
+      Emptyspace@21..22 " "
+      FunParamList@22..34
+        LParen@22..23 "("
+        FunParam@23..32
+          Ident@23..24
+            Ident@23..24 "a"
+          Colon@24..25 ":"
+          Emptyspace@25..26 " "
+          TypeExpr@26..32
+            Ident@26..32
+              Ident@26..32 "String"
+        RParen@32..33 ")"
+        Emptyspace@33..34 " "
+      Arrow@34..36 "->"
+      Emptyspace@36..37 " "
+      FunBody@37..48
+        BlockExpr@37..48
+          LBrace@37..38 "{"
+          Emptyspace@38..39 " "
+          Call@39..47
+            PathExpr@39..45
+              Ident@39..45
+                Ident@39..44 "print"
+                Emptyspace@44..45 " "
+            CallArgs@45..47
+              PathExpr@45..47
+                Ident@45..47
+                  Ident@45..46 "a"
+                  Emptyspace@46..47 " "
+          RBrace@47..48 "}"
+  Newline@48..57
+    Newline@48..49 "\n"
+    Emptyspace@49..57 "        "
+  Call@57..77
+    PathExpr@57..69
+      Ident@57..69
+        Ident@57..68 "print_param"
+        Emptyspace@68..69 " "
+    CallArgs@69..77
+      StringLiteralExpr@69..77
+        StringLiteralExpr@69..77 "\"Hello!\"""#]];
         check(input, expected);
     }
 

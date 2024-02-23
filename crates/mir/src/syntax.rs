@@ -1,5 +1,5 @@
 use hir::{Key, Type, ValueSymbol};
-use la_arena::{Arena, Idx};
+use la_arena::{Arena, ArenaMap, Idx};
 
 // rustc calls a function "Body"
 // TODO: is that a good name?
@@ -39,6 +39,8 @@ pub struct Function {
     /// Temporary variables
     // TODO: does this need to track Place too?
     pub locals: Arena<Local>,
+
+    pub locals_map: ArenaMap<Idx<Local>, Option<ValueSymbol>>,
 }
 
 impl Default for Function {
@@ -50,8 +52,9 @@ impl Default for Function {
         Self {
             name: None,
             blocks,
-            params: Vec::new(),
-            locals: Arena::new(),
+            params: Vec::default(),
+            locals: Arena::default(),
+            locals_map: ArenaMap::default(),
         }
     }
 }

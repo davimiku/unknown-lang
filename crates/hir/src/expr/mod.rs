@@ -155,6 +155,9 @@ impl ValueSymbol {
         }
     }
 
+    // TODO: create a convenience constructor for anonymous functions?
+    // pub fn synthetic_anonymous() -> Self { ... }
+
     pub fn in_core_module(&self) -> bool {
         self.module_id == CORE_MODULE_ID
     }

@@ -63,13 +63,31 @@ fn assignment() {
 fn identity_int() {
     let input = "fun (i: Int) -> { i }";
     let expected = r#"
-fun main:
+fun {anonymous}:
     params: _1
     mut _0: Int
     _1: Int
     
     BB0:
-        _0 = _1
+        _0 = copy _1
+        return
+"#;
+
+    let actual = check_function(input);
+    assert_eq!(actual.trim(), expected.trim());
+}
+
+#[test]
+fn identity_int_plus_one() {
+    let input = "fun (i: Int) -> { i + 16 }";
+    let expected = r#"
+fun {anonymous}:
+    params: _1
+    mut _0: Int
+    _1: Int
+    
+    BB0:
+        _0 = Add(copy _1, const 16)
         return
 "#;
 

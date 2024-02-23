@@ -121,7 +121,7 @@ impl Codegen {
 
         let callee = context.expr(*callee);
         if let Expr::VarRef(var_ref) = callee {
-            match context.lookup_value_symbol(var_ref.symbol) {
+            match context.value_symbol_str(var_ref.symbol) {
                 op @ ("+" | "-" | "*" | "/") => {
                     let args: Vec<&Expr> = args.iter().map(|arg| context.expr(*arg)).collect();
 
@@ -222,7 +222,7 @@ impl Codegen {
 
     /// Writes a variable reference to the code, which is just the variable name
     fn write_var_ref(&mut self, var_ref: &VarRefExpr, context: &Context) {
-        let name = context.lookup_value_symbol(var_ref.symbol);
+        let name = context.value_symbol_str(var_ref.symbol);
         self.push(name);
     }
 
@@ -237,7 +237,7 @@ impl Codegen {
     /// Writes a variable definition, which includes both the declaration and
     /// the initial assignment
     fn write_var_def(&mut self, var_def: &VarDefExpr, context: &Context) {
-        let name = context.lookup_value_symbol(var_def.symbol);
+        let name = context.value_symbol_str(var_def.symbol);
         self.push("let ");
         self.push(name);
 

@@ -86,7 +86,7 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 /// }
 ///
 /// // OK because `"hello"` is a subtype of String and return types are covariant
-/// let return_covariance: Int -> String = (a: Int) -> "hello"
+/// let return_covariance: Int -> String = (a: Int) -> { "hello" }
 /// ```
 fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) -> bool {
     let params_check = a

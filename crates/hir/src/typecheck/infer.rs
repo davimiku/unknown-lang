@@ -15,7 +15,7 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
-use crate::{ArrayType, CallExpr, Context, FunctionType};
+use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType};
 
 pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult {
     if let Some(already_inferred_type) = context.type_database.expr_types.get(expr_idx) {
@@ -134,6 +134,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
 
 fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
     let name = expr.symbol;
+    dbg!(name.display(context));
     let local_ty = context.type_database.value_symbols.get(&name);
 
     let mut result = TypeResult::new(&context.type_database);
@@ -147,6 +148,21 @@ fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
     }
 
     result
+}
+
+fn test() {
+    let mut user_input = String::new();
+    let n_as_string;
+    println!(
+        "Read {:?} characters.",
+        match std::io::stdin().read_line(&mut user_input) {
+            Ok(n) => {
+                n_as_string = n.to_string();
+                n_as_string.as_str()
+            }
+            Err(error) => "<undefined>",
+        }
+    );
 }
 
 fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult {
@@ -202,7 +218,7 @@ fn infer_function_param(param: &FunctionParam, context: &mut Context) -> TypeRes
 
 fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
     let VarDefExpr {
-        symbol: key,
+        symbol,
         value,
         type_annotation,
         ..
@@ -219,14 +235,18 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
                 context
                     .type_database
                     .value_symbols
-                    .insert(*key, expected.ty);
+                    .insert(*symbol, expected.ty);
             }
             Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
         }
     } else {
         result.chain(infer_expr(*value, context));
+        dbg!(symbol.display(context));
         if result.is_ok() {
-            context.type_database.value_symbols.insert(*key, result.ty);
+            context
+                .type_database
+                .value_symbols
+                .insert(*symbol, result.ty);
         }
     }
     // The full definition expression still returns Unit no matter what

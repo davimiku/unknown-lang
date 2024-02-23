@@ -39,13 +39,15 @@ fn check(input: &str, expected: &str, expected_vars: &[(&str, &str)]) {
 
 {expected_vars}"
     );
+    let expected = expected.trim();
     let actual = display_root(root_expr, &context);
+    let actual = actual.trim();
 
     if actual != expected {
         eprintln!("expected: {expected}");
         eprintln!("actual: {actual}");
         eprintln!("diff:");
-        text_diff::print_diff(&expected, &actual, "");
+        text_diff::print_diff(expected, actual, "");
         panic!("Expected did not match actual, see printed diff.");
     }
 }
@@ -74,6 +76,28 @@ fn string_literal() {
     let input = r#""Hello""#;
 
     check(input, "\"Hello\";", &[]);
+}
+
+#[test]
+fn int_literal_function_inferred_return() {
+    let input = "fun (i: Int) -> { 42 }";
+
+    check(
+        input,
+        "fun (i~1.0 : Int) -> 42 { 42; };",
+        &[("i~1.0", "Int")],
+    );
+}
+
+#[test]
+fn int_literal_function_explicit_return() {
+    let input = "fun (i: Int) -> Int { 42 }";
+
+    check(
+        input,
+        "fun (i~1.0 : Int) -> 42 { 42; };",
+        &[("i~1.0", "Int")],
+    );
 }
 
 #[test]
@@ -456,7 +480,7 @@ let repeat = fun (s: String) -> { s ++ s }
 "#;
 
     let expected_expr = indoc! {"
-    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> { `++`~0.3 (s~1.1,s~1.1,); };"};
+    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.3 (s~1.1,s~1.1,); };"};
 
     let expected_vars = &[("repeat~1.0", "(String) -> String"), ("s~1.1", "String")];
 
@@ -471,7 +495,7 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> { `++`~0.3 (s~1.1,s~1.1,); };
+        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.3 (s~1.1,s~1.1,); };
         hello_hello~1.2 : String = repeat~1.0 (\"Hello \",);
         print~0.0 (hello_hello~1.2,);"};
 
@@ -553,7 +577,7 @@ mod typecheck_tests {
 
     use crate::{lower, ContextDisplay, Expr, LowerTarget, Type};
 
-    fn check(input: &str, expected_return_type: &Type) {
+    fn check_script(input: &str, expected_return_type: &Type) {
         let (root_expr, context) = lower(input, LowerTarget::Script);
 
         if !context.diagnostics.is_empty() {
@@ -577,7 +601,7 @@ mod typecheck_tests {
 
         let expected_return_type = Type::IntLiteral(1);
 
-        check(input, &expected_return_type);
+        check_script(input, &expected_return_type);
     }
 
     #[test]
@@ -586,6 +610,6 @@ mod typecheck_tests {
 
         let expected_return_type = Type::Int;
 
-        check(input, &expected_return_type);
+        check_script(input, &expected_return_type);
     }
 }

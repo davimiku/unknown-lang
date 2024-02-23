@@ -1,6 +1,8 @@
+#[cfg(test)]
 use std::io::stdout;
 
 use jit::JIT;
+#[cfg(test)]
 use mir::MirWrite;
 
 mod builtins;
@@ -12,6 +14,7 @@ mod translate;
 
 pub fn compile_function(input: &str) -> Result<*const u8, String> {
     let (program, context) = mir::construct_function(input);
+    assert!(context.diagnostics.is_empty());
 
     #[cfg(test)]
     {

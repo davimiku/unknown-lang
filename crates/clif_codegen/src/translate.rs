@@ -7,7 +7,6 @@
 //! the MIR and translate it into the CLIF instructions. This is a "translation" rather
 //! than a lowering because it's between two representations at roughly the same level of
 //! abstraction.
-//!
 
 use std::{collections::HashMap, ops::Deref};
 
@@ -18,6 +17,7 @@ use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use hir::Type as HType;
 use la_arena::Idx;
+use mir::Place;
 use mir::Terminator;
 use mir::{BasicBlock, BinOp, Constant, Local, Operand, Rvalue, Statement};
 
@@ -94,13 +94,11 @@ impl<'a> FunctionTranslator<'a> {
 impl<'a> FunctionTranslator<'a> {
     pub(crate) fn translate_function(&mut self) {
         let mir::Function {
-            name: _,
             blocks,
             params,
             locals,
+            ..
         } = self.func;
-        dbg!(params);
-        dbg!(locals);
 
         self.translate_signature();
 
@@ -252,15 +250,7 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
         match rvalue {
-            Rvalue::Use(op) => match op {
-                Operand::Copy(p) => todo!(),
-                Operand::Constant(c) => match c {
-                    Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
-                    Constant::Float(f) => self.builder.ins().f64const(*f),
-                    Constant::StringLiteral(_) => todo!(),
-                },
-                Operand::Move(p) => todo!(),
-            },
+            Rvalue::Use(op) => self.operand_to_value(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
         }
@@ -268,9 +258,16 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_binary_op(&mut self, binop: &BinOp, ops: &(Operand, Operand)) -> Value {
         let (lhs, rhs) = ops;
-        // let lhs_type = self.context.
+
+        let lhs_ty = self.op_type_idx(lhs);
+        let rhs_ty = self.op_type_idx(rhs);
+        assert_eq!(lhs_ty, rhs_ty);
+        assert_eq!(self.context.type_(lhs_ty), self.context.type_(rhs_ty));
+
+        let lhs = self.operand_to_value(lhs);
+        let rhs = self.operand_to_value(rhs);
         match binop {
-            BinOp::Add => todo!(),
+            BinOp::Add => self.emit_add(lhs_ty, lhs, rhs),
             BinOp::Sub => todo!(),
             BinOp::Mul => todo!(),
             BinOp::Div => todo!(),
@@ -281,6 +278,34 @@ impl<'a> FunctionTranslator<'a> {
             BinOp::Lt => todo!(),
             BinOp::Ge => todo!(),
             BinOp::Gt => todo!(),
+        }
+    }
+
+    fn emit_add(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+        let ty = self.context.type_(ty);
+        match ty {
+            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fadd(lhs, rhs),
+            HType::IntLiteral(_) | HType::Int => self.builder.ins().iadd(lhs, rhs),
+
+            _ => unreachable!("something went wrong!"),
+        }
+    }
+
+    fn operand_to_value(&mut self, op: &Operand) -> Value {
+        match op {
+            Operand::Copy(p) => {
+                let local = p.local;
+                // TODO: use projections too
+                let var = self.variables[&local];
+                // TODO: is this sharing or copying?
+                self.builder.use_var(var)
+            }
+            Operand::Constant(c) => match c {
+                Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
+                Constant::Float(f) => self.builder.ins().f64const(*f),
+                Constant::StringLiteral(_) => todo!(),
+            },
+            Operand::Move(_) => todo!(),
         }
     }
 
@@ -297,6 +322,32 @@ impl<'a> FunctionTranslator<'a> {
             HType::StringLiteral(_) | HType::String => todo!(),
 
             _ => todo!(),
+        }
+    }
+
+    fn op_type_idx(&self, op: &Operand) -> Idx<HType> {
+        match op {
+            Operand::Copy(place) => self.place_type_idx(place),
+            Operand::Constant(constant) => self.constant_type_idx(constant),
+            Operand::Move(_) => todo!(),
+        }
+    }
+
+    fn place_type_idx(&self, place: &Place) -> Idx<HType> {
+        // TODO: use projections...
+        let local = &self.func.locals[place.local];
+        local.ty_idx()
+    }
+
+    fn constant_type(&self, constant: &Constant) -> &HType {
+        self.context.type_(self.constant_type_idx(constant))
+    }
+
+    fn constant_type_idx(&self, constant: &Constant) -> Idx<HType> {
+        match constant {
+            Constant::Int(_) => self.context.core_types().int,
+            Constant::Float(_) => self.context.core_types().float,
+            Constant::StringLiteral(_) => todo!(),
         }
     }
 

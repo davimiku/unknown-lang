@@ -15,7 +15,7 @@ use crate::builtins::XInt;
 use crate::compile_function;
 
 #[test]
-fn constant_return() {
+fn constant_42() {
     let input = r#"fun () -> { 42 }"#;
 
     let code_ptr = compile_function(input).unwrap();
@@ -26,8 +26,34 @@ fn constant_return() {
 }
 
 #[test]
-fn identity() {
+fn one_param_constant_42() {
     let input = "fun (i: Int) -> { 42 }";
 
-    let _ = compile_function(input).unwrap();
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+
+    assert_eq!(code_fn(()), 42)
+}
+
+#[test]
+fn identity_int() {
+    let input = "fun (i: Int) -> Int { i }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+
+    assert_eq!(code_fn(123), 123)
+}
+
+#[test]
+fn identity_int_addition() {
+    let input = "fun (i: Int) -> Int { i + 16 }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+
+    assert_eq!(code_fn(-20), -4)
 }
