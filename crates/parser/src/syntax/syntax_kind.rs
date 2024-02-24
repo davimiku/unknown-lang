@@ -41,38 +41,66 @@ pub enum SyntaxKind {
     ArrayType,
 
     // Delimiters
+    /// `{`
     LBrace,
+    /// `}`
     RBrace,
+    /// `[`
     LBracket,
+    /// `]`
     RBracket,
+    /// `(`
     LParen,
+    /// `)`
     RParen,
 
     // Separators
+    /// `:`
     Colon,
+    /// `;`
     SemiColon,
+    /// `,`
     Comma,
 
     // Operators
+    /// `+`
     Plus,
+    /// `++`
     PlusPlus,
+    /// `-`
     Dash,
+    /// `*`
     Star,
+    /// `/`
     Slash,
+    /// `^`
     Caret,
+    /// `%`
     Percent,
+    /// `!`
     Bang,
+    /// `~`
     Tilde,
 
+    /// `<`
     LAngle,
+    /// `<=`
     LAngleEquals,
+    /// `>`
     RAngle,
+    /// `>=`
     RAngleEquals,
+    /// `==`
     EqualsEquals,
+    /// `!=`
     BangEquals,
+    /// `=`
     Equals,
+    /// `..`
     DotDot,
+    /// `.`
     Dot,
+    /// `?`
     Question,
 
     // Expr
@@ -128,6 +156,7 @@ pub enum SyntaxKind {
     Root,
     Comment,
     Emptyspace,
+    /// Captured separately from Emptyspace because the grammar *is* newline-sensitive
     Newline,
     Error,
 }

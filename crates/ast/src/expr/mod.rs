@@ -130,21 +130,35 @@ impl Binary {
     }
 
     pub fn op(&self) -> Option<SyntaxToken> {
-        use SyntaxKind::*;
         self.0
             .children_with_tokens()
             .filter_map(SyntaxElement::into_token)
-            // TODO: Extract these binary op tokens into a more obvious or shared place
-            .find(|token| {
-                matches!(
-                    token.kind(),
-                    Plus | PlusPlus | Dash | Star | Slash | Dot | Caret | EqualsEquals | BangEquals
-                )
-            })
+            .find(Self::is_binop_token)
     }
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+
+    fn is_binop_token(token: &SyntaxToken) -> bool {
+        use SyntaxKind as S;
+
+        matches!(
+            token.kind(),
+            S::Plus
+                | S::PlusPlus
+                | S::Dash
+                | S::Star
+                | S::Slash
+                | S::Dot
+                | S::Caret
+                | S::EqualsEquals
+                | S::BangEquals
+                | S::LAngle
+                | S::LAngleEquals
+                | S::RAngle
+                | S::RAngleEquals
+        )
     }
 }
 

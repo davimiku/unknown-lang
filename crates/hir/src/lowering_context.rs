@@ -402,6 +402,10 @@ impl Context {
             SyntaxKind::Percent => "%",
             SyntaxKind::EqualsEquals => "==",
             SyntaxKind::BangEquals => "!=",
+            SyntaxKind::LAngle => "<",
+            SyntaxKind::LAngleEquals => "<=",
+            SyntaxKind::RAngle => ">",
+            SyntaxKind::RAngleEquals => ">=",
             _ => unreachable!(),
         };
         let callee = self.lower_name_ref(op);

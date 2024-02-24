@@ -238,6 +238,70 @@ InfixExpr@0..6
 }
 
 #[test]
+fn parse_int_less_than() {
+    check_expr(
+        "1 < 1",
+        expect![[r#"
+InfixExpr@0..5
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  LAngle@2..3 "<"
+  Emptyspace@3..4 " "
+  IntLiteralExpr@4..5
+    IntLiteral@4..5 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_less_than_or_equal() {
+    check_expr(
+        "1 <= 1",
+        expect![[r#"
+InfixExpr@0..6
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  LAngleEquals@2..4 "<="
+  Emptyspace@4..5 " "
+  IntLiteralExpr@5..6
+    IntLiteral@5..6 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_greater_than() {
+    check_expr(
+        "1 > 1",
+        expect![[r#"
+InfixExpr@0..5
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  RAngle@2..3 ">"
+  Emptyspace@3..4 " "
+  IntLiteralExpr@4..5
+    IntLiteral@4..5 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_greater_than_or_equal() {
+    check_expr(
+        "1 >= 1",
+        expect![[r#"
+InfixExpr@0..6
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  RAngleEquals@2..4 ">="
+  Emptyspace@4..5 " "
+  IntLiteralExpr@5..6
+    IntLiteral@5..6 "1""#]],
+    );
+}
+
+#[test]
 fn parse_string_equality() {
     check_expr(
         r#""a" == "a""#,

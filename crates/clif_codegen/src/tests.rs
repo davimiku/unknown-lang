@@ -49,7 +49,7 @@ fn one_param_constant_16() {
 
 #[test]
 fn identity_int() {
-    let input = "fun (i: Int) -> Int { i }";
+    let input = "fun (i: Int) -> { i }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -60,7 +60,7 @@ fn identity_int() {
 
 #[test]
 fn int_add_param_and_constant() {
-    let input = "fun (i: Int) -> Int { i + 6 }";
+    let input = "fun (i: Int) -> { i + 6 }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -71,7 +71,7 @@ fn int_add_param_and_constant() {
 
 #[test]
 fn int_sub_param_and_constant() {
-    let input = "fun (i: Int) -> Int { i - 10 }";
+    let input = "fun (i: Int) -> { i - 10 }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -82,7 +82,7 @@ fn int_sub_param_and_constant() {
 
 #[test]
 fn int_mul_param_and_constant() {
-    let input = "fun (i: Int) -> Int { i * 8 }";
+    let input = "fun (i: Int) -> { i * 8 }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -93,7 +93,7 @@ fn int_mul_param_and_constant() {
 
 #[test]
 fn int_add_params() {
-    let input = "fun (a: Int, b: Int) -> Int { a + b }";
+    let input = "fun (a: Int, b: Int) -> { a + b }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -104,7 +104,7 @@ fn int_add_params() {
 
 #[test]
 fn int_sub_params() {
-    let input = "fun (a: Int, b: Int) -> Int { a - b }";
+    let input = "fun (a: Int, b: Int) -> { a - b }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -115,7 +115,7 @@ fn int_sub_params() {
 
 #[test]
 fn int_mul_params() {
-    let input = "fun (a: Int, b: Int) -> Int { a * b }";
+    let input = "fun (a: Int, b: Int) -> { a * b }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -126,7 +126,7 @@ fn int_mul_params() {
 
 #[test]
 fn int_equality() {
-    let input = "fun (a: Int, b: Int) -> Bool { a == b }";
+    let input = "fun (a: Int, b: Int) -> { a == b }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -138,7 +138,7 @@ fn int_equality() {
 
 #[test]
 fn int_not_equality() {
-    let input = "fun (a: Int, b: Int) -> Bool { a != b }";
+    let input = "fun (a: Int, b: Int) -> { a != b }";
 
     let code_ptr = compile_function(input).unwrap();
 
@@ -148,4 +148,54 @@ fn int_not_equality() {
     assert_eq!(code_fn((16, -16)), TRUE);
 }
 
+#[test]
+fn int_less_than() {
+    let input = "fun (a: Int, b: Int) -> { a < b }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((17, 16)), FALSE);
+    assert_eq!(code_fn((16, 16)), FALSE);
+    assert_eq!(code_fn((15, 16)), TRUE);
+}
+
+#[test]
+fn int_less_than_or_equal() {
+    let input = "fun (a: Int, b: Int) -> { a <= b }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((17, 16)), FALSE);
+    assert_eq!(code_fn((16, 16)), TRUE);
+    assert_eq!(code_fn((15, 16)), TRUE);
+}
+
+#[test]
+fn int_greater_than() {
+    let input = "fun (a: Int, b: Int) -> { a > b }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((17, 16)), TRUE);
+    assert_eq!(code_fn((16, 16)), FALSE);
+    assert_eq!(code_fn((15, 16)), FALSE);
+}
+
+#[test]
+fn int_greater_than_or_equal() {
+    let input = "fun (a: Int, b: Int) -> { a >= b }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((17, 16)), TRUE);
+    assert_eq!(code_fn((16, 16)), TRUE);
+    assert_eq!(code_fn((15, 16)), FALSE);
 }

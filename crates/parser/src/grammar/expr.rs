@@ -98,6 +98,10 @@ where
             T::Arrow => BinaryOp::Function,
             T::EqualsEquals => BinaryOp::Eq,
             T::BangEquals => BinaryOp::Ne,
+            T::LAngle => BinaryOp::Lt,
+            T::LAngleEquals => BinaryOp::Le,
+            T::RAngle => BinaryOp::Gt,
+            T::RAngleEquals => BinaryOp::Ge,
 
             // Not at an operator, so is not a binary expression, so break
             // The "lhs" in this case is really the entire expression
@@ -608,6 +612,18 @@ enum BinaryOp {
     /// `!=`
     Ne,
 
+    /// `<`
+    Lt,
+
+    /// `<=`
+    Le,
+
+    /// `>`
+    Gt,
+
+    /// `>=`
+    Ge,
+
     /// `.`
     Path,
 
@@ -622,7 +638,7 @@ impl BinaryOp {
             Self::Function => (1, 1),
             Self::Or => (3, 4),
             Self::And => (5, 6),
-            Self::Eq | Self::Ne => (7, 8),
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => (7, 8),
             Self::Add | Self::Sub | Self::Concat => (9, 10),
             Self::Mul | Self::Div | Self::Rem => (11, 12),
             Self::Exp => (14, 13),
