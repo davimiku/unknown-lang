@@ -189,7 +189,9 @@ impl Builder {
                     self.construct_binop(context, call, binop, place);
                 }
 
-                // FIXME: otherwise, create a Call terminator (direct vs. indirect?)
+                // FIXME: otherwise, create a Call terminator
+                // direct Call for non-capturing functions
+                // indirect Call for capturing/closures (not implemented for a while)
             }
 
             Expr::VarRef(var_ref) => {
@@ -234,6 +236,8 @@ impl Builder {
         binop: BinOp,
         place: Place,
     ) {
+        // FIXME: where do we construct the Call terminator for user-defined operations?
+        // such as Point + Point
         let arg1 = context.expr(call.args[0]);
         let operand1 = self.construct_operand(arg1);
 
@@ -392,6 +396,12 @@ fn try_get_binop(call: &hir::CallExpr, context: &hir::Context) -> Option<BinOp> 
                     IntrinsicExpr::Mul => BinOp::Mul,
                     IntrinsicExpr::Div => BinOp::Div,
                     IntrinsicExpr::Rem => BinOp::Rem,
+                    IntrinsicExpr::Eq => BinOp::Eq,
+                    IntrinsicExpr::Ne => BinOp::Ne,
+                    IntrinsicExpr::Lt => BinOp::Lt,
+                    IntrinsicExpr::Le => BinOp::Le,
+                    IntrinsicExpr::Gt => BinOp::Gt,
+                    IntrinsicExpr::Ge => BinOp::Ge,
                 }
                 .into();
             }

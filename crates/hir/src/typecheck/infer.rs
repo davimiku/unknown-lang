@@ -134,7 +134,6 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
 
 fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
     let name = expr.symbol;
-    dbg!(name.display(context));
     let local_ty = context.type_database.value_symbols.get(&name);
 
     let mut result = TypeResult::new(&context.type_database);

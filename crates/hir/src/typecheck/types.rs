@@ -25,8 +25,6 @@ pub enum Type {
     Int,
     String,
 
-    // TODO: arena allocate Type so that recursive types can be Copy?
-
     // Sum
     // Union
 
@@ -34,6 +32,7 @@ pub enum Type {
     // Struct
 
     // Exponential
+    // TODO: consider arena allocating FunctionType, would reduce Type to 16 bytes
     Function(FunctionType),
     Array(ArrayType),
 }

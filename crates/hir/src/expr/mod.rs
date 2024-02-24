@@ -285,11 +285,38 @@ pub struct IndexIntExpr {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum IntrinsicExpr {
+    /// Addition `+`
     Add,
+
+    /// Subtraction `-`
     Sub,
+
+    /// Multiplication `*`
     Mul,
+
+    /// Division `/`
     Div,
+
+    /// Remainder `%`
     Rem,
+
+    /// Equality `==`
+    Eq,
+
+    /// Not Equality `!=`
+    Ne,
+
+    /// Less Than `<`
+    Lt,
+
+    /// Less Than Or Equal `<=`
+    Le,
+
+    /// Greater Than `>`
+    Gt,
+
+    /// Greater Than Or Equal `>=`
+    Ge,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

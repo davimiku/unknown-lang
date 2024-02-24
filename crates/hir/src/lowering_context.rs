@@ -79,23 +79,37 @@ impl Context {
                 ($key:expr, $fn_type:expr) => {{
                     let symbol = scopes.insert_value($key);
                     database.value_names.insert(symbol, $key);
-                    let r#type = type_database.alloc_type($fn_type);
-                    type_database.insert_value_symbol(symbol, r#type);
+                    let ty = type_database.alloc_type($fn_type);
+                    type_database.insert_value_symbol(symbol, ty);
 
                     symbol
+                }};
+                ($key:expr, $fn_type:expr, $intrinsic:ident) => {{
+                    let symbol = scopes.insert_value($key);
+                    database.value_names.insert(symbol, $key);
+                    let ty = type_database.alloc_type($fn_type);
+                    type_database.insert_value_symbol(symbol, ty);
+
+                    let intrinsic_expr =
+                        database.alloc_expr(Expr::Intrinsic(IntrinsicExpr::$intrinsic), None);
+                    database.function_defs.insert(symbol, intrinsic_expr);
                 }};
             }
 
             core_value!(keys.print, Type::func(vec![t.string], t.unit));
             core_value!(keys.args, Type::array_of(t.string));
-            let add = core_value!(keys.add, Type::func(vec![t.int, t.int], t.int));
+            core_value!(keys.add, Type::func(vec![t.int, t.int], t.int), Add);
+            core_value!(keys.sub, Type::func(vec![t.int, t.int], t.int), Sub);
+            core_value!(keys.mul, Type::func(vec![t.int, t.int], t.int), Mul);
+            core_value!(keys.div, Type::func(vec![t.int, t.int], t.int), Div);
             core_value!(keys.concat, Type::func(vec![t.string, t.string], t.string));
-            core_value!(keys.sub, Type::func(vec![t.int, t.int], t.int));
-            core_value!(keys.mul, Type::func(vec![t.int, t.int], t.int));
-            core_value!(keys.div, Type::func(vec![t.int, t.int], t.int));
 
-            let add_intrinsic = database.alloc_expr(Expr::Intrinsic(IntrinsicExpr::Add), None);
-            database.function_defs.insert(add, add_intrinsic);
+            core_value!(keys.eq, Type::func(vec![t.int, t.int], t.bool), Eq);
+            core_value!(keys.ne, Type::func(vec![t.int, t.int], t.bool), Ne);
+            core_value!(keys.lt, Type::func(vec![t.int, t.int], t.bool), Lt);
+            core_value!(keys.le, Type::func(vec![t.int, t.int], t.bool), Le);
+            core_value!(keys.gt, Type::func(vec![t.int, t.int], t.bool), Gt);
+            core_value!(keys.ge, Type::func(vec![t.int, t.int], t.bool), Ge);
         }
 
         current_module_id += 1;

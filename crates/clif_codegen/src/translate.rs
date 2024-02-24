@@ -21,6 +21,8 @@ use mir::Place;
 use mir::Terminator;
 use mir::{BasicBlock, BinOp, Constant, Local, Operand, Rvalue, Statement};
 
+use crate::ext::function_builder::FunctionBuilderExt;
+
 // TODO: decide on nomenclature for "Type"
 // currently "ClifType" means "Cranelift Type" and
 // "HType" means "HIR Type"
@@ -37,6 +39,7 @@ impl Default for CommonTypes {
         Self {
             int: types::I64,
             float: types::F64,
+            // For now, booleans are 8 bytes defined as 1 is true and 0 is false (no other value is valid)
             bool: types::I64,
             ptr: types::R64,
         }
@@ -110,12 +113,12 @@ impl<'a> FunctionTranslator<'a> {
 
         // declare all locals with type. value is defined later with def_var
         // params will def_var shortly, other locals are def_var when the block is translated
-        for (idx, local) in locals.iter() {
-            let var_index = idx.into_raw().into_u32() as usize;
+        for (local_idx, local) in locals.iter() {
+            let var_index = local_idx.into_raw().into_u32() as usize;
             let var = Variable::new(var_index);
             let var_ty = self.translate_type(local.type_(self.context));
             self.builder.declare_var(var, var_ty);
-            self.variables.insert(idx, var);
+            self.variables.insert(local_idx, var);
         }
 
         let first_basic_block = self.func.entry_block();
@@ -268,16 +271,20 @@ impl<'a> FunctionTranslator<'a> {
         let rhs = self.operand_to_value(rhs);
         match binop {
             BinOp::Add => self.emit_add(lhs_ty, lhs, rhs),
-            BinOp::Sub => todo!(),
-            BinOp::Mul => todo!(),
+            BinOp::Sub => self.emit_sub(lhs_ty, lhs, rhs),
+            BinOp::Mul => self.emit_mul(lhs_ty, lhs, rhs),
             BinOp::Div => todo!(),
             BinOp::Rem => todo!(),
-            BinOp::Eq => todo!(),
-            BinOp::Ne => todo!(),
-            BinOp::Le => todo!(),
-            BinOp::Lt => todo!(),
-            BinOp::Ge => todo!(),
-            BinOp::Gt => todo!(),
+            BinOp::Eq => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::Equal),
+            BinOp::Ne => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::NotEqual),
+            BinOp::Lt => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedLessThan),
+            BinOp::Le => {
+                self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedLessThanOrEqual)
+            }
+            BinOp::Gt => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedGreaterThan),
+            BinOp::Ge => {
+                self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedGreaterThanOrEqual)
+            }
         }
     }
 
@@ -287,7 +294,146 @@ impl<'a> FunctionTranslator<'a> {
             HType::FloatLiteral(_) | HType::Float => self.builder.ins().fadd(lhs, rhs),
             HType::IntLiteral(_) | HType::Int => self.builder.ins().iadd(lhs, rhs),
 
-            _ => unreachable!("something went wrong!"),
+            _ => unreachable!("unexpected type {:?} for addition", ty),
+        }
+    }
+
+    fn emit_sub(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+        let ty = self.context.type_(ty);
+        match ty {
+            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fsub(lhs, rhs),
+            HType::IntLiteral(_) | HType::Int => self.builder.ins().isub(lhs, rhs),
+
+            _ => unreachable!("unexpected type {:?} for subtraction", ty),
+        }
+    }
+
+    fn emit_mul(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+        let ty = self.context.type_(ty);
+        match ty {
+            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fmul(lhs, rhs),
+            HType::IntLiteral(_) | HType::Int => self.builder.ins().imul(lhs, rhs),
+
+            _ => unreachable!("unexpected type {:?} for multiplication", ty),
+        }
+    }
+
+    fn emit_div(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+        let ty = self.context.type_(ty);
+        match ty {
+            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fdiv(lhs, rhs),
+
+            // self.builder.ins().idiv(lhs, rhs) -- there is no idiv in CLIF
+            // need to implement integer division ourselves
+            // https://en.wikipedia.org/wiki/Division_algorithm
+            HType::IntLiteral(_) | HType::Int => self.builder.idiv(lhs, rhs),
+
+            _ => unreachable!("unexpected type {:?} for division", ty),
+        }
+    }
+
+    // fn emit_eq(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+    //     let ty = self.context.type_(ty);
+    //     match ty {
+    //         HType::FloatLiteral(_) | HType::Float => {
+    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+    //         }
+    //         HType::IntLiteral(_) | HType::Int => {
+    //             let val_i8 = self.builder.ins().icmp(IntCC::Equal, lhs, rhs);
+    //             self.builder.ins().sextend(self.types.bool, val_i8)
+    //         }
+
+    //         _ => unreachable!("unexpected type {:?} for `==`", ty),
+    //     }
+    // }
+
+    // fn emit_ne(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+    //     let ty = self.context.type_(ty);
+    //     match ty {
+    //         HType::FloatLiteral(_) | HType::Float => {
+    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+    //         }
+    //         HType::IntLiteral(_) | HType::Int => {
+    //             let val_i8 = self.builder.ins().icmp(IntCC::NotEqual, lhs, rhs);
+    //             self.builder.ins().sextend(self.types.bool, val_i8)
+    //         }
+
+    //         _ => unreachable!("unexpected type {ty:?} for `!=`"),
+    //     }
+    // }
+
+    // fn emit_lt(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
+    //     let ty = self.context.type_(ty);
+    //     match ty {
+    //         HType::FloatLiteral(_) | HType::Float => {
+    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+    //         }
+    //         HType::IntLiteral(_) | HType::Int => {
+    //             let val_i8 = self.builder.ins().icmp(IntCC::SignedLessThan, lhs, rhs);
+    //             self.builder.ins().sextend(self.types.bool, val_i8)
+    //         }
+
+    //         _ => unreachable!("unexpected type {ty:?} for `!=`"),
+    //     }
+    // }
+
+    fn emit_comparison(
+        &mut self,
+        lhs_ty: Idx<HType>,
+        rhs_ty: Idx<HType>,
+        lhs: Value,
+        rhs: Value,
+        comparison: IntCC,
+    ) -> Value {
+        let lhs_ty = self.context.type_(lhs_ty);
+        let rhs_ty = self.context.type_(rhs_ty);
+
+        match lhs_ty {
+            HType::FloatLiteral(_) | HType::Float => {
+                self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+            }
+            HType::IntLiteral(_) | HType::Int => {
+                self.emit_int_comparison(lhs_ty, rhs_ty, lhs, rhs, comparison)
+            }
+
+            _ => unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison"),
+        }
+    }
+
+    fn emit_int_comparison(
+        &mut self,
+        lhs_ty: &HType,
+        rhs_ty: &HType,
+        lhs: Value,
+        rhs: Value,
+        comparison: IntCC,
+    ) -> Value {
+        let val_i8 = match (lhs_ty, rhs_ty) {
+            (HType::IntLiteral(imm1), HType::IntLiteral(imm2)) => {
+                self.emit_int_constant_comparison(*imm1, *imm2, comparison)
+            }
+            (HType::IntLiteral(imm), HType::Int) => {
+                self.builder.ins().icmp_imm(comparison, rhs, *imm)
+            }
+            (HType::Int, HType::IntLiteral(imm)) => {
+                self.builder.ins().icmp_imm(comparison, lhs, *imm)
+            }
+            (HType::Int, HType::Int) => self.builder.ins().icmp(comparison, lhs, rhs),
+
+            _ => unreachable!("expected integer, got {lhs_ty:?} and {rhs_ty:?}"),
+        };
+        self.builder.ins().sextend(self.types.bool, val_i8)
+    }
+
+    fn emit_int_constant_comparison(&mut self, lhs: i64, rhs: i64, comparison: IntCC) -> Value {
+        match comparison {
+            IntCC::Equal => self.builder.bool_const(lhs == rhs),
+            IntCC::NotEqual => self.builder.bool_const(lhs != rhs),
+            IntCC::SignedLessThan => self.builder.bool_const(lhs < rhs),
+            IntCC::SignedLessThanOrEqual => self.builder.bool_const(lhs <= rhs),
+            IntCC::SignedGreaterThan => self.builder.bool_const(lhs > rhs),
+            IntCC::SignedGreaterThanOrEqual => self.builder.bool_const(lhs >= rhs),
+            _ => unreachable!(),
         }
     }
 

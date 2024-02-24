@@ -20,7 +20,7 @@ fn check_script(input: &str) -> String {
 
 /// Lowers the provider input to MIR from "function mode"
 /// Input must be a single function expression
-fn check_function(input: &str) -> String {
+fn check_function(input: &str, expected: &str) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Function);
     println!("{}", root.display(&hir_context));
     let (program, ..) = construct(root, &hir_context);
@@ -31,7 +31,9 @@ fn check_function(input: &str) -> String {
         .write(&mut w, &hir_context, &mut initial_indent)
         .expect("written successfully");
 
-    String::from_utf8(w).expect("bytes to be valid UTF-8")
+    let actual = String::from_utf8(w).expect("bytes to be valid UTF-8");
+
+    assert_eq!(actual.trim(), expected.trim());
 }
 
 #[test]
@@ -73,12 +75,11 @@ fun {anonymous}:
         return
 "#;
 
-    let actual = check_function(input);
-    assert_eq!(actual.trim(), expected.trim());
+    check_function(input, expected);
 }
 
 #[test]
-fn identity_int_plus_one() {
+fn int_add_param_and_constant() {
     let input = "fun (i: Int) -> { i + 16 }";
     let expected = r#"
 fun {anonymous}:
@@ -91,6 +92,57 @@ fun {anonymous}:
         return
 "#;
 
-    let actual = check_function(input);
-    assert_eq!(actual.trim(), expected.trim());
+    check_function(input, expected);
+}
+
+#[test]
+fn int_sub_param_and_constant() {
+    let input = "fun (i: Int) -> { i - 16 }";
+    let expected = r#"
+fun {anonymous}:
+    params: _1
+    mut _0: Int
+    _1: Int
+    
+    BB0:
+        _0 = Sub(copy _1, const 16)
+        return
+"#;
+
+    check_function(input, expected);
+}
+
+#[test]
+fn int_mul_param_and_constant() {
+    let input = "fun (i: Int) -> { i * 16 }";
+    let expected = r#"
+fun {anonymous}:
+    params: _1
+    mut _0: Int
+    _1: Int
+    
+    BB0:
+        _0 = Mul(copy _1, const 16)
+        return
+"#;
+
+    check_function(input, expected);
+}
+
+#[test]
+fn int_equality() {
+    let input = "fun (a: Int, b: Int) -> Bool { a == b }";
+    let expected = r#"
+fun {anonymous}:
+    params: _1, _2
+    mut _0: Bool
+    _1: Int
+    _2: Int
+    
+    BB0:
+        _0 = Eq(copy _1, copy _2)
+        return
+"#;
+
+    check_function(input, expected);
 }

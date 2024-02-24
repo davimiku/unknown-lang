@@ -37,19 +37,43 @@ impl Interner {
 
 #[derive(Debug, Default)]
 pub struct CoreKeys {
+    /// `Bool`
     pub bool: Key,
+    /// `Int`
     pub int: Key,
+    /// `Float`
     pub float: Key,
+    /// `String`
     pub string: Key,
 
+    /// `print`
     pub print: Key,
+    /// `args`
     pub args: Key,
 
+    /// `+`
     pub add: Key,
+    /// `++`
     pub concat: Key,
+    /// `-`
     pub sub: Key,
+    /// `*`
     pub mul: Key,
+    /// `/`
     pub div: Key,
+
+    /// `==`
+    pub eq: Key,
+    /// `!=`
+    pub ne: Key,
+    /// `<`
+    pub lt: Key,
+    /// `<=`
+    pub le: Key,
+    /// `>`
+    pub gt: Key,
+    /// `>=`
+    pub ge: Key,
 }
 
 impl CoreKeys {
@@ -68,6 +92,13 @@ impl CoreKeys {
             sub: interner.intern("-"),
             mul: interner.intern("*"),
             div: interner.intern("/"),
+
+            eq: interner.intern("=="),
+            ne: interner.intern("!="),
+            lt: interner.intern("<"),
+            le: interner.intern("<="),
+            gt: interner.intern(">"),
+            ge: interner.intern(">="),
         }
     }
 }

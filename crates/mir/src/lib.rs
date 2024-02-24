@@ -33,7 +33,7 @@ pub use syntax::{
 };
 
 pub fn construct(root: Idx<Expr>, context: &hir::Context) -> (Program, &hir::Context) {
-    assert!(context.diagnostics.is_empty());
+    assert_eq!(context.diagnostics, vec![]);
     let mut builder = Builder::default();
 
     let root = context.expr(root);
@@ -54,8 +54,9 @@ pub fn construct_script(input: &str) -> (Program, &hir::Context) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Script);
 
     // I solemnly swear I am up to no good
-    // FIXME: in a batch compiler maybe... but definitely not in
-    // a language server or server that JIT compiles scripts as plugins
+    // FIXME: This definitely does not work in a language server or
+    // compiler server that JIT compiles scripts as plugins
+    // OK if it's restricted to CLI scripts only, probably
     let hir_context = Box::leak(Box::new(hir_context));
 
     construct(root, hir_context)
@@ -65,9 +66,10 @@ pub fn construct_function(input: &str) -> (Program, &hir::Context) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Function);
 
     // I solemnly swear I am up to no good
-    // FIXME: in a batch compiler maybe... but definitely not in
-    // a language server or server that JIT compiles scripts as plugins
-    let hir_context = Box::leak(Box::new(hir_context));
+    // FIXME: This definitely does not work in a language server or
+    // compiler server that JIT compiles functions as plugins
+    // OK if it's restricted to tests only, probably
+    let hir_context: &'static mut hir::Context = Box::leak(Box::new(hir_context));
 
     construct(root, hir_context)
 }
