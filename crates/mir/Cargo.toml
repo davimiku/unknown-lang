@@ -10,3 +10,6 @@ la-arena = "0.3.1"
 
 hir = { path = "../hir" }
 util_macros = { path = "../util_macros" }
+
+[dev-dependencies]
+text-diff = "0.4.0"

@@ -1,30 +1,25 @@
-use crate::display::MirWrite;
-use hir::ContextDisplay;
+use crate::{display::MirWrite, Program};
 
 use crate::construct;
 
 /// Lowers the provided input to MIR as from "script mode"
-fn check_script(input: &str) -> String {
+fn check_script(input: &str, expected: &str) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Script);
-    println!("{}", root.display(&hir_context));
     let (program, ..) = construct(root, &hir_context);
 
-    let mut initial_indent = 0;
-    let mut w = Vec::new();
-    program
-        .write(&mut w, &hir_context, &mut initial_indent)
-        .expect("written successfully");
-
-    String::from_utf8(w).expect("bytes to be valid UTF-8")
+    check(program, hir_context, expected)
 }
 
 /// Lowers the provider input to MIR from "function mode"
 /// Input must be a single function expression
 fn check_function(input: &str, expected: &str) {
     let (root, hir_context) = hir::lower(input, hir::LowerTarget::Function);
-    println!("{}", root.display(&hir_context));
     let (program, ..) = construct(root, &hir_context);
 
+    check(program, hir_context, expected)
+}
+
+fn check(program: Program, hir_context: hir::Context, expected: &str) {
     let mut initial_indent = 0;
     let mut w = Vec::new();
     program
@@ -33,7 +28,15 @@ fn check_function(input: &str, expected: &str) {
 
     let actual = String::from_utf8(w).expect("bytes to be valid UTF-8");
 
-    assert_eq!(actual.trim(), expected.trim());
+    let actual = actual.trim();
+    let expected = expected.trim();
+    if actual != expected {
+        eprintln!("expected: {expected}");
+        eprintln!("actual: {actual}");
+        eprintln!("diff:");
+        text_diff::print_diff(expected, actual, "");
+        panic!("Expected did not match actual, see printed diff.");
+    }
 }
 
 #[test]
@@ -49,16 +52,14 @@ fun main:
         return
 "#;
 
-    let actual = check_script(input);
-
-    assert_eq!(actual.trim(), expected.trim());
+    check_script(input, expected);
 }
 
 #[test]
 #[ignore = "not implemented yet"]
 fn assignment() {
     let input = "let a = 2";
-    check_script(input);
+    check_script(input, "");
 }
 
 #[test]
@@ -141,6 +142,52 @@ fun {anonymous}:
     
     BB0:
         _0 = Eq(copy _1, copy _2)
+        return
+"#;
+
+    check_function(input, expected);
+}
+
+#[test]
+fn int_variable() {
+    let input = "
+fun (a: Int) -> { 
+    let b = a
+    b
+}";
+    let expected = r#"
+fun {anonymous}:
+    params: _1
+    mut _0: Int
+    _1: Int
+    _2: Int
+    
+    BB0:
+        _2 = copy _1
+        _0 = copy _2
+        return
+"#;
+
+    check_function(input, expected);
+}
+
+#[test]
+fn int_variable_with_addition() {
+    let input = "
+fun (a: Int) -> { 
+    let b = a + 16
+    b
+}";
+    let expected = r#"
+fun {anonymous}:
+    params: _1
+    mut _0: Int
+    _1: Int
+    _2: Int
+    
+    BB0:
+        _2 = Add(copy _1, const 16)
+        _0 = copy _2
         return
 "#;
 
