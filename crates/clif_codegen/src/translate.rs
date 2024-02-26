@@ -128,18 +128,12 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.switch_to_block(entry_block);
         self.builder.seal_block(entry_block);
 
-        // define values for parameter locals: _1, _2, _3, ..., _n
-        let param_locals = self
-            .func
-            .locals
-            .iter()
-            .skip(1)
-            .take(params.len())
-            .enumerate();
+        // def_var the values for parameter locals: _1, _2, _3, ..., _n
+        let param_locals = self.func.param_locals().enumerate();
         for (i, (local_idx, _)) in param_locals {
-            let param_val = self.builder.block_params(entry_block)[i];
+            let val = self.builder.block_params(entry_block)[i];
             let var = self.variables[&local_idx];
-            self.builder.def_var(var, param_val);
+            self.builder.def_var(var, val);
         }
 
         self.translate_basic_block(&self.func.blocks[first_basic_block]);
@@ -273,8 +267,8 @@ impl<'a> FunctionTranslator<'a> {
             BinOp::Add => self.emit_add(lhs_ty, lhs, rhs),
             BinOp::Sub => self.emit_sub(lhs_ty, lhs, rhs),
             BinOp::Mul => self.emit_mul(lhs_ty, lhs, rhs),
-            BinOp::Div => todo!(),
-            BinOp::Rem => todo!(),
+            BinOp::Div => self.emit_div(lhs_ty, lhs, rhs),
+            BinOp::Rem => self.emit_rem(lhs, rhs),
             BinOp::Eq => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::Equal),
             BinOp::Ne => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::NotEqual),
             BinOp::Lt => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedLessThan),
@@ -290,92 +284,55 @@ impl<'a> FunctionTranslator<'a> {
 
     fn emit_add(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
         let ty = self.context.type_(ty);
-        match ty {
-            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fadd(lhs, rhs),
-            HType::IntLiteral(_) | HType::Int => self.builder.ins().iadd(lhs, rhs),
-
-            _ => unreachable!("unexpected type {:?} for addition", ty),
+        if ty.is_float() {
+            self.builder.ins().fadd(lhs, rhs)
+        } else if ty.is_int() {
+            self.builder.ins().iadd(lhs, rhs)
+        } else {
+            unreachable!("unexpected type {:?} for addition", ty)
         }
     }
 
     fn emit_sub(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
         let ty = self.context.type_(ty);
-        match ty {
-            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fsub(lhs, rhs),
-            HType::IntLiteral(_) | HType::Int => self.builder.ins().isub(lhs, rhs),
-
-            _ => unreachable!("unexpected type {:?} for subtraction", ty),
+        if ty.is_float() {
+            self.builder.ins().fsub(lhs, rhs)
+        } else if ty.is_int() {
+            self.builder.ins().isub(lhs, rhs)
+        } else {
+            unreachable!("unexpected type {:?} for addition", ty)
         }
     }
 
     fn emit_mul(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
         let ty = self.context.type_(ty);
-        match ty {
-            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fmul(lhs, rhs),
-            HType::IntLiteral(_) | HType::Int => self.builder.ins().imul(lhs, rhs),
-
-            _ => unreachable!("unexpected type {:?} for multiplication", ty),
+        if ty.is_float() {
+            self.builder.ins().fmul(lhs, rhs)
+        } else if ty.is_int() {
+            self.builder.ins().imul(lhs, rhs)
+        } else {
+            unreachable!("unexpected type {:?} for addition", ty)
         }
     }
 
     fn emit_div(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
         let ty = self.context.type_(ty);
-        match ty {
-            HType::FloatLiteral(_) | HType::Float => self.builder.ins().fdiv(lhs, rhs),
-
-            // self.builder.ins().idiv(lhs, rhs) -- there is no idiv in CLIF
-            // need to implement integer division ourselves
-            // https://en.wikipedia.org/wiki/Division_algorithm
-            HType::IntLiteral(_) | HType::Int => self.builder.idiv(lhs, rhs),
-
-            _ => unreachable!("unexpected type {:?} for division", ty),
+        if ty.is_float() {
+            self.builder.ins().fdiv(lhs, rhs)
+        } else if ty.is_int() {
+            // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
+            // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
+            self.builder.ins().sdiv(lhs, rhs)
+        } else {
+            unreachable!("unexpected type {:?} for addition", ty)
         }
     }
 
-    // fn emit_eq(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-    //     let ty = self.context.type_(ty);
-    //     match ty {
-    //         HType::FloatLiteral(_) | HType::Float => {
-    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
-    //         }
-    //         HType::IntLiteral(_) | HType::Int => {
-    //             let val_i8 = self.builder.ins().icmp(IntCC::Equal, lhs, rhs);
-    //             self.builder.ins().sextend(self.types.bool, val_i8)
-    //         }
-
-    //         _ => unreachable!("unexpected type {:?} for `==`", ty),
-    //     }
-    // }
-
-    // fn emit_ne(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-    //     let ty = self.context.type_(ty);
-    //     match ty {
-    //         HType::FloatLiteral(_) | HType::Float => {
-    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
-    //         }
-    //         HType::IntLiteral(_) | HType::Int => {
-    //             let val_i8 = self.builder.ins().icmp(IntCC::NotEqual, lhs, rhs);
-    //             self.builder.ins().sextend(self.types.bool, val_i8)
-    //         }
-
-    //         _ => unreachable!("unexpected type {ty:?} for `!=`"),
-    //     }
-    // }
-
-    // fn emit_lt(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-    //     let ty = self.context.type_(ty);
-    //     match ty {
-    //         HType::FloatLiteral(_) | HType::Float => {
-    //             self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
-    //         }
-    //         HType::IntLiteral(_) | HType::Int => {
-    //             let val_i8 = self.builder.ins().icmp(IntCC::SignedLessThan, lhs, rhs);
-    //             self.builder.ins().sextend(self.types.bool, val_i8)
-    //         }
-
-    //         _ => unreachable!("unexpected type {ty:?} for `!=`"),
-    //     }
-    // }
+    fn emit_rem(&mut self, lhs: Value, rhs: Value) -> Value {
+        // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
+        // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
+        self.builder.ins().srem(lhs, rhs)
+    }
 
     fn emit_comparison(
         &mut self,
@@ -388,15 +345,12 @@ impl<'a> FunctionTranslator<'a> {
         let lhs_ty = self.context.type_(lhs_ty);
         let rhs_ty = self.context.type_(rhs_ty);
 
-        match lhs_ty {
-            HType::FloatLiteral(_) | HType::Float => {
-                self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
-            }
-            HType::IntLiteral(_) | HType::Int => {
-                self.emit_int_comparison(lhs_ty, rhs_ty, lhs, rhs, comparison)
-            }
-
-            _ => unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison"),
+        if lhs_ty.is_float() {
+            self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+        } else if lhs_ty.is_int() {
+            self.emit_int_comparison(lhs_ty, rhs_ty, lhs, rhs, comparison)
+        } else {
+            unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
         }
     }
 

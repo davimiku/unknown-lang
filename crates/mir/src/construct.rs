@@ -130,7 +130,7 @@ impl Builder {
             local,
             projection: vec![],
         };
-        let rvalue = self.construct_rvalue(context.expr(var_def.value));
+        let rvalue = self.construct_rvalue(context.expr(var_def.value), context);
         let statement = Statement::Assign(Box::new((place, rvalue)));
         self.current_block_mut().statements.push(statement);
     }
@@ -180,29 +180,18 @@ impl Builder {
             }
 
             Expr::Call(call) => {
-                // FIXME: pull return_place only if is last statement of the *function*
-                // otherwise make a new place/local for assigning
-                let place = self.current_function().return_place();
+                let rvalue = self.construct_call(call, context);
 
-                // FIXME: create try_make_binop_rvalue or whatever and use that here
-                if let Some(binop) = try_get_binop(call, context) {
-                    self.construct_binop(context, call, binop, place);
+                if let Some(place) = assign_place {
+                    let assign = Statement::Assign(Box::new((place, rvalue)));
+
+                    self.current_block_mut().statements.push(assign);
                 }
-
-                // FIXME: otherwise, create a Call terminator
-                // direct Call for non-capturing functions
-                // indirect Call for capturing/closures (not implemented for a while)
             }
 
             Expr::VarRef(var_ref) => {
                 if let Some(assign_place) = assign_place {
-                    let local = self.find_symbol(var_ref.symbol);
-                    let place = Place {
-                        local,
-                        projection: vec![],
-                    };
-                    let operand = Operand::Copy(place);
-                    let rvalue = Rvalue::Use(operand);
+                    let rvalue = self.construct_var_ref_rvalue(var_ref);
                     let assign = Statement::Assign(Box::new((assign_place, rvalue)));
                     self.current_block_mut().statements.push(assign);
                 };
@@ -229,13 +218,30 @@ impl Builder {
         }
     }
 
+    fn construct_call(&mut self, call: &hir::CallExpr, context: &hir::Context) -> Rvalue {
+        // FIXME: pull return_place only if is last statement of the *function*
+        // otherwise make a new place/local for assigning
+        let place = self.current_function().return_place();
+
+        // FIXME: create try_make_binop_rvalue or whatever and use that here
+        if let Some(binop) = try_get_binop(call, context) {
+            return self.construct_binop(context, call, binop, place);
+        }
+
+        todo!()
+
+        // FIXME: otherwise, create a Call terminator
+        // direct Call for non-capturing functions
+        // indirect Call for capturing/closures (not implemented for a while)
+    }
+
     fn construct_binop(
         &mut self,
         context: &hir::Context,
         call: &hir::CallExpr,
         binop: BinOp,
         place: Place,
-    ) {
+    ) -> Rvalue {
         // FIXME: where do we construct the Call terminator for user-defined operations?
         // such as Point + Point
         let arg1 = context.expr(call.args[0]);
@@ -243,10 +249,22 @@ impl Builder {
 
         let arg2 = context.expr(call.args[1]);
         let operand2 = self.construct_operand(arg2);
-        let rvalue = Rvalue::BinaryOp(binop, Box::new((operand1, operand2)));
-        let assign_statement = Statement::Assign(Box::new((place, rvalue)));
 
-        self.current_block_mut().statements.push(assign_statement);
+        Rvalue::BinaryOp(binop, Box::new((operand1, operand2)))
+    }
+
+    fn construct_var_ref_rvalue(&mut self, var_ref: &hir::VarRefExpr) -> Rvalue {
+        let local = self.find_symbol(var_ref.symbol);
+        let place = Place {
+            local,
+            projection: vec![],
+        };
+
+        // TODO: resource types need to be moved rather than copied
+        // and "share" types, like strings maybe would have a different Operand::Share?
+        let operand = Operand::Copy(place);
+
+        Rvalue::Use(operand)
     }
 
     fn find_symbol(&self, symbol: ValueSymbol) -> Idx<Local> {
@@ -337,8 +355,28 @@ impl Builder {
         }
     }
 
-    fn construct_rvalue(&self, expr: &Expr) -> Rvalue {
-        todo!()
+    fn construct_rvalue(&mut self, expr: &Expr, context: &hir::Context) -> Rvalue {
+        match expr {
+            Expr::BoolLiteral(_) => todo!(),
+            Expr::FloatLiteral(_) => todo!(),
+            Expr::IntLiteral(i) => todo!(),
+            Expr::StringLiteral(_) => todo!(),
+            Expr::ArrayLiteral(_) => todo!(),
+            Expr::Unary(_) => todo!(),
+            Expr::Block(_) => todo!(),
+            Expr::Call(call) => self.construct_call(call, context),
+            Expr::VarRef(var_ref) => self.construct_var_ref_rvalue(var_ref),
+            Expr::Path(_) => todo!(),
+            Expr::IndexInt(_) => todo!(),
+            Expr::Function(_) => todo!(),
+            Expr::VarDef(_) => todo!(),
+            Expr::If(_) => todo!(),
+            Expr::Statement(_) => todo!(),
+            Expr::ReturnStatement(_) => todo!(),
+            Expr::Intrinsic(_) => todo!(),
+
+            Expr::Empty | Expr::UnresolvedVarRef { .. } | Expr::Module(_) => unreachable!(),
+        }
     }
 
     fn construct_operand(&self, expr: &Expr) -> Operand {

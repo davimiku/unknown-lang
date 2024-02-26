@@ -85,6 +85,10 @@ impl Function {
             .0
     }
 
+    pub fn param_locals(&self) -> impl Iterator<Item = (Idx<Local>, &Local)> {
+        self.locals.iter().skip(1).take(self.params.len())
+    }
+
     pub fn return_place(&self) -> Place {
         let (local_idx, _) = self.return_local();
         Place {

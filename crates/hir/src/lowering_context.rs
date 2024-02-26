@@ -102,6 +102,7 @@ impl Context {
             core_value!(keys.sub, Type::func(vec![t.int, t.int], t.int), Sub);
             core_value!(keys.mul, Type::func(vec![t.int, t.int], t.int), Mul);
             core_value!(keys.div, Type::func(vec![t.int, t.int], t.int), Div);
+            core_value!(keys.rem, Type::func(vec![t.int, t.int], t.int), Rem);
             core_value!(keys.concat, Type::func(vec![t.string, t.string], t.string));
 
             core_value!(keys.eq, Type::func(vec![t.int, t.int], t.bool), Eq);

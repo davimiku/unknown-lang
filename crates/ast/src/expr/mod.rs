@@ -150,6 +150,7 @@ impl Binary {
                 | S::Dash
                 | S::Star
                 | S::Slash
+                | S::Percent
                 | S::Dot
                 | S::Caret
                 | S::EqualsEquals

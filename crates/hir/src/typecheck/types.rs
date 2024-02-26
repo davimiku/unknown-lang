@@ -38,6 +38,24 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Type::BoolLiteral(_) | Type::Bool)
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, Type::IntLiteral(_) | Type::Int)
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Type::FloatLiteral(_) | Type::Float)
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Type::StringLiteral(_) | Type::String)
+    }
+}
+
+impl Type {
     pub(crate) fn array_of(of: Idx<Type>) -> Self {
         Self::Array(ArrayType { of })
     }

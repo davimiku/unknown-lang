@@ -22,7 +22,7 @@ fn constant_16() {
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(()), 16)
+    assert_eq!(code_fn(()), 16);
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn constant_16_by_addition() {
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(()), 16)
+    assert_eq!(code_fn(()), 16);
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn one_param_constant_16() {
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(()), 16)
+    assert_eq!(code_fn(()), 16);
 }
 
 #[test]
@@ -55,7 +55,21 @@ fn identity_int() {
 
     let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
 
-    assert_eq!(code_fn(16), 16)
+    assert_eq!(code_fn(16), 16);
+}
+
+#[test]
+fn identity_int_with_variable() {
+    let input = "fun (i: Int) -> {
+        let i2 = i
+        i2
+    }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+
+    assert_eq!(code_fn(16), 16);
 }
 
 #[test]
@@ -66,7 +80,8 @@ fn int_add_param_and_constant() {
 
     let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
 
-    assert_eq!(code_fn(10), 16)
+    assert_eq!(code_fn(10), 16);
+    assert_eq!(code_fn(-24), -16);
 }
 
 #[test]
@@ -77,7 +92,8 @@ fn int_sub_param_and_constant() {
 
     let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
 
-    assert_eq!(code_fn(26), 16)
+    assert_eq!(code_fn(26), 16);
+    assert_eq!(code_fn(-16), -26);
 }
 
 #[test]
@@ -88,7 +104,8 @@ fn int_mul_param_and_constant() {
 
     let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
 
-    assert_eq!(code_fn(2), 16)
+    assert_eq!(code_fn(2), 16);
+    assert_eq!(code_fn(-2), -16);
 }
 
 #[test]
@@ -99,7 +116,8 @@ fn int_add_params() {
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
-    assert_eq!(code_fn((10, 6)), 16)
+    assert_eq!(code_fn((10, 6)), 16);
+    assert_eq!(code_fn((-10, -16)), -26);
 }
 
 #[test]
@@ -110,7 +128,8 @@ fn int_sub_params() {
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
-    assert_eq!(code_fn((26, 10)), 16)
+    assert_eq!(code_fn((26, 10)), 16);
+    assert_eq!(code_fn((-10, -16)), 6);
 }
 
 #[test]
@@ -121,7 +140,37 @@ fn int_mul_params() {
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
-    assert_eq!(code_fn((4, -4)), -16)
+    assert_eq!(code_fn((4, -4)), -16);
+    assert_eq!(code_fn((-16, -4)), 64);
+    assert_eq!(code_fn((2, 16)), 32);
+}
+
+#[test]
+fn remainder_params() {
+    let input = "fun (a: Int, b: Int) -> { a % b }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
+
+    assert_eq!(code_fn((16, 4)), 0);
+    assert_eq!(code_fn((16, 5)), 1);
+    assert_eq!(code_fn((16, 6)), 4);
+
+    assert_eq!(code_fn((-16, 4)), 0);
+    assert_eq!(code_fn((-16, 5)), -1);
+    assert_eq!(code_fn((-16, 6)), -4);
+
+    assert_eq!(code_fn((16, -4)), 0);
+    assert_eq!(code_fn((16, -5)), 1);
+    assert_eq!(code_fn((16, -6)), 4);
+}
+
+#[test]
+fn is_odd() {
+    let input = "fun (a: Int) -> { a % 2 != 0 }";
+
+    let code_ptr = compile_function(input).unwrap();
 }
 
 #[test]
@@ -198,4 +247,19 @@ fn int_greater_than_or_equal() {
     assert_eq!(code_fn((17, 16)), TRUE);
     assert_eq!(code_fn((16, 16)), TRUE);
     assert_eq!(code_fn((15, 16)), FALSE);
+}
+
+#[test]
+fn variable_and_addition() {
+    let input = "fun (i: Int) -> {
+        let i2 = i + 10
+        i2
+    }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+
+    assert_eq!(code_fn(6), 16);
+    assert_eq!(code_fn(-4), 6);
 }

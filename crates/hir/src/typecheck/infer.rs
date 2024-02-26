@@ -149,21 +149,6 @@ fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
     result
 }
 
-fn test() {
-    let mut user_input = String::new();
-    let n_as_string;
-    println!(
-        "Read {:?} characters.",
-        match std::io::stdin().read_line(&mut user_input) {
-            Ok(n) => {
-                n_as_string = n.to_string();
-                n_as_string.as_str()
-            }
-            Err(error) => "<undefined>",
-        }
-    );
-}
-
 fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult {
     let FunctionExpr { params, body, .. } = function;
     let mut function_type = FunctionType {
@@ -240,7 +225,6 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
         }
     } else {
         result.chain(infer_expr(*value, context));
-        dbg!(symbol.display(context));
         if result.is_ok() {
             context
                 .type_database

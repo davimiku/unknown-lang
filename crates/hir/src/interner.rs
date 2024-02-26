@@ -61,6 +61,8 @@ pub struct CoreKeys {
     pub mul: Key,
     /// `/`
     pub div: Key,
+    /// `%`
+    pub rem: Key,
 
     /// `==`
     pub eq: Key,
@@ -92,6 +94,7 @@ impl CoreKeys {
             sub: interner.intern("-"),
             mul: interner.intern("*"),
             div: interner.intern("/"),
+            rem: interner.intern("%"),
 
             eq: interner.intern("=="),
             ne: interner.intern("!="),

@@ -1,6 +1,7 @@
-use std::{fmt, io};
+use std::fmt;
+use std::io::Write;
 
-// TODO: newtype all of these and impl io::Write?
+// TODO: newtype all of these and impl fmt::display?
 // TODO: once there is a name for the language, change these names
 // 'X' is a placeholder
 
@@ -11,6 +12,11 @@ pub(crate) type XInt = i64;
 pub(crate) type XFloat = f64;
 
 /// Language `Bool` is a Rust `i64`
+///
+/// repr(transparent) is mandatory for FFI through "extern "C"" functions
+/// once repr(crabi) is stabilized, we would use that and implement that repr
+/// in the codegen here too
+/// https://github.com/rust-lang/rust/pull/105586
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct XBool(i64);
@@ -20,20 +26,13 @@ pub const FALSE: XBool = XBool(0);
 
 impl From<bool> for XBool {
     fn from(value: bool) -> Self {
-        match value {
-            true => TRUE,
-            false => FALSE,
-        }
+        Self(value as i64)
     }
 }
 
 impl From<XBool> for bool {
     fn from(value: XBool) -> Self {
-        match value.0 {
-            0 => false,
-            1 => true,
-            _ => unreachable!(),
-        }
+        value.0 != 0
     }
 }
 
@@ -45,18 +44,8 @@ impl From<&XBool> for bool {
 
 impl fmt::Display for XBool {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let bool_self: bool = self.into();
-        bool_self.fmt(f)
-    }
-}
-
-impl io::Write for XBool {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        todo!()
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        let b: bool = self.into();
+        write!(f, "{b}")
     }
 }
 
@@ -66,22 +55,32 @@ pub(crate) const PRINT_BOOL: &str = "__print_bool";
 
 /// Prints an integer to stdout with a newline
 pub(crate) extern "C" fn print_int(i: XInt) {
-    // FIXME: leaving this for example, but should use io::Write impl instead
-    // because we don't need any of the formatting stuff
-    // let bytes = i.to_string().as_bytes();
-    // let s = std::io::stdout()
-    //     .lock()
-    //     .write(&bytes)
-    //     .expect("succeeded writing bytes");
-    println!("{i}");
+    let mut s = i.to_string();
+    s.push('\n');
+    let stdout = &mut std::io::stdout().lock();
+    let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
+    let _ = stdout.flush();
 }
 
 /// Prints a float to stdout with a newline
+// TODO: replace fmt::to_string() with ryu?
+// https://lib.rs/crates/ryu
 pub(crate) extern "C" fn print_float(f: XFloat) {
-    println!("{f}");
+    let mut s = f.to_string();
+    s.push('\n');
+
+    let stdout = &mut std::io::stdout().lock();
+    let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
+    let _ = stdout.flush();
 }
 
 /// Prints a bool to stdout with a newline
 pub(crate) extern "C" fn print_bool(b: XBool) {
-    println!("{b}");
+    let b: bool = b.into();
+    let mut s = b.to_string();
+    s.push('\n');
+
+    let stdout = &mut std::io::stdout().lock();
+    let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
+    let _ = stdout.flush();
 }

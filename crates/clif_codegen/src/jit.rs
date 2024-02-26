@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 use cranelift::codegen::write_function;
 use cranelift::prelude::types::*;
 use cranelift::prelude::*;
@@ -53,29 +53,20 @@ impl JIT {
     pub(crate) fn with_builtins() -> Self {
         let mut jit = JIT::default();
 
-        let print_int_sig = jit.module.make_sig_types(&[I64], &[]);
-        let print_int_id = jit
-            .module
-            .declare_function(builtins::PRINT_INT, Linkage::Import, &print_int_sig)
-            .unwrap();
-        jit.builtins
-            .insert(builtins::PRINT_INT.to_owned(), print_int_id);
+        let builtins = vec![
+            (&[I64], &[], builtins::PRINT_INT),
+            (&[F64], &[], builtins::PRINT_FLOAT),
+            (&[I64], &[], builtins::PRINT_BOOL),
+        ];
 
-        let print_float_sig = jit.module.make_sig_types(&[F64], &[]);
-        let print_float_id = jit
-            .module
-            .declare_function(builtins::PRINT_FLOAT, Linkage::Import, &print_float_sig)
-            .unwrap();
-        jit.builtins
-            .insert(builtins::PRINT_FLOAT.to_owned(), print_float_id);
-
-        let print_bool_sig = jit.module.make_sig_types(&[I64], &[]);
-        let print_bool_id = jit
-            .module
-            .declare_function(builtins::PRINT_BOOL, Linkage::Import, &print_bool_sig)
-            .unwrap();
-        jit.builtins
-            .insert(builtins::PRINT_BOOL.to_owned(), print_bool_id);
+        for (params, returns, name) in builtins {
+            let sig = jit.module.make_sig_types(params, returns);
+            let func_id = jit
+                .module
+                .declare_function(name, Linkage::Import, &sig)
+                .unwrap();
+            jit.builtins.insert(name.to_string(), func_id);
+        }
 
         jit
     }
@@ -121,7 +112,7 @@ impl JIT {
 
         self.module.define_function(func_id, &mut self.ctx)?;
 
-        #[cfg(test)]
+        #[cfg(debug_assertions)]
         {
             let mut s = String::new();
             write_function(&mut s, &self.ctx.func).unwrap_or_else(|err| {

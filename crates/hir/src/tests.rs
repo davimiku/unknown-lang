@@ -169,7 +169,7 @@ fn print_int_to_string() {
 fn string_concatenation() {
     let input = r#""Hello " ++ "World!""#;
 
-    check(input, "`++`~0.3 (\"Hello \",\"World!\",);", &[]);
+    check(input, "`++`~0.6 (\"Hello \",\"World!\",);", &[]);
 }
 
 #[test]
@@ -466,7 +466,7 @@ print a"#;
 fn concat_strings() {
     let input = r#""a" ++ "a""#;
 
-    let expected_expr = indoc! {r#"`++`~0.3 ("a","a",);"#};
+    let expected_expr = indoc! {r#"`++`~0.6 ("a","a",);"#};
 
     let expected_vars = &[];
 
@@ -480,7 +480,7 @@ let repeat = fun (s: String) -> { s ++ s }
 "#;
 
     let expected_expr = indoc! {"
-    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.3 (s~1.1,s~1.1,); };"};
+    repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.6 (s~1.1,s~1.1,); };"};
 
     let expected_vars = &[("repeat~1.0", "(String) -> String"), ("s~1.1", "String")];
 
@@ -495,7 +495,7 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.3 (s~1.1,s~1.1,); };
+        repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.6 (s~1.1,s~1.1,); };
         hello_hello~1.2 : String = repeat~1.0 (\"Hello \",);
         print~0.0 (hello_hello~1.2,);"};
 
