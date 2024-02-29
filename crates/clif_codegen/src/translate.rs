@@ -8,8 +8,12 @@
 //! than a lowering because it's between two representations at roughly the same level of
 //! abstraction.
 
+mod arithmetic;
+
 use std::{collections::HashMap, ops::Deref};
 
+use cranelift::codegen::ir::types::F64;
+use cranelift::codegen::ir::types::I64;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::Type as ClifType;
@@ -22,6 +26,8 @@ use mir::Terminator;
 use mir::{BasicBlock, BinOp, Constant, Local, Operand, Rvalue, Statement};
 
 use crate::ext::function_builder::FunctionBuilderExt;
+
+type IsConstant = bool;
 
 // TODO: decide on nomenclature for "Type"
 // currently "ClifType" means "Cranelift Type" and
@@ -218,33 +224,6 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.ins().return_(&[ret_val]);
     }
 
-    // fn translate_expr(&mut self, expr: Idx<Expr>) -> Value {
-    //     match self.context.expr(expr) {
-    //         Expr::Empty => todo!(), // self.builder.ins().nop(),
-
-    //         Expr::BoolLiteral(b) => self.builder.ins().iconst(self.types.int, (*b) as i64),
-    //         Expr::FloatLiteral(f) => self.builder.ins().f64const(*f),
-    //         Expr::IntLiteral(i) => self.builder.ins().iconst(self.types.int, *i),
-    //         Expr::StringLiteral(_) => todo!(),
-    //         Expr::ArrayLiteral(_) => todo!(),
-
-    //         Expr::Binary(expr) => self.translate_binary(expr),
-    //         Expr::Unary(_) => todo!(),
-    //         Expr::Block(expr) => self.translate_block(expr),
-    //         Expr::Call(_) => todo!(),
-    //         Expr::VarRef(_) => todo!(),
-    //         Expr::UnresolvedVarRef { .. } => unreachable!(),
-    //         Expr::Path(_) => todo!(),
-    //         Expr::IndexInt(_) => todo!(),
-    //         // will not need this hack after implementing MIR (control flow graph)
-    //         Expr::Function(f) => unreachable!("function would have already been translated"),
-    //         Expr::VarDef(_) => todo!(),
-    //         Expr::If(_) => todo!(),
-    //         Expr::Statement(expr) => self.translate_expr(*expr),
-    //         Expr::ReturnStatement(_) => todo!(),
-    //     }
-    // }
-
     fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
         match rvalue {
             Rvalue::Use(op) => self.operand_to_value(op),
@@ -256,141 +235,62 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_binary_op(&mut self, binop: &BinOp, ops: &(Operand, Operand)) -> Value {
         let (lhs, rhs) = ops;
 
-        let lhs_ty = self.op_type_idx(lhs);
-        let rhs_ty = self.op_type_idx(rhs);
-        assert_eq!(lhs_ty, rhs_ty);
-        assert_eq!(self.context.type_(lhs_ty), self.context.type_(rhs_ty));
-
-        let lhs = self.operand_to_value(lhs);
-        let rhs = self.operand_to_value(rhs);
         match binop {
-            BinOp::Add => self.emit_add(lhs_ty, lhs, rhs),
-            BinOp::Sub => self.emit_sub(lhs_ty, lhs, rhs),
-            BinOp::Mul => self.emit_mul(lhs_ty, lhs, rhs),
-            BinOp::Div => self.emit_div(lhs_ty, lhs, rhs),
+            BinOp::Add => self.emit_add(lhs, rhs),
+            BinOp::Sub => self.emit_sub(lhs, rhs),
+            BinOp::Mul => self.emit_mul(lhs, rhs),
+            BinOp::Div => self.emit_div(lhs, rhs),
             BinOp::Rem => self.emit_rem(lhs, rhs),
-            BinOp::Eq => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::Equal),
-            BinOp::Ne => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::NotEqual),
-            BinOp::Lt => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedLessThan),
-            BinOp::Le => {
-                self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedLessThanOrEqual)
-            }
-            BinOp::Gt => self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedGreaterThan),
-            BinOp::Ge => {
-                self.emit_comparison(lhs_ty, rhs_ty, lhs, rhs, IntCC::SignedGreaterThanOrEqual)
-            }
+            BinOp::Eq => self.emit_comparison(lhs, rhs, IntCC::Equal),
+            BinOp::Ne => self.emit_comparison(lhs, rhs, IntCC::NotEqual),
+            BinOp::Lt => self.emit_comparison(lhs, rhs, IntCC::SignedLessThan),
+            BinOp::Le => self.emit_comparison(lhs, rhs, IntCC::SignedLessThanOrEqual),
+            BinOp::Gt => self.emit_comparison(lhs, rhs, IntCC::SignedGreaterThan),
+            BinOp::Ge => self.emit_comparison(lhs, rhs, IntCC::SignedGreaterThanOrEqual),
         }
     }
 
-    fn emit_add(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-        let ty = self.context.type_(ty);
-        if ty.is_float() {
-            self.builder.ins().fadd(lhs, rhs)
-        } else if ty.is_int() {
-            self.builder.ins().iadd(lhs, rhs)
-        } else {
-            unreachable!("unexpected type {:?} for addition", ty)
-        }
-    }
-
-    fn emit_sub(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-        let ty = self.context.type_(ty);
-        if ty.is_float() {
-            self.builder.ins().fsub(lhs, rhs)
-        } else if ty.is_int() {
-            self.builder.ins().isub(lhs, rhs)
-        } else {
-            unreachable!("unexpected type {:?} for addition", ty)
-        }
-    }
-
-    fn emit_mul(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-        let ty = self.context.type_(ty);
-        if ty.is_float() {
-            self.builder.ins().fmul(lhs, rhs)
-        } else if ty.is_int() {
-            self.builder.ins().imul(lhs, rhs)
-        } else {
-            unreachable!("unexpected type {:?} for addition", ty)
-        }
-    }
-
-    fn emit_div(&mut self, ty: Idx<HType>, lhs: Value, rhs: Value) -> Value {
-        let ty = self.context.type_(ty);
-        if ty.is_float() {
-            self.builder.ins().fdiv(lhs, rhs)
-        } else if ty.is_int() {
-            // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
-            // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
-            self.builder.ins().sdiv(lhs, rhs)
-        } else {
-            unreachable!("unexpected type {:?} for addition", ty)
-        }
-    }
-
-    fn emit_rem(&mut self, lhs: Value, rhs: Value) -> Value {
-        // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
-        // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
-        self.builder.ins().srem(lhs, rhs)
-    }
-
-    fn emit_comparison(
-        &mut self,
-        lhs_ty: Idx<HType>,
-        rhs_ty: Idx<HType>,
-        lhs: Value,
-        rhs: Value,
-        comparison: IntCC,
-    ) -> Value {
-        let lhs_ty = self.context.type_(lhs_ty);
-        let rhs_ty = self.context.type_(rhs_ty);
+    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: IntCC) -> Value {
+        let lhs_ty = self.op_type(lhs);
+        let rhs_ty = self.op_type(rhs);
 
         if lhs_ty.is_float() {
-            self.builder.ins().fcmp(FloatCC::Equal, lhs, rhs)
+            let lhs_val = self.operand_to_value(lhs);
+            let rhs_val = self.operand_to_value(rhs);
+            self.builder.ins().fcmp(FloatCC::Equal, lhs_val, rhs_val)
         } else if lhs_ty.is_int() {
-            self.emit_int_comparison(lhs_ty, rhs_ty, lhs, rhs, comparison)
+            self.emit_int_comparison(lhs, rhs, comparison)
         } else {
             unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
         }
     }
 
-    fn emit_int_comparison(
-        &mut self,
-        lhs_ty: &HType,
-        rhs_ty: &HType,
-        lhs: Value,
-        rhs: Value,
-        comparison: IntCC,
-    ) -> Value {
-        let val_i8 = match (lhs_ty, rhs_ty) {
-            (HType::IntLiteral(imm1), HType::IntLiteral(imm2)) => {
-                self.emit_int_constant_comparison(*imm1, *imm2, comparison)
-            }
-            (HType::IntLiteral(imm), HType::Int) => {
-                self.builder.ins().icmp_imm(comparison, rhs, *imm)
-            }
-            (HType::Int, HType::IntLiteral(imm)) => {
-                self.builder.ins().icmp_imm(comparison, lhs, *imm)
-            }
-            (HType::Int, HType::Int) => self.builder.ins().icmp(comparison, lhs, rhs),
+    fn emit_int_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: IntCC) -> Value {
+        // TODO: check for constants
+        //  - if lhs and rhs are constant, fold to a bool_const
+        //  - if rhs is a constant, emit icmp_imm
+        //  - if lhs is a constant, invert the condition and emit icmp_imm
+        //  - otherwise emit icmp
+        let lhs_val = self.operand_to_value(lhs);
+        let rhs_val = self.operand_to_value(rhs);
 
-            _ => unreachable!("expected integer, got {lhs_ty:?} and {rhs_ty:?}"),
-        };
+        let val_i8 = self.builder.ins().icmp(comparison, lhs_val, rhs_val);
         self.builder.ins().sextend(self.types.bool, val_i8)
     }
 
     fn emit_int_constant_comparison(&mut self, lhs: i64, rhs: i64, comparison: IntCC) -> Value {
-        match comparison {
-            IntCC::Equal => self.builder.bool_const(lhs == rhs),
-            IntCC::NotEqual => self.builder.bool_const(lhs != rhs),
-            IntCC::SignedLessThan => self.builder.bool_const(lhs < rhs),
-            IntCC::SignedLessThanOrEqual => self.builder.bool_const(lhs <= rhs),
-            IntCC::SignedGreaterThan => self.builder.bool_const(lhs > rhs),
-            IntCC::SignedGreaterThanOrEqual => self.builder.bool_const(lhs >= rhs),
+        self.builder.bool_const(match comparison {
+            IntCC::Equal => lhs == rhs,
+            IntCC::NotEqual => lhs != rhs,
+            IntCC::SignedLessThan => lhs < rhs,
+            IntCC::SignedLessThanOrEqual => lhs <= rhs,
+            IntCC::SignedGreaterThan => lhs > rhs,
+            IntCC::SignedGreaterThanOrEqual => lhs >= rhs,
             _ => unreachable!(),
-        }
+        })
     }
 
+    // TODO: better way to use the return type here or determine this earlier?
     fn operand_to_value(&mut self, op: &Operand) -> Value {
         match op {
             Operand::Copy(p) => {
@@ -423,6 +323,10 @@ impl<'a> FunctionTranslator<'a> {
 
             _ => todo!(),
         }
+    }
+
+    fn op_type(&self, op: &Operand) -> &HType {
+        self.context.type_(self.op_type_idx(op))
     }
 
     fn op_type_idx(&self, op: &Operand) -> Idx<HType> {

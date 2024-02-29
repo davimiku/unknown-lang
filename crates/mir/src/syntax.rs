@@ -475,6 +475,20 @@ impl Operand {
             },
         }
     }
+
+    pub fn as_constant(&self) -> Option<&Constant> {
+        match self {
+            Operand::Constant(c) => Some(c),
+            Operand::Copy(_) | Operand::Move(_) => None,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<&i64> {
+        self.as_constant().and_then(|constant| match constant {
+            Constant::Int(i) => Some(i),
+            Constant::Float(_) | Constant::StringLiteral(_) => None,
+        })
+    }
 }
 
 #[derive(Debug)]

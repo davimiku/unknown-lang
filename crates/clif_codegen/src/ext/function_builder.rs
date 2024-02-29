@@ -1,4 +1,7 @@
-use cranelift::prelude::*;
+use cranelift::{codegen::ir::types::I64, prelude::*};
+use mir::Operand;
+
+type IsConstant = bool;
 
 pub(crate) trait FunctionBuilderExt {
     fn bool_const(&mut self, val: bool) -> Value;

@@ -86,7 +86,7 @@ fn int_add_param_and_constant() {
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
     assert_eq!(code_fn((10,)), 16);
-    assert_eq!(code_fn((-24,)), -16);
+    assert_eq!(code_fn((-22,)), -16);
 }
 
 #[test]
@@ -260,6 +260,19 @@ fn int_greater_than() {
     assert_eq!(code_fn((17, 16)), TRUE);
     assert_eq!(code_fn((16, 16)), FALSE);
     assert_eq!(code_fn((15, 16)), FALSE);
+}
+
+#[test]
+fn int_greater_than_imm() {
+    let input = "fun (a: Int) -> { a > 16 }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((17,)), TRUE);
+    assert_eq!(code_fn((16,)), FALSE);
+    assert_eq!(code_fn((15,)), FALSE);
 }
 
 #[test]
