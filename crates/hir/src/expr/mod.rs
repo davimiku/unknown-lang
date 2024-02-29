@@ -227,6 +227,7 @@ pub struct CallExpr {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionExpr {
     /// Parameters to the function
+    // TODO: make Box<[T]> to be immutable (and one less word of memory)
     pub params: Vec<FunctionParam>,
 
     /// Body of the function

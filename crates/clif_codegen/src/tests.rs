@@ -6,6 +6,11 @@
 /// and must be the *exact* Input and Output types of the function
 /// that was compiled.
 ///
+/// The Input (I) type must be a tuple. For a function with one parameter,
+/// although a bare type parameter may technically work, by convention it
+/// must be a one element tuple. For a zero parameter function, this is `()`.
+///
+///
 /// This is *extremely* unsafe if used incorrectly.
 unsafe fn to_fn<I, O>(code_ptr: *const u8) -> fn(I) -> O {
     std::mem::transmute::<_, fn(I) -> O>(code_ptr)
@@ -53,9 +58,9 @@ fn identity_int() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(16), 16);
+    assert_eq!(code_fn((16,)), 16);
 }
 
 #[test]
@@ -67,9 +72,9 @@ fn identity_int_with_variable() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(16), 16);
+    assert_eq!(code_fn((16,)), 16);
 }
 
 #[test]
@@ -78,10 +83,10 @@ fn int_add_param_and_constant() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(10), 16);
-    assert_eq!(code_fn(-24), -16);
+    assert_eq!(code_fn((10,)), 16);
+    assert_eq!(code_fn((-24,)), -16);
 }
 
 #[test]
@@ -90,10 +95,10 @@ fn int_sub_param_and_constant() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(26), 16);
-    assert_eq!(code_fn(-16), -26);
+    assert_eq!(code_fn((26,)), 16);
+    assert_eq!(code_fn((-16,)), -26);
 }
 
 #[test]
@@ -102,10 +107,10 @@ fn int_mul_param_and_constant() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(2), 16);
-    assert_eq!(code_fn(-2), -16);
+    assert_eq!(code_fn((2,)), 16);
+    assert_eq!(code_fn((-2,)), -16);
 }
 
 #[test]
@@ -167,10 +172,31 @@ fn remainder_params() {
 }
 
 #[test]
-fn is_odd() {
-    let input = "fun (a: Int) -> { a % 2 != 0 }";
+fn is_even() {
+    let input = "fun (a: Int) -> { a % 2 == 0 }";
 
     let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((16,)), TRUE);
+    assert_eq!(code_fn((15,)), FALSE);
+
+    assert_eq!(code_fn((-16,)), TRUE);
+    assert_eq!(code_fn((-15,)), FALSE);
+
+    assert_eq!(code_fn((0,)), TRUE);
+}
+
+#[test]
+fn much_arithmetic() {
+    let input = "fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
+
+    let code_ptr = compile_function(input).unwrap();
+
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
+
+    assert_eq!(code_fn((3, 10)), 16);
 }
 
 #[test]
@@ -258,8 +284,8 @@ fn variable_and_addition() {
 
     let code_ptr = compile_function(input).unwrap();
 
-    let code_fn = unsafe { to_fn::<XInt, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
-    assert_eq!(code_fn(6), 16);
-    assert_eq!(code_fn(-4), 6);
+    assert_eq!(code_fn((6,)), 16);
+    assert_eq!(code_fn((-4,)), 6);
 }

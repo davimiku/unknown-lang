@@ -216,6 +216,52 @@ fn parse_binary_function_with_param_and_return_types() {
 }
 
 #[test]
+fn parse_rem_and_equals() {
+    check_expr(
+        "fun (a: Int) -> { a % 2 == 0 }",
+        expect![[r#"
+FunExpr@0..30
+  FunKw@0..3 "fun"
+  Emptyspace@3..4 " "
+  FunParamList@4..13
+    LParen@4..5 "("
+    FunParam@5..11
+      Ident@5..6
+        Ident@5..6 "a"
+      Colon@6..7 ":"
+      Emptyspace@7..8 " "
+      TypeExpr@8..11
+        Ident@8..11
+          Ident@8..11 "Int"
+    RParen@11..12 ")"
+    Emptyspace@12..13 " "
+  Arrow@13..15 "->"
+  Emptyspace@15..16 " "
+  FunBody@16..30
+    BlockExpr@16..30
+      LBrace@16..17 "{"
+      Emptyspace@17..18 " "
+      InfixExpr@18..29
+        InfixExpr@18..24
+          PathExpr@18..20
+            Ident@18..20
+              Ident@18..19 "a"
+              Emptyspace@19..20 " "
+          Percent@20..21 "%"
+          Emptyspace@21..22 " "
+          IntLiteralExpr@22..24
+            IntLiteral@22..23 "2"
+            Emptyspace@23..24 " "
+        EqualsEquals@24..26 "=="
+        Emptyspace@26..27 " "
+        IntLiteralExpr@27..29
+          IntLiteral@27..28 "0"
+          Emptyspace@28..29 " "
+      RBrace@29..30 "}""#]],
+    )
+}
+
+#[test]
 fn parse_immediately_invoked_function_expression() {
     check_expr(
         "(fun () -> {}) ()",

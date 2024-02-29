@@ -1,4 +1,4 @@
-use hir::{Key, Type, ValueSymbol};
+use hir::{IntrinsicExpr, Key, Type, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
 
 // rustc calls a function "Body"
@@ -154,6 +154,12 @@ pub enum Statement {
     // Noop,
 }
 
+impl Statement {
+    pub(crate) fn assign(place: Place, rvalue: Rvalue) -> Self {
+        Self::Assign(Box::new((place, rvalue)))
+    }
+}
+
 /// Source-order index of a variant in a union type
 #[derive(Debug)]
 pub struct VariantIdx {
@@ -230,6 +236,15 @@ impl Terminator {
 pub struct Place {
     pub local: Idx<Local>,
     pub projection: Vec<PlaceElem>,
+}
+
+impl From<Idx<Local>> for Place {
+    fn from(local: Idx<Local>) -> Self {
+        Self {
+            local,
+            projection: vec![],
+        }
+    }
 }
 
 type PlaceElem = ProjectionElem<Idx<Local>, hir::Type>;
@@ -403,6 +418,24 @@ pub enum BinOp {
 
     /// Greater than `>`
     Gt,
+}
+
+impl From<&IntrinsicExpr> for BinOp {
+    fn from(value: &IntrinsicExpr) -> Self {
+        match value {
+            IntrinsicExpr::Add => BinOp::Add,
+            IntrinsicExpr::Sub => BinOp::Sub,
+            IntrinsicExpr::Mul => BinOp::Mul,
+            IntrinsicExpr::Div => BinOp::Div,
+            IntrinsicExpr::Rem => BinOp::Rem,
+            IntrinsicExpr::Eq => BinOp::Eq,
+            IntrinsicExpr::Ne => BinOp::Ne,
+            IntrinsicExpr::Lt => BinOp::Lt,
+            IntrinsicExpr::Le => BinOp::Le,
+            IntrinsicExpr::Gt => BinOp::Gt,
+            IntrinsicExpr::Ge => BinOp::Ge,
+        }
+    }
 }
 
 #[derive(Debug)]
