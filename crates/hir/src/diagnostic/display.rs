@@ -28,16 +28,16 @@ impl ContextDisplay for TypeDiagnosticVariant {
         match self {
             V::ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
             V::BinaryMismatch { op, lhs, rhs } => {
-                let lhs = context.type_(*lhs);
-                let rhs = context.type_(*rhs);
                 binary_mismatch_message(*op, &lhs.display(context), &rhs.display(context))
             }
             V::CalleeNotFunction { actual } => todo!(),
             V::CannotConvertIntoString { actual } => todo!(),
             V::Empty { expr } => todo!(),
             V::Incompatible { a, b } => todo!(),
-            V::NoOverloadFound { name } => todo!(),
-            V::TypeMismatch { expected, actual } => todo!(),
+            V::NoMatchingSignature { .. } => todo!(),
+            V::TypeMismatch { expected, actual } => {
+                type_mismatch_message(&expected.display(context), &actual.display(context))
+            }
             V::UndefinedFunction { name } => todo!(),
             V::UnresolvedVarRef { key } => {
                 let name = context.lookup(*key);
@@ -61,4 +61,8 @@ pub fn binary_mismatch_message(op: BinaryOp, lhs: &str, rhs: &str) -> String {
 
 pub fn callee_not_function_message(actual: &str) -> String {
     format!("Tried to call a function, but found an expression with type {actual}")
+}
+
+pub fn type_mismatch_message(expected: &str, actual: &str) -> String {
+    format!("Expected type {expected}, received type {actual}")
 }

@@ -5,6 +5,7 @@
 use la_arena::Idx;
 
 use super::infer::infer_expr;
+use super::types::FuncSignature;
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType};
 
@@ -89,6 +90,17 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 /// let return_covariance: Int -> String = (a: Int) -> { "hello" }
 /// ```
 fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) -> bool {
+    for a_signature in &a.signatures {
+        for b_signature in &b.signatures {
+            if is_signature_subtype(a_signature, b_signature, context) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_signature_subtype(a: &FuncSignature, b: &FuncSignature, context: &Context) -> bool {
     let params_check = a
         .params
         .iter()

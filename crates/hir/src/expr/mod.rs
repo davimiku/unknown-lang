@@ -104,6 +104,7 @@ impl Expr {
             callee,
             args,
             symbol,
+            sig: CallExprSignature::default(), // is set later in type inference
         })
     }
 }
@@ -217,11 +218,28 @@ pub struct CallExpr {
     /// Expression that is being called as a function
     pub callee: Idx<Expr>,
 
+    /// Index number of the resolved function signature for this call
+    // TODO: Arena allocate FuncSignatures and use Option<Idx<FuncSignature>> here?
+    pub sig: CallExprSignature,
+
     /// Arguments that the function are applied to
     pub args: Box<[Idx<Expr>]>,
 
     /// Symbol being called, if any. This would be None for anonymous function calls
     pub symbol: Option<ValueSymbol>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub enum CallExprSignature {
+    /// The signature could not be resolved
+    #[default]
+    Unresolved,
+
+    /// There was only one possible signature
+    ResolvedOnly,
+
+    /// Multiple signatures were possible and has been resolved to this index
+    Resolved(u32),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -300,6 +318,9 @@ pub enum IntrinsicExpr {
 
     /// Remainder `%`
     Rem,
+
+    /// Concatenation `++`
+    Concat,
 
     /// Equality `==`
     Eq,

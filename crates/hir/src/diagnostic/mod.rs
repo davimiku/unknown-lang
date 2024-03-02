@@ -100,6 +100,13 @@ impl TypeDiagnostic {
             range,
         }
     }
+
+    pub fn no_matching_signature(range: TextRange) -> Self {
+        Self {
+            variant: TypeDiagnosticVariant::NoMatchingSignature {},
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -132,9 +139,8 @@ pub enum TypeDiagnosticVariant {
         a: Idx<Type>,
         b: Idx<Type>,
     },
-    NoOverloadFound {
-        // TODO: use interned key?
-        name: String,
+    NoMatchingSignature {
+        // TODO: decide what information is needed in this diagnostic
     },
     TypeMismatch {
         expected: Idx<Type>,

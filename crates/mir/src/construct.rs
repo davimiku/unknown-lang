@@ -1,6 +1,6 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
-use hir::{CallExpr, Context, ContextDisplay, Expr, FunctionParam, Type, ValueSymbol, VarDefExpr};
+use hir::{CallExpr, Context, Expr, FunctionParam, Type, ValueSymbol, VarDefExpr};
 use la_arena::Idx;
 
 use crate::syntax::{
@@ -69,7 +69,7 @@ impl Builder {
                 if self.scope_depth == 0 {
                     Some(self.current_function().return_place())
                 } else {
-                    todo!("capture the assignplace in `let a = {{ ... }}`")
+                    todo!("capture the assignplace of `let a = {{ ... }}`")
                 }
             } else {
                 None
@@ -125,15 +125,20 @@ impl Builder {
         let statement_expr = context.expr(statement_expr);
 
         match statement_expr {
-            Expr::BoolLiteral(_) | Expr::FloatLiteral(_) | Expr::StringLiteral(_) => todo!(),
+            Expr::BoolLiteral(b) => {
+                self.construct_statement_constant(assign_place, Constant::bool(*b))
+            }
+
+            Expr::FloatLiteral(f) => {
+                self.construct_statement_constant(assign_place, Constant::Float(*f))
+            }
+
+            Expr::StringLiteral(s) => {
+                self.construct_statement_constant(assign_place, Constant::String(*s))
+            }
 
             Expr::IntLiteral(i) => {
-                if let Some(assign_place) = assign_place {
-                    let operand = Operand::Constant(Constant::Int(*i));
-                    let rvalue = Rvalue::Use(operand);
-                    let assign = Statement::assign(assign_place, rvalue);
-                    self.current_block_mut().statements.push(assign);
-                }
+                self.construct_statement_constant(assign_place, Constant::Int(*i))
             }
 
             // can't ignore because elements may cause side-effects
@@ -164,6 +169,9 @@ impl Builder {
             }
 
             Expr::Call(call) => {
+                // FIXME: this should return Option<Rvalue> or needs to be re-thought completely
+                // a Call will normally construct a terminator, the Rvalue is a special case for
+                // builtin operators
                 let rvalue = self.construct_call_rvalue(call, context);
 
                 if let Some(place) = assign_place {
@@ -203,6 +211,15 @@ impl Builder {
                 eprintln!("Compiler Bug (MIR): Unknown expression {statement_expr:?}");
                 unreachable!()
             }
+        }
+    }
+
+    fn construct_statement_constant(&mut self, assign_place: Option<Place>, constant: Constant) {
+        if let Some(assign_place) = assign_place {
+            let operand = Operand::Constant(constant);
+            let rvalue = Rvalue::Use(operand);
+            let assign = Statement::assign(assign_place, rvalue);
+            self.current_block_mut().statements.push(assign);
         }
     }
 

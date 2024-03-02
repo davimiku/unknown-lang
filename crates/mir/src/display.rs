@@ -280,7 +280,7 @@ impl MirWrite for Constant {
         match self {
             Constant::Int(i) => write!(buf, "{i}"),
             Constant::Float(f) => write!(buf, "{f}"),
-            Constant::StringLiteral(key) => write!(buf, "\"{}\"", context.lookup(*key)),
+            Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
         }
     }
 }

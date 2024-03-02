@@ -60,8 +60,8 @@ impl Type {
         Self::Array(ArrayType { of })
     }
 
-    pub(crate) fn func(params: Vec<Idx<Type>>, return_ty: Idx<Type>) -> Self {
-        Self::Function(FunctionType { params, return_ty })
+    pub(crate) fn func(signatures: Vec<FuncSignature>) -> Self {
+        Self::Function(FunctionType { signatures })
     }
 }
 
@@ -100,11 +100,63 @@ impl ContextDisplay for Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionType {
-    pub params: Vec<Idx<Type>>,
-    pub return_ty: Idx<Type>,
+    // TODO: use a SmallVec or something like that because
+    // most functions probably have a single signature
+    pub signatures: Vec<FuncSignature>,
 }
 
 impl ContextDisplay for FunctionType {
+    fn display(&self, context: &Context) -> String {
+        if self.signatures.len() == 1 {
+            return self.signatures[0].display(context);
+        }
+        let mut s = String::new();
+        for signature in &self.signatures {
+            s.push_str("| ");
+            s.push_str(&signature.display(context));
+            s.push('\n');
+        }
+        s
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuncSignature {
+    pub params: Box<[Idx<Type>]>,
+    pub return_ty: Idx<Type>,
+}
+
+impl From<((), Idx<Type>)> for FuncSignature {
+    fn from(value: ((), Idx<Type>)) -> Self {
+        let (params, return_ty) = value;
+        Self {
+            params: Box::new([]),
+            return_ty,
+        }
+    }
+}
+
+impl From<((Idx<Type>,), Idx<Type>)> for FuncSignature {
+    fn from(value: ((Idx<Type>,), Idx<Type>)) -> Self {
+        let (params, return_ty) = value;
+        Self {
+            params: Box::new([params.0]),
+            return_ty,
+        }
+    }
+}
+
+impl From<((Idx<Type>, Idx<Type>), Idx<Type>)> for FuncSignature {
+    fn from(value: ((Idx<Type>, Idx<Type>), Idx<Type>)) -> Self {
+        let (params, return_ty) = value;
+        Self {
+            params: Box::new([params.0, params.1]),
+            return_ty,
+        }
+    }
+}
+
+impl ContextDisplay for FuncSignature {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
 

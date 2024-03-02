@@ -63,14 +63,13 @@ pub(crate) extern "C" fn print_int(i: XInt) {
 }
 
 /// Prints a float to stdout with a newline
-// TODO: replace fmt::to_string() with ryu?
-// https://lib.rs/crates/ryu
 pub(crate) extern "C" fn print_float(f: XFloat) {
-    let mut s = f.to_string();
-    s.push('\n');
+    let mut buffer = ryu::Buffer::new();
+    let s = buffer.format(f);
 
     let stdout = &mut std::io::stdout().lock();
     let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
+    let _ = stdout.write(&[b'\n']).expect("succeeded writing newline");
     let _ = stdout.flush();
 }
 

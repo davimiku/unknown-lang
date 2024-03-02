@@ -93,28 +93,26 @@ impl FunctionTranslator<'_> {
     }
 
     pub(super) fn emit_div(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
+        let lhs_val = self.operand_to_value(lhs);
+        let rhs_val = self.operand_to_value(rhs);
         let lhs_ty = self.op_type(lhs);
         let rhs_ty = self.op_type(rhs);
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
         match (lhs_ty, rhs_ty) {
-            (HType::Float, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
-                self.builder.ins().fmul(lhs_val, rhs_val)
-            }
+            (HType::Float, HType::Float) => self.builder.ins().fdiv(lhs_val, rhs_val),
             (HType::Float, HType::Int) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
                 let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
-                self.builder.ins().fmul(lhs_val, rhs_val)
+                self.builder.ins().fdiv(lhs_val, rhs_val)
             }
             (HType::Int, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
                 let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
-                self.builder.ins().fmul(lhs_val, rhs_val)
+                self.builder.ins().fdiv(lhs_val, rhs_val)
             }
-            (HType::Int, HType::Int) => self.imul(lhs, rhs),
+            (HType::Int, HType::Int) => {
+                let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
+                let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
+                self.builder.ins().fdiv(lhs_val, rhs_val)
+            }
 
             _ => unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for addition",),
         }
@@ -129,6 +127,7 @@ impl FunctionTranslator<'_> {
 
         // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
         // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
+        // (implement these in MIR first)
         self.builder.ins().srem(lhs_val, rhs_val)
     }
 

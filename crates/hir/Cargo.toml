@@ -13,6 +13,7 @@ la-arena = "0.3.1"
 lasso = "0.7.2"
 lsp_diagnostic = { path = "../lsp_diagnostic" }
 parser = { path = "../parser" }
+ryu = "1.0"
 text-size = "1.1.1"
 util_macros = { path = "../util_macros" }
 

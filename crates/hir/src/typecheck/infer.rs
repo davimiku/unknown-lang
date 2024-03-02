@@ -6,16 +6,18 @@
 
 use la_arena::Idx;
 use text_size::TextRange;
+use util_macros::assert_matches;
 
+use super::types::FuncSignature;
 use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
-    ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionParam, IfExpr, IndexIntExpr,
-    UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    ArrayLiteralExpr, BlockExpr, CallExprSignature, Expr, FunctionExpr, FunctionParam, IfExpr,
+    IndexIntExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
-use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType};
+use crate::{ArrayType, CallExpr, Context, FunctionType};
 
 pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult {
     if let Some(already_inferred_type) = context.type_database.expr_types.get(expr_idx) {
@@ -29,7 +31,8 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
     let range = *range;
 
     // each branch should mutate `result`
-    // TODO: more ergonomic if branches return a value or is this fine?
+    // currently, mutating `expr` is possible because it's owned here, but it's a clone
+    // so mutations won't have any effect
     match expr {
         Expr::Empty => {
             result.push_diag(TypeDiagnostic {
@@ -60,7 +63,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         Expr::Unary(expr) => result.chain(infer_unary(expr_idx, &expr, context)),
         Expr::Block(block) => result.chain(infer_block(&block, context)),
-        Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
+        Expr::Call(mut expr) => result.chain(infer_call(expr_idx, &mut expr, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
         Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
@@ -151,25 +154,25 @@ fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
 
 fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult {
     let FunctionExpr { params, body, .. } = function;
-    let mut function_type = FunctionType {
-        params: vec![],
-        return_ty: context.core_types().unknown,
-    };
 
     let mut result = TypeResult::new(&context.type_database);
 
+    let mut param_tys = Vec::with_capacity(params.len());
     for param in params {
         result.chain(infer_function_param(param, context));
-        function_type.params.push(result.ty);
+        param_tys.push(result.ty);
     }
 
     let return_type = infer_expr(*body, context);
     result.chain(return_type);
-    function_type.return_ty = result.ty;
+    let return_ty = result.ty;
 
-    result.ty = context
-        .type_database
-        .alloc_type(Type::Function(function_type));
+    let signature = FuncSignature {
+        params: param_tys.into(),
+        return_ty,
+    };
+    let func_ty = Type::func(vec![signature]);
+    result.ty = context.type_database.alloc_type(func_ty);
     result
 }
 
@@ -268,24 +271,73 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
 fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> TypeResult {
     let range = context.database.range_of_expr(expr_idx);
     let CallExpr { callee, args, .. } = expr;
-    let mut result = TypeResult::new(&context.type_database);
 
+    let mut result = TypeResult::new(&context.type_database);
     result.chain(infer_expr(*callee, context));
 
     let result_type = context.type_(result.ty).clone();
-    if let Type::Function(FunctionType { params, return_ty }) = result_type {
-        if args.len() != params.len() {
-            result.push_diag(TypeDiagnostic::num_args_mismatch(
-                params.len(),
-                args.len(),
-                range,
-            ));
-        }
-        for (arg, param) in args.iter().zip(params) {
-            result.check(*arg, param, context)
+    if let Type::Function(FunctionType { signatures }) = result_type {
+        if signatures.len() == 1 {
+            let FuncSignature { params, return_ty } = &signatures[0];
+            if args.len() != params.len() {
+                result.push_diag(TypeDiagnostic::num_args_mismatch(
+                    params.len(),
+                    args.len(),
+                    range,
+                ));
+            }
+
+            for (arg, param) in args.iter().zip(params.iter()) {
+                result.check(*arg, *param, context)
+            }
+
+            // regardless of whether the args are correct or not, when there is a single signature
+            // it is used so that these type errors remain localized
+            result.ty = *return_ty;
+
+            // TODO: the `&CallExpr` passed in here is a clone so mutating does nothing
+            // which is why the expr is being pulled out by idx here
+            // would we rather hold the resolved signature in a separate arena/structure?
+            // could be an ArenaMap of Idx<Expr> -> Idx<FuncSignature>
+            let expr_mut = context.expr_mut(expr_idx);
+            let expr_mut = assert_matches!(expr_mut, Expr::Call);
+            expr_mut.sig = CallExprSignature::ResolvedOnly;
+
+            return result;
         }
 
-        result.ty = return_ty;
+        // resolve signature if there are multiple possibilities
+        for (i, signature) in signatures.iter().enumerate() {
+            let FuncSignature { params, return_ty } = signature;
+            // 1. compare number of args vs. params
+            if params.len() != args.len() {
+                continue;
+            };
+            // 2. compare the type of each param
+            let mut signature_result = TypeResult::new(&context.type_database);
+            for (arg, param) in args.iter().zip(params.iter()) {
+                signature_result.check(*arg, *param, context)
+            }
+
+            if signature_result.is_ok() {
+                result.chain(signature_result);
+                result.ty = *return_ty;
+
+                // TODO: the `&CallExpr` passed in here is a clone so mutating does nothing
+                // which is why the expr is being pulled out by idx here
+                // would we rather hold the resolved signature in a separate arena/structure?
+                // could be an ArenaMap of Idx<Expr> -> Idx<FuncSignature>
+                let expr_mut = context.expr_mut(expr_idx);
+                let expr_mut = assert_matches!(expr_mut, Expr::Call);
+                expr_mut.sig = CallExprSignature::Resolved(i as u32);
+                return result;
+            }
+            // type judgements are discarded if not ok, and try the next signature
+        }
+
+        result.push_diag(TypeDiagnostic::no_matching_signature(range));
+
+        // TODO: set result.ty to Error? or leave it as Unknown?
     } else {
         result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
         result.ty = context.core_types().error

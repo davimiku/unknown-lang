@@ -3,6 +3,7 @@ mod diagnostic;
 mod display;
 mod expr;
 mod interner;
+mod intrinsics;
 mod lowering_context;
 mod scope;
 mod type_expr;
@@ -18,7 +19,7 @@ pub use expr::{
     IndexIntExpr, IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
-pub use typecheck::{ArrayType, FunctionType, Type};
+pub use typecheck::{ArrayType, FuncSignature, FunctionType, Type};
 
 use database::Database;
 
@@ -87,9 +88,7 @@ fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
 
 pub fn lower(input: &str, target: LowerTarget) -> (Idx<Expr>, Context) {
     let parsed = parser::parse(input);
-    if !parsed.errors().is_empty() {
-        panic!("found errors while parsing");
-    }
+    assert!(parsed.errors().is_empty());
 
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 

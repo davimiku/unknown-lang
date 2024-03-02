@@ -5,7 +5,7 @@ use crate::{
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
-use super::FunctionParam;
+use super::{CallExprSignature, FunctionParam};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -54,7 +54,10 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         }
 
         Expr::BoolLiteral(b) => s.push_str(&b.to_string()),
-        Expr::FloatLiteral(f) => s.push_str(&f.to_string()),
+        Expr::FloatLiteral(f) => {
+            let mut buffer = ryu::Buffer::new();
+            s.push_str(buffer.format_finite(*f))
+        }
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.lookup(*key))),
         Expr::ArrayLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
@@ -100,8 +103,12 @@ fn fmt_array_literal(s: &mut String, array: &ArrayLiteralExpr, context: &Context
 }
 
 fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
-    let CallExpr { callee, args, .. } = call;
+    let CallExpr {
+        callee, args, sig, ..
+    } = call;
     fmt_idx_expr(s, *callee, context, indent);
+    s.push_str(&sig.display(context));
+
     s.push(' ');
     s.push('(');
     for arg in args.iter() {
@@ -158,7 +165,7 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
                 let ty = context.type_database.get_type_expr_type(ty);
                 s.push_str(&ty.display(context));
             }
-            None => s.push_str("~empty~"),
+            None => s.push_str("{empty}"),
         }
     }
     s.push_str(") -> ");
@@ -217,19 +224,24 @@ fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Conte
     fmt_idx_expr(s, *index, context, indent);
 }
 
+impl ContextDisplay for CallExprSignature {
+    fn display(&self, _: &Context) -> String {
+        match self {
+            CallExprSignature::Unresolved => String::from("<?>"),
+            CallExprSignature::ResolvedOnly => String::new(),
+            CallExprSignature::Resolved(i) => format!("<{i}>"),
+        }
+    }
+}
+
 impl ContextDisplay for ValueSymbol {
     fn display(&self, context: &Context) -> String {
         let name = context.lookup(context.database.value_names[self]);
         let name = match name {
-            "+" => "`+`",
-            "-" => "`-`",
-            "*" => "`*`",
-            "/" => "`/`",
-            "++" => "`++`",
-            "==" => "`==`",
-            "!=" => "`!=`",
-
-            s => s,
+            s @ ("+" | "-" | "*" | "/" | "++" | "==" | "!=" | "<" | "<=" | ">" | ">=") => {
+                format!("`{s}`")
+            }
+            s => s.to_owned(),
         };
         let ValueSymbol {
             symbol_id,

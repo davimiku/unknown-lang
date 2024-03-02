@@ -241,25 +241,28 @@ impl<'a> FunctionTranslator<'a> {
             BinOp::Mul => self.emit_mul(lhs, rhs),
             BinOp::Div => self.emit_div(lhs, rhs),
             BinOp::Rem => self.emit_rem(lhs, rhs),
-            BinOp::Eq => self.emit_comparison(lhs, rhs, IntCC::Equal),
-            BinOp::Ne => self.emit_comparison(lhs, rhs, IntCC::NotEqual),
-            BinOp::Lt => self.emit_comparison(lhs, rhs, IntCC::SignedLessThan),
-            BinOp::Le => self.emit_comparison(lhs, rhs, IntCC::SignedLessThanOrEqual),
-            BinOp::Gt => self.emit_comparison(lhs, rhs, IntCC::SignedGreaterThan),
-            BinOp::Ge => self.emit_comparison(lhs, rhs, IntCC::SignedGreaterThanOrEqual),
+            BinOp::Concat => todo!(),
+            BinOp::Eq => self.emit_comparison(lhs, rhs, Cmp::Equal),
+            BinOp::Ne => self.emit_comparison(lhs, rhs, Cmp::NotEqual),
+            BinOp::Lt => self.emit_comparison(lhs, rhs, Cmp::LessThan),
+            BinOp::Le => self.emit_comparison(lhs, rhs, Cmp::LessThanOrEqual),
+            BinOp::Gt => self.emit_comparison(lhs, rhs, Cmp::GreaterThan),
+            BinOp::Ge => self.emit_comparison(lhs, rhs, Cmp::GreaterThanOrEqual),
         }
     }
 
-    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: IntCC) -> Value {
+    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: Cmp) -> Value {
         let lhs_ty = self.op_type(lhs);
         let rhs_ty = self.op_type(rhs);
 
         if lhs_ty.is_float() {
             let lhs_val = self.operand_to_value(lhs);
             let rhs_val = self.operand_to_value(rhs);
-            self.builder.ins().fcmp(FloatCC::Equal, lhs_val, rhs_val)
+            self.builder
+                .ins()
+                .fcmp(comparison.as_float_cc(), lhs_val, rhs_val)
         } else if lhs_ty.is_int() {
-            self.emit_int_comparison(lhs, rhs, comparison)
+            self.emit_int_comparison(lhs, rhs, comparison.as_int_cc())
         } else {
             unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
         }
@@ -269,7 +272,7 @@ impl<'a> FunctionTranslator<'a> {
         // TODO: check for constants
         //  - if lhs and rhs are constant, fold to a bool_const
         //  - if rhs is a constant, emit icmp_imm
-        //  - if lhs is a constant, invert the condition and emit icmp_imm
+        //  - if lhs is a constant, invert the condition (IntCC::complement)? and emit icmp_imm
         //  - otherwise emit icmp
         let lhs_val = self.operand_to_value(lhs);
         let rhs_val = self.operand_to_value(rhs);
@@ -303,7 +306,7 @@ impl<'a> FunctionTranslator<'a> {
             Operand::Constant(c) => match c {
                 Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
                 Constant::Float(f) => self.builder.ins().f64const(*f),
-                Constant::StringLiteral(_) => todo!(),
+                Constant::String(_) => todo!(),
             },
             Operand::Move(_) => todo!(),
         }
@@ -340,7 +343,7 @@ impl<'a> FunctionTranslator<'a> {
     fn place_type_idx(&self, place: &Place) -> Idx<HType> {
         // TODO: use projections...
         let local = &self.func.locals[place.local];
-        local.ty_idx()
+        local.type_idx_of()
     }
 
     fn constant_type(&self, constant: &Constant) -> &HType {
@@ -351,7 +354,7 @@ impl<'a> FunctionTranslator<'a> {
         match constant {
             Constant::Int(_) => self.context.core_types().int,
             Constant::Float(_) => self.context.core_types().float,
-            Constant::StringLiteral(_) => todo!(),
+            Constant::String(_) => todo!(),
         }
     }
 
@@ -667,3 +670,36 @@ impl<'a> FunctionTranslator<'a> {
 //     }
 //     var
 // }
+
+enum Cmp {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+}
+
+impl Cmp {
+    fn as_int_cc(self) -> IntCC {
+        match self {
+            Cmp::Equal => IntCC::Equal,
+            Cmp::NotEqual => IntCC::NotEqual,
+            Cmp::LessThan => IntCC::SignedLessThan,
+            Cmp::LessThanOrEqual => IntCC::SignedLessThanOrEqual,
+            Cmp::GreaterThan => IntCC::SignedGreaterThan,
+            Cmp::GreaterThanOrEqual => IntCC::SignedGreaterThanOrEqual,
+        }
+    }
+
+    fn as_float_cc(self) -> FloatCC {
+        match self {
+            Cmp::Equal => FloatCC::Equal,
+            Cmp::NotEqual => FloatCC::NotEqual,
+            Cmp::LessThan => FloatCC::LessThan,
+            Cmp::LessThanOrEqual => FloatCC::LessThanOrEqual,
+            Cmp::GreaterThan => FloatCC::GreaterThan,
+            Cmp::GreaterThanOrEqual => FloatCC::GreaterThanOrEqual,
+        }
+    }
+}

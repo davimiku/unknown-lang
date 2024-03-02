@@ -106,7 +106,7 @@ impl Function {
 
     pub fn return_ty(&self) -> Idx<Type> {
         let (_, return_local) = self.return_local();
-        return_local.ty_idx()
+        return_local.type_idx_of()
     }
 }
 
@@ -247,6 +247,14 @@ impl From<Idx<Local>> for Place {
     }
 }
 
+impl Place {
+    pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
+        // TODO: include projections
+        let local = &func.locals[self.local];
+        local.type_idx_of()
+    }
+}
+
 type PlaceElem = ProjectionElem<Idx<Local>, hir::Type>;
 
 // struct Ty<'tcx>(Interned<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>);
@@ -305,7 +313,7 @@ pub struct Local {
 }
 
 impl Local {
-    pub fn ty_idx(&self) -> Idx<Type> {
+    pub fn type_idx_of(&self) -> Idx<Type> {
         self.ty
     }
 
@@ -397,6 +405,9 @@ pub enum BinOp {
     /// Division `/`
     Div,
 
+    /// Concatenation `++`
+    Concat,
+
     /// Remainder `%`
     Rem,
 
@@ -427,6 +438,7 @@ impl From<&IntrinsicExpr> for BinOp {
             IntrinsicExpr::Sub => BinOp::Sub,
             IntrinsicExpr::Mul => BinOp::Mul,
             IntrinsicExpr::Div => BinOp::Div,
+            IntrinsicExpr::Concat => BinOp::Concat,
             IntrinsicExpr::Rem => BinOp::Rem,
             IntrinsicExpr::Eq => BinOp::Eq,
             IntrinsicExpr::Ne => BinOp::Ne,
@@ -464,14 +476,14 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub fn type_of(&self, context: &hir::Context) -> Idx<Type> {
+    pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
         let core = context.core_types();
         match self {
-            Operand::Copy(place) | Operand::Move(place) => todo!(),
+            Operand::Copy(place) | Operand::Move(place) => place.type_idx_of(func, context),
             Operand::Constant(constant) => match constant {
                 Constant::Int(_) => core.int,
                 Constant::Float(_) => core.float,
-                Constant::StringLiteral(_) => core.string,
+                Constant::String(_) => core.string,
             },
         }
     }
@@ -486,7 +498,7 @@ impl Operand {
     pub fn as_int(&self) -> Option<&i64> {
         self.as_constant().and_then(|constant| match constant {
             Constant::Int(i) => Some(i),
-            Constant::Float(_) | Constant::StringLiteral(_) => None,
+            Constant::Float(_) | Constant::String(_) => None,
         })
     }
 }
@@ -502,5 +514,11 @@ pub enum Constant {
     Float(f64),
 
     /// String constants
-    StringLiteral(Key),
+    String(Key),
+}
+
+impl Constant {
+    pub fn bool(b: bool) -> Self {
+        Self::Int(b as i64)
+    }
 }

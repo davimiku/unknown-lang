@@ -244,6 +244,7 @@ dependencies = [
  "la-arena",
  "mir",
  "proc-macro2",
+ "ryu",
  "text-size",
 ]
 
@@ -678,6 +679,7 @@ dependencies = [
  "lasso",
  "lsp_diagnostic",
  "parser",
+ "ryu",
  "text-diff",
  "text-size",
  "util_macros",

@@ -1,3 +1,5 @@
+mod arithmetic;
+
 /// Converts from an opaque pointer to a function pointer
 ///
 /// # Safety
@@ -78,100 +80,6 @@ fn identity_int_with_variable() {
 }
 
 #[test]
-fn int_add_param_and_constant() {
-    let input = "fun (i: Int) -> { i + 6 }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((10,)), 16);
-    assert_eq!(code_fn((-22,)), -16);
-}
-
-#[test]
-fn int_sub_param_and_constant() {
-    let input = "fun (i: Int) -> { i - 10 }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((26,)), 16);
-    assert_eq!(code_fn((-16,)), -26);
-}
-
-#[test]
-fn int_mul_param_and_constant() {
-    let input = "fun (i: Int) -> { i * 8 }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((2,)), 16);
-    assert_eq!(code_fn((-2,)), -16);
-}
-
-#[test]
-fn int_add_params() {
-    let input = "fun (a: Int, b: Int) -> { a + b }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((10, 6)), 16);
-    assert_eq!(code_fn((-10, -16)), -26);
-}
-
-#[test]
-fn int_sub_params() {
-    let input = "fun (a: Int, b: Int) -> { a - b }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((26, 10)), 16);
-    assert_eq!(code_fn((-10, -16)), 6);
-}
-
-#[test]
-fn int_mul_params() {
-    let input = "fun (a: Int, b: Int) -> { a * b }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((4, -4)), -16);
-    assert_eq!(code_fn((-16, -4)), 64);
-    assert_eq!(code_fn((2, 16)), 32);
-}
-
-#[test]
-fn remainder_params() {
-    let input = "fun (a: Int, b: Int) -> { a % b }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((16, 4)), 0);
-    assert_eq!(code_fn((16, 5)), 1);
-    assert_eq!(code_fn((16, 6)), 4);
-
-    assert_eq!(code_fn((-16, 4)), 0);
-    assert_eq!(code_fn((-16, 5)), -1);
-    assert_eq!(code_fn((-16, 6)), -4);
-
-    assert_eq!(code_fn((16, -4)), 0);
-    assert_eq!(code_fn((16, -5)), 1);
-    assert_eq!(code_fn((16, -6)), 4);
-}
-
-#[test]
 fn is_even() {
     let input = "fun (a: Int) -> { a % 2 == 0 }";
 
@@ -186,17 +94,6 @@ fn is_even() {
     assert_eq!(code_fn((-15,)), FALSE);
 
     assert_eq!(code_fn((0,)), TRUE);
-}
-
-#[test]
-fn much_arithmetic() {
-    let input = "fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
-
-    let code_ptr = compile_function(input).unwrap();
-
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((3, 10)), 16);
 }
 
 #[test]

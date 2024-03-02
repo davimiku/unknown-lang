@@ -119,7 +119,7 @@ fn multiple_string_literals() {
 fn int_addition() {
     let input = "1 + 2";
 
-    check(input, "`+`~0.2 (1,2,);", &[]);
+    check(input, "`+`~0.1<0> (1,2,);", &[]);
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn int_to_string() {
 fn print_int_to_string() {
     let input = "print ~123";
 
-    check(input, "print~0.0 (~123,);", &[]);
+    check(input, "print~0.0<0> (~123,);", &[]);
 }
 
 #[test]
@@ -386,7 +386,7 @@ fn unary_function_assignment() {
 fn print_string() {
     let input = "print \"Hello\"";
 
-    let expected_expr = "print~0.0 (\"Hello\",);";
+    let expected_expr = "print~0.0<0> (\"Hello\",);";
 
     check(input, expected_expr, &[])
 }
@@ -395,7 +395,7 @@ fn print_string() {
 fn print_param_function() {
     let input = "fun (a: String) -> { print a }";
 
-    let expected_expr = "fun (a~1.0 : String) -> { print~0.0 (a~1.0,); };";
+    let expected_expr = "fun (a~1.0 : String) -> { print~0.0<0> (a~1.0,); };";
     let expected_vars = &[("a~1.0", "String")];
 
     check(input, expected_expr, expected_vars);
@@ -406,7 +406,7 @@ fn print_param_function_assignment() {
     let input = "let f = fun (a: String) -> { print a }";
 
     let expected_expr =
-        "f~1.0 : (String) -> () = fun<f> (a~1.1 : String) -> { print~0.0 (a~1.1,); };";
+        "f~1.0 : (String) -> () = fun<f> (a~1.1 : String) -> { print~0.0<0> (a~1.1,); };";
     let expected_vars = &[("a~1.1", "String"), ("f~1.0", "(String) -> ()")];
 
     check(input, expected_expr, expected_vars);
@@ -420,7 +420,7 @@ print_param "Hello!"
 "#;
 
     let expected_expr = indoc! {"
-        print_param~1.0 : (String) -> () = fun<print_param> (a~1.1 : String) -> { print~0.0 (a~1.1,); };
+        print_param~1.0 : (String) -> () = fun<print_param> (a~1.1 : String) -> { print~0.0<0> (a~1.1,); };
         print_param~1.0 (\"Hello!\",);"};
 
     let expected_vars = &[("a~1.1", "String"), ("print_param~1.0", "(String) -> ()")];
@@ -436,7 +436,7 @@ print a"#;
 
     let expected_expr = indoc! {"
         a~1.0 : \"Hello\" = \"Hello\";
-        print~0.0 (a~1.0,);"};
+        print~0.0<0> (a~1.0,);"};
 
     let expected_vars = &[("a~1.0", "\"Hello\"")];
 
@@ -454,8 +454,8 @@ print a"#;
     let expected_expr = indoc! {"
         a~1.0 : \"Hello\" = \"Hello\";
         b~1.1 : \" World\" = \" World\";
-        print~0.0 (b~1.1,);
-        print~0.0 (a~1.0,);"};
+        print~0.0<0> (b~1.1,);
+        print~0.0<0> (a~1.0,);"};
 
     let expected_vars = &[("a~1.0", "\"Hello\""), ("b~1.1", "\" World\"")];
 
@@ -497,7 +497,7 @@ print hello_hello"#;
     let expected_expr = indoc! {"
         repeat~1.0 : (String) -> String = fun<repeat> (s~1.1 : String) -> String { `++`~0.6 (s~1.1,s~1.1,); };
         hello_hello~1.2 : String = repeat~1.0 (\"Hello \",);
-        print~0.0 (hello_hello~1.2,);"};
+        print~0.0<0> (hello_hello~1.2,);"};
 
     let expected_vars = &[
         ("hello_hello~1.2", "String"),
@@ -611,5 +611,14 @@ mod typecheck_tests {
         let expected_return_type = Type::Int;
 
         check_script(input, &expected_return_type);
+    }
+
+    #[test]
+    fn float_addition() {
+        let expected_return_type = Type::Float;
+
+        check_script("1.0 + 2.0", &expected_return_type);
+        check_script("1 + 2.0", &expected_return_type);
+        check_script("1.0 + 2", &expected_return_type);
     }
 }
