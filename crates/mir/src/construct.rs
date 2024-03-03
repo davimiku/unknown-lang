@@ -46,7 +46,7 @@ impl Builder {
         self.make_local(ty, Some(param.symbol), Mutability::Not); // TODO: depends on the param
     }
 
-    fn new_block(&mut self) -> Idx<BasicBlock> {
+    fn construct_new_block(&mut self) -> Idx<BasicBlock> {
         self.current_block = self.current_function_mut().new_block();
         self.current_block
     }
@@ -152,20 +152,10 @@ impl Builder {
             Expr::Unary(_) => todo!(),
 
             Expr::Block(block) => {
-                // FIXME: new_block terminator needs to be set to the next block
+                let old_block = self.current_block;
+                let new_block = self.construct_new_block();
+                self.block_mut(old_block).terminator = Terminator::Jump { target: new_block };
                 self.construct_block(block.exprs(), assign_place, context);
-                // TODO: there could be a return value here
-                // fun () => {
-                //     // statements...
-                //     {
-                //        // statements...
-                //        return_val
-                //     }
-                // }
-                // i.e. it is a "statement block" but it is the last statement of another
-                // block therefore it should assign the _0 return. This can possibly occur to
-                // any arbitrary depth of nested blocks
-                todo!()
             }
 
             Expr::Call(call) => {
@@ -298,9 +288,9 @@ impl Builder {
 
     fn construct_rvalue(&mut self, expr: &Expr, context: &Context) -> Rvalue {
         match expr {
-            Expr::BoolLiteral(_) => todo!(),
-            Expr::FloatLiteral(_) => todo!(),
-            Expr::IntLiteral(i) => todo!(),
+            Expr::BoolLiteral(b) => Rvalue::Use(Operand::constant_bool(*b)),
+            Expr::FloatLiteral(f) => Rvalue::Use(Operand::constant_float(*f)),
+            Expr::IntLiteral(i) => Rvalue::Use(Operand::constant_int(*i)),
             Expr::StringLiteral(_) => todo!(),
             Expr::ArrayLiteral(_) => todo!(),
             Expr::Unary(_) => todo!(),
@@ -342,6 +332,8 @@ impl Builder {
     fn construct_var_ref_operand(&mut self, var_ref: &hir::VarRefExpr) -> Operand {
         let local = self.find_symbol(var_ref.symbol);
         let place = local.into();
+
+        self.current_block_mut().parameters.push(local);
 
         // TODO: resource types need to be moved rather than copied
         // and "share" types, like strings maybe would have a different Operand::Share?

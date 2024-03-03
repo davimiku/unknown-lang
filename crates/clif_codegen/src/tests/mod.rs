@@ -1,4 +1,5 @@
 mod arithmetic;
+mod scopes;
 
 /// Converts from an opaque pointer to a function pointer
 ///
@@ -20,6 +21,18 @@ unsafe fn to_fn<I, O>(code_ptr: *const u8) -> fn(I) -> O {
 
 use crate::builtins::{XBool, XInt, FALSE, TRUE};
 use crate::compile_function;
+
+#[test]
+fn do_nothing() {
+    let input = r#"fun () -> { }"#;
+
+    let code_ptr = compile_function(input).unwrap();
+
+    // let code_fn = unsafe { to_fn::<(), ()>(code_ptr) };
+
+    // #[allow(clippy::unit_cmp)]
+    // assert_eq!(code_fn(()), ());
+}
 
 #[test]
 fn constant_16() {

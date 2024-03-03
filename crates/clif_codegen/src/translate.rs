@@ -20,6 +20,7 @@ use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use hir::Type as HType;
+use la_arena::ArenaMap;
 use la_arena::Idx;
 use mir::Place;
 use mir::Terminator;
@@ -52,6 +53,8 @@ impl Default for CommonTypes {
     }
 }
 
+type BlockMap = ArenaMap<Idx<BasicBlock>, ClifBlock>;
+
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
 pub(crate) struct FunctionTranslator<'a> {
@@ -70,8 +73,7 @@ pub(crate) struct FunctionTranslator<'a> {
     context: &'a hir::Context,
 
     /// map from *our* block to *CLIF* block
-    /// TODO: swap HashMap for FxMap or similar, doesn't need the security of the default hasher
-    block_map: HashMap<Idx<BasicBlock>, ClifBlock>,
+    // block_map: ArenaMap<Idx<BasicBlock>, ClifBlock>,
 
     /// Blocks that are yet to be translated
     block_queue: Vec<Idx<BasicBlock>>,
@@ -93,7 +95,7 @@ impl<'a> FunctionTranslator<'a> {
             builder,
             module,
             context,
-            block_map: HashMap::default(),
+            // block_map: ArenaMap::default(),
             block_queue: Vec::default(),
             variables: HashMap::default(),
         }
@@ -102,33 +104,33 @@ impl<'a> FunctionTranslator<'a> {
 
 impl<'a> FunctionTranslator<'a> {
     pub(crate) fn translate_function(&mut self) {
-        let mir::Function {
-            blocks,
-            params,
-            locals,
-            ..
-        } = self.func;
+        let mir::Function { blocks, locals, .. } = self.func;
 
         self.translate_signature();
+
+        let mut block_map = ArenaMap::with_capacity(blocks.len());
 
         // create all blocks (empty/default)
         for (idx, _) in blocks.iter() {
             let block = self.builder.create_block();
-            self.block_map.insert(idx, block);
+            block_map.insert(idx, block);
         }
 
         // declare all locals with type. value is defined later with def_var
         // params will def_var shortly, other locals are def_var when the block is translated
         for (local_idx, local) in locals.iter() {
-            let var_index = local_idx.into_raw().into_u32() as usize;
-            let var = Variable::new(var_index);
-            let var_ty = self.translate_type(local.type_(self.context));
-            self.builder.declare_var(var, var_ty);
-            self.variables.insert(local_idx, var);
+            let local_ty = local.type_(self.context);
+            if !local_ty.is_unit() {
+                let var_index = local_idx.into_raw().into_u32() as usize;
+                let var = Variable::new(var_index);
+                let var_ty = self.translate_type(local.type_(self.context));
+                self.builder.declare_var(var, var_ty);
+                self.variables.insert(local_idx, var);
+            }
         }
 
         let first_basic_block = self.func.entry_block();
-        let entry_block = self.block_map[&first_basic_block];
+        let entry_block = block_map[first_basic_block];
         self.builder
             .append_block_params_for_function_params(entry_block);
         self.builder.switch_to_block(entry_block);
@@ -142,13 +144,10 @@ impl<'a> FunctionTranslator<'a> {
             self.builder.def_var(var, val);
         }
 
-        self.translate_basic_block(&self.func.blocks[first_basic_block]);
-
         // translate the rest of the blocks after the entry block
-        for (idx, block) in self.block_map.iter().skip(1) {}
-
-        // return local: _0
-        // self.emit_return();
+        for (idx, block) in block_map.iter() {
+            self.translate_basic_block(idx, &block_map);
+        }
     }
 
     fn translate_signature(&mut self) {
@@ -169,22 +168,25 @@ impl<'a> FunctionTranslator<'a> {
         }
 
         let return_ty = self.context.type_(self.func.return_ty());
-        let return_ty = self.translate_type(return_ty);
-        self.builder
-            .func
-            .signature
-            .returns
-            .push(AbiParam::new(return_ty));
-    }
-
-    fn translate_basic_block(&mut self, block: &BasicBlock) {
-        for statement in &block.statements {
-            self.translate_statement(statement);
+        if !return_ty.is_unit() {
+            let return_ty = self.translate_type(return_ty);
+            self.builder
+                .func
+                .signature
+                .returns
+                .push(AbiParam::new(return_ty));
         }
-        self.translate_terminator(&block.terminator);
     }
 
-    fn translate_statement(&mut self, statement: &Statement) {
+    fn translate_basic_block(&mut self, block_idx: Idx<BasicBlock>, block_map: &BlockMap) {
+        let block = &self.func.blocks[block_idx];
+        for statement in &block.statements {
+            self.translate_statement(statement, block_map);
+        }
+        self.translate_terminator(&block.terminator, block_map);
+    }
+
+    fn translate_statement(&mut self, statement: &Statement, block_map: &BlockMap) {
         match statement {
             Statement::Assign(assign) => {
                 let (place, rvalue) = assign.deref();
@@ -203,9 +205,20 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_terminator(&mut self, terminator: &Terminator) {
+    fn translate_terminator(&mut self, terminator: &Terminator, block_map: &BlockMap) {
         match terminator {
-            Terminator::Goto { target } => todo!(),
+            Terminator::Jump { target } => {
+                let target_block = &self.func.blocks[*target];
+                let block_call_args: Vec<_> = target_block
+                    .parameters
+                    .iter()
+                    .map(|local| self.variables[local])
+                    .map(|var| self.builder.use_var(var))
+                    .collect();
+                let target = block_map[*target];
+                self.builder.ins().jump(target, &block_call_args);
+                self.builder.switch_to_block(target);
+            }
             Terminator::Return => self.emit_return(),
             Terminator::Call {
                 func,
@@ -219,9 +232,13 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn emit_return(&mut self) {
-        let (return_local, ..) = self.func.return_local();
-        let ret_val = self.builder.use_var(self.variables[&return_local]);
-        self.builder.ins().return_(&[ret_val]);
+        let (return_local_idx, return_local) = self.func.return_local();
+        if return_local.type_(self.context).is_unit() {
+            self.builder.ins().return_(&[]);
+        } else {
+            let ret_val = self.builder.use_var(self.variables[&return_local_idx]);
+            self.builder.ins().return_(&[ret_val]);
+        }
     }
 
     fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
@@ -324,12 +341,19 @@ impl<'a> FunctionTranslator<'a> {
             HType::IntLiteral(_) | HType::Int => self.types.int,
             HType::StringLiteral(_) | HType::String => todo!(),
 
+            HType::Unit => unreachable!("unit types should be unused rather than translated"),
             _ => todo!(),
         }
     }
 
     fn op_type(&self, op: &Operand) -> &HType {
-        self.context.type_(self.op_type_idx(op))
+        match self.context.type_(self.op_type_idx(op)) {
+            HType::BoolLiteral(_) => &HType::Bool,
+            HType::FloatLiteral(_) => &HType::Float,
+            HType::IntLiteral(_) => &HType::Int,
+            HType::StringLiteral(_) => &HType::String,
+            t => t,
+        }
     }
 
     fn op_type_idx(&self, op: &Operand) -> Idx<HType> {

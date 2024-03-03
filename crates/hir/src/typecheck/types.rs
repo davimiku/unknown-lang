@@ -32,7 +32,8 @@ pub enum Type {
     // Struct
 
     // Exponential
-    // TODO: consider arena allocating FunctionType, would reduce Type to 16 bytes
+    // TODO: consider arena allocating FunctionType, would reduce Type to 16 bytes,
+    // and could consider making this Copy at that size
     Function(FunctionType),
     Array(ArrayType),
 }
@@ -52,6 +53,10 @@ impl Type {
 
     pub fn is_string(&self) -> bool {
         matches!(self, Type::StringLiteral(_) | Type::String)
+    }
+
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Type::Unit)
     }
 }
 
@@ -79,7 +84,10 @@ impl ContextDisplay for Type {
             Type::Bool => "Bool".to_owned(),
             Type::BoolLiteral(b) => b.to_string(),
             Type::Float => "Float".to_owned(),
-            Type::FloatLiteral(f) => f.to_string(),
+            Type::FloatLiteral(f) => {
+                let mut buf = ryu::Buffer::new();
+                buf.format_finite(*f).to_owned()
+            }
             Type::Int => "Int".to_owned(),
             Type::IntLiteral(i) => i.to_string(),
             Type::String => "String".to_owned(),

@@ -1,3 +1,5 @@
+use std::slice::Iter;
+
 use hir::{IntrinsicExpr, Key, Type, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
 
@@ -23,6 +25,11 @@ use la_arena::{Arena, ArenaMap, Idx};
 //     // - number of passes
 // }
 
+/// Mid-Level Representation (MIR) of a Function
+///
+/// This represents the data for a function, primarily organized as
+/// a group of Basic Blocks that represent the flow of control through
+/// the function.
 #[derive(Debug)]
 pub struct Function {
     /// Interned string name of the function with the symbol, or None for anonymous functions
@@ -112,8 +119,46 @@ impl Function {
 
 #[derive(Debug, Default)]
 pub struct BasicBlock {
+    /// Executable code of the basic block
     pub statements: Vec<Statement>,
+
+    /// How the basic block ends
     pub terminator: Terminator,
+
+    /// Locals used in this block that were defined in a previous block
+    ///
+    /// CLIF codegen requires these parameters to be explicitly passed to
+    /// jump instructions to the next block. Currently these are being
+    /// captured here in the MIR.
+    // TODO: would it be better to come up with this on-the-fly during codegen instead?
+    pub parameters: BlockParameters,
+}
+
+// TODO: use a HashSet instead? uniqueness is required
+// should benchmark whether O(N) search in the Vec is actually
+// worse than the cost of hashing
+#[derive(Debug, Default)]
+pub struct BlockParameters(Vec<Idx<Local>>);
+
+impl BlockParameters {
+    /// Adds this local to the block parameters if it isn't already in
+    /// the parameters (O(N) search).
+    ///
+    /// If the local was added, returns Some(local), otherwise if it already
+    /// was in the parameters it returns None.
+    pub fn push(&mut self, local: Idx<Local>) -> Option<Idx<Local>> {
+        if self.0.contains(&local) {
+            None
+        } else {
+            self.0.push(local);
+            Some(local)
+        }
+    }
+
+    // TODO: use newtype_derive or something else to not do this so hacky
+    pub fn iter(&self) -> Iter<'_, Idx<Local>> {
+        self.0.iter()
+    }
 }
 
 #[derive(Debug)]
@@ -170,7 +215,7 @@ pub struct VariantIdx {
 pub enum Terminator {
     /// Continues execution in the next block.
     /// This terminator has a single successor.
-    Goto { target: Idx<BasicBlock> },
+    Jump { target: Idx<BasicBlock> },
 
     /// Returns from the current function
     ///
@@ -223,7 +268,7 @@ pub enum Terminator {
 impl Terminator {
     pub const fn name(&self) -> &'static str {
         match self {
-            Terminator::Goto { .. } => "Goto",
+            Terminator::Jump { .. } => "Goto",
             Terminator::Return => "Return",
             Terminator::Call { .. } => "Call",
             Terminator::Drop { .. } => "Drop",
@@ -473,6 +518,20 @@ pub enum Operand {
     /// implemented. It should be an error to reference this place
     /// again after the resource has been moved.
     Move(Place),
+}
+
+impl Operand {
+    pub fn constant_int(i: i64) -> Self {
+        Self::Constant(Constant::Int(i))
+    }
+
+    pub fn constant_float(f: f64) -> Self {
+        Self::Constant(Constant::Float(f))
+    }
+
+    pub fn constant_bool(b: bool) -> Self {
+        Self::Constant(Constant::bool(b))
+    }
 }
 
 impl Operand {

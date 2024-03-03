@@ -149,7 +149,29 @@ fun {anonymous}:
 }
 
 #[test]
-fn int_variable() {
+fn int_variable_from_const() {
+    let input = "
+fun () -> { 
+    let a = 16
+    a
+}";
+    let expected = "
+fun {anonymous}:
+    params: {none}
+    mut _0: 16
+    _1: 16
+    
+    BB0:
+        _1 = const 16
+        _0 = copy _1
+        return
+";
+
+    check_function(input, expected);
+}
+
+#[test]
+fn int_variable_from_param() {
     let input = "
 fun (a: Int) -> { 
     let b = a
@@ -231,6 +253,84 @@ fun {anonymous}:
         _4 = Mul(const 2, copy _2)
         _3 = Add(copy _1, copy _4)
         _0 = Sub(copy _3, const 7)
+        return
+";
+
+    check_function(input, expected);
+}
+
+#[test]
+fn nested_scopes() {
+    let input = "
+fun (a: Float) -> {
+    let b = 4.0
+    {
+        let c = a + b
+        {
+            let d = c * 2.5
+        }
+    }
+}";
+
+    let expected = "
+fun {anonymous}:
+    params: _1
+    mut _0: ()
+    _1: Float
+    _2: 4.0
+    _3: Float
+    _4: Float
+    
+    BB0():
+        _2 = const 4.0
+        goto -> BB1
+    BB1(_1, _2):
+        _3 = Add(copy _1, copy _2)
+        goto -> BB2
+    BB2(_3):
+        _4 = Mul(copy _3, const 2.5)
+        return
+";
+
+    check_function(input, expected);
+}
+
+#[test]
+fn nested_scopes_with_return() {
+    let input = "
+fun (a: Float) -> {
+    let b = 4.0
+    {
+        let c = a + b
+        {
+            let d = c * 2.5
+            {
+                d
+            }
+        }
+    }
+}";
+
+    let expected = "
+fun {anonymous}:
+    params: _1
+    mut _0: Float
+    _1: Float
+    _2: 4.0
+    _3: Float
+    _4: Float
+    
+    BB0():
+        _2 = const 4.0
+        goto -> BB1
+    BB1(_1, _2):
+        _3 = Add(copy _1, copy _2)
+        goto -> BB2
+    BB2(_3):
+        _4 = Mul(copy _3, const 2.5)
+        goto -> BB3
+    BB3(_4):
+        _0 = copy _4
         return
 ";
 

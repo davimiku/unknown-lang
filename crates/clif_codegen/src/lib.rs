@@ -1,6 +1,7 @@
 #[cfg(test)]
 use std::io::stdout;
 
+use cranelift::codegen::verify_function;
 use jit::JIT;
 #[cfg(test)]
 use mir::MirWrite;

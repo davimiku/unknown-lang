@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use cranelift::codegen::control::ControlPlane;
+use cranelift::codegen::verify_function;
 #[cfg(debug_assertions)]
 use cranelift::codegen::write_function;
 use cranelift::prelude::types::*;
@@ -81,7 +83,7 @@ impl JIT {
     ///
     /// In script mode, `main` is a synthetic function that wraps the script,
     /// takes a `[]String` argument for the CLI args, and `return 0` on success.
-    pub fn compile(
+    pub fn compile_program(
         &mut self,
         // expr: Idx<Expr>,
         context: &mir::Builder,
@@ -112,6 +114,26 @@ impl JIT {
 
         self.module.define_function(func_id, &mut self.ctx)?;
 
+        // TODO: for garbage collection, need to get the stack maps something
+        // like this and store them somewhere global-ish (accessible by the runtime,
+        // could be in a lazy_static or once_cell)
+        // Questions:
+        //   1. How to get the &dyn TargetIsa to pass into compile_and_emit ?
+        //   2. How to get the ControlPlane to pass into compile_and_emit ?
+
+        // // is this how to get a &dyn TargetIsa?
+        // let shared_builder = settings::builder();
+        // let shared_flags = settings::Flags::new(shared_builder);
+        // let isa_builder = isa::lookup(triple!("x86_64")).unwrap();
+
+        // is this how to get a ControlPlane?
+        // let control_plane = ControlPlane::default();
+        // let mut emit_buffer = Vec::new();
+        // let context = self.module.make_context();
+        // let res = context.compile_and_emit(isa, &mut emit_buffer, ctrl_plane);
+        // let stack_maps = res.unwrap().buffer.stack_maps();
+        // stack_maps[0].stack_map;
+
         #[cfg(debug_assertions)]
         {
             let mut s = String::new();
@@ -122,6 +144,8 @@ impl JIT {
         }
 
         self.module.clear_context(&mut self.ctx);
+
+        // TODO: this needs to be removed when compiling multiple functions
         self.module.finalize_definitions()?;
 
         let code = self.module.get_finalized_function(func_id);

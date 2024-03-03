@@ -1,13 +1,15 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, format, Debug, Display};
 use std::io;
 use std::ops::Deref;
 
 use hir::{Context, ContextDisplay};
+use itertools::Itertools;
+use la_arena::Idx;
 
 use crate::syntax::{
     BinOp, Constant, Mutability, Operand, Place, Rvalue, Statement, Terminator, UnOp,
 };
-use crate::{BasicBlock, Function, Program};
+use crate::{BasicBlock, Function, Local, Program};
 
 type Indent = usize;
 const INDENT_SIZE: usize = 4;
@@ -142,11 +144,29 @@ fn write_basic_blocks<W: io::Write>(
     for (i, basic_block) in function.blocks.iter() {
         let i = i.into_raw().into_u32();
 
-        write!(buf, "BB{i}:")?;
+        let params = basic_block
+            .parameters
+            .iter()
+            .map(idx_local_to_string)
+            .join(", ");
+
+        write!(buf, "BB{i}({params}):")?;
         write_line_and_indent(buf, indent)?;
         basic_block.write(buf, context, indent)?;
     }
     Ok(())
+}
+
+impl MirWrite for Idx<BasicBlock> {
+    fn write<W: io::Write>(
+        &self,
+        buf: &mut W,
+        context: &Context,
+        indent: &mut Indent,
+    ) -> io::Result<()> {
+        let i = self.into_raw().into_u32();
+        write!(buf, "BB{i}")
+    }
 }
 
 impl MirWrite for BasicBlock {
@@ -197,7 +217,10 @@ impl MirWrite for Terminator {
         indent: &mut Indent,
     ) -> io::Result<()> {
         match self {
-            Terminator::Goto { target } => todo!(),
+            Terminator::Jump { target } => {
+                write!(buf, "goto -> ")?;
+                target.write(buf, context, indent)
+            }
             Terminator::Return => write!(buf, "return"),
             Terminator::Call {
                 func,
@@ -213,8 +236,7 @@ impl MirWrite for Terminator {
 
 impl MirWrite for Place {
     fn write<W: io::Write>(&self, buf: &mut W, _: &Context, _: &mut Indent) -> io::Result<()> {
-        let i = self.local.into_raw().into_u32();
-        write!(buf, "_{i}")
+        write!(buf, "{}", idx_local_to_string(&self.local))
         // TODO: write projections, such as _1.2
         //                                    ^^ (field projection)
     }
@@ -279,7 +301,10 @@ impl MirWrite for Constant {
     ) -> io::Result<()> {
         match self {
             Constant::Int(i) => write!(buf, "{i}"),
-            Constant::Float(f) => write!(buf, "{f}"),
+            Constant::Float(f) => {
+                let mut ryu_buf = ryu::Buffer::new();
+                write!(buf, "{}", ryu_buf.format_finite(*f))
+            }
             Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
         }
     }
@@ -305,4 +330,11 @@ impl Display for UnOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self, f)
     }
+}
+
+fn idx_local_to_string(idx: &Idx<Local>) -> String {
+    let mut s = String::with_capacity(3); // most locals should be index 0-99
+    s.push('_');
+    s.push_str(&idx.into_raw().into_u32().to_string());
+    s
 }

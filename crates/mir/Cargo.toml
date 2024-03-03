@@ -6,9 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-la-arena = "0.3.1"
-
 hir = { path = "../hir" }
+
+itertools = "0.12.1"
+la-arena = "0.3.1"
+ryu = "1.0"
 util_macros = { path = "../util_macros" }
 
 [dev-dependencies]

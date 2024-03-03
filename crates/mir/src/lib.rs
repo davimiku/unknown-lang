@@ -28,8 +28,8 @@ pub use display::MirWrite;
 use hir::Expr;
 use la_arena::{Arena, Idx};
 pub use syntax::{
-    BasicBlock, BinOp, Constant, Function, Local, Operand, Place, Rvalue, Statement, Terminator,
-    UnOp,
+    BasicBlock, BinOp, BlockParameters, Constant, Function, Local, Operand, Place, Rvalue,
+    Statement, Terminator, UnOp,
 };
 
 pub fn construct(root: Idx<Expr>, context: &hir::Context) -> (Program, &hir::Context) {
