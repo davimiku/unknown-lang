@@ -47,7 +47,7 @@ fun main:
     params: {none}
     mut _0: Int
     
-    BB0:
+    BB0():
         _0 = Add(const 3, const 5)
         return
 ";
@@ -71,7 +71,7 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0:
+    BB0(_1):
         _0 = copy _1
         return
 ";
@@ -88,7 +88,7 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0:
+    BB0(_1):
         _0 = Add(copy _1, const 16)
         return
 ";
@@ -105,7 +105,7 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0:
+    BB0(_1):
         _0 = Sub(copy _1, const 16)
         return
 ";
@@ -122,7 +122,7 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0:
+    BB0(_1):
         _0 = Mul(copy _1, const 16)
         return
 ";
@@ -140,7 +140,7 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0:
+    BB0(_1, _2):
         _0 = Eq(copy _1, copy _2)
         return
 ";
@@ -161,7 +161,7 @@ fun {anonymous}:
     mut _0: 16
     _1: 16
     
-    BB0:
+    BB0(_1):
         _1 = const 16
         _0 = copy _1
         return
@@ -184,7 +184,7 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0:
+    BB0(_1, _2):
         _2 = copy _1
         _0 = copy _2
         return
@@ -207,7 +207,7 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0:
+    BB0(_1, _2):
         _2 = Add(copy _1, const 16)
         _0 = copy _2
         return
@@ -227,7 +227,7 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0:
+    BB0(_1):
         _2 = Rem(copy _1, const 2)
         _0 = Eq(copy _2, const 0)
         return
@@ -249,7 +249,7 @@ fun {anonymous}:
     _3: Int
     _4: Int
     
-    BB0:
+    BB0(_1, _2):
         _4 = Mul(const 2, copy _2)
         _3 = Add(copy _1, copy _4)
         _0 = Sub(copy _3, const 7)
