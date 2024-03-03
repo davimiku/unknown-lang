@@ -1,0 +1,57 @@
+fn main() {
+    let a = 2;
+    
+    double(3);
+    
+    let b = double(a);
+}
+
+fn double(i: i32) -> i32 {
+    i + i
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn main() -> () {
+    let mut _0: ();
+    let _1: i32;
+    let _2: i32;
+    scope 1 {
+        debug a => const 2_i32;
+        let _3: i32;
+        scope 2 {
+            debug b => _3;
+        }
+    }
+
+    bb0: {
+        _1 = const 2_i32;
+        _2 = double(const 3_i32) -> [return: bb1, unwind continue];
+    }
+
+    bb1: {
+        _3 = double(_1) -> [return: bb2, unwind continue];
+    }
+
+    bb2: {
+        return;
+    }
+}
+
+fn double(_1: i32) -> i32 {
+    debug i => _1;
+    let mut _0: i32;
+    let mut _2: (i32, bool);
+
+    bb0: {
+        _2 = CheckedAdd(_1, _1);
+        assert(!move (_2.1: bool), "attempt to compute `{} + {}`, which would overflow", _1, _1) -> [success: bb1, unwind continue];
+    }
+
+    bb1: {
+        _0 = move (_2.0: i32);
+        return;
+    }
+}

@@ -1,0 +1,155 @@
+struct Data(u32);
+
+fn main() {
+    let vec = vec![Data(0), Data(2)];
+    for elem in vec {
+        process(elem);
+    }
+}
+
+fn process(data: Data) { }
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn main() -> () {
+    let mut _0: ();
+    let _1: std::vec::Vec<Data>;
+    let mut _2: std::boxed::Box<[Data]>;
+    let mut _3: usize;
+    let mut _4: usize;
+    let mut _5: *mut u8;
+    let mut _6: std::boxed::Box<[Data; 2]>;
+    let mut _7: Data;
+    let mut _8: Data;
+    let mut _9: std::vec::IntoIter<Data>;
+    let mut _10: std::vec::Vec<Data>;
+    let mut _12: std::option::Option<Data>;
+    let mut _13: &mut std::vec::IntoIter<Data>;
+    let mut _14: isize;
+    let _16: ();
+    let mut _17: *const [Data; 2];
+    let mut _18: *const ();
+    let mut _19: usize;
+    let mut _20: usize;
+    let mut _21: usize;
+    let mut _22: usize;
+    let mut _23: bool;
+    scope 1 {
+        debug vec => _1;
+        let mut _11: std::vec::IntoIter<Data>;
+        scope 3 {
+            debug iter => _11;
+            let _15: Data;
+            scope 4 {
+                debug elem => _15;
+            }
+        }
+    }
+    scope 2 {
+    }
+
+    bb0: {
+        _3 = SizeOf([Data; 2]);
+        _4 = AlignOf([Data; 2]);
+        _5 = alloc::alloc::exchange_malloc(move _3, move _4) -> [return: bb1, unwind continue];
+    }
+
+    bb1: {
+        _6 = ShallowInitBox(move _5, [Data; 2]);
+        _7 = Data(const 0_u32);
+        _8 = Data(const 2_u32);
+        _17 = (((_6.0: std::ptr::Unique<[Data; 2]>).0: std::ptr::NonNull<[Data; 2]>).0: *const [Data; 2]);
+        _18 = _17 as *const () (PtrToPtr);
+        _19 = _18 as usize (Transmute);
+        _20 = AlignOf(Data);
+        _21 = Sub(_20, const 1_usize);
+        _22 = BitAnd(_19, _21);
+        _23 = Eq(_22, const 0_usize);
+        assert(_23, "misaligned pointer dereference: address must be a multiple of {} but is {}", _20, _19) -> [success: bb12, unwind unreachable];
+    }
+
+    bb2: {
+        _10 = move _1;
+        _9 = <Vec<Data> as IntoIterator>::into_iter(move _10) -> [return: bb3, unwind continue];
+    }
+
+    bb3: {
+        _11 = move _9;
+        goto -> bb4;
+    }
+
+    bb4: {
+        _13 = &mut _11;
+        _12 = <std::vec::IntoIter<Data> as Iterator>::next(_13) -> [return: bb5, unwind: bb10];
+    }
+
+    bb5: {
+        _14 = discriminant(_12);
+        switchInt(move _14) -> [0: bb8, 1: bb6, otherwise: bb7];
+    }
+
+    bb6: {
+        _15 = move ((_12 as Some).0: Data);
+        _16 = process(move _15) -> [return: bb13, unwind: bb10];
+    }
+
+    bb7: {
+        unreachable;
+    }
+
+    bb8: {
+        drop(_11) -> [return: bb9, unwind continue];
+    }
+
+    bb9: {
+        return;
+    }
+
+    bb10 (cleanup): {
+        drop(_11) -> [return: bb11, unwind terminate];
+    }
+
+    bb11 (cleanup): {
+        resume;
+    }
+
+    bb12: {
+        (*_17) = [move _7, move _8];
+        _2 = move _6 as std::boxed::Box<[Data]> (PointerCoercion(Unsize));
+        _1 = slice::<impl [Data]>::into_vec::<std::alloc::Global>(move _2) -> [return: bb2, unwind continue];
+    }
+
+    bb13: {
+        goto -> bb4;
+    }
+}
+
+fn process(_1: Data) -> () {
+    debug data => _1;
+    let mut _0: ();
+
+    bb0: {
+        return;
+    }
+}
+
+fn Data(_1: u32) -> Data {
+    let mut _0: Data;
+
+    bb0: {
+        _0 = Data(move _1);
+        return;
+    }
+}
+
+// MIR FOR CTFE
+fn Data(_1: u32) -> Data {
+    let mut _0: Data;
+
+    bb0: {
+        _0 = Data(move _1);
+        return;
+    }
+}

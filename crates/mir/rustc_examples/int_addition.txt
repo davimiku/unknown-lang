@@ -1,0 +1,38 @@
+fn main() {
+    let a = 1;
+    let b = 2;
+    let c = a + b;
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn main() -> () {
+    let mut _0: ();
+    let _1: i32;
+    let mut _4: (i32, bool);
+    scope 1 {
+        debug a => const 1_i32;
+        let _2: i32;
+        scope 2 {
+            debug b => const 2_i32;
+            let _3: i32;
+            scope 3 {
+                debug c => _3;
+            }
+        }
+    }
+
+    bb0: {
+        _1 = const 1_i32;
+        _2 = const 2_i32;
+        _4 = CheckedAdd(_1, _2);
+        assert(!move (_4.1: bool), "attempt to compute `{} + {}`, which would overflow", _1, _2) -> [success: bb1, unwind continue];
+    }
+
+    bb1: {
+        _3 = move (_4.0: i32);
+        return;
+    }
+}

@@ -1,0 +1,82 @@
+use std::ops::Add;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+impl Add for Point {
+    type Output = Self;
+    
+    fn add(self, other: Self) -> Self {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+fn test() -> f64 {
+    let point1 = Point { x: 1.0, y: 2.0 };
+    let point2 = Point { x: 3.0, y: 4.0 };
+    let point3 = point1 + point2;
+    
+    point3.x + point3.y
+}
+
+=======================================================
+
+fn test() -> f64 {
+    let mut _0: f64;
+    let _1: Point;
+    let mut _4: f64;
+    let mut _5: f64;
+    scope 1 {
+        debug point1 => _1;
+        let _2: Point;
+        scope 2 {
+            debug point2 => _2;
+            let _3: Point;
+            scope 3 {
+                debug point3 => _3;
+            }
+        }
+    }
+
+    bb0: {
+        _1 = Point { x: const 1f64, y: const 2f64 };
+        _2 = Point { x: const 3f64, y: const 4f64 };
+        _3 = <Point as Add>::add(_1, _2) -> [return: bb1, unwind continue];
+    }
+
+    bb1: {
+        _4 = (_3.0: f64);
+        _5 = (_3.1: f64);
+        _0 = Add(move _4, move _5);
+        return;
+    }
+}
+
+fn <impl at src/lib.rs:8:1: 8:19>::add(_1: Point, _2: Point) -> Point {
+    debug self => _1;
+    debug other => _2;
+    let mut _0: Point;
+    let mut _3: f64;
+    let mut _4: f64;
+    let mut _5: f64;
+    let mut _6: f64;
+    let mut _7: f64;
+    let mut _8: f64;
+
+    bb0: {
+        _4 = (_1.0: f64);
+        _5 = (_2.0: f64);
+        _3 = Add(move _4, move _5);
+        _7 = (_1.1: f64);
+        _8 = (_2.1: f64);
+        _6 = Add(move _7, move _8);
+        _0 = Point { x: move _3, y: move _6 };
+        return;
+    }
+}
