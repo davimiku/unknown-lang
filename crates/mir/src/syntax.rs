@@ -30,7 +30,7 @@ use la_arena::{Arena, ArenaMap, Idx};
 /// This represents the data for a function, primarily organized as
 /// a group of Basic Blocks that represent the flow of control through
 /// the function.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     /// Interned string name of the function with the symbol, or None for anonymous functions
     pub name: Option<(Key, ValueSymbol)>,
@@ -117,7 +117,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BasicBlock {
     /// Executable code of the basic block
     pub statements: Vec<Statement>,
@@ -129,15 +129,14 @@ pub struct BasicBlock {
     ///
     /// CLIF codegen requires these parameters to be explicitly passed to
     /// jump instructions to the next block. Currently these are being
-    /// captured here in the MIR.
-    // TODO: would it be better to come up with this on-the-fly during codegen instead?
+    /// captured here in the MIR for easier translation to CLIF.
     pub parameters: BlockParameters,
 }
 
 // TODO: use a HashSet instead? uniqueness is required
 // should benchmark whether O(N) search in the Vec is actually
 // worse than the cost of hashing
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BlockParameters(Vec<Idx<Local>>);
 
 impl BlockParameters {
@@ -161,7 +160,7 @@ impl BlockParameters {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Assign(Box<(Place, Rvalue)>),
 
@@ -206,16 +205,26 @@ impl Statement {
 }
 
 /// Source-order index of a variant in a union type
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariantIdx {
     private: u32,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum Terminator {
     /// Continues execution in the next block.
     /// This terminator has a single successor.
     Jump { target: Idx<BasicBlock> },
+
+    /// Chooses between multiple branches to determine the next block.
+    ///
+    /// Tests the discriminant for an integer value and picks the corresponding
+    /// target. Boolean checks are included here, which are represented by
+    /// integer values.
+    SwitchInt {
+        discriminant: Operand,
+        targets: SwitchIntTargets,
+    },
 
     /// Returns from the current function
     ///
@@ -269,6 +278,7 @@ impl Terminator {
     pub const fn name(&self) -> &'static str {
         match self {
             Terminator::Jump { .. } => "Goto",
+            Terminator::SwitchInt { .. } => "SwitchInt",
             Terminator::Return => "Return",
             Terminator::Call { .. } => "Call",
             Terminator::Drop { .. } => "Drop",
@@ -277,7 +287,21 @@ impl Terminator {
     }
 }
 
-#[derive(Debug)]
+/// Targets / branches for a SwitchInt terminator
+///
+/// The branches are organized into pairs of Int + Block to
+/// switch to.
+/// The `otherwise` branch is `None` when the `branches` are already
+/// an exhaustive match.
+// TODO: use a SmallVec to stack allocate branches with 1 item
+#[derive(Debug, Default, Clone)]
+pub struct SwitchIntTargets {
+    pub branches: Box<[(i64, Idx<BasicBlock>)]>,
+
+    pub otherwise: Option<Idx<BasicBlock>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Place {
     pub local: Idx<Local>,
     pub projection: Vec<PlaceElem>,
@@ -311,7 +335,7 @@ type PlaceElem = ProjectionElem<Idx<Local>, hir::Type>;
 /// So e.g. the place _1.f is a projection, with f being the "projection element"
 /// and _1 being the base path. *_1 is also a projection, with the * being
 /// represented by the ProjectionElem::Deref element.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProjectionElem<V, T> {
     Deref,
     /// A field (e.g., f in _1.f) is one variant of ProjectionElem.
@@ -351,7 +375,7 @@ pub enum ProjectionElem<V, T> {
     OpaqueCast(T),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Local {
     pub(crate) mutability: Mutability,
     pub(crate) ty: Idx<Type>,
@@ -373,12 +397,12 @@ pub(crate) enum Mutability {
     Mut,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct FieldIdx {
     private: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Rvalue {
     /// Yields the operand unchanged
     Use(Operand),
@@ -436,7 +460,7 @@ enum NonDivergingIntrinsic {
     IntAddition,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     /// Addition `+`
     Add,
@@ -495,7 +519,7 @@ impl From<&IntrinsicExpr> for BinOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOp {
     /// Not: Logical inversion `!`
     Not,
@@ -504,7 +528,7 @@ pub enum UnOp {
     Neg,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operand {
     /// Copies the value from the given Place
     Copy(Place),
@@ -562,7 +586,7 @@ impl Operand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Constant {
     /// Integer constants.
     ///

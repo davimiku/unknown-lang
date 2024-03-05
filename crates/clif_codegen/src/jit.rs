@@ -83,11 +83,7 @@ impl JIT {
     ///
     /// In script mode, `main` is a synthetic function that wraps the script,
     /// takes a `[]String` argument for the CLI args, and `return 0` on success.
-    pub fn compile_program(
-        &mut self,
-        // expr: Idx<Expr>,
-        context: &mir::Builder,
-    ) -> ModuleResult<*const u8> {
+    pub fn compile_program(&mut self) -> ModuleResult<*const u8> {
         todo!()
     }
 

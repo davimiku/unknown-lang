@@ -226,6 +226,10 @@ impl<'a> FunctionTranslator<'a> {
                 destination,
                 target,
             } => todo!(),
+            Terminator::SwitchInt {
+                discriminant,
+                targets,
+            } => todo!(),
             Terminator::Drop { place, target } => todo!(),
             Terminator::Unreachable => todo!(),
         }

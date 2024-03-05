@@ -1,4 +1,4 @@
-use std::fmt::{self, format, Debug, Display};
+use std::fmt::{self, Display};
 use std::io;
 use std::ops::Deref;
 
@@ -7,7 +7,8 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BinOp, Constant, Mutability, Operand, Place, Rvalue, Statement, Terminator, UnOp,
+    BinOp, Constant, Mutability, Operand, Place, Rvalue, Statement, SwitchIntTargets, Terminator,
+    UnOp,
 };
 use crate::{BasicBlock, Function, Local, Program};
 
@@ -53,7 +54,7 @@ impl MirWrite for Function {
     ///     <see the BasicBlock documentation for an example>
     ///
     ///   BB1:
-    ///     return
+    ///     Return ->
     /// ```
     fn write<W: io::Write>(
         &self,
@@ -142,15 +143,14 @@ fn write_basic_blocks<W: io::Write>(
 ) -> io::Result<()> {
     write_line(buf, indent)?;
     for (i, basic_block) in function.blocks.iter() {
-        let i = i.into_raw().into_u32();
-
         let params = basic_block
             .parameters
             .iter()
             .map(idx_local_to_string)
             .join(", ");
 
-        write!(buf, "BB{i}({params}):")?;
+        let bb = idx_basic_block(i);
+        write!(buf, "{bb}({params}):")?;
         write_line_and_indent(buf, indent)?;
         basic_block.write(buf, context, indent)?;
     }
@@ -164,9 +164,12 @@ impl MirWrite for Idx<BasicBlock> {
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
-        let i = self.into_raw().into_u32();
-        write!(buf, "BB{i}")
+        write!(buf, "{}", &idx_basic_block(*self))
     }
+}
+
+fn idx_basic_block(idx: Idx<BasicBlock>) -> String {
+    format!("BB{}", idx.into_raw().into_u32())
 }
 
 impl MirWrite for BasicBlock {
@@ -218,19 +221,54 @@ impl MirWrite for Terminator {
     ) -> io::Result<()> {
         match self {
             Terminator::Jump { target } => {
-                write!(buf, "goto -> ")?;
+                write!(buf, "Jump -> ")?;
                 target.write(buf, context, indent)
             }
-            Terminator::Return => write!(buf, "return"),
+            Terminator::Return => write!(buf, "Return ->"),
             Terminator::Call {
                 func,
                 args,
                 destination,
                 target,
             } => todo!(),
+            Terminator::SwitchInt {
+                discriminant,
+                targets,
+            } => {
+                write!(buf, "SwitchInt: ")?;
+                discriminant.write(buf, context, indent)?;
+
+                targets.write(buf, context, indent)
+            }
             Terminator::Drop { place, target } => todo!(),
             Terminator::Unreachable => todo!(),
         }
+    }
+}
+
+impl MirWrite for SwitchIntTargets {
+    fn write<W: io::Write>(
+        &self,
+        buf: &mut W,
+        context: &Context,
+        indent: &mut Indent,
+    ) -> io::Result<()> {
+        write!(buf, " (")?;
+        let branch_targets = self
+            .branches
+            .iter()
+            .map(|(value, bb)| {
+                let bb = idx_basic_block(*bb);
+                format!("{value} -> {bb}")
+            })
+            .join(", ");
+        write!(buf, "{branch_targets}")?;
+        if let Some(otherwise) = self.otherwise {
+            write!(buf, ", ")?;
+            let bb = idx_basic_block(otherwise);
+            write!(buf, "otherwise -> {bb}")?;
+        }
+        write!(buf, ")")
     }
 }
 
