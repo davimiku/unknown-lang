@@ -31,7 +31,7 @@ use hir::{Context, Expr};
 use la_arena::{Arena, Idx};
 pub use syntax::{
     BasicBlock, BinOp, BlockParameters, Constant, Function, Local, Operand, Place, Rvalue,
-    Statement, Terminator, UnOp,
+    Statement, SwitchIntTargets, Terminator, UnOp,
 };
 
 use crate::builder::Builder;

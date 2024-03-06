@@ -23,6 +23,7 @@ use hir::Type as HType;
 use la_arena::ArenaMap;
 use la_arena::Idx;
 use mir::Place;
+use mir::SwitchIntTargets;
 use mir::Terminator;
 use mir::{BasicBlock, BinOp, Constant, Local, Operand, Rvalue, Statement};
 
@@ -146,6 +147,7 @@ impl<'a> FunctionTranslator<'a> {
 
         // translate the rest of the blocks after the entry block
         for (idx, block) in block_map.iter() {
+            self.builder.switch_to_block(*block);
             self.translate_basic_block(idx, &block_map);
         }
     }
@@ -183,7 +185,11 @@ impl<'a> FunctionTranslator<'a> {
         for statement in &block.statements {
             self.translate_statement(statement, block_map);
         }
-        self.translate_terminator(&block.terminator, block_map);
+        let terminator = block
+            .terminator
+            .as_ref()
+            .expect("Compiler Error: Missing mir::BasicBlock::Terminator");
+        self.translate_terminator(terminator, block_map);
     }
 
     fn translate_statement(&mut self, statement: &Statement, block_map: &BlockMap) {
@@ -207,19 +213,9 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_terminator(&mut self, terminator: &Terminator, block_map: &BlockMap) {
         match terminator {
-            Terminator::Jump { target } => {
-                let target_block = &self.func.blocks[*target];
-                let block_call_args: Vec<_> = target_block
-                    .parameters
-                    .iter()
-                    .map(|local| self.variables[local])
-                    .map(|var| self.builder.use_var(var))
-                    .collect();
-                let target = block_map[*target];
-                self.builder.ins().jump(target, &block_call_args);
-                self.builder.switch_to_block(target);
-            }
-            Terminator::Return => self.emit_return(),
+            Terminator::Jump { target } => self.translate_jump_terminator(*target, block_map),
+
+            Terminator::Return => self.translate_return_terminator(),
             Terminator::Call {
                 func,
                 args,
@@ -229,13 +225,50 @@ impl<'a> FunctionTranslator<'a> {
             Terminator::SwitchInt {
                 discriminant,
                 targets,
-            } => todo!(),
+            } => self.translate_switch_terminator(discriminant, targets, block_map),
             Terminator::Drop { place, target } => todo!(),
             Terminator::Unreachable => todo!(),
         }
     }
 
-    fn emit_return(&mut self) {
+    fn translate_jump_terminator(&mut self, target: Idx<BasicBlock>, block_map: &BlockMap) {
+        let block_call_args = self.block_args(target);
+        let target = block_map[target];
+        self.builder.ins().jump(target, &block_call_args);
+    }
+
+    fn translate_switch_terminator(
+        &mut self,
+        discriminant: &Operand,
+        targets: &SwitchIntTargets,
+        block_map: &BlockMap,
+    ) {
+        let condition = self.translate_operand(discriminant);
+        if targets.branches.len() == 1 {
+            // TODO: validate the assumption being made here when `match` expressions
+            // are added (perhaps, remove IfExpr from HIR and _only_ have `match`, and
+            // adjust MIR construction accordingly - then no assumptions here)
+            // then/else is flipped from MIR
+            let then_block = targets.otherwise.unwrap();
+            let block_then_label = block_map[then_block];
+            let block_then_args = &self.block_args(then_block);
+
+            let else_block = targets.branches[0].1;
+            let block_else_label = block_map[else_block];
+            let block_else_args = &self.block_args(else_block);
+            self.builder.ins().brif(
+                condition,
+                block_then_label,
+                block_then_args,
+                block_else_label,
+                block_else_args,
+            );
+        } else {
+            todo!("translating match expressions")
+        }
+    }
+
+    fn translate_return_terminator(&mut self) {
         let (return_local_idx, return_local) = self.func.return_local();
         if return_local.type_(self.context).is_unit() {
             self.builder.ins().return_(&[]);
@@ -245,9 +278,18 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
+    fn block_args(&mut self, target_block: Idx<BasicBlock>) -> Vec<Value> {
+        self.func.blocks[target_block]
+            .parameters
+            .iter()
+            .map(|local| self.variables[local])
+            .map(|var| self.builder.use_var(var))
+            .collect()
+    }
+
     fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
         match rvalue {
-            Rvalue::Use(op) => self.operand_to_value(op),
+            Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
         }
@@ -277,8 +319,8 @@ impl<'a> FunctionTranslator<'a> {
         let rhs_ty = self.op_type(rhs);
 
         if lhs_ty.is_float() {
-            let lhs_val = self.operand_to_value(lhs);
-            let rhs_val = self.operand_to_value(rhs);
+            let lhs_val = self.translate_operand(lhs);
+            let rhs_val = self.translate_operand(rhs);
             self.builder
                 .ins()
                 .fcmp(comparison.as_float_cc(), lhs_val, rhs_val)
@@ -295,8 +337,8 @@ impl<'a> FunctionTranslator<'a> {
         //  - if rhs is a constant, emit icmp_imm
         //  - if lhs is a constant, invert the condition (IntCC::complement)? and emit icmp_imm
         //  - otherwise emit icmp
-        let lhs_val = self.operand_to_value(lhs);
-        let rhs_val = self.operand_to_value(rhs);
+        let lhs_val = self.translate_operand(lhs);
+        let rhs_val = self.translate_operand(rhs);
 
         let val_i8 = self.builder.ins().icmp(comparison, lhs_val, rhs_val);
         self.builder.ins().sextend(self.types.bool, val_i8)
@@ -315,7 +357,7 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     // TODO: better way to use the return type here or determine this earlier?
-    fn operand_to_value(&mut self, op: &Operand) -> Value {
+    fn translate_operand(&mut self, op: &Operand) -> Value {
         match op {
             Operand::Copy(p) => {
                 let local = p.local;

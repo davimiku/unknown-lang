@@ -10,16 +10,27 @@ fun (condition: Bool) -> Float {
         8.0
     }
 }";
+    // TODO: the duplicate _2 variable should be eliminated at
+    // some point by adding some logic to constructing the condition
+    // Operand to look for variables that are already locals directly
     let expected = "
 fun {anonymous}:
-    params: {none}
-    mut _0: 16
-    _1: 16
+    params: _1
+    mut _0: Float
+    _1: Bool
+    _2: Bool
     
-    BB0(_1):
-        _1 = const 16
-        _0 = copy _1
-        return
+    BB0():
+        _2 = copy _1
+        SwitchInt(copy _2): [0 -> BB2, else -> BB1]
+    BB1():
+        _0 = const 16.0
+        Jump -> BB3
+    BB2():
+        _0 = const 8.0
+        Jump -> BB3
+    BB3(_0):
+        Return _0 ->
 ";
 
     check_function(input, expected);

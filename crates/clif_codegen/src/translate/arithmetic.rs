@@ -14,19 +14,19 @@ impl FunctionTranslator<'_> {
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
         match (lhs_ty, rhs_ty) {
             (HType::Float, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().fadd(lhs_val, rhs_val)
             }
             (HType::Float, HType::Int) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
                 self.builder.ins().fadd(lhs_val, rhs_val)
             }
             (HType::Int, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
                 self.builder.ins().fadd(lhs_val, rhs_val)
             }
@@ -42,19 +42,19 @@ impl FunctionTranslator<'_> {
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
         match (lhs_ty, rhs_ty) {
             (HType::Float, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().fsub(lhs_val, rhs_val)
             }
             (HType::Float, HType::Int) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
                 self.builder.ins().fsub(lhs_val, rhs_val)
             }
             (HType::Int, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
                 self.builder.ins().fsub(lhs_val, rhs_val)
             }
@@ -70,19 +70,19 @@ impl FunctionTranslator<'_> {
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
         match (lhs_ty, rhs_ty) {
             (HType::Float, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().fmul(lhs_val, rhs_val)
             }
             (HType::Float, HType::Int) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
                 self.builder.ins().fmul(lhs_val, rhs_val)
             }
             (HType::Int, HType::Float) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
                 self.builder.ins().fmul(lhs_val, rhs_val)
             }
@@ -93,8 +93,8 @@ impl FunctionTranslator<'_> {
     }
 
     pub(super) fn emit_div(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
-        let lhs_val = self.operand_to_value(lhs);
-        let rhs_val = self.operand_to_value(rhs);
+        let lhs_val = self.translate_operand(lhs);
+        let rhs_val = self.translate_operand(rhs);
         let lhs_ty = self.op_type(lhs);
         let rhs_ty = self.op_type(rhs);
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
@@ -122,8 +122,8 @@ impl FunctionTranslator<'_> {
         // TODO: if both LHS and RHS are constants, could fold them here
         // or may be better to do that in MIR
 
-        let lhs_val = self.operand_to_value(lhs);
-        let rhs_val = self.operand_to_value(rhs);
+        let lhs_val = self.translate_operand(lhs);
+        let rhs_val = self.translate_operand(rhs);
 
         // TODO: this traps on divisor=0 or (numerator=Int.MIN && divisor=-1)
         // instead, once panic machinery is built, emit icmp and jumps to unwind blocks
@@ -134,16 +134,16 @@ impl FunctionTranslator<'_> {
     fn iadd(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
         match (lhs.as_int(), rhs.as_int()) {
             (None, None) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().iadd(lhs_val, rhs_val)
             }
             (None, Some(i)) => {
-                let lhs_val = self.operand_to_value(lhs);
+                let lhs_val = self.translate_operand(lhs);
                 self.builder.ins().iadd_imm(lhs_val, *i)
             }
             (Some(i), None) => {
-                let rhs_val = self.operand_to_value(rhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().iadd_imm(rhs_val, *i)
             }
             // regardless of optimization settings, this gets trivially constant-folded
@@ -159,16 +159,16 @@ impl FunctionTranslator<'_> {
     fn isub(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
         match (lhs.as_int(), rhs.as_int()) {
             (None, None) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().isub(lhs_val, rhs_val)
             }
             (None, Some(i)) => {
-                let lhs_val = self.operand_to_value(lhs);
+                let lhs_val = self.translate_operand(lhs);
                 self.builder.ins().iadd_imm(lhs_val, -(*i))
             }
             (Some(i), None) => {
-                let rhs_val = self.operand_to_value(rhs);
+                let rhs_val = self.translate_operand(rhs);
                 let rhs_val = self.builder.ins().ineg(rhs_val);
                 self.builder.ins().iadd_imm(rhs_val, *i)
             }
@@ -185,16 +185,16 @@ impl FunctionTranslator<'_> {
     fn imul(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
         match (lhs.as_int(), rhs.as_int()) {
             (None, None) => {
-                let lhs_val = self.operand_to_value(lhs);
-                let rhs_val = self.operand_to_value(rhs);
+                let lhs_val = self.translate_operand(lhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().imul(lhs_val, rhs_val)
             }
             (None, Some(i)) => {
-                let lhs_val = self.operand_to_value(lhs);
+                let lhs_val = self.translate_operand(lhs);
                 self.builder.ins().imul_imm(lhs_val, *i)
             }
             (Some(i), None) => {
-                let rhs_val = self.operand_to_value(rhs);
+                let rhs_val = self.translate_operand(rhs);
                 self.builder.ins().imul_imm(rhs_val, *i)
             }
             // regardless of optimization settings, this gets trivially constant-folded

@@ -10,7 +10,7 @@ fun main:
     
     BB0():
         _0 = Add(const 3, const 5)
-        Return ->
+        Return _0 ->
 ";
 
     check_script(input, expected);
@@ -25,9 +25,9 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0(_1):
+    BB0():
         _0 = Add(copy _1, const 16)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -42,9 +42,9 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0(_1):
+    BB0():
         _0 = Sub(copy _1, const 16)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -59,9 +59,9 @@ fun {anonymous}:
     mut _0: Int
     _1: Int
     
-    BB0(_1):
+    BB0():
         _0 = Mul(copy _1, const 16)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -81,10 +81,10 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _2 = Add(copy _1, const 16)
         _0 = copy _2
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -103,11 +103,11 @@ fun {anonymous}:
     _3: Int
     _4: Int
     
-    BB0(_1, _2):
+    BB0():
         _4 = Mul(const 2, copy _2)
         _3 = Add(copy _1, copy _4)
         _0 = Sub(copy _3, const 7)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);

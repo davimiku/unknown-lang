@@ -100,7 +100,7 @@ impl Function {
         let (local_idx, _) = self.return_local();
         Place {
             local: local_idx,
-            projection: vec![],
+            projection: Box::new([]),
         }
     }
 
@@ -123,7 +123,7 @@ pub struct BasicBlock {
     pub statements: Vec<Statement>,
 
     /// How the basic block ends
-    pub terminator: Terminator,
+    pub terminator: Option<Terminator>,
 
     /// Locals used in this block that were defined in a previous block
     ///
@@ -210,11 +210,13 @@ pub struct VariantIdx {
     private: u32,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub enum Terminator {
     /// Continues execution in the next block.
     /// This terminator has a single successor.
-    Jump { target: Idx<BasicBlock> },
+    Jump {
+        target: Idx<BasicBlock>,
+    },
 
     /// Chooses between multiple branches to determine the next block.
     ///
@@ -270,7 +272,6 @@ pub enum Terminator {
         // replace: bool,
     },
 
-    #[default]
     Unreachable,
 }
 
@@ -304,14 +305,14 @@ pub struct SwitchIntTargets {
 #[derive(Debug, Clone)]
 pub struct Place {
     pub local: Idx<Local>,
-    pub projection: Vec<PlaceElem>,
+    pub projection: Box<[PlaceElem]>,
 }
 
 impl From<Idx<Local>> for Place {
     fn from(local: Idx<Local>) -> Self {
         Self {
             local,
-            projection: vec![],
+            projection: Box::new([]),
         }
     }
 }

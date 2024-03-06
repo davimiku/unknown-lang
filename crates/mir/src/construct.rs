@@ -7,7 +7,7 @@ use crate::syntax::{
     BasicBlock, BinOp, Constant, Local, Mutability, Operand, Place, Rvalue, Statement,
     SwitchIntTargets, Terminator,
 };
-use crate::{BlockQueueItem, Builder, Function};
+use crate::{Builder, Function};
 use util_macros::assert_matches;
 
 impl Builder {
@@ -17,39 +17,20 @@ impl Builder {
         function_expr: &hir::FunctionExpr,
         context: &Context,
     ) -> Idx<Function> {
+        let hir::FunctionExpr { params, body, name } = function_expr;
         let func = self.current_function_mut();
-        func.name = function_expr.name;
+        func.name = *name;
 
-        let return_ty = context.expr_type_idx(function_expr.body);
+        let return_ty = context.expr_type_idx(*body);
         self.make_local(return_ty, None, Mutability::Mut);
 
-        for param in function_expr.params.iter() {
+        for param in params.iter() {
             self.construct_param(param, context);
         }
 
         // initial block
         let return_place = Some(self.current_function().return_place());
-        self.block_queue.push_back(BlockQueueItem {
-            to_build: self.current_block,
-            block_expr: function_expr.body,
-            assign_to: return_place,
-            jump_to: None,
-        });
-
-        // main loop - pop from the queue and construct
-        while let Some(next) = self.block_queue.pop_front() {
-            let BlockQueueItem {
-                to_build,
-                block_expr,
-                assign_to,
-                jump_to,
-            } = next;
-            self.current_block = to_build;
-            self.jump_to = jump_to;
-            self.assign_to = assign_to;
-
-            self.construct_block(block_expr, context);
-        }
+        self.construct_block(*body, None, &return_place, context);
 
         self.current_function
     }
@@ -70,16 +51,15 @@ impl Builder {
         self.current_function_mut().new_block()
     }
 
-    /// Constructs the statements of the provided HIR Block into the
-    /// current MIR BasicBlock
-    ///
-    /// The slice of statements used to construct the BasicBlock are determined
-    /// by the current builder state of `statement_counter`.
-    ///
-    /// This allows for multiple MIR BasicBlock to be constructed from a single
-    /// HIR Block. For example, before and after an if-else expression that converges
-    /// is the same HIR Block but must be different MIR BasicBlocks.
-    fn construct_block(&mut self, block_expr: Idx<Expr>, context: &Context) {
+    /// Constructs the statements of the provided HIR Block
+    /// into the current MIR BasicBlock
+    fn construct_block(
+        &mut self,
+        block_expr: Idx<Expr>,
+        jump_to: Option<Idx<BasicBlock>>,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) {
         let statements = assert_matches!(context.expr(block_expr), Expr::Block).exprs();
         let start = self.scopes.peek_statement_counter();
         let statements = &statements[start..];
@@ -90,15 +70,17 @@ impl Builder {
             .map(|(i, el)| (el, i == statements.len() - 1));
 
         for (statement, is_last) in statements_iter {
-            self.construct_statement_like(*statement, block_expr, context, is_last);
             self.scopes.increment_statement_counter();
+            let assign_to = if is_last { assign_to } else { &None };
+            self.construct_statement_like(*statement, block_expr, assign_to, context);
         }
 
-        if let Some(target) = self.jump_to {
-            self.current_block_mut().terminator = Terminator::Jump { target };
-            self.jump_to = None;
-        } else if matches!(self.current_block_mut().terminator, Terminator::Unreachable) {
-            self.current_block_mut().terminator = Terminator::Return;
+        if self.current_block().terminator.is_none() {
+            if let Some(target) = jump_to {
+                self.current_block_mut().terminator = Some(Terminator::Jump { target });
+            } else {
+                self.construct_return();
+            }
         }
     }
 
@@ -116,15 +98,15 @@ impl Builder {
         &mut self,
         statement: Idx<Expr>,
         block_expr: Idx<Expr>,
+        assign_to: &Option<Place>,
         context: &Context,
-        is_last: bool,
     ) {
         let statement = context.expr(statement);
         if let Expr::VarDef(var_def) = statement {
             self.construct_var_def(var_def, context)
         } else {
             let statement = assert_matches!(statement, Expr::Statement);
-            self.construct_statement(*statement, block_expr, context, is_last)
+            self.construct_statement(*statement, block_expr, assign_to, context)
         }
     }
 
@@ -145,22 +127,23 @@ impl Builder {
     fn construct_statement(
         &mut self,
         statement_idx: Idx<Expr>,
-        // the hir::Expr::Block that contains this statement
-        block_expr: Idx<Expr>,
+        block_expr: Idx<Expr>, // the hir::Expr::Block that contains this statement
+        assign_to: &Option<Place>,
         context: &Context,
-        is_last: bool,
     ) {
         let statement_expr = context.expr(statement_idx);
 
         match statement_expr {
-            Expr::BoolLiteral(b) => self.construct_statement_constant(Constant::bool(*b), is_last),
+            Expr::BoolLiteral(b) => {
+                self.construct_statement_constant(Constant::bool(*b), assign_to)
+            }
             Expr::FloatLiteral(f) => {
-                self.construct_statement_constant(Constant::Float(*f), is_last)
+                self.construct_statement_constant(Constant::Float(*f), assign_to)
             }
             Expr::StringLiteral(s) => {
-                self.construct_statement_constant(Constant::String(*s), is_last)
+                self.construct_statement_constant(Constant::String(*s), assign_to)
             }
-            Expr::IntLiteral(i) => self.construct_statement_constant(Constant::Int(*i), is_last),
+            Expr::IntLiteral(i) => self.construct_statement_constant(Constant::Int(*i), assign_to),
 
             // can't ignore because elements may cause side-effects
             // ex. [do_thing (), do_thing (), do_thing ()]
@@ -172,7 +155,7 @@ impl Builder {
             // TODO: will be removed in favor of Call
             Expr::Unary(_) => todo!(),
 
-            Expr::Block(..) => {
+            Expr::Block(_) => {
                 // when a new block is encountered as a statement, there isn't actually any
                 // control flow, the new block is immediately jumped into
                 // Therefore here we don't create a new BasicBlock, and instead construct the
@@ -180,7 +163,7 @@ impl Builder {
                 // If these statements end without any explicit terminators, then
                 // construction just continues on in the current block.
                 self.scopes.push(statement_idx);
-                self.construct_block(statement_idx, context);
+                self.construct_block(statement_idx, None, assign_to, context);
                 self.scopes.pop();
             }
 
@@ -190,37 +173,31 @@ impl Builder {
                 // builtin operators
                 let rvalue = self.construct_call_rvalue(call, context);
 
-                if is_last {
-                    if let Some(place) = self.assign_to.take() {
-                        let assign = Statement::assign(place, rvalue);
+                if let Some(place) = assign_to {
+                    let assign = Statement::assign(place.clone(), rvalue);
 
-                        self.current_block_mut().statements.push(assign);
-                    }
+                    self.current_block_mut().statements.push(assign);
                 }
                 // FIXME: Call may create a Terminator which should return Break
                 // for the control flow so that the next block is constructed
             }
 
-            // TODO: a lot of these are going to repeat this same code of
-            // "if there's a place to assign to, make the operand/rvalue/assign"
             Expr::VarRef(var_ref) => {
-                if is_last {
-                    if let Some(assign_place) = self.assign_to.take() {
-                        let operand = self.construct_var_ref_operand(var_ref);
-                        let rvalue = Rvalue::Use(operand);
+                if let Some(assign_place) = assign_to {
+                    let operand = self.construct_var_ref_operand(var_ref);
+                    let rvalue = Rvalue::Use(operand);
 
-                        let assign = Statement::assign(assign_place, rvalue);
-                        self.current_block_mut().statements.push(assign);
-                    };
-                }
+                    let assign = Statement::assign(assign_place.clone(), rvalue);
+                    self.current_block_mut().statements.push(assign);
+                };
             }
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
-            Expr::If(if_expr) => self.construct_if_else(if_expr, block_expr, context),
+            Expr::If(if_expr) => self.construct_if_expr(if_expr, block_expr, assign_to, context),
 
-            Expr::VarDef(var_def) => {
-                todo!()
+            Expr::VarDef(_) => {
+                unreachable!("Compiler bug (MIR): Found hir::Expr::VarDefExpr inside of hir::Expr::Statement")
             }
             Expr::Statement(_) => {
                 // HIR should have just 1 expression nested inside a statement
@@ -236,14 +213,12 @@ impl Builder {
         }
     }
 
-    fn construct_statement_constant(&mut self, constant: Constant, is_last: bool) {
-        if is_last {
-            if let Some(assign_place) = self.assign_to.take() {
-                let operand = Operand::Constant(constant);
-                let rvalue = Rvalue::Use(operand);
-                let assign = Statement::assign(assign_place, rvalue);
-                self.current_block_mut().statements.push(assign);
-            }
+    fn construct_statement_constant(&mut self, constant: Constant, assign_to: &Option<Place>) {
+        if let Some(assign_place) = assign_to {
+            let operand = Operand::Constant(constant);
+            let rvalue = Rvalue::Use(operand);
+            let assign = Statement::assign(assign_place.clone(), rvalue);
+            self.current_block_mut().statements.push(assign);
         }
     }
 
@@ -296,6 +271,15 @@ impl Builder {
         Rvalue::BinaryOp(binop, Box::new((operand1, operand2)))
     }
 
+    fn construct_return(&mut self) {
+        let (return_local, _) = self.current_function().return_local();
+
+        if self.current_block != self.current_function().entry_block() {
+            self.current_block_mut().parameters.push(return_local);
+        }
+        self.current_block_mut().terminator = Some(Terminator::Return);
+    }
+
     /// Constructs an Assign statement for a *new* `Local`` and adds
     /// it to the current block.
     ///
@@ -317,69 +301,62 @@ impl Builder {
         local
     }
 
-    fn construct_if_else(&mut self, if_expr: &IfExpr, block_expr: Idx<Expr>, context: &Context) {
-        todo!();
-        // let IfExpr {
-        //     condition,
-        //     then_branch,
-        //     else_branch,
-        // } = if_expr;
-        // // TODO: if the condition expr is a BoolLiteral, mark one of the blocks unreachable?
-        // let rvalue = self.construct_rvalue(context.expr(*condition), context);
-        // let local = self.construct_assign(rvalue, context.core_types().bool, None);
-        // let discriminant = Operand::Copy(Place::from(local));
+    fn construct_if_expr(
+        &mut self,
+        if_expr: &IfExpr,
+        block_expr: Idx<Expr>,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) {
+        let IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } = if_expr;
+        // TODO: if the condition expr is a BoolLiteral, mark one of the blocks unreachable?
+        let rvalue = self.construct_rvalue(context.expr(*condition), context);
+        let local = self.construct_assign(rvalue, context.core_types().bool, None);
+        let discriminant = Operand::Copy(Place::from(local));
 
-        // let then_block = self.new_block();
-        // let mut then_queue_item = BlockQueueItem {
-        //     to_build: then_block,
-        //     block_expr: *then_branch,
-        //     assign_to: self.assign_to.clone(),
-        //     jump_to: None,
-        // };
+        let source_block = self.current_block;
+        let then_block = self.new_block();
+        let else_block = else_branch.map(|_| self.new_block());
+        let join_block = self.new_block();
 
-        // let else_stuff = else_branch.map(|branch| {
-        //     let else_block = self.new_block();
+        self.current_block = then_block;
+        self.scopes.push(*then_branch);
+        self.construct_block(*then_branch, Some(join_block), assign_to, context);
+        self.scopes.pop();
 
-        //     let else_queue_item = BlockQueueItem {
-        //         to_build: else_block,
-        //         block_expr: branch,
-        //         assign_to: self.assign_to.clone(),
-        //         jump_to: None,
-        //     };
-        //     (else_block, else_queue_item)
-        // });
+        let else_zipped = else_branch.zip(else_block);
+        if let Some((else_branch, else_block)) = else_zipped {
+            self.current_block = else_block;
+            self.scopes.push(else_branch);
+            self.construct_block(else_branch, Some(join_block), assign_to, context);
+            self.scopes.pop();
+        }
 
-        // let join_block = self.new_block();
+        let target_block = if let Some(else_block) = else_block {
+            else_block
+        } else {
+            join_block
+        };
+        let targets = SwitchIntTargets {
+            branches: Box::new([(0, target_block)]),
+            otherwise: Some(then_block),
+        };
 
-        // then_queue_item.jump_to = Some(join_block);
-        // self.block_queue.push_back(then_queue_item);
+        self.block_mut(source_block).terminator = Some(Terminator::SwitchInt {
+            discriminant,
+            targets,
+        });
 
-        // let targets = if let Some((else_block, mut else_queue_item)) = else_stuff {
-        //     else_queue_item.jump_to = Some(join_block);
-        //     self.block_queue.push_back(else_queue_item);
-        //     SwitchIntTargets {
-        //         branches: Box::new([(0, else_block)]),
-        //         otherwise: Some(then_block),
-        //     }
-        // } else {
-        //     SwitchIntTargets {
-        //         branches: Box::new([(0, join_block)]),
-        //         otherwise: Some(then_block),
-        //     }
-        // };
-
-        // let join_queue_item = BlockQueueItem {
-        //     to_build: join_block,
-        //     block_expr,
-        //     assign_to: None,
-        //     jump_to: None,
-        // };
-        // self.block_queue.push_back(join_queue_item);
-
-        // self.current_block_mut().terminator = Terminator::SwitchInt {
-        //     discriminant,
-        //     targets,
-        // };
+        // construct the block that joins the branches back together
+        // the ScopesStack should be correct after popping the if/else scopes
+        // which means the original hir::block should be able to continue
+        // constructing the next BasicBlock(s) by starting at its current statement
+        self.current_block = join_block;
+        self.construct_block(block_expr, None, assign_to, context);
     }
 
     fn find_symbol(&self, symbol: ValueSymbol) -> Idx<Local> {

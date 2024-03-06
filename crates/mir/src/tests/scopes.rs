@@ -26,7 +26,7 @@ fun {anonymous}:
         _2 = const 4.0
         _3 = Add(copy _1, copy _2)
         _4 = Mul(copy _3, const 2.5)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -62,7 +62,7 @@ fun {anonymous}:
         _3 = Add(copy _1, copy _2)
         _4 = Mul(copy _3, const 2.5)
         _0 = copy _4
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);

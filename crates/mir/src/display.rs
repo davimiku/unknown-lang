@@ -54,7 +54,7 @@ impl MirWrite for Function {
     ///     <see the BasicBlock documentation for an example>
     ///
     ///   BB1:
-    ///     Return ->
+    ///     Return _0 ->
     /// ```
     fn write<W: io::Write>(
         &self,
@@ -183,7 +183,9 @@ impl MirWrite for BasicBlock {
             statement.write(buf, context, indent)?;
             write_line(buf, indent)?;
         }
-        self.terminator.write(buf, context, indent)?;
+        if let Some(terminator) = &self.terminator {
+            terminator.write(buf, context, indent)?;
+        }
         write_line_and_dedent(buf, indent)?;
 
         Ok(())
@@ -224,7 +226,7 @@ impl MirWrite for Terminator {
                 write!(buf, "Jump -> ")?;
                 target.write(buf, context, indent)
             }
-            Terminator::Return => write!(buf, "Return ->"),
+            Terminator::Return => write!(buf, "Return _0 ->"),
             Terminator::Call {
                 func,
                 args,
@@ -235,8 +237,9 @@ impl MirWrite for Terminator {
                 discriminant,
                 targets,
             } => {
-                write!(buf, "SwitchInt: ")?;
+                write!(buf, "SwitchInt(")?;
                 discriminant.write(buf, context, indent)?;
+                write!(buf, "): ");
 
                 targets.write(buf, context, indent)
             }
@@ -247,13 +250,8 @@ impl MirWrite for Terminator {
 }
 
 impl MirWrite for SwitchIntTargets {
-    fn write<W: io::Write>(
-        &self,
-        buf: &mut W,
-        context: &Context,
-        indent: &mut Indent,
-    ) -> io::Result<()> {
-        write!(buf, " (")?;
+    fn write<W: io::Write>(&self, buf: &mut W, _: &Context, _: &mut Indent) -> io::Result<()> {
+        write!(buf, "[")?;
         let branch_targets = self
             .branches
             .iter()
@@ -266,9 +264,9 @@ impl MirWrite for SwitchIntTargets {
         if let Some(otherwise) = self.otherwise {
             write!(buf, ", ")?;
             let bb = idx_basic_block(otherwise);
-            write!(buf, "otherwise -> {bb}")?;
+            write!(buf, "else -> {bb}")?;
         }
-        write!(buf, ")")
+        write!(buf, "]")
     }
 }
 

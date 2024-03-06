@@ -10,9 +10,9 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Eq(copy _1, copy _2)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -28,9 +28,9 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Ne(copy _1, copy _2)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -46,9 +46,9 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Lt(copy _1, copy _2)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -64,9 +64,9 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Le(copy _1, copy _2)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -82,9 +82,9 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Gt(copy _1, copy _2)
-        Return ->
+        Return _0 ->
 ";
 
     check_function(input, expected);
@@ -100,9 +100,29 @@ fun {anonymous}:
     _1: Int
     _2: Int
     
-    BB0(_1, _2):
+    BB0():
         _0 = Ge(copy _1, copy _2)
-        Return ->
+        Return _0 ->
+";
+
+    check_function(input, expected);
+}
+
+#[test]
+fn is_even() {
+    let input = "fun (a: Int) -> { a % 2 == 0 }";
+
+    let expected = "
+fun {anonymous}:
+    params: _1
+    mut _0: Bool
+    _1: Int
+    _2: Int
+    
+    BB0():
+        _2 = Rem(copy _1, const 2)
+        _0 = Eq(copy _2, const 0)
+        Return _0 ->
 ";
 
     check_function(input, expected);

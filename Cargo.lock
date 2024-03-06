@@ -246,6 +246,7 @@ dependencies = [
  "proc-macro2",
  "ryu",
  "text-size",
+ "util_macros",
 ]
 
 [[package]]

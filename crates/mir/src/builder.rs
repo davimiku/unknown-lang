@@ -18,8 +18,7 @@ pub struct Builder {
     /// ex. with if/else branch, we initialize the empty blocks
     /// for each branch, and supply the destination block where those
     /// branches will reconvene.
-    pub block_queue: VecDeque<BlockQueueItem>,
-
+    // pub block_queue: VecDeque<BlockQueueItem>,
     pub block_var_defs: ArenaMap<Idx<Local>, Idx<BasicBlock>>,
 
     // invariant: current_block *must* belong to the current_function
@@ -28,12 +27,12 @@ pub struct Builder {
 
     /// The final statement of the current block is constructed as
     /// an assignment to this Place.
-    pub assign_to: Option<Place>,
+    // pub assign_to: Option<Place>,
 
     /// When constructing a block with no natural terminator, this value will
     /// be used as the Jump terminator. For example, when the branches of if-else
     /// join back together.
-    pub jump_to: Option<Idx<BasicBlock>>,
+    // pub jump_to: Option<Idx<BasicBlock>>,
 
     /// Tracks scopes while constructing the MIR. When a scope is entered,
     /// a new Scope is pushed on here. This tracks the current statement counter
@@ -52,10 +51,10 @@ impl Default for Builder {
             functions,
             current_function,
             current_block,
-            block_queue: Default::default(),
+            // block_queue: Default::default(),
             block_var_defs: Default::default(),
-            assign_to: Default::default(),
-            jump_to: Default::default(),
+            // assign_to: Default::default(),
+            // jump_to: Default::default(),
             scopes: Default::default(),
         }
     }
@@ -84,6 +83,10 @@ impl Builder {
 
     pub fn block_mut(&mut self, idx: Idx<BasicBlock>) -> &mut BasicBlock {
         &mut self.current_function_mut().blocks[idx]
+    }
+
+    pub fn current_block(&self) -> &BasicBlock {
+        &self.current_function().blocks[self.current_block]
     }
 
     pub fn current_block_mut(&mut self) -> &mut BasicBlock {
