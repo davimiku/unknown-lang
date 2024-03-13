@@ -1,4 +1,4 @@
-use hir::{BlockExpr, Context, Expr, FunctionExpr};
+use hir::{BlockExpr, Context, Expr, FunctionExpr, FunctionExprGroup};
 
 use crate::Codegen;
 
@@ -7,17 +7,22 @@ impl Codegen {
     ///
     /// Often this is called via the "variable definition" procedure but function expressions
     /// can also exist on their own (can be immediately invoked - IIFE)
-    pub(super) fn write_function_literal(&mut self, func: &FunctionExpr, context: &Context) {
-        let FunctionExpr { params, body, name } = func;
+    pub(super) fn write_function_literal(
+        &mut self,
+        func_group: &FunctionExprGroup,
+        context: &Context,
+    ) {
+        let func = &func_group.overloads[0];
+        let FunctionExpr { params, body, .. } = func;
         self.push("(function ");
-        if let Some((key, ..)) = name {
-            let name = context.lookup(*key);
+        if let Some((key, ..)) = func_group.name {
+            let name = context.lookup(key);
             self.push(name);
         }
 
         // params
         self.push_ch('(');
-        for param in params {
+        for param in params.iter() {
             let name = context.lookup(param.name);
             self.push(name);
             self.push_ch(',');
@@ -38,13 +43,12 @@ impl Codegen {
             Expr::VarDef(_) => self.push("{}"), // "optimization" TODO: should we write this out anyways?
             Expr::Unary(_) => unreachable!("replacing with Call"),
 
-            expr => {
-                self.push("return ");
-                self.write_expr(body, None, context);
-            }
             Expr::IndexInt(_) => todo!(),
             Expr::If(_) => todo!(),
             Expr::Statement(_) => todo!(),
+            expr => {
+                panic!("unexpected expr {expr:?}");
+            }
         }
     }
 

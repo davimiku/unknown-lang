@@ -136,7 +136,7 @@ pub struct FuncSignature {
 
 impl From<((), Idx<Type>)> for FuncSignature {
     fn from(value: ((), Idx<Type>)) -> Self {
-        let (params, return_ty) = value;
+        let (_, return_ty) = value;
         Self {
             params: Box::new([]),
             return_ty,

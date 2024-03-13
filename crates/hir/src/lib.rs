@@ -12,11 +12,13 @@ mod typecheck;
 #[cfg(test)]
 mod tests;
 
+use ast::Root;
 pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
-    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionParam, IfExpr,
-    IndexIntExpr, IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
+    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup,
+    FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol,
+    VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FuncSignature, FunctionType, Type};
@@ -27,24 +29,31 @@ pub use interner::{Interner, Key};
 use la_arena::Idx;
 use type_expr::TypeExpr;
 
-/// In "module mode", which is the normal/default, lowers a module that potentially
-/// contains many top-level functions and const expressions.
-fn lower_module(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
+pub struct Module {
+    pub exprs: Box<[Idx<Expr>]>,
+}
+
+pub fn lower(input: &str) -> (Module, Context) {
+    let (ast, mut context) = parse(input);
+
     let exprs: Vec<Idx<Expr>> = ast
         .exprs()
         .map(|expr| context.lower_expr_statement(Some(expr)))
         .collect();
 
-    let module = Expr::Module(exprs);
-    let module = context.alloc_expr(module, None);
+    let module = Module {
+        exprs: exprs.into(),
+    };
 
-    context.type_check(module, context.core_types().top);
+    context.type_check_module(&module);
 
     (module, context)
 }
 
 /// In "function mode", the only top-level expression is a function expression
-fn lower_function(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
+pub fn lower_function(input: &str) -> (Idx<Expr>, Context) {
+    let (ast, mut context) = parse(input);
+
     let ast_function = ast
         .exprs()
         .next()
@@ -62,7 +71,9 @@ fn lower_function(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context)
 
 /// In "script mode", wrap the list of expressions in the script into a synthetic
 /// "main" function
-fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
+pub fn lower_script(input: &str) -> (Idx<Expr>, Context) {
+    let (ast, mut context) = parse(input);
+
     let exprs: Vec<Idx<Expr>> = ast
         .exprs()
         .map(|expr| context.lower_expr_statement(Some(expr)))
@@ -74,10 +85,17 @@ fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
     let main_symbol = ValueSymbol::synthetic_main();
     let main_name = context.interner.intern("main");
 
-    let function = Expr::Function(FunctionExpr {
-        params: vec![], // FIXME: `args: Array String` for CLI scripts?
-        body,
+    let params = Box::new([]);
+    let return_type_annotation = None;
+    let function = Expr::Function(FunctionExprGroup {
+        // FIXME: `args: Array String` for CLI scripts?
+        overloads: Box::new([FunctionExpr {
+            params,
+            body,
+            return_type_annotation,
+        }]),
         name: Some((main_name, main_symbol)),
+        entry_point: Some(main_name),
     });
     let function_idx = context.alloc_expr(function, None);
 
@@ -86,7 +104,7 @@ fn lower_script(ast: &ast::Root, mut context: Context) -> (Idx<Expr>, Context) {
     (function_idx, context)
 }
 
-pub fn lower(input: &str, target: LowerTarget) -> (Idx<Expr>, Context) {
+fn parse(input: &str) -> (Root, Context) {
     let parsed = parser::parse(input);
     assert!(parsed.errors().is_empty());
 
@@ -95,21 +113,5 @@ pub fn lower(input: &str, target: LowerTarget) -> (Idx<Expr>, Context) {
     let interner = Interner::default();
     let context = Context::new(interner);
 
-    match target {
-        LowerTarget::Function => lower_function(&root, context),
-        LowerTarget::Module => lower_module(&root, context),
-        LowerTarget::Script => lower_script(&root, context),
-    }
-}
-
-pub enum LowerTarget {
-    /// The AST to lower is a list of statements representing a module
-    Module,
-
-    /// The AST to lower is a list of statements for a "script", which is syntax
-    /// sugar for an immediately executed "main" function
-    Script,
-
-    /// The AST to lower is for a single function
-    Function,
+    (root, context)
 }

@@ -1,0 +1,93 @@
+fn square(i: f64) -> f64 {
+    i * i
+}
+
+fn main(cond: bool, input: f64) -> f64 {
+    let inc = |i: f64| { i + 1.0 };
+    let dec = |i: f64| { i - 1.0 };
+
+    let f = if cond { inc } else { dec };
+    
+    f(16.0) + square(16.0)
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn square(_1: f64) -> f64 {
+    debug i => _1;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Mul(_1, _1);
+        return;
+    }
+}
+
+fn main(_1: bool, _2: f64) -> f64 {
+    debug cond => _1;
+    debug input => _2;
+    let mut _0: f64;
+    let mut _4: f64;
+    let mut _5: fn(f64) -> f64;
+    let mut _6: f64;
+    scope 1 {
+        debug inc => const ZeroSized: {closure@src/lib.rs:8:15: 8:23};
+        scope 2 {
+            debug dec => const ZeroSized: {closure@src/lib.rs:9:15: 9:23};
+            let _3: fn(f64) -> f64;
+            scope 3 {
+                debug f => _3;
+            }
+        }
+    }
+
+    bb0: {
+        switchInt(_1) -> [0: bb2, otherwise: bb1];
+    }
+
+    bb1: {
+        _3 = const ZeroSized: {closure@src/lib.rs:8:15: 8:23} as fn(f64) -> f64 (PointerCoercion(ClosureFnPointer(Normal)));
+        goto -> bb3;
+    }
+
+    bb2: {
+        _3 = const ZeroSized: {closure@src/lib.rs:9:15: 9:23} as fn(f64) -> f64 (PointerCoercion(ClosureFnPointer(Normal)));
+        goto -> bb3;
+    }
+
+    bb3: {
+        _5 = _3;
+        _4 = move _5(const 16f64) -> [return: bb4, unwind continue];
+    }
+
+    bb4: {
+        _6 = square(const 16f64) -> [return: bb5, unwind continue];
+    }
+
+    bb5: {
+        _0 = Add(move _4, move _6);
+        return;
+    }
+}
+
+fn main::{closure#0}(_1: &{closure@src/lib.rs:8:15: 8:23}, _2: f64) -> f64 {
+    debug i => _2;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Add(_2, const 1f64);
+        return;
+    }
+}
+
+fn main::{closure#1}(_1: &{closure@src/lib.rs:9:15: 9:23}, _2: f64) -> f64 {
+    debug i => _2;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Sub(_2, const 1f64);
+        return;
+    }
+}

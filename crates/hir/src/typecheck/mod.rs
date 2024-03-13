@@ -22,7 +22,7 @@ use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{Context, ContextDisplay, Expr, ValueSymbol};
 
 pub(crate) use self::check::check_expr;
-pub(crate) use self::infer::infer_expr;
+pub(crate) use self::infer::{infer_expr, infer_module};
 
 #[derive(Debug)]
 pub struct TypeDatabase {
@@ -214,6 +214,12 @@ impl From<Idx<Type>> for TypeResult {
             ty,
             diagnostics: vec![],
         }
+    }
+}
+
+impl From<&Idx<Type>> for TypeResult {
+    fn from(ty: &Idx<Type>) -> Self {
+        (*ty).into()
     }
 }
 

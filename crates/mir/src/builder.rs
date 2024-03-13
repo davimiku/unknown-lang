@@ -1,16 +1,19 @@
 // TODO: decide if a Builder will be one-per-module? for later parallelization
 // for "script mode" or "function mode" there would be no parallelization
 
-use std::collections::VecDeque;
+use std::collections::HashMap;
 
+use hir::Key;
 use la_arena::{Arena, ArenaMap, Idx};
 
-use crate::{scopes::ScopesStack, BasicBlock, BlockQueueItem, Function, Local, Place, Program};
+use crate::{scopes::ScopesStack, BasicBlock, Function, Local, Module};
 
 #[derive(Debug)]
 pub struct Builder {
     /// Functions that have been created by this Builder
-    functions: Arena<Function>,
+    pub(crate) functions: Arena<Function>,
+
+    pub(crate) entry_points: HashMap<Key, Idx<Function>>,
 
     /// Blocks that have been created but yet to be constructed
     /// (block_to_construct, hir::Expr::Block, Option<goto_terminator_block>)
@@ -19,6 +22,11 @@ pub struct Builder {
     /// for each branch, and supply the destination block where those
     /// branches will reconvene.
     // pub block_queue: VecDeque<BlockQueueItem>,
+
+    /// Variables that have been defined in this block
+    ///
+    /// This is used for determining the block parameters, which are all
+    /// locals used in this block that *weren't* defined in this block
     pub block_var_defs: ArenaMap<Idx<Local>, Idx<BasicBlock>>,
 
     // invariant: current_block *must* belong to the current_function
@@ -41,31 +49,37 @@ pub struct Builder {
     pub scopes: ScopesStack,
 }
 
-impl Default for Builder {
-    fn default() -> Self {
+impl Builder {
+    pub(crate) fn new(context: &hir::Context) -> Self {
+        let mut functions = Arena::new();
+        {
+            let mut print_string = Function::default();
+            let key = context.interner.core_keys().print;
+            let symbol = context.find_value(key).unwrap();
+            print_string.name = Some((key, symbol));
+            print_string.params = vec![];
+            functions.alloc(print_string);
+        }
+
         let func = Function::default();
         let current_block = func.entry_block();
-        let mut functions = Arena::new();
         let current_function = functions.alloc(func);
         Self {
             functions,
             current_function,
             current_block,
-            // block_queue: Default::default(),
+            entry_points: Default::default(),
             block_var_defs: Default::default(),
-            // assign_to: Default::default(),
-            // jump_to: Default::default(),
             scopes: Default::default(),
         }
     }
 }
 
 impl Builder {
-    // TODO: if multiple builders will run in parallel, this can't return
-    // the whole program, it would have to be Module or something like that
-    pub fn build(self) -> Program {
-        Program {
+    pub fn build(self) -> Module {
+        Module {
             functions: self.functions,
+            entry_functions: self.entry_points,
         }
     }
 

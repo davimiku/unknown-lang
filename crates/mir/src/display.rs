@@ -10,7 +10,7 @@ use crate::syntax::{
     BinOp, Constant, Mutability, Operand, Place, Rvalue, Statement, SwitchIntTargets, Terminator,
     UnOp,
 };
-use crate::{BasicBlock, Function, Local, Program};
+use crate::{BasicBlock, Function, Local, Module};
 
 type Indent = usize;
 const INDENT_SIZE: usize = 4;
@@ -24,7 +24,7 @@ pub trait MirWrite {
     ) -> io::Result<()>;
 }
 
-impl MirWrite for Program {
+impl MirWrite for Module {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
@@ -64,7 +64,7 @@ impl MirWrite for Function {
     ) -> io::Result<()> {
         write_signature(buf, self, context, indent)?;
 
-        write_locals(buf, self, context, indent)?;
+        write_locals_list(buf, self, context, indent)?;
 
         // TODO: debug & scope information
         write_basic_blocks(buf, self, context, indent)?;
@@ -118,18 +118,18 @@ fn write_signature<W: io::Write>(
     write_line(buf, indent)
 }
 
-fn write_locals<W: io::Write>(
+fn write_locals_list<W: io::Write>(
     buf: &mut W,
     function: &Function,
     context: &Context,
     indent: &mut Indent,
 ) -> io::Result<()> {
-    for (i, local) in function.locals.iter() {
-        let i = i.into_raw().into_u32();
+    for (idx, local) in function.locals.iter() {
         let ty = local.ty.display(context);
 
         let mutability = local.mutability;
-        write!(buf, "{mutability}_{i}: {ty}")?;
+        let local = idx_local_to_string(&idx);
+        write!(buf, "{mutability}{local}: {ty}")?;
         write_line(buf, indent)?;
     }
     Ok(())
@@ -149,7 +149,7 @@ fn write_basic_blocks<W: io::Write>(
             .map(idx_local_to_string)
             .join(", ");
 
-        let bb = idx_basic_block(i);
+        let bb = idx_basic_block_to_string(i);
         write!(buf, "{bb}({params}):")?;
         write_line_and_indent(buf, indent)?;
         basic_block.write(buf, context, indent)?;
@@ -161,14 +161,14 @@ impl MirWrite for Idx<BasicBlock> {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
-        context: &Context,
-        indent: &mut Indent,
+        _context: &Context,
+        _indent: &mut Indent,
     ) -> io::Result<()> {
-        write!(buf, "{}", &idx_basic_block(*self))
+        write!(buf, "{}", &idx_basic_block_to_string(*self))
     }
 }
 
-fn idx_basic_block(idx: Idx<BasicBlock>) -> String {
+fn idx_basic_block_to_string(idx: Idx<BasicBlock>) -> String {
     format!("BB{}", idx.into_raw().into_u32())
 }
 
@@ -232,18 +232,34 @@ impl MirWrite for Terminator {
                 args,
                 destination,
                 target,
-            } => todo!(),
+            } => {
+                destination.write(buf, context, indent)?;
+                write!(buf, " = ")?;
+                func.write(buf, context, indent)?;
+                write!(buf, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    arg.write(buf, context, indent)?;
+                    if i < args.len() - 1 {
+                        write!(buf, ", ")?;
+                    }
+                }
+                write!(buf, ") -> [return: ")?;
+
+                let bb = target.unwrap();
+                write!(buf, "{}", idx_basic_block_to_string(bb))?;
+                write!(buf, ", unwind -> TODO]")
+            }
             Terminator::SwitchInt {
                 discriminant,
                 targets,
             } => {
                 write!(buf, "SwitchInt(")?;
                 discriminant.write(buf, context, indent)?;
-                write!(buf, "): ");
+                write!(buf, "): ")?;
 
                 targets.write(buf, context, indent)
             }
-            Terminator::Drop { place, target } => todo!(),
+            Terminator::Drop { .. } => todo!(),
             Terminator::Unreachable => todo!(),
         }
     }
@@ -256,14 +272,14 @@ impl MirWrite for SwitchIntTargets {
             .branches
             .iter()
             .map(|(value, bb)| {
-                let bb = idx_basic_block(*bb);
+                let bb = idx_basic_block_to_string(*bb);
                 format!("{value} -> {bb}")
             })
             .join(", ");
         write!(buf, "{branch_targets}")?;
         if let Some(otherwise) = self.otherwise {
             write!(buf, ", ")?;
-            let bb = idx_basic_block(otherwise);
+            let bb = idx_basic_block_to_string(otherwise);
             write!(buf, "else -> {bb}")?;
         }
         write!(buf, "]")
@@ -342,6 +358,7 @@ impl MirWrite for Constant {
                 write!(buf, "{}", ryu_buf.format_finite(*f))
             }
             Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
+            Constant::Func(..) => unreachable!(),
         }
     }
 }

@@ -1,28 +1,58 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
 use hir::{CallExpr, Context, Expr, FunctionParam, IfExpr, Type, ValueSymbol, VarDefExpr};
+use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
     BasicBlock, BinOp, Constant, Local, Mutability, Operand, Place, Rvalue, Statement,
     SwitchIntTargets, Terminator,
 };
-use crate::{Builder, Function};
+use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
 
 impl Builder {
+    pub(crate) fn construct_module(mut self, module: &hir::Module, context: &Context) -> Module {
+        for func_group in module.exprs.iter() {
+            let func_group = assert_matches!(context.expr(*func_group), hir::Expr::Function);
+            if let Some(entry_point) = func_group.entry_point {
+                // assumption: entry point functions cannot be overloaded
+                // enforced by HIR / type checking
+                self.entry_points.insert(entry_point, self.current_function);
+            }
+
+            let len = func_group.overloads.len();
+            let it = func_group
+                .overloads
+                .iter()
+                .enumerate()
+                .map(|(i, el)| (i == len - 1, el));
+
+            for (is_last, func) in it {
+                self.construct_function(func, context);
+                if !is_last {
+                    let func = Function::default();
+                    self.current_block = func.entry_block();
+                    self.current_function = self.functions.alloc(func);
+                }
+            }
+        }
+
+        self.build()
+    }
+
     // construct into existing allocated Function
     pub(crate) fn construct_function(
         &mut self,
         function_expr: &hir::FunctionExpr,
         context: &Context,
     ) -> Idx<Function> {
-        let hir::FunctionExpr { params, body, name } = function_expr;
+        let hir::FunctionExpr { params, body, .. } = function_expr;
         let func = self.current_function_mut();
-        func.name = *name;
+        // func.name = *name;
 
         let return_ty = context.expr_type_idx(*body);
-        self.make_local(return_ty, None, Mutability::Mut);
+        self.construct_local(return_ty, None, Mutability::Mut);
 
         for param in params.iter() {
             self.construct_param(param, context);
@@ -39,7 +69,7 @@ impl Builder {
         let ty_idx = context.type_idx_of_value(&param.symbol);
         self.current_function_mut().params.push(ty_idx);
         let ty = context.type_idx_of_value(&param.symbol);
-        let local = self.make_local(ty, Some(param.symbol), Mutability::Not); // TODO: depends on the param
+        let local = self.construct_local(ty, Some(param.symbol), Mutability::Not); // TODO: depends on the param
         self.block_var_defs.insert(local, self.current_block);
     }
 
@@ -115,13 +145,13 @@ impl Builder {
         let VarDefExpr { symbol, value, .. } = var_def;
         let symbol = Some(*symbol);
         let ty = context.expr_type_idx(*value);
-
-        // FIXME: var_def.value could be a call
-        // which would be constructed as a Terminator, not Assign
-        let rvalue = self.construct_rvalue(context.expr(var_def.value), context);
-        let local = self.construct_assign(rvalue, ty, symbol);
+        let local = self.construct_local(ty, symbol, Mutability::Not);
         self.scopes.insert_local(local, symbol);
         self.block_var_defs.insert(local, self.current_block);
+
+        let assign_place = Place::from(local);
+        // assumption: all branches in here create an Assign when assign_to is Some
+        self.construct_operand(var_def.value, &Some(assign_place), context);
     }
 
     fn construct_statement(
@@ -168,28 +198,24 @@ impl Builder {
             }
 
             Expr::Call(call) => {
-                // FIXME: this should return Option<Rvalue> or needs to be re-thought completely
-                // a Call will normally construct a terminator, the Rvalue is a special case for
-                // builtin operators
-                let rvalue = self.construct_call_rvalue(call, context);
-
-                if let Some(place) = assign_to {
-                    let assign = Statement::assign(place.clone(), rvalue);
-
-                    self.current_block_mut().statements.push(assign);
-                }
-                // FIXME: Call may create a Terminator which should return Break
-                // for the control flow so that the next block is constructed
+                if let Some(binop) = try_get_binop(call, context) {
+                    // TODO: handle side-effects in non-assigned statement binops
+                    let rvalue = self.construct_binop(call, binop, context);
+                    match assign_to {
+                        Some(assign_place) => {
+                            let assign = Statement::assign(assign_place.clone(), rvalue);
+                            self.current_block_mut().statements.push(assign);
+                        }
+                        // In a statement context, binop with nothing to assign is ignored
+                        None => {}
+                    };
+                } else {
+                    self.construct_call_terminator(call, assign_to, context);
+                };
             }
 
             Expr::VarRef(var_ref) => {
-                if let Some(assign_place) = assign_to {
-                    let operand = self.construct_var_ref_operand(var_ref);
-                    let rvalue = Rvalue::Use(operand);
-
-                    let assign = Statement::assign(assign_place.clone(), rvalue);
-                    self.current_block_mut().statements.push(assign);
-                };
+                self.construct_var_ref_operand(var_ref, assign_to, context);
             }
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
@@ -216,57 +242,132 @@ impl Builder {
     fn construct_statement_constant(&mut self, constant: Constant, assign_to: &Option<Place>) {
         if let Some(assign_place) = assign_to {
             let operand = Operand::Constant(constant);
-            let rvalue = Rvalue::Use(operand);
-            let assign = Statement::assign(assign_place.clone(), rvalue);
+            let assign = Statement::assign(assign_place.clone(), operand);
             self.current_block_mut().statements.push(assign);
         }
     }
 
-    fn construct_call_rvalue(&mut self, call: &hir::CallExpr, context: &Context) -> Rvalue {
-        // FIXME: pull return_place only if is last statement of the *function*
-        // otherwise make a new place/local for assigning
-        let place = self.current_function().return_place();
+    /*
+    // from construct_statement
+    {
+        func(_3)
+    }
 
-        // FIXME: create try_make_binop_rvalue or whatever and use that here
-        if let Some(binop) = try_get_binop(call, context) {
-            return self.construct_binop(context, call, binop);
+    should make new block then
+
+        _N = call func (copy _3) -> [return to BBN]
+
+    // from construct_rvalue (from var_def or if_expr or eventually match)
+    {
+        ...
+        let a = func(_3)
+        // or
+        if func(_3) { ... }
+        ...
+        // or
+        let a = func1(func2(_3))
+    }
+
+    in the first case would be:
+    (where a <--> _7)
+        _7 = call func (copy _3) -> [return to BB12]
+
+    second case is:
+
+        _8 = call func (copy _3) -> [return to BB12]
+    BB12:
+        SwitchInt (_8): [0 -> BB13, else -> BB14]
+
+    third case:
+        _8 = call func2 (copy _3) -> [return to BB12]
+    BB12:
+        _9 = call func1 (copy _8) -> [return to BB13]
+     */
+
+    fn construct_call(
+        &mut self,
+        call: &hir::CallExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Option<Place> {
+        match try_get_binop(call, context) {
+            Some(binop) => {
+                self.construct_binop(call, binop, context);
+                None
+            }
+            None => Some(self.construct_call_terminator(call, assign_to, context)),
         }
+    }
 
-        // FIXME: otherwise, create a Call terminator
-        // direct Call for non-capturing functions
-        // indirect Call for capturing/closures (not implemented for a while)
-        todo!()
+    fn construct_call_terminator(
+        &mut self,
+        call: &hir::CallExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Place {
+        let ty = call.return_ty_idx(context);
+        let destination = match assign_to {
+            Some(assign_place) => assign_place.clone(),
+            None => self
+                .construct_local(ty, call.symbol, Mutability::Not)
+                .into(),
+        };
+
+        let args = call
+            .args
+            .iter()
+            .map(|arg| Operand::from_result(self.construct_operand(*arg, &None, context), context))
+            .collect_vec();
+
+        let func = self.construct_operand(call.callee, assign_to, context);
+        let func = Operand::from_result(func, context);
+        let next_block = self.new_block();
+
+        let terminator = Terminator::Call {
+            func,
+            args: args.into(),
+            destination: destination.clone(),
+            target: Some(next_block),
+        };
+        self.current_block_mut().terminator = Some(terminator);
+
+        self.current_block = next_block;
+
+        destination
     }
 
     fn construct_call_operand(
         &mut self,
         call: &CallExpr,
-        context: &Context,
         ty: Idx<Type>,
-    ) -> Operand {
-        if let Some(binop) = try_get_binop(call, context) {
-            // When a BinOp is encountered here, we need to create a new (temp) local hold the Rvalue
-            let local = self.make_local(ty, None, Mutability::Not);
-            let rvalue = self.construct_binop(context, call, binop);
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> OperandResult {
+        let place = if let Some(binop) = try_get_binop(call, context) {
+            let assign_place = match assign_to {
+                Some(assign_place) => assign_place.clone(),
+                // New / temp local to hold the Rvalue
+                None => self.construct_local(ty, None, Mutability::Not).into(),
+            };
+            let rvalue = self.construct_binop(call, binop, context);
 
-            let assign = Statement::assign(local.into(), rvalue);
+            let assign = Statement::assign(assign_place.clone(), rvalue);
             self.current_block_mut().statements.push(assign);
 
-            return Operand::Copy(local.into());
+            assign_place
+        } else {
+            self.construct_call_terminator(call, assign_to, context)
         };
 
-        // FIXME: otherwise, create a Call terminator
-        // direct Call for non-capturing functions
-        // indirect Call for capturing/closures (not implemented for a while)
-        // possibly construct a temporary since this is in the context of another operand
-        todo!()
+        // TODO: use Context type information to determine Copy/Move/Share
+        OperandResult::Place(place)
     }
 
-    fn construct_binop(&mut self, context: &Context, call: &CallExpr, binop: BinOp) -> Rvalue {
-        // FIXME: where do we construct the Call terminator for user-defined operations?
-        // such as Point + Point
-        let operand1 = self.construct_operand(call.args[0], context);
-        let operand2 = self.construct_operand(call.args[1], context);
+    fn construct_binop(&mut self, call: &CallExpr, binop: BinOp, context: &Context) -> Rvalue {
+        let operand1 = self.construct_operand(call.args[0], &None, context);
+        let operand1 = Operand::from_result(operand1, context);
+        let operand2 = self.construct_operand(call.args[1], &None, context);
+        let operand2 = Operand::from_result(operand2, context);
 
         Rvalue::BinaryOp(binop, Box::new((operand1, operand2)))
     }
@@ -280,7 +381,7 @@ impl Builder {
         self.current_block_mut().terminator = Some(Terminator::Return);
     }
 
-    /// Constructs an Assign statement for a *new* `Local`` and adds
+    /// Constructs an Assign statement for a *new* `Local` and adds
     /// it to the current block.
     ///
     /// If this assignment corresponds to a variable that appears in the
@@ -288,17 +389,31 @@ impl Builder {
     /// temporary/synthetic variable this would be `None`.
     ///
     /// See also `Statement::assign` for a lower-level function.
+    // TODO: review all current uses of Statement::assign and replace with this, or delete this
     fn construct_assign(
         &mut self,
         rvalue: Rvalue,
         ty: Idx<hir::Type>,
         symbol: Option<ValueSymbol>,
     ) -> Idx<Local> {
-        let local = self.make_local(ty, symbol, Mutability::Not);
-        let assign = Statement::assign(local.into(), rvalue);
+        let local = self.construct_local(ty, symbol, Mutability::Not);
+        let assign = Statement::assign(local, rvalue);
         self.current_block_mut().statements.push(assign);
 
         local
+    }
+
+    fn construct_operand_assign(
+        &mut self,
+        assign_to: &Option<Place>,
+        operand: Operand,
+    ) -> OperandResult {
+        if let Some(place) = assign_to {
+            let assign = Statement::assign(place.clone(), operand.clone());
+            self.current_block_mut().statements.push(assign);
+        }
+
+        OperandResult::Operand(operand)
     }
 
     fn construct_if_expr(
@@ -313,10 +428,9 @@ impl Builder {
             then_branch,
             else_branch,
         } = if_expr;
-        // TODO: if the condition expr is a BoolLiteral, mark one of the blocks unreachable?
-        let rvalue = self.construct_rvalue(context.expr(*condition), context);
-        let local = self.construct_assign(rvalue, context.core_types().bool, None);
-        let discriminant = Operand::Copy(Place::from(local));
+        let discriminant = self.construct_operand(*condition, &None, context);
+        let discriminant = Operand::from_result(discriminant, context);
+        // TODO: if the discriminant is a BoolLiteral, mark one of the blocks unreachable?
 
         let source_block = self.current_block;
         let then_block = self.new_block();
@@ -368,39 +482,40 @@ impl Builder {
             .0
     }
 
-    fn construct_rvalue(&mut self, expr: &Expr, context: &Context) -> Rvalue {
-        match expr {
-            Expr::BoolLiteral(b) => Rvalue::Use(Operand::constant_bool(*b)),
-            Expr::FloatLiteral(f) => Rvalue::Use(Operand::constant_float(*f)),
-            Expr::IntLiteral(i) => Rvalue::Use(Operand::constant_int(*i)),
+    fn construct_operand(
+        &mut self,
+        expr: Idx<Expr>,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> OperandResult {
+        let ty = context.expr_type_idx(expr);
+
+        match context.expr(expr) {
+            Expr::BoolLiteral(b) => {
+                self.construct_operand_assign(assign_to, Operand::constant_bool(*b))
+            }
+
+            Expr::FloatLiteral(f) => {
+                self.construct_operand_assign(assign_to, Operand::constant_float(*f))
+            }
+            Expr::IntLiteral(i) => {
+                self.construct_operand_assign(assign_to, Operand::constant_int(*i))
+            }
             Expr::StringLiteral(_) => todo!(),
             Expr::ArrayLiteral(_) => todo!(),
             Expr::Unary(_) => todo!(),
             Expr::Block(_) => todo!(),
-            Expr::Call(call) => self.construct_call_rvalue(call, context),
-            Expr::VarRef(var_ref) => Rvalue::Use(self.construct_var_ref_operand(var_ref)),
+            Expr::Call(call) => self.construct_call_operand(call, ty, assign_to, context),
+            Expr::VarRef(var_ref) => {
+                OperandResult::Operand(self.construct_var_ref_operand(var_ref, assign_to, context))
+            }
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
             Expr::VarDef(_) => todo!(),
             Expr::If(_) => todo!(),
-            Expr::Statement(_) => todo!(),
             Expr::ReturnStatement(_) => todo!(),
-            Expr::Intrinsic(_) => todo!(),
 
-            Expr::Empty | Expr::UnresolvedVarRef { .. } | Expr::Module(_) => unreachable!(),
-        }
-    }
-
-    fn construct_operand(&mut self, expr: Idx<Expr>, context: &Context) -> Operand {
-        if let Some(constant) = self.construct_constant(context.expr(expr)) {
-            return Operand::Constant(constant);
-        }
-        let ty = context.expr_type_idx(expr);
-
-        match context.expr(expr) {
-            Expr::VarRef(var_ref) => self.construct_var_ref_operand(var_ref),
-            Expr::Call(call) => self.construct_call_operand(call, context, ty),
             _ => panic!(
                 "unexpected Expr variant when constructing operand: {:?}",
                 expr
@@ -408,9 +523,66 @@ impl Builder {
         }
     }
 
-    fn construct_var_ref_operand(&mut self, var_ref: &hir::VarRefExpr) -> Operand {
+    fn construct_callee_operand(&mut self, expr: Idx<Expr>, context: &Context) -> Operand {
+        loop {}
+    }
+
+    fn construct_callee_operand_inner(&mut self, expr: Idx<Expr>, context: &Context) -> Operand {
+        let ty = context.expr_type_idx(expr);
+
+        match context.expr(expr) {
+            Expr::Unary(_) => unreachable!("this should be folded into Call"),
+            Expr::Block(_) => {
+                // {
+                //    expr
+                //    expr
+                //    f
+                // } arg
+                // in this case, find the tail expression of the block
+                // and recursively find until the Expr::Function is found
+                todo!()
+            }
+            Expr::Call(_) => {
+                // (g arg1) arg2
+                // ^^^^^^ this callee, is itself a Call
+                todo!()
+            }
+            Expr::VarRef(_) => {
+                // find the expression that was bound to this variable
+                // recursively
+                // until the Function::Expr is found OR
+                // a builtin is found
+                // in either case it should prod
+                todo!()
+            }
+            Expr::Path(_) => {
+                // eventually VarRef would be folded into here
+                todo!()
+            }
+            Expr::Function(_) => {
+                // IIFE
+                // should be able to return a Constant::Function here
+                todo!()
+            }
+            Expr::If(_) => {
+                // same as Block, it is possible for an If/Else to resolve to
+                // a callable function
+                // but since this is a branch, the function needs to be a runtime value
+                todo!()
+            }
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn construct_var_ref_operand(
+        &mut self,
+        var_ref: &hir::VarRefExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Operand {
         let local = self.find_symbol(var_ref.symbol);
-        let place = local.into();
+        let place = Place::from(local);
 
         match self.block_var_defs.get(local) {
             Some(bb) if *bb != self.current_block => {
@@ -419,22 +591,16 @@ impl Builder {
             _ => {}
         }
 
-        // TODO: resource types need to be moved rather than copied
-        // and "share" types, like strings maybe would have a different Operand::Share?
-        Operand::Copy(place)
+        if let Some(assign_place) = assign_to {
+            let assign_from = Operand::from_place(place.clone(), context);
+            let assign = Statement::assign(assign_place.clone(), assign_from);
+            self.current_block_mut().statements.push(assign);
+        };
+
+        Operand::from_place(place, context)
     }
 
-    fn construct_constant(&self, expr: &Expr) -> Option<Constant> {
-        match expr {
-            Expr::BoolLiteral(b) => Some(Constant::Int(*b as i64)),
-            Expr::FloatLiteral(f) => Some(Constant::Float(*f)),
-            Expr::IntLiteral(i) => Some(Constant::Int(*i)),
-
-            _ => None,
-        }
-    }
-
-    fn make_local(
+    fn construct_local(
         &mut self,
         ty: Idx<hir::Type>,
         symbol: Option<ValueSymbol>,
@@ -450,12 +616,13 @@ impl Builder {
 }
 
 fn try_get_binop(call: &hir::CallExpr, context: &Context) -> Option<BinOp> {
-    if let Some(symbol) = call.symbol {
-        if let Some(f) = context.lookup_function_symbol(symbol) {
-            if let Expr::Intrinsic(intrinsic) = context.expr(f) {
-                return Some(intrinsic.into());
-            }
-        }
-    }
-    None
+    call.symbol
+        .and_then(|symbol| context.lookup_operator(symbol))
+        .map(BinOp::from)
+}
+
+pub enum OperandResult {
+    Operand(Operand),
+
+    Place(Place),
 }

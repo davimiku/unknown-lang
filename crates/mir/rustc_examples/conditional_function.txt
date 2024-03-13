@@ -1,0 +1,91 @@
+fn inc(i: f64) -> f64 {
+    i + 1.0
+}
+
+fn dec(i: f64) -> f64 {
+    i - 1.0
+}
+
+fn square(i: f64) -> f64 {
+    i * i
+}
+
+fn main(cond: bool) -> f64 {
+    let f = if cond { inc } else { dec };
+    
+    f(16.0) + square(16.0)
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn inc(_1: f64) -> f64 {
+    debug i => _1;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Add(_1, const 1f64);
+        return;
+    }
+}
+
+fn dec(_1: f64) -> f64 {
+    debug i => _1;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Sub(_1, const 1f64);
+        return;
+    }
+}
+
+fn square(_1: f64) -> f64 {
+    debug i => _1;
+    let mut _0: f64;
+
+    bb0: {
+        _0 = Mul(_1, _1);
+        return;
+    }
+}
+
+fn main(_1: bool) -> f64 {
+    debug cond => _1;
+    let mut _0: f64;
+    let _2: fn(f64) -> f64;
+    let mut _3: f64;
+    let mut _4: fn(f64) -> f64;
+    let mut _5: f64;
+    scope 1 {
+        debug f => _2;
+    }
+
+    bb0: {
+        switchInt(_1) -> [0: bb2, otherwise: bb1];
+    }
+
+    bb1: {
+        _2 = inc as fn(f64) -> f64 (PointerCoercion(ReifyFnPointer));
+        goto -> bb3;
+    }
+
+    bb2: {
+        _2 = dec as fn(f64) -> f64 (PointerCoercion(ReifyFnPointer));
+        goto -> bb3;
+    }
+
+    bb3: {
+        _4 = _2;
+        _3 = move _4(const 16f64) -> [return: bb4, unwind continue];
+    }
+
+    bb4: {
+        _5 = square(const 16f64) -> [return: bb5, unwind continue];
+    }
+
+    bb5: {
+        _0 = Add(move _3, move _5);
+        return;
+    }
+}

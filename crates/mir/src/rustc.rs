@@ -578,3 +578,51 @@ The lowering of HIR to MIR occurs for the following (probably incomplete) list o
 
 
 */
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum PointerCoercion {
+    /// Go from a fn-item type to a fn-pointer type.
+    ReifyFnPointer,
+
+    /// Go from a safe fn pointer to an unsafe fn pointer.
+    UnsafeFnPointer,
+
+    /// Go from a non-capturing closure to a fn pointer or an unsafe fn pointer.
+    /// It cannot convert a closure that requires unsafe.
+    ClosureFnPointer(Safety),
+
+    /// Go from a mut raw pointer to a const raw pointer.
+    MutToConstPointer,
+
+    /// Go from `*const [T; N]` to `*const T`
+    ArrayToPointer,
+
+    /// Unsize a pointer/reference value, e.g., `&[T; n]` to
+    /// `&[T]`. Note that the source could be a thin or fat pointer.
+    /// This will do things like convert thin pointers to fat
+    /// pointers, or convert structs containing thin pointers to
+    /// structs containing fat pointers, or convert between fat
+    /// pointers.
+    Unsize,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Safety {
+    Unsafe,
+    Normal,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CastKind {
+    PointerExposeAddress,
+    PointerFromExposedAddress,
+    PointerCoercion(PointerCoercion),
+    DynStar,
+    IntToInt,
+    FloatToInt,
+    FloatToFloat,
+    IntToFloat,
+    PtrToPtr,
+    FnPtrToPtr,
+    Transmute,
+}

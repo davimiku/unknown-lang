@@ -5,6 +5,13 @@ use std::io::Write;
 // TODO: once there is a name for the language, change these names
 // 'X' is a placeholder
 
+/// Language `String` is a len + ptr, in that order
+#[repr(C)]
+pub(crate) struct XString {
+    len: XInt,
+    ptr: *const u8,
+}
+
 /// Language `Int` is a Rust `i64`
 pub(crate) type XInt = i64;
 
@@ -49,9 +56,17 @@ impl fmt::Display for XBool {
     }
 }
 
+pub(crate) const PRINT_STRING: &str = "__print_string";
 pub(crate) const PRINT_INT: &str = "__print_int";
 pub(crate) const PRINT_FLOAT: &str = "__print_float";
 pub(crate) const PRINT_BOOL: &str = "__print_bool";
+
+pub(crate) extern "C" fn print_string(s: XString) {
+    let stdout = &mut std::io::stdout().lock();
+    let buf = b"placeholder!\n";
+    let _ = stdout.write(buf).expect("succeeded writing bytes");
+    let _ = stdout.flush();
+}
 
 /// Prints an integer to stdout with a newline
 pub(crate) extern "C" fn print_int(i: XInt) {

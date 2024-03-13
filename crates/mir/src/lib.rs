@@ -26,80 +26,78 @@ mod syntax;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
+
 pub use display::MirWrite;
-use hir::{Context, Expr};
+use hir::{Context, Expr, Key};
 use la_arena::{Arena, Idx};
 pub use syntax::{
     BasicBlock, BinOp, BlockParameters, Constant, Function, Local, Operand, Place, Rvalue,
     Statement, SwitchIntTargets, Terminator, UnOp,
 };
+use util_macros::assert_matches;
 
 use crate::builder::Builder;
 
-pub fn construct(root: Idx<Expr>, context: &Context) -> (Program, &Context) {
+pub fn construct<'hir>(
+    hir_module: &'hir hir::Module,
+    context: &'hir Context,
+) -> (Module, &'hir Context) {
     assert_eq!(context.diagnostics, vec![]);
-    let mut builder = Builder::default();
+    let builder = Builder::new(context);
 
-    let root = context.expr(root);
+    let module = builder.construct_module(hir_module, context);
 
-    if let Expr::Module(exprs) = root {
-        todo!("implement module constructing")
-    } else if let Expr::Function(func) = root {
-        builder.construct_function(func, context);
-    } else {
-        panic!("Compiler Bug (MIR): expected a Module or Function at the root")
-    };
-
-    let program = builder.build();
-    (program, context)
+    (module, context)
 }
 
-pub fn construct_script(input: &str) -> (Program, &hir::Context) {
-    let (root, hir_context) = hir::lower(input, hir::LowerTarget::Script);
+pub fn construct_script(input: &str) -> (Module, &hir::Context) {
+    let (_, hir_context) = hir::lower_script(input);
 
     // I solemnly swear I am up to no good
     // FIXME: This definitely does not work in a language server or
     // compiler server that JIT compiles scripts as plugins
     // OK if it's restricted to CLI scripts only, probably
-    let hir_context: &'static _ = Box::leak(Box::new(hir_context));
+    let _: &'static _ = Box::leak(Box::new(hir_context));
 
-    construct(root, hir_context)
+    todo!("decide whether to abandon this entirely")
 }
 
-pub fn construct_function(input: &str) -> (Program, &hir::Context) {
-    let (root, hir_context) = hir::lower(input, hir::LowerTarget::Function);
+pub fn construct_function(input: &str) -> (Module, &hir::Context) {
+    let (root, hir_context) = hir::lower_function(input);
+    assert_eq!(hir_context.diagnostics, vec![]);
 
     // I solemnly swear I am up to no good
     // FIXME: This definitely does not work in a language server or
     // compiler server that JIT compiles functions as plugins
     // OK if it's restricted to tests only, probably
-    let hir_context: &'static _ = Box::leak(Box::new(hir_context));
+    let context: &'static _ = Box::leak(Box::new(hir_context));
 
-    construct(root, hir_context)
+    let mut builder = Builder::new(context);
+
+    let root = context.expr(root);
+    let func_group = assert_matches!(root, Expr::Function);
+    let func = &func_group.overloads[0];
+
+    builder.construct_function(func, context);
+    (builder.build(), context)
 }
 
 #[derive(Debug)]
-pub struct Program {
+pub struct Module {
+    /// Control Flow Graph (CFG) representation of functions in this module
     functions: Arena<Function>,
-    // TODO: eventually there could be multiple entry points that
-    // would be compiled to separate CLIF functions
-    // entry_function: Idx<Function>,
+
+    /// Map of functions that are entry points in this module
+    entry_functions: HashMap<Key, Idx<Function>>,
     // TODO: consts, in normal mode you should be able to set constants
     // and call constant functions at the module top-level
 }
 
-impl Program {
+impl Module {
     // FIXME: Assumes that the first function is main which is true for
     // "script mode" or "function mode" but not normal/module mode
     pub fn main(&self) -> &Function {
         self.functions.values().next().unwrap()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct BlockQueueItem {
-    to_build: Idx<BasicBlock>,
-    block_expr: Idx<Expr>,
-    assign_to: Option<Place>,
-    jump_to: Option<Idx<BasicBlock>>,
 }

@@ -188,8 +188,8 @@ impl BoolLiteral {
         (node.kind() == SyntaxKind::BoolLiteralExpr).then_some(Self(node))
     }
 
-    pub fn value(&self) -> Option<parser::SyntaxToken> {
-        self.0.first_token()
+    pub fn value(&self) -> parser::SyntaxToken {
+        self.0.first_token().expect("BoolLiteral to have a token")
     }
 
     pub fn range(&self) -> TextRange {

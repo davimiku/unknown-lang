@@ -133,14 +133,14 @@ fn parse_struct(p: &mut Parser) -> CompletedMarker {
 /// TODO: remove the notes below after syntax of default parameters is finalized
 /// Note that this could potentially be reused as function parameter syntax,
 /// but there is an open design decision on default parameters
-/// ```txt
+/// ```ignore
 /// fun (a: Int = 42) -> { ... }
 /// ```
 ///
 /// This likely could be re-used given that the `= X` is optional and could
 /// even be useful for default initialization of struct members.
 ///
-/// ```txt
+/// ```ignore
 /// type A = struct ( a: Int = 42 )
 ///
 /// let a1 = A (a=1)

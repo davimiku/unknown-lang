@@ -6,9 +6,9 @@ mod scalars;
 mod variables;
 
 fn check(input: &str, expected: &str) {
-    let (program, context) = hir::lower(input, hir::LowerTarget::Module);
+    let (module, context) = hir::lower(input);
 
-    let actual = codegen(context.expr(program), &context);
+    let actual = codegen(&module, &context);
 
     assert_eq!(actual, expected);
 }

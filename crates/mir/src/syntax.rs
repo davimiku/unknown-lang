@@ -1,7 +1,9 @@
 use std::slice::Iter;
 
-use hir::{IntrinsicExpr, Key, Type, ValueSymbol};
+use hir::{Context, Expr, IntrinsicExpr, Key, Type, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
+
+use crate::construct::OperandResult;
 
 // rustc calls a function "Body"
 // TODO: is that a good name?
@@ -199,8 +201,12 @@ pub enum Statement {
 }
 
 impl Statement {
-    pub(crate) fn assign(place: Place, rvalue: Rvalue) -> Self {
-        Self::Assign(Box::new((place, rvalue)))
+    pub(crate) fn assign<IntoPlace, IntoRvalue>(place: IntoPlace, rvalue: IntoRvalue) -> Self
+    where
+        IntoPlace: Into<Place>,
+        IntoRvalue: Into<Rvalue>,
+    {
+        Self::Assign(Box::new((place.into(), rvalue.into())))
     }
 }
 
@@ -239,6 +245,7 @@ pub enum Terminator {
     Call {
         /// The function that’s being called.
         func: Operand,
+
         /// Arguments the function is called with.
         /// These are owned by the callee, which is free to modify them.
         /// This allows the memory occupied by "by-value" arguments to be
@@ -246,9 +253,13 @@ pub enum Terminator {
         /// The span for each arg is also included
         /// (e.g. `a` and `b` in `x.foo(a, b)`).
         args: Box<[Operand]>,
+
         /// Where the returned value will be written
         destination: Place,
-        /// Where to go after this call returns. If none, the call necessarily diverges.
+
+        /// Where to go after this call returns.
+        ///
+        /// None indicates a diverging call, such as `panic` or `abort`
         target: Option<Idx<BasicBlock>>,
         // EXAMPLE FROM RUSTC:
         // / Action to be taken if the call unwinds.
@@ -452,6 +463,12 @@ pub enum Rvalue {
     // Len(Place),
 }
 
+impl From<Operand> for Rvalue {
+    fn from(operand: Operand) -> Self {
+        Self::Use(operand)
+    }
+}
+
 /// Intrinsic operation that does not diverge
 ///
 /// For example, integer addition with overflow is non-diverging, but
@@ -503,6 +520,12 @@ pub enum BinOp {
 
 impl From<&IntrinsicExpr> for BinOp {
     fn from(value: &IntrinsicExpr) -> Self {
+        (*value).into()
+    }
+}
+
+impl From<IntrinsicExpr> for BinOp {
+    fn from(value: IntrinsicExpr) -> Self {
         match value {
             IntrinsicExpr::Add => BinOp::Add,
             IntrinsicExpr::Sub => BinOp::Sub,
@@ -546,6 +569,18 @@ pub enum Operand {
 }
 
 impl Operand {
+    pub fn from_result(result: OperandResult, context: &Context) -> Self {
+        match result {
+            OperandResult::Operand(operand) => operand,
+            OperandResult::Place(place) => Self::from_place(place, context),
+        }
+    }
+
+    pub fn from_place(place: Place, context: &Context) -> Self {
+        // TODO: use Context to get type information to determine Copy/Move/Share
+        Self::Copy(place)
+    }
+
     pub fn constant_int(i: i64) -> Self {
         Self::Constant(Constant::Int(i))
     }
@@ -560,29 +595,31 @@ impl Operand {
 }
 
 impl Operand {
-    pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
-        let core = context.core_types();
-        match self {
-            Operand::Copy(place) | Operand::Move(place) => place.type_idx_of(func, context),
-            Operand::Constant(constant) => match constant {
-                Constant::Int(_) => core.int,
-                Constant::Float(_) => core.float,
-                Constant::String(_) => core.string,
-            },
-        }
-    }
+    // pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
+    //     let core = context.core_types();
+    //     match self {
+    //         Operand::Copy(place) | Operand::Move(place) => place.type_idx_of(func, context),
+    //         Operand::Constant(constant) => match constant {
+    //             Constant::Int(_) => core.int,
+    //             Constant::Float(_) => core.float,
+    //             Constant::String(_) => core.string,
+    //             // TODO: is this whole function unused?
+    //             Constant::Func(_) => core.unknown,
+    //         },
+    //     }
+    // }
 
     pub fn as_constant(&self) -> Option<&Constant> {
         match self {
             Operand::Constant(c) => Some(c),
-            Operand::Copy(_) | Operand::Move(_) => None,
+            _ => None,
         }
     }
 
     pub fn as_int(&self) -> Option<&i64> {
         self.as_constant().and_then(|constant| match constant {
             Constant::Int(i) => Some(i),
-            Constant::Float(_) | Constant::String(_) => None,
+            _ => None,
         })
     }
 }
@@ -599,6 +636,11 @@ pub enum Constant {
 
     /// String constants
     String(Key),
+
+    /// A function expression
+    ///
+    /// `fun (i: Int) -> { i + 2 }`
+    Func(Idx<Expr>),
 }
 
 impl Constant {

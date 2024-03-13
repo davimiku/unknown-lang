@@ -5,7 +5,7 @@ use crate::{
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
-use super::{CallExprSignature, FunctionParam};
+use super::{FunctionExprGroup, FunctionParam};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -72,19 +72,12 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
             s.push_str(&format!("<undefined {}>", context.lookup(*key)))
         }
 
-        Expr::Function(function) => fmt_function_expr(s, function, context, indent),
+        Expr::Function(function) => fmt_function_expr_group(s, function, context, indent),
         Expr::VarDef(local_def) => fmt_var_def(s, local_def, context, indent),
 
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
-        Expr::Module(exprs) => {
-            for expr_idx in exprs {
-                fmt_idx_expr(s, *expr_idx, context, indent);
-                s.push('\n');
-            }
-        }
-        Expr::Intrinsic(intrinsic) => s.push_str(&format!("{:?}", intrinsic)),
     }
 }
 
@@ -104,10 +97,15 @@ fn fmt_array_literal(s: &mut String, array: &ArrayLiteralExpr, context: &Context
 
 fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
     let CallExpr {
-        callee, args, sig, ..
+        callee,
+        args,
+        signature_index: resolved_signature,
+        ..
     } = call;
     fmt_idx_expr(s, *callee, context, indent);
-    s.push_str(&sig.display(context));
+    if let Some(sig) = resolved_signature {
+        s.push_str(&format!("${sig}"));
+    }
 
     s.push(' ');
     s.push('(');
@@ -147,29 +145,54 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
     }
 }
 
-fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
-    let FunctionExpr { params, body, name } = function;
-    s.push_str("fun");
+fn fmt_function_expr_group(
+    s: &mut String,
+    function_group: &FunctionExprGroup,
+    context: &Context,
+    indent: usize,
+) {
+    let FunctionExprGroup {
+        overloads,
+        name,
+        entry_point: _, // TODO: display this?
+    } = function_group;
+    s.push_str("fun ");
     if let Some((key, ..)) = name {
-        let name = context.lookup(*key);
-        s.push('<');
-        s.push_str(name);
-        s.push('>');
+        s.push('"');
+        s.push_str(context.lookup(*key));
+        s.push('"');
     }
-    s.push_str(" (");
-    for param in params {
+
+    let is_overloaded = overloads.len() > 1;
+    if is_overloaded {
+        s.push('\n');
+    }
+    for (i, function) in overloads.iter().enumerate() {
+        if is_overloaded {
+            s.push_str(&i.to_string());
+            s.push_str("| ");
+        }
+        s.push_str(&function.display(context));
+    }
+}
+
+fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
+    let FunctionExpr { params, body, .. } = function;
+
+    s.push_str("(");
+    for param in params.iter() {
         s.push_str(&param.symbol.display(context));
         s.push_str(" : ");
         match param.annotation {
-            Some(ty) => {
-                let ty = context.type_database.get_type_expr_type(ty);
+            Some(type_expr) => {
+                let ty = context.type_of_type_expr(type_expr);
                 s.push_str(&ty.display(context));
             }
             None => s.push_str("{empty}"),
         }
     }
     s.push_str(") -> ");
-    let body_ty = &context.expr_type(function.body);
+    let body_ty = context.expr_type(*body);
     if matches!(body_ty, Type::Unit) {
         // write nothing for Unit return
     } else {
@@ -224,15 +247,15 @@ fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Conte
     fmt_idx_expr(s, *index, context, indent);
 }
 
-impl ContextDisplay for CallExprSignature {
-    fn display(&self, _: &Context) -> String {
-        match self {
-            CallExprSignature::Unresolved => String::from("<?>"),
-            CallExprSignature::ResolvedOnly => String::new(),
-            CallExprSignature::Resolved(i) => format!("<{i}>"),
-        }
-    }
-}
+// impl ContextDisplay for CallExprSignature {
+//     fn display(&self, _: &Context) -> String {
+//         match self {
+//             CallExprSignature::Unresolved => String::from("<?>"),
+//             CallExprSignature::ResolvedOnly => String::new(),
+//             CallExprSignature::Resolved(i) => format!("<{i}>"),
+//         }
+//     }
+// }
 
 impl ContextDisplay for ValueSymbol {
     fn display(&self, context: &Context) -> String {
@@ -254,6 +277,14 @@ impl ContextDisplay for ValueSymbol {
 impl ContextDisplay for VarRefExpr {
     fn display(&self, context: &Context) -> String {
         self.symbol.display(context)
+    }
+}
+
+impl ContextDisplay for FunctionExprGroup {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        fmt_function_expr_group(&mut s, self, context, 0);
+        s
     }
 }
 

@@ -2,12 +2,16 @@ use std::collections::HashMap;
 
 use crate::interner::Key;
 use crate::type_expr::TypeSymbol;
-use crate::{Context, ContextDisplay, Expr, TypeExpr, ValueSymbol};
+use crate::{
+    BlockExpr, Context, ContextDisplay, Expr, FuncSignature, IntrinsicExpr, Type, TypeExpr,
+    ValueSymbol,
+};
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
+use util_macros::assert_matches;
 
 // TODO: remove pub(crate) ?
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Default)]
 pub struct Database {
     /// Allocated expressions
     pub(crate) exprs: Arena<Expr>,
@@ -31,7 +35,7 @@ pub struct Database {
     /// In the JIT backend, calls of these symbols are translated into a direct
     /// function call (rather than an indirect call) and the "size" of these are
     /// a zero-sized type (rather than pointer-sized for an indirect call).
-    pub(crate) function_defs: HashMap<ValueSymbol, Idx<Expr>>,
+    pub(crate) operators: HashMap<ValueSymbol, IntrinsicExpr>,
 
     /// Reverse mapping between every symbol defining a value (i.e. variable)
     /// and its original (interned) name.
@@ -96,8 +100,8 @@ impl Database {
         self.type_expr_ranges[idx]
     }
 
-    pub(crate) fn function_def(&self, symbol: ValueSymbol) -> Option<Idx<Expr>> {
-        self.function_defs.get(&symbol).copied()
+    pub(crate) fn lookup_operator(&self, symbol: ValueSymbol) -> Option<IntrinsicExpr> {
+        self.operators.get(&symbol).copied()
     }
 }
 

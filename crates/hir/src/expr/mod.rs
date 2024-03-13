@@ -3,10 +3,12 @@ mod display;
 use std::fmt;
 
 use la_arena::Idx;
+use util_macros::assert_matches;
 
 use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
+use crate::{Context, Type};
 
 #[derive(Default, Debug, PartialEq, Clone)]
 pub enum Expr {
@@ -51,13 +53,12 @@ pub enum Expr {
     Path(PathExpr),
 
     IndexInt(IndexIntExpr),
-    // IndexString(IndexStringExpr), // string literals, ex. for named tuples
-    // Index(IndexExpr), // arbitrary expressions
-    /// Function definition, including parameters and body.
+
+    /// Function definition, including parameters and body for each overload.
     ///
     /// A function is inherently anonymous, but if created inside of a VarDef
     /// the variable name is captured.
-    Function(FunctionExpr),
+    Function(FunctionExprGroup),
 
     /// Variable definition
     VarDef(VarDefExpr),
@@ -70,12 +71,8 @@ pub enum Expr {
 
     /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
-
-    /// Represents the container around a module
-    Module(Vec<Idx<Expr>>),
-
-    /// An expression that is only known to by the compiler
-    Intrinsic(IntrinsicExpr),
+    // Represents the container around a module
+    // Module(Vec<Idx<Expr>>),
 }
 
 // convenience constructors
@@ -104,7 +101,7 @@ impl Expr {
             callee,
             args,
             symbol,
-            sig: CallExprSignature::default(), // is set later in type inference
+            signature_index: None, // gets set later in type checking
         })
     }
 }
@@ -129,7 +126,7 @@ pub struct VarDefExpr {
 /// Examples of symbols are variable names, function parameter names, etc.
 ///
 /// See also [TypeSymbol] for the analog that lives in the "type" universe
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueSymbol {
     /// Unique id of the module where this symbol resides
     module_id: u32,
@@ -216,43 +213,54 @@ impl BlockExpr {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CallExpr {
     /// Expression that is being called as a function
+    ///
+    /// This could be many different kinds of Expr, such as a variable, path,
+    /// function literal, another CallExpr, etc.
     pub callee: Idx<Expr>,
-
-    /// Index number of the resolved function signature for this call
-    // TODO: Arena allocate FuncSignatures and use Option<Idx<FuncSignature>> here?
-    pub sig: CallExprSignature,
 
     /// Arguments that the function are applied to
     pub args: Box<[Idx<Expr>]>,
 
     /// Symbol being called, if any. This would be None for anonymous function calls
     pub symbol: Option<ValueSymbol>,
+
+    pub signature_index: Option<u32>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
-pub enum CallExprSignature {
-    /// The signature could not be resolved
-    #[default]
-    Unresolved,
+impl CallExpr {
+    pub fn return_ty_idx(&self, context: &Context) -> Idx<Type> {
+        let func_ty = context.expr_type(self.callee);
+        let func_ty = assert_matches!(func_ty, Type::Function);
+        if let Some(sig_index) = self.signature_index {
+            let sig = &func_ty.signatures[sig_index as usize];
+            sig.return_ty
+        } else {
+            context.core_types().error
+        }
+    }
+}
 
-    /// There was only one possible signature
-    ResolvedOnly,
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionExprGroup {
+    /// Function expression for each overload
+    pub overloads: Box<[FunctionExpr]>,
 
-    /// Multiple signatures were possible and has been resolved to this index
-    Resolved(u32),
+    /// Name of the function, if available
+    pub name: Option<(Key, ValueSymbol)>,
+
+    pub entry_point: Option<Key>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionExpr {
     /// Parameters to the function
-    // TODO: make Box<[T]> to be immutable (and one less word of memory)
-    pub params: Vec<FunctionParam>,
+    pub params: Box<[FunctionParam]>,
 
     /// Body of the function
     pub body: Idx<Expr>,
 
-    /// Name of the function, if available
-    pub name: Option<(Key, ValueSymbol)>,
+    /// Explicit return type annotation, if provided
+    pub return_type_annotation: Option<Idx<TypeExpr>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -265,6 +273,64 @@ pub struct FunctionParam {
 
     /// Type annotation if provided
     pub annotation: Option<Idx<TypeExpr>>,
+}
+
+#[derive(Debug)]
+// TODO: temporary / placeholder name as its still being discovered what
+// this needs to be
+// TODO: this could be done in the MIR, or better here in HIR?
+pub enum FunctionKind {
+    /// Host function defined in Rust
+    ///
+    /// Limitations: arguments must be passed by copy?
+    /// can arguments be moved once resources are implemented?
+    /// what about shared / RC types like String?
+    Host,
+
+    /// Function being called is statically known
+    ///
+    /// ```ignore
+    /// let f = fun () -> { ... }
+    /// f ()
+    /// ```
+    ///
+    /// The call to `f` can be substituted as a direct call and doesn't
+    /// need to be tracked as a runtime variable.
+    Direct,
+
+    /// Function being called is statically known, and
+    /// closes over values in an outer scope
+    ///
+    /// ```ignore
+    /// let make_adder = fun (a: Int) -> {
+    ///     let f = fun (b: Int) -> { a + b }
+    ///     f
+    /// }
+    ///
+    /// let add_four = make_adder 4
+    /// add_four 8
+    /// ```
+    ///
+    /// Calls to this would need to include the captured environment. The "Direct"
+    /// variant can be seen as a specialization of this variant where the captured
+    /// environment is zero-sized (no captures).
+    DirectClosure,
+
+    /// Function is being called without knowing which function until
+    /// runtime.
+    ///
+    /// ```ignore
+    /// let f = if condition { a } else { b }
+    /// f ()
+    /// ```
+    ///
+    /// This call can't be done by directly substituting a static call, the function
+    /// being called needs to be a variable at runtime.
+    ///
+    /// TODO: perhaps "dynamic" is better than "indirect" (and "static" vs. "direct")
+    Indirect,
+    // TODO:
+    // IndirectClosure,
 }
 
 #[derive(Debug, PartialEq)]
@@ -302,7 +368,7 @@ pub struct IndexIntExpr {
     pub index: Idx<Expr>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IntrinsicExpr {
     /// Addition `+`
     Add,

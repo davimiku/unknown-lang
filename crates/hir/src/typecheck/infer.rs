@@ -12,12 +12,21 @@ use super::types::FuncSignature;
 use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
-    ArrayLiteralExpr, BlockExpr, CallExprSignature, Expr, FunctionExpr, FunctionParam, IfExpr,
+    ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr,
     IndexIntExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
-use crate::{ArrayType, CallExpr, Context, FunctionType};
+use crate::{ArrayType, CallExpr, Context, FunctionType, Module};
+
+pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+    for expr in module.exprs.iter() {
+        result.chain(infer_expr(*expr, context));
+    }
+    result.ty = context.core_types().top;
+    result
+}
 
 pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult {
     if let Some(already_inferred_type) = context.type_database.expr_types.get(expr_idx) {
@@ -63,19 +72,12 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         Expr::Unary(expr) => result.chain(infer_unary(expr_idx, &expr, context)),
         Expr::Block(block) => result.chain(infer_block(&block, context)),
-        Expr::Call(mut expr) => result.chain(infer_call(expr_idx, &mut expr, context)),
+        Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
         Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
-        Expr::Module(exprs) => {
-            for expr in exprs {
-                result.chain(infer_expr(expr, context));
-            }
-            result.ty = context.core_types().top;
-        }
-        Expr::Intrinsic(_) => unreachable!("intrinsic shouldn't actually be checked/inferred"),
     };
 
     context.type_database.set_expr_type(expr_idx, result.ty);
@@ -96,31 +98,21 @@ fn infer_expr_widened(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResult 
 }
 
 fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
+    if let Some(ty) = context.type_database.type_expr_types.get(idx) {
+        return ty.into();
+    }
     let (type_expr, _range) = context.database.type_expr(idx);
     let result: TypeResult = match type_expr {
-        TypeExpr::BoolLiteral(b) => context
-            .type_database
-            .alloc_type(Type::BoolLiteral(*b))
-            .into(),
-        TypeExpr::FloatLiteral(f) => context
-            .type_database
-            .alloc_type(Type::FloatLiteral(*f))
-            .into(),
-        TypeExpr::IntLiteral(i) => context
-            .type_database
-            .alloc_type(Type::IntLiteral(*i))
-            .into(),
-        TypeExpr::StringLiteral(s) => context
-            .type_database
-            .alloc_type(Type::StringLiteral(*s))
-            .into(),
-
+        TypeExpr::BoolLiteral(b) => context.type_database.alloc_type(Type::BoolLiteral(*b)),
+        TypeExpr::FloatLiteral(f) => context.type_database.alloc_type(Type::FloatLiteral(*f)),
+        TypeExpr::IntLiteral(i) => context.type_database.alloc_type(Type::IntLiteral(*i)),
+        TypeExpr::StringLiteral(s) => context.type_database.alloc_type(Type::StringLiteral(*s)),
         TypeExpr::Binary(_) => todo!(),
         TypeExpr::Unary(_) => todo!(),
 
         TypeExpr::Call(_) => todo!(),
         TypeExpr::VarRef(TypeRefExpr { symbol, .. }) => {
-            context.type_database.get_type_symbol(symbol).into()
+            context.type_database.get_type_symbol(symbol)
         }
         TypeExpr::UnresolvedVarRef { key } => {
             println!("unresolved type key '{}'", context.lookup(*key));
@@ -129,7 +121,8 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
         TypeExpr::LocalDef(_) => todo!(),
 
         TypeExpr::Empty => todo!(),
-    };
+    }
+    .into();
     context.type_database.set_type_expr_type(idx, result.ty);
 
     result
@@ -152,27 +145,49 @@ fn infer_var_ref(expr: &VarRefExpr, context: &Context) -> TypeResult {
     result
 }
 
-fn infer_function(function: &FunctionExpr, context: &mut Context) -> TypeResult {
-    let FunctionExpr { params, body, .. } = function;
+fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeResult {
+    let mut signatures = vec![];
 
     let mut result = TypeResult::new(&context.type_database);
+    for overload in function.overloads.iter() {
+        let FunctionExpr {
+            params,
+            body,
+            return_type_annotation,
+        } = overload;
 
-    let mut param_tys = Vec::with_capacity(params.len());
-    for param in params {
-        result.chain(infer_function_param(param, context));
-        param_tys.push(result.ty);
+        let param_tys: Box<[Idx<Type>]> = params
+            .iter()
+            .map(|param| {
+                result.chain(infer_function_param(param, context));
+                result.ty
+            })
+            .collect();
+
+        // infer return type from function body
+        result.chain(infer_expr(*body, context));
+
+        if let Some(annotation) = return_type_annotation {
+            let expected = infer_type_expr(*annotation, context);
+
+            // if we couldn't determine the type for the annotation we can't check
+            if expected.is_ok() {
+                match check_expr(*body, expected.ty, context) {
+                    Ok(()) => result.ty = expected.ty,
+                    Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
+                }
+            }
+        }
+
+        let return_ty = result.ty;
+
+        signatures.push(FuncSignature {
+            params: param_tys,
+            return_ty,
+        });
     }
 
-    let return_type = infer_expr(*body, context);
-    result.chain(return_type);
-    let return_ty = result.ty;
-
-    let signature = FuncSignature {
-        params: param_tys.into(),
-        return_ty,
-    };
-    let func_ty = Type::func(vec![signature]);
-    result.ty = context.type_database.alloc_type(func_ty);
+    result.ty = context.type_database.alloc_type(Type::func(signatures));
     result
 }
 
@@ -298,10 +313,11 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
             // TODO: the `&CallExpr` passed in here is a clone so mutating does nothing
             // which is why the expr is being pulled out by idx here
             // would we rather hold the resolved signature in a separate arena/structure?
-            // could be an ArenaMap of Idx<Expr> -> Idx<FuncSignature>
+            // could be an ArenaMap of Idx<Expr> -> ResolvedSignature
             let expr_mut = context.expr_mut(expr_idx);
-            let expr_mut = assert_matches!(expr_mut, Expr::Call);
-            expr_mut.sig = CallExprSignature::ResolvedOnly;
+            let call_mut = assert_matches!(expr_mut, Expr::Call);
+
+            call_mut.signature_index = Some(0);
 
             return result;
         }
@@ -329,7 +345,8 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
                 // could be an ArenaMap of Idx<Expr> -> Idx<FuncSignature>
                 let expr_mut = context.expr_mut(expr_idx);
                 let expr_mut = assert_matches!(expr_mut, Expr::Call);
-                expr_mut.sig = CallExprSignature::Resolved(i as u32);
+                expr_mut.signature_index = Some(i as u32);
+
                 return result;
             }
             // type judgements are discarded if not ok, and try the next signature

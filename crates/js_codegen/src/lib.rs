@@ -6,15 +6,18 @@ mod function;
 mod tests;
 
 use hir::{
-    ArrayLiteralExpr, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, Type, VarDefExpr,
-    VarRefExpr,
+    ArrayLiteralExpr, BlockExpr, CallExpr, Context, Expr, IfExpr, Type, VarDefExpr, VarRefExpr,
 };
 
 const INDENT_SIZE: usize = 4;
 
-pub fn codegen(expr: &Expr, context: &Context) -> String {
+pub fn codegen(module: &hir::Module, context: &Context) -> String {
     let mut code = Codegen::default();
-    code.write_expr(expr, None, context);
+
+    for expr in module.exprs.iter() {
+        let expr = context.expr(*expr);
+        code.write_expr(expr, None, context);
+    }
 
     code.into()
 }
@@ -73,12 +76,6 @@ impl Codegen {
                 self.push(";\n");
             }
             Expr::ReturnStatement(inner) => todo!(),
-            Expr::Module(exprs) => {
-                for idx in exprs {
-                    self.write_expr(context.expr(*idx), None, context);
-                }
-            }
-            Expr::Intrinsic(_) => unreachable!("intrinsics won't be part of codegen"),
         };
     }
 
@@ -250,7 +247,8 @@ impl Codegen {
             Expr::Empty => todo!(),
 
             // TODO: needs to be parenthesized?
-            // Expr::Function(_) => todo!(),
+            // TODO: could have overloads
+            Expr::Function(_) => todo!(),
 
             // TODO: need to check
             // Expr::VarDef(_) => todo!(),

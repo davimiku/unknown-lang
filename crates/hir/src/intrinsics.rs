@@ -3,7 +3,7 @@ use la_arena::Idx;
 use crate::database::Database;
 use crate::scope::ModuleScopes;
 use crate::typecheck::{CoreTypes, TypeDatabase};
-use crate::{Expr, FuncSignature, Interner, IntrinsicExpr, Key, Type};
+use crate::{FuncSignature, Interner, IntrinsicExpr, Key, Type};
 
 pub(crate) fn insert_core_values(
     database: &mut Database,
@@ -43,8 +43,7 @@ pub(crate) fn insert_core_values(
         let ty = type_database.alloc_type(fn_type);
         type_database.insert_value_symbol(symbol, ty);
 
-        let intrinsic_expr = database.alloc_expr(Expr::Intrinsic(intrinsic), None);
-        database.function_defs.insert(symbol, intrinsic_expr);
+        database.operators.insert(symbol, intrinsic);
     };
 
     insert_intrinsic(keys.add, Type::func(add_signatures(&t)), IE::Add);
@@ -72,6 +71,9 @@ pub(crate) fn insert_core_values(
 }
 
 fn print_signatures(types: &CoreTypes) -> Vec<FuncSignature> {
+    // TODO: this order might be important, make a mechanism to synchronize
+    // this across HIR, MIR, and clif_codegen
+    // since we're resolving signature by index?
     vec![
         ((types.string,), types.unit).into(),
         ((types.int,), types.unit).into(),

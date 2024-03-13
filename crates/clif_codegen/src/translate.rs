@@ -370,6 +370,7 @@ impl<'a> FunctionTranslator<'a> {
                 Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
                 Constant::Float(f) => self.builder.ins().f64const(*f),
                 Constant::String(_) => todo!(),
+                Constant::Func(..) => unreachable!("TODO"),
             },
             Operand::Move(_) => todo!(),
         }
@@ -425,6 +426,7 @@ impl<'a> FunctionTranslator<'a> {
             Constant::Int(_) => self.context.core_types().int,
             Constant::Float(_) => self.context.core_types().float,
             Constant::String(_) => todo!(),
+            Constant::Func(..) => unreachable!("TODO"),
         }
     }
 
