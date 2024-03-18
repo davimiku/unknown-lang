@@ -147,6 +147,10 @@ impl Context {
         self.type_database.type_(idx)
     }
 
+    pub fn type_is_function(&self, idx: Idx<Type>) -> bool {
+        matches!(self.type_(idx), Type::Function(_))
+    }
+
     pub fn type_of_value(&self, value: &ValueSymbol) -> &Type {
         self.type_database.type_(self.type_idx_of_value(value))
     }
@@ -470,7 +474,10 @@ impl Context {
                 let key = self.interner.intern(&ident.as_string());
                 self.find_value(key)
             }
-            ast::Expr::Path(path) => None,
+            ast::Expr::Path(path) => path
+                .subject_as_ident()
+                .map(|ident| self.interner.intern(&ident.as_string()))
+                .and_then(|key| self.find_value(key)),
 
             _ => None,
         };
@@ -567,10 +574,10 @@ impl Context {
 
         // TODO: parse and lower @entry_point annotations
         // TODO: once there are programs with multiple modules, only the "main" in the
-        // main module gets this special status. Or make the user use an annotation
+        // main module gets this special status. Or make the user use an annotation still
         let mut entry_point = None;
         if let Some((key, ..)) = func_name {
-            if self.interner.intern("main") == key {
+            if self.interner.core_keys().main == key {
                 entry_point = Some(key);
             }
         }
@@ -599,6 +606,11 @@ impl Context {
             })
             .collect();
 
+        // TODO: not sure how... but getting all the ValueSymbols
+        // used by this body but defined outside of the body would
+        // be great
+        let captures = Vec::new();
+
         let body = function_ast
             .body()
             .and_then(|body| body.expr())
@@ -617,6 +629,7 @@ impl Context {
             params,
             body,
             return_type_annotation,
+            captures: captures.into(),
         }]);
 
         Expr::Function(FunctionExprGroup {

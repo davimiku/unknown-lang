@@ -1,20 +1,25 @@
-// TODO: decide if a Builder will be one-per-module? for later parallelization
-// for "script mode" or "function mode" there would be no parallelization
-
 use std::collections::HashMap;
 
-use hir::Key;
+use hir::{Key, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
 
-use crate::{scopes::ScopesStack, BasicBlock, Function, Local, Module};
+use crate::scopes::ScopesStack;
+use crate::syntax::FuncId;
+use crate::{BasicBlock, Function, Local, Module};
 
+/// Builder constructs the Mid-Level Representation (MIR) for a **module**.
+///
+/// This MIR is a Control Flow Graph where nodes are represented by "Basic Blocks"
+/// and edges are represented by the terminators that point between the "bottom"
+/// of one Basic Block to the "top" of one or more other Basic Blocks.
 #[derive(Debug)]
 pub struct Builder {
     /// Functions that have been created by this Builder
     pub(crate) functions: Arena<Function>,
 
-    pub(crate) entry_points: HashMap<Key, Idx<Function>>,
+    pub(crate) entry_points: HashMap<Key, FuncId>,
 
+    pub(crate) module_id: u32,
     /// Blocks that have been created but yet to be constructed
     /// (block_to_construct, hir::Expr::Block, Option<goto_terminator_block>)
     ///
@@ -33,6 +38,8 @@ pub struct Builder {
     pub current_function: Idx<Function>,
     pub current_block: Idx<BasicBlock>,
 
+    pub functions_map: HashMap<ValueSymbol, Vec<FuncId>>,
+
     /// The final statement of the current block is constructed as
     /// an assignment to this Place.
     // pub assign_to: Option<Place>,
@@ -45,31 +52,32 @@ pub struct Builder {
     /// Tracks scopes while constructing the MIR. When a scope is entered,
     /// a new Scope is pushed on here. This tracks the current statement counter
     /// so that when a scope is popped back into an earlier scope, the statements
-    /// can resume being constructed.
+    /// can resume being constructed at the same point.
     pub scopes: ScopesStack,
 }
 
 impl Builder {
-    pub(crate) fn new(context: &hir::Context) -> Self {
+    pub(crate) fn new(module_id: u32, context: &hir::Context) -> Self {
         let mut functions = Arena::new();
-        {
-            let mut print_string = Function::default();
-            let key = context.interner.core_keys().print;
-            let symbol = context.find_value(key).unwrap();
-            print_string.name = Some((key, symbol));
-            print_string.params = vec![];
-            functions.alloc(print_string);
-        }
+        // {
+        //     let mut print_string = Function::default();
+        //     let key = context.interner.core_keys().print;
+        //     let symbol = context.find_value(key).unwrap();
+        //     print_string.name = Some((key, symbol));
+        //     print_string.params = vec![];
+        //     functions.alloc(print_string);
+        // }
 
-        let func = Function::default();
-        let current_block = func.entry_block();
-        let current_function = functions.alloc(func);
+        let current_block = Idx::from_raw(u32::MAX.into());
+        let current_function = Idx::from_raw(u32::MAX.into());
         Self {
             functions,
+            module_id,
             current_function,
             current_block,
             entry_points: Default::default(),
             block_var_defs: Default::default(),
+            functions_map: Default::default(),
             scopes: Default::default(),
         }
     }
@@ -79,7 +87,7 @@ impl Builder {
     pub fn build(self) -> Module {
         Module {
             functions: self.functions,
-            entry_functions: self.entry_points,
+            entry_points: self.entry_points,
         }
     }
 

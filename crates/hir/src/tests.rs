@@ -445,6 +445,30 @@ print_param "Hello!"
 }
 
 #[test]
+fn function_call_function() {
+    let input = "
+let is_even = fun (a: Int) -> { a % 2 == 0 }
+
+let main = fun (a: Int) -> {
+    is_even a
+}
+";
+
+    let expected_expr = indoc! {"
+        is_even~1.0 : (Int) -> Bool = fun \"is_even\"(a~1.1 : Int) -> Bool { `==`~0.7$0 (%~0.5$0 (a~1.1,2,),0,); };
+        main~1.2 : (Int) -> Bool = fun \"main\"(a~1.3 : Int) -> Bool { is_even~1.0$0 (a~1.3,); };"};
+
+    let expected_vars = &[
+        ("a~1.1", "Int"),
+        ("a~1.3", "Int"),
+        ("is_even~1.0", "(Int) -> Bool"),
+        ("main~1.2", "(Int) -> Bool"),
+    ];
+
+    check(input, expected_expr, expected_vars);
+}
+
+#[test]
 fn let_binding_and_print() {
     let input = r#"
 let a = "Hello"

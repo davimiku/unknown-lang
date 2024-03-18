@@ -30,6 +30,8 @@ use la_arena::Idx;
 use type_expr::TypeExpr;
 
 pub struct Module {
+    pub id: u32,
+
     pub exprs: Box<[Idx<Expr>]>,
 }
 
@@ -43,6 +45,7 @@ pub fn lower(input: &str) -> (Module, Context) {
 
     let module = Module {
         exprs: exprs.into(),
+        id: 1, // TODO: assign module_id at parse time and send it through the whole way
     };
 
     context.type_check_module(&module);
@@ -87,12 +90,14 @@ pub fn lower_script(input: &str) -> (Idx<Expr>, Context) {
 
     let params = Box::new([]);
     let return_type_annotation = None;
+    let captures = Box::new([]);
     let function = Expr::Function(FunctionExprGroup {
         // FIXME: `args: Array String` for CLI scripts?
         overloads: Box::new([FunctionExpr {
             params,
             body,
             return_type_annotation,
+            captures,
         }]),
         name: Some((main_name, main_symbol)),
         entry_point: Some(main_name),

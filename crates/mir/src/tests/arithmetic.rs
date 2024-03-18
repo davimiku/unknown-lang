@@ -1,19 +1,19 @@
-use super::{check_function, check_script};
+use super::check_function;
 
 #[test]
 fn basic_arithmetic() {
-    let input = "3 + 5";
+    let input = "fun () -> { 12 + 4 }";
     let expected = "
-fun main:
+fun {anonymous}:
     params: {none}
     mut _0: Int
     
     BB0():
-        _0 = Add(const 3, const 5)
+        _0 = Add(const 12, const 4)
         Return _0 ->
 ";
 
-    check_script(input, expected);
+    check_function(input, expected);
 }
 
 #[test]

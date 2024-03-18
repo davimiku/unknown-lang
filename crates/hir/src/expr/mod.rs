@@ -261,6 +261,9 @@ pub struct FunctionExpr {
 
     /// Explicit return type annotation, if provided
     pub return_type_annotation: Option<Idx<TypeExpr>>,
+
+    /// Symbols captured from an outer scopes
+    pub captures: Box<[ValueSymbol]>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

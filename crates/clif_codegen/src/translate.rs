@@ -12,24 +12,22 @@ mod arithmetic;
 
 use std::{collections::HashMap, ops::Deref};
 
-use cranelift::codegen::ir::types::F64;
-use cranelift::codegen::ir::types::I64;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
+use cranelift_module::FuncId;
+use cranelift_module::Module;
 use hir::Type as HType;
 use la_arena::ArenaMap;
 use la_arena::Idx;
 use mir::Place;
 use mir::SwitchIntTargets;
 use mir::Terminator;
-use mir::{BasicBlock, BinOp, Constant, Local, Operand, Rvalue, Statement};
+use mir::{BasicBlock, BinOpKind, Constant, Local, Operand, Rvalue, Statement};
 
 use crate::ext::function_builder::FunctionBuilderExt;
-
-type IsConstant = bool;
 
 // TODO: decide on nomenclature for "Type"
 // currently "ClifType" means "Cranelift Type" and
@@ -73,11 +71,8 @@ pub(crate) struct FunctionTranslator<'a> {
     /// Lowered and typechecked HIR context
     context: &'a hir::Context,
 
-    /// map from *our* block to *CLIF* block
-    // block_map: ArenaMap<Idx<BasicBlock>, ClifBlock>,
-
-    /// Blocks that are yet to be translated
-    block_queue: Vec<Idx<BasicBlock>>,
+    /// map from *our* FuncId to *CLIF* FuncId
+    func_map: &'a HashMap<mir::FuncId, FuncId>,
 
     /// TODO: swap HashMap for FxMap or similar, doesn't need the security of the default hasher
     variables: HashMap<Idx<Local>, Variable>,
@@ -87,18 +82,18 @@ impl<'a> FunctionTranslator<'a> {
     pub(crate) fn new(
         builder: &'a mut FunctionBuilder<'a>,
         module: &'a mut JITModule,
-        context: &'a hir::Context,
         func: &'a mir::Function,
+        func_map: &'a HashMap<mir::FuncId, FuncId>,
+        context: &'a hir::Context,
     ) -> Self {
         Self {
-            types: CommonTypes::default(),
             func,
             builder,
             module,
             context,
-            // block_map: ArenaMap::default(),
-            block_queue: Vec::default(),
-            variables: HashMap::default(),
+            func_map,
+            types: Default::default(),
+            variables: Default::default(),
         }
     }
 }
@@ -130,12 +125,15 @@ impl<'a> FunctionTranslator<'a> {
             }
         }
 
-        let first_basic_block = self.func.entry_block();
-        let entry_block = block_map[first_basic_block];
-        self.builder
-            .append_block_params_for_function_params(entry_block);
-        self.builder.switch_to_block(entry_block);
-        self.builder.seal_block(entry_block);
+        let entry_block = {
+            let first_basic_block = self.func.entry_block();
+            let entry_block = block_map[first_basic_block];
+            self.builder
+                .append_block_params_for_function_params(entry_block);
+            self.builder.switch_to_block(entry_block);
+            self.builder.seal_block(entry_block);
+            entry_block
+        };
 
         // def_var the values for parameter locals: _1, _2, _3, ..., _n
         let param_locals = self.func.param_locals().enumerate();
@@ -153,10 +151,8 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_signature(&mut self) {
-        if let Some((_, symbol)) = self.func.name {
-            let (module_id, symbol_id) = symbol.into();
-            self.builder.func.name = UserFuncName::user(module_id, symbol_id);
-        }
+        let (module_id, symbol_id) = self.func.id.into();
+        self.builder.func.name = UserFuncName::user(module_id, symbol_id);
 
         // TODO: this level of abstraction may not work once we have compound types (unions, records)
         // how do those types get translated for a signature?
@@ -183,7 +179,7 @@ impl<'a> FunctionTranslator<'a> {
     fn translate_basic_block(&mut self, block_idx: Idx<BasicBlock>, block_map: &BlockMap) {
         let block = &self.func.blocks[block_idx];
         for statement in &block.statements {
-            self.translate_statement(statement, block_map);
+            self.translate_statement(statement);
         }
         let terminator = block
             .terminator
@@ -192,7 +188,7 @@ impl<'a> FunctionTranslator<'a> {
         self.translate_terminator(terminator, block_map);
     }
 
-    fn translate_statement(&mut self, statement: &Statement, block_map: &BlockMap) {
+    fn translate_statement(&mut self, statement: &Statement) {
         match statement {
             Statement::Assign(assign) => {
                 let (place, rvalue) = assign.deref();
@@ -221,7 +217,7 @@ impl<'a> FunctionTranslator<'a> {
                 args,
                 destination,
                 target,
-            } => todo!(),
+            } => self.translate_call_terminator(func, args, destination, *target, block_map),
             Terminator::SwitchInt {
                 discriminant,
                 targets,
@@ -232,6 +228,46 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_jump_terminator(&mut self, target: Idx<BasicBlock>, block_map: &BlockMap) {
+        let block_call_args = self.block_args(target);
+        let target = block_map[target];
+        self.builder.ins().jump(target, &block_call_args);
+    }
+
+    fn translate_call_terminator(
+        &mut self,
+        func: &Operand,
+        args: &[Operand],
+        destination: &Place,
+        target: Option<Idx<BasicBlock>>,
+        block_map: &BlockMap,
+    ) {
+        let args: Vec<Value> = args.iter().map(|arg| self.translate_operand(arg)).collect();
+
+        let returns = match func {
+            Operand::Constant(constant) => match constant {
+                Constant::Func(func_id) => {
+                    let func_id = self.func_map[func_id];
+                    let func_ref = self.module.declare_func_in_func(func_id, self.builder.func);
+                    self.builder.ins().call(func_ref, &args)
+                }
+
+                _ => unreachable!(),
+            },
+            Operand::Copy(place) => todo!("func_addr and indirect call"),
+            Operand::Move(place) => todo!("closures that capture resources might become Move?"),
+        };
+        let returns = self.builder.inst_results(returns);
+        match returns.len() {
+            0 => {}
+            1 => {
+                // FIXME: use projections
+                let var = self.variables[&destination.local];
+                self.builder.def_var(var, returns[0]);
+            }
+            _ => unreachable!("multiple returns not implemented yet"),
+        }
+
+        let target = target.unwrap();
         let block_call_args = self.block_args(target);
         let target = block_map[target];
         self.builder.ins().jump(target, &block_call_args);
@@ -295,22 +331,22 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_binary_op(&mut self, binop: &BinOp, ops: &(Operand, Operand)) -> Value {
+    fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> Value {
         let (lhs, rhs) = ops;
 
         match binop {
-            BinOp::Add => self.emit_add(lhs, rhs),
-            BinOp::Sub => self.emit_sub(lhs, rhs),
-            BinOp::Mul => self.emit_mul(lhs, rhs),
-            BinOp::Div => self.emit_div(lhs, rhs),
-            BinOp::Rem => self.emit_rem(lhs, rhs),
-            BinOp::Concat => todo!(),
-            BinOp::Eq => self.emit_comparison(lhs, rhs, Cmp::Equal),
-            BinOp::Ne => self.emit_comparison(lhs, rhs, Cmp::NotEqual),
-            BinOp::Lt => self.emit_comparison(lhs, rhs, Cmp::LessThan),
-            BinOp::Le => self.emit_comparison(lhs, rhs, Cmp::LessThanOrEqual),
-            BinOp::Gt => self.emit_comparison(lhs, rhs, Cmp::GreaterThan),
-            BinOp::Ge => self.emit_comparison(lhs, rhs, Cmp::GreaterThanOrEqual),
+            BinOpKind::Add => self.emit_add(lhs, rhs),
+            BinOpKind::Sub => self.emit_sub(lhs, rhs),
+            BinOpKind::Mul => self.emit_mul(lhs, rhs),
+            BinOpKind::Div => self.emit_div(lhs, rhs),
+            BinOpKind::Rem => self.emit_rem(lhs, rhs),
+            BinOpKind::Concat => todo!(),
+            BinOpKind::Eq => self.emit_comparison(lhs, rhs, Cmp::Equal),
+            BinOpKind::Ne => self.emit_comparison(lhs, rhs, Cmp::NotEqual),
+            BinOpKind::Lt => self.emit_comparison(lhs, rhs, Cmp::LessThan),
+            BinOpKind::Le => self.emit_comparison(lhs, rhs, Cmp::LessThanOrEqual),
+            BinOpKind::Gt => self.emit_comparison(lhs, rhs, Cmp::GreaterThan),
+            BinOpKind::Ge => self.emit_comparison(lhs, rhs, Cmp::GreaterThanOrEqual),
         }
     }
 

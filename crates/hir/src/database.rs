@@ -27,14 +27,8 @@ pub struct Database {
     /// Invariant: The indexes must be kept in sync
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
 
-    /// Symbols that are function definitions (static/constant).
-    ///
-    /// Typically (?) these are defined at the top level and must be immutable
-    /// bindings with no dynamic captures.
-    ///
-    /// In the JIT backend, calls of these symbols are translated into a direct
-    /// function call (rather than an indirect call) and the "size" of these are
-    /// a zero-sized type (rather than pointer-sized for an indirect call).
+    /// Maps between the resolved symbols for `+`, `*`, etc. to the
+    /// intrinsic operation that they represent.
     pub(crate) operators: HashMap<ValueSymbol, IntrinsicExpr>,
 
     /// Reverse mapping between every symbol defining a value (i.e. variable)

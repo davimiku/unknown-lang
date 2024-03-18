@@ -50,6 +50,8 @@ pub struct CoreKeys {
     pub print: Key,
     /// `args`
     pub args: Key,
+    /// `main`
+    pub main: Key,
 
     /// `+`
     pub add: Key,
@@ -88,6 +90,7 @@ impl CoreKeys {
 
             print: interner.intern("print"),
             args: interner.intern("args"),
+            main: interner.intern("main"),
 
             add: interner.intern("+"),
             concat: interner.intern("++"),

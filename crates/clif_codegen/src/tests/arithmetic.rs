@@ -1,12 +1,12 @@
 use super::to_fn;
 use crate::builtins::{XFloat, XInt};
-use crate::compile_function;
+use crate::tests::compile_main;
 
 #[test]
 fn int_add_param_and_constant() {
-    let input = "fun (i: Int) -> { i + 6 }";
+    let input = "let main = fun (i: Int) -> { i + 6 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -16,9 +16,9 @@ fn int_add_param_and_constant() {
 
 #[test]
 fn int_sub_param_and_constant() {
-    let input = "fun (i: Int) -> { i - 10 }";
+    let input = "let main = fun (i: Int) -> { i - 10 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -28,9 +28,9 @@ fn int_sub_param_and_constant() {
 
 #[test]
 fn int_mul_param_and_constant() {
-    let input = "fun (i: Int) -> { i * 8 }";
+    let input = "let main = fun (i: Int) -> { i * 8 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -40,9 +40,9 @@ fn int_mul_param_and_constant() {
 
 #[test]
 fn int_add_params() {
-    let input = "fun (a: Int, b: Int) -> { a + b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a + b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
@@ -52,9 +52,9 @@ fn int_add_params() {
 
 #[test]
 fn int_sub_params() {
-    let input = "fun (a: Int, b: Int) -> { a - b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a - b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
@@ -64,9 +64,9 @@ fn int_sub_params() {
 
 #[test]
 fn int_mul_params() {
-    let input = "fun (a: Int, b: Int) -> { a * b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a * b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
@@ -77,9 +77,9 @@ fn int_mul_params() {
 
 #[test]
 fn remainder_params() {
-    let input = "fun (a: Int, b: Int) -> { a % b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a % b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
@@ -98,9 +98,9 @@ fn remainder_params() {
 
 #[test]
 fn much_int_arithmetic() {
-    let input = "fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
+    let input = "let main = fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XInt>(code_ptr) };
 
@@ -115,7 +115,7 @@ fn float_add_param_and_constant() {
     ];
 
     for input in inputs {
-        let code_ptr = compile_function(input).unwrap();
+        let code_ptr = compile_main(input);
 
         let code_fn = unsafe { to_fn::<(XFloat,), XFloat>(code_ptr) };
 
@@ -132,7 +132,7 @@ fn float_sub_param_and_constant() {
     ];
 
     for input in inputs {
-        let code_ptr = compile_function(input).unwrap();
+        let code_ptr = compile_main(input);
 
         let code_fn = unsafe { to_fn::<(XFloat,), XFloat>(code_ptr) };
 
@@ -149,7 +149,7 @@ fn float_mul_param_and_constant() {
     ];
 
     for input in inputs {
-        let code_ptr = compile_function(input).unwrap();
+        let code_ptr = compile_main(input);
 
         let code_fn = unsafe { to_fn::<(XFloat,), XFloat>(code_ptr) };
 
@@ -160,9 +160,9 @@ fn float_mul_param_and_constant() {
 
 #[test]
 fn float_add_params() {
-    let input = "fun (a: Float, b: Float) -> { a + b }";
+    let input = "let main = fun (a: Float, b: Float) -> { a + b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat, XFloat), XFloat>(code_ptr) };
 
@@ -172,9 +172,9 @@ fn float_add_params() {
 
 #[test]
 fn float_int_add_params() {
-    let input = "fun (a: Float, b: Int) -> { a + b }";
+    let input = "let main = fun (a: Float, b: Int) -> { a + b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat, XInt), XFloat>(code_ptr) };
 
@@ -184,9 +184,9 @@ fn float_int_add_params() {
 
 #[test]
 fn int_float_add_params() {
-    let input = "fun (a: Int, b: Float) -> { a + b }";
+    let input = "let main = fun (a: Int, b: Float) -> { a + b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XFloat), XFloat>(code_ptr) };
 
@@ -196,9 +196,9 @@ fn int_float_add_params() {
 
 #[test]
 fn float_sub_params() {
-    let input = "fun (a: Float, b: Float) -> { a - b }";
+    let input = "let main = fun (a: Float, b: Float) -> { a - b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat, XFloat), XFloat>(code_ptr) };
 
@@ -208,9 +208,9 @@ fn float_sub_params() {
 
 #[test]
 fn float_mul_params() {
-    let input = "fun (a: Float, b: Float) -> { a * b }";
+    let input = "let main = fun (a: Float, b: Float) -> { a * b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat, XFloat), XFloat>(code_ptr) };
 
@@ -221,9 +221,9 @@ fn float_mul_params() {
 
 #[test]
 fn much_float_arithmetic() {
-    let input = "fun (a: Float, b: Float) -> { a + 2 * b - 7 }";
+    let input = "let main = fun (a: Float, b: Float) -> { a + 2 * b - 7 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat, XFloat), XFloat>(code_ptr) };
 

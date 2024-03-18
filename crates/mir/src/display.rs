@@ -7,8 +7,8 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BinOp, Constant, Mutability, Operand, Place, Rvalue, Statement, SwitchIntTargets, Terminator,
-    UnOp,
+    BinOpKind, Constant, FuncId, Mutability, Operand, Place, Rvalue, Statement, SwitchIntTargets,
+    Terminator, UnOp,
 };
 use crate::{BasicBlock, Function, Local, Module};
 
@@ -33,7 +33,6 @@ impl MirWrite for Module {
     ) -> io::Result<()> {
         for function in self.functions.values() {
             function.write(buf, context, indent)?;
-            write_line(buf, indent)?;
         }
         Ok(())
     }
@@ -98,9 +97,7 @@ fn write_signature<W: io::Write>(
     context: &Context,
     indent: &mut Indent,
 ) -> io::Result<()> {
-    let function_name = function
-        .name
-        .map_or("{anonymous}", |(key, ..)| context.lookup(key));
+    let function_name: &str = function.name.as_deref().unwrap_or("{anonymous}");
     write!(buf, "fun {function_name}:")?;
     write_line_and_indent(buf, indent)?;
 
@@ -337,7 +334,9 @@ impl MirWrite for Operand {
                 place.write(buf, context, indent)
             }
             Operand::Constant(constant) => {
-                write!(buf, "const ")?;
+                if !matches!(constant, Constant::Func(_)) {
+                    write!(buf, "const ")?;
+                }
                 constant.write(buf, context, indent)
             }
         }
@@ -358,7 +357,7 @@ impl MirWrite for Constant {
                 write!(buf, "{}", ryu_buf.format_finite(*f))
             }
             Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
-            Constant::Func(..) => unreachable!(),
+            Constant::Func(func_id) => write!(buf, "{func_id} "),
         }
     }
 }
@@ -372,7 +371,7 @@ impl Display for Mutability {
     }
 }
 
-impl Display for BinOp {
+impl Display for BinOpKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self, f)
     }

@@ -154,6 +154,7 @@ fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeRe
             params,
             body,
             return_type_annotation,
+            captures: _,
         } = overload;
 
         let param_tys: Box<[Idx<Type>]> = params

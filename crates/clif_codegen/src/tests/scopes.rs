@@ -1,12 +1,11 @@
-use crate::builtins::{XFloat, XInt};
-use crate::compile_function;
-use crate::tests::to_fn;
+use crate::builtins::XFloat;
+use crate::tests::{compile_main, to_fn};
 
 #[test]
 #[allow(clippy::unit_cmp)]
 fn nested_scopes() {
     let input = "
-fun (a: Float) -> {
+let main = fun (a: Float) -> {
     let b = 4.0
     {
         let c = a + a - b
@@ -16,7 +15,7 @@ fun (a: Float) -> {
     }
 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat,), ()>(code_ptr) };
 
@@ -26,7 +25,7 @@ fun (a: Float) -> {
 #[test]
 fn nested_scopes_with_return() {
     let input = "
-fun (a: Float) -> {
+let main = fun (a: Float) -> {
     let b = 4.0
     {
         let c = a + a - b
@@ -39,7 +38,7 @@ fun (a: Float) -> {
     }
 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XFloat,), XFloat>(code_ptr) };
 

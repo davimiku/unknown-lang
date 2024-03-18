@@ -1,4 +1,7 @@
-use std::slice::Iter;
+use std::{
+    fmt::{self, Display, Write},
+    slice::Iter,
+};
 
 use hir::{Context, Expr, IntrinsicExpr, Key, Type, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
@@ -34,8 +37,19 @@ use crate::construct::OperandResult;
 /// the function.
 #[derive(Debug, Clone)]
 pub struct Function {
-    /// Interned string name of the function with the symbol, or None for anonymous functions
-    pub name: Option<(Key, ValueSymbol)>,
+    /// String name of the function
+    ///
+    /// Anonymous functions are None.
+    /// An overloaded function would have a different name for each overload
+    // TODO: would be nice for this to be a Key to reduce the struct size,
+    // but this name is being generated in the MIR currently and we don't
+    // have mutable access to the hir::Context::Interner at this point.
+    // Could intern all the strings in the HIR in advance which works for
+    // static overloads but not for generic functions that will be monomorphized
+    // here. Or, could make a new Interner for the MIR
+    pub name: Option<String>,
+
+    pub id: FuncId,
 
     /// Blocks that represent the control flow through this function
     pub blocks: Arena<BasicBlock>,
@@ -52,27 +66,20 @@ pub struct Function {
     pub locals_map: ArenaMap<Idx<Local>, Option<ValueSymbol>>,
 }
 
-impl Default for Function {
-    fn default() -> Self {
+impl Function {
+    pub(crate) fn new(id: impl Into<FuncId>) -> Self {
+        let id = id.into();
         let mut blocks = Arena::new();
 
         blocks.alloc(BasicBlock::default());
 
         Self {
-            name: None,
+            id,
             blocks,
+            name: None,
             params: Vec::default(),
             locals: Arena::default(),
             locals_map: ArenaMap::default(),
-        }
-    }
-}
-
-impl Function {
-    pub fn new(name: Option<(Key, ValueSymbol)>) -> Self {
-        Self {
-            name,
-            ..Default::default()
         }
     }
 }
@@ -116,6 +123,31 @@ impl Function {
     pub fn return_ty(&self) -> Idx<Type> {
         let (_, return_local) = self.return_local();
         return_local.type_idx_of()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FuncId {
+    module_id: u32,
+
+    func_id: u32,
+}
+
+impl Display for FuncId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("\\f:{}:{}", self.module_id, self.func_id))
+    }
+}
+
+impl From<(u32, u32)> for FuncId {
+    fn from((module_id, func_id): (u32, u32)) -> Self {
+        Self { module_id, func_id }
+    }
+}
+
+impl From<FuncId> for (u32, u32) {
+    fn from(value: FuncId) -> Self {
+        (value.module_id, value.func_id)
     }
 }
 
@@ -435,7 +467,7 @@ pub enum Rvalue {
 
     // -------------
     /// Binary operation
-    BinaryOp(BinOp, Box<(Operand, Operand)>),
+    BinaryOp(BinOpKind, Box<(Operand, Operand)>),
 
     // Same as `BinaryOp`, but yields `(T, bool)` with a `bool` indicating an error condition.
     // CheckedBinaryOp(BinOp, Box<(Operand<'tcx>, Operand<'tcx>)>),
@@ -478,8 +510,15 @@ enum NonDivergingIntrinsic {
     IntAddition,
 }
 
+#[derive(Debug)]
+pub(crate) struct BinOp {
+    pub(crate) lhs: Idx<Expr>,
+    pub(crate) rhs: Idx<Expr>,
+    pub(crate) kind: BinOpKind,
+}
+
 #[derive(Debug, Clone, Copy)]
-pub enum BinOp {
+pub enum BinOpKind {
     /// Addition `+`
     Add,
 
@@ -518,27 +557,27 @@ pub enum BinOp {
     Gt,
 }
 
-impl From<&IntrinsicExpr> for BinOp {
+impl From<&IntrinsicExpr> for BinOpKind {
     fn from(value: &IntrinsicExpr) -> Self {
         (*value).into()
     }
 }
 
-impl From<IntrinsicExpr> for BinOp {
+impl From<IntrinsicExpr> for BinOpKind {
     fn from(value: IntrinsicExpr) -> Self {
         match value {
-            IntrinsicExpr::Add => BinOp::Add,
-            IntrinsicExpr::Sub => BinOp::Sub,
-            IntrinsicExpr::Mul => BinOp::Mul,
-            IntrinsicExpr::Div => BinOp::Div,
-            IntrinsicExpr::Concat => BinOp::Concat,
-            IntrinsicExpr::Rem => BinOp::Rem,
-            IntrinsicExpr::Eq => BinOp::Eq,
-            IntrinsicExpr::Ne => BinOp::Ne,
-            IntrinsicExpr::Lt => BinOp::Lt,
-            IntrinsicExpr::Le => BinOp::Le,
-            IntrinsicExpr::Gt => BinOp::Gt,
-            IntrinsicExpr::Ge => BinOp::Ge,
+            IntrinsicExpr::Add => BinOpKind::Add,
+            IntrinsicExpr::Sub => BinOpKind::Sub,
+            IntrinsicExpr::Mul => BinOpKind::Mul,
+            IntrinsicExpr::Div => BinOpKind::Div,
+            IntrinsicExpr::Concat => BinOpKind::Concat,
+            IntrinsicExpr::Rem => BinOpKind::Rem,
+            IntrinsicExpr::Eq => BinOpKind::Eq,
+            IntrinsicExpr::Ne => BinOpKind::Ne,
+            IntrinsicExpr::Lt => BinOpKind::Lt,
+            IntrinsicExpr::Le => BinOpKind::Le,
+            IntrinsicExpr::Gt => BinOpKind::Gt,
+            IntrinsicExpr::Ge => BinOpKind::Ge,
         }
     }
 }
@@ -580,18 +619,6 @@ impl Operand {
         // TODO: use Context to get type information to determine Copy/Move/Share
         Self::Copy(place)
     }
-
-    pub fn constant_int(i: i64) -> Self {
-        Self::Constant(Constant::Int(i))
-    }
-
-    pub fn constant_float(f: f64) -> Self {
-        Self::Constant(Constant::Float(f))
-    }
-
-    pub fn constant_bool(b: bool) -> Self {
-        Self::Constant(Constant::bool(b))
-    }
 }
 
 impl Operand {
@@ -624,11 +651,17 @@ impl Operand {
     }
 }
 
+impl From<Constant> for Operand {
+    fn from(constant: Constant) -> Self {
+        Self::Constant(constant)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Constant {
     /// Integer constants.
     ///
-    /// At this point, boolean constants are converted to integers
+    /// Boolean constants are 0 (false) or 1 (true)
     Int(i64),
 
     /// Floating point constants.
@@ -639,12 +672,53 @@ pub enum Constant {
 
     /// A function expression
     ///
-    /// `fun (i: Int) -> { i + 2 }`
-    Func(Idx<Expr>),
+    /// ex. `fun (i: Int) -> { i + 2 }`
+    Func(FuncId),
 }
 
-impl Constant {
-    pub fn bool(b: bool) -> Self {
+impl From<bool> for Constant {
+    fn from(b: bool) -> Self {
         Self::Int(b as i64)
+    }
+}
+
+impl From<i64> for Constant {
+    fn from(i: i64) -> Self {
+        Self::Int(i)
+    }
+}
+
+impl From<f64> for Constant {
+    fn from(f: f64) -> Self {
+        Self::Float(f)
+    }
+}
+
+impl From<Key> for Constant {
+    fn from(key: Key) -> Self {
+        Self::String(key)
+    }
+}
+
+impl From<FuncId> for Constant {
+    fn from(id: FuncId) -> Self {
+        Self::Func(id)
+    }
+}
+
+pub(crate) enum Callee {
+    Direct(FuncId),
+    Indirect(Idx<Local>),
+}
+
+impl From<&FuncId> for Callee {
+    fn from(func_id: &FuncId) -> Self {
+        Self::Direct(*func_id)
+    }
+}
+
+impl From<FuncId> for Callee {
+    fn from(func_id: FuncId) -> Self {
+        Self::Direct(func_id)
     }
 }

@@ -9,8 +9,8 @@ use crate::Local;
 pub struct ScopesStack(Vec<Scope>);
 
 impl ScopesStack {
-    pub fn push(&mut self, working_block: Idx<hir::Expr>) {
-        self.0.push(Scope::new(working_block))
+    pub fn push(&mut self) {
+        self.0.push(Scope::new())
     }
 
     pub fn pop(&mut self) {
@@ -37,8 +37,7 @@ impl ScopesStack {
 
 impl Default for ScopesStack {
     fn default() -> Self {
-        let idx = Idx::from_raw(u32::MAX.into());
-        Self(vec![Scope::new(idx)])
+        Self(vec![Scope::new()])
     }
 }
 
@@ -46,16 +45,15 @@ impl Default for ScopesStack {
 pub struct Scope {
     statement_counter: usize,
 
-    working_block: Idx<hir::Expr>,
-
+    // TODO: is this being used?
+    // if it is, should be an ArenaMap with Idx as the key
     locals: HashMap<Idx<Local>, Option<ValueSymbol>>,
 }
 
 impl Scope {
-    fn new(working_block: Idx<hir::Expr>) -> Self {
+    fn new() -> Self {
         Self {
             statement_counter: Default::default(),
-            working_block,
             locals: Default::default(),
         }
     }

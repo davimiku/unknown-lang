@@ -1,10 +1,7 @@
-#[cfg(test)]
-use std::io::stdout;
+use std::collections::HashMap;
 
-use cranelift::codegen::verify_function;
+use cranelift_module::ModuleError;
 use jit::JIT;
-#[cfg(test)]
-use mir::MirWrite;
 
 mod builtins;
 mod ext;
@@ -13,30 +10,52 @@ mod jit;
 mod tests;
 mod translate;
 
-pub fn compile_function(input: &str) -> Result<*const u8, String> {
-    let (program, context) = mir::construct_function(input);
+type EntryPoints = HashMap<String, *const u8>;
+
+pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
+    let (module, context) = mir::construct(input);
     assert_eq!(context.diagnostics, vec![]);
 
-    #[cfg(test)]
-    {
-        let mut stdout = stdout().lock();
-        let _ = program.write(&mut stdout, context, &mut 0);
-    }
     let mut jit = JIT::with_builtins();
-    let func = program.main();
-    jit.compile_function(func, context).map_err(|e| {
-        dbg!(&e);
-        e.to_string()
-    })
+    let mut func_map = HashMap::new();
+
+    jit.compile_module(&module, &mut func_map, &context)?;
+
+    jit.module.finalize_definitions()?;
+
+    // map all the entry points to executable functions
+    {
+        let entry_points: EntryPoints = module
+            .entry_points
+            .iter()
+            .map(|(key, mir_func_id)| {
+                let name = context.lookup(*key).to_string();
+                let func_id = func_map[mir_func_id];
+                let func_ptr = jit.module.get_finalized_function(func_id);
+                (name, func_ptr)
+            })
+            .collect();
+
+        Ok(entry_points)
+    }
 }
 
-pub fn compile_script(input: &str) -> Result<*const u8, String> {
-    let (program, context) = mir::construct_script(input);
+pub type FunctionErrors = HashMap<mir::FuncId, ModuleError>;
 
-    let mut jit = JIT::with_builtins();
-    let func = program.main();
-    jit.compile_function(func, context).map_err(|e| {
-        dbg!(&e);
-        e.to_string()
-    })
+#[derive(Debug)]
+pub enum CompileErrors {
+    Module(Box<ModuleError>),
+    Function(FunctionErrors),
+}
+
+impl From<FunctionErrors> for CompileErrors {
+    fn from(errors: FunctionErrors) -> Self {
+        Self::Function(errors)
+    }
+}
+
+impl From<ModuleError> for CompileErrors {
+    fn from(error: ModuleError) -> Self {
+        Self::Module(Box::new(error))
+    }
 }

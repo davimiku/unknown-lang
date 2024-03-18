@@ -5,36 +5,47 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BasicBlock, BinOp, Constant, Local, Mutability, Operand, Place, Rvalue, Statement,
-    SwitchIntTargets, Terminator,
+    BasicBlock, BinOp, Callee, Constant, FuncId, Local, Mutability, Operand, Place, Rvalue,
+    Statement, SwitchIntTargets, Terminator,
 };
 use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
 
 impl Builder {
     pub(crate) fn construct_module(mut self, module: &hir::Module, context: &Context) -> Module {
-        for func_group in module.exprs.iter() {
-            let func_group = assert_matches!(context.expr(*func_group), hir::Expr::Function);
-            if let Some(entry_point) = func_group.entry_point {
-                // assumption: entry point functions cannot be overloaded
-                // enforced by HIR / type checking
-                self.entry_points.insert(entry_point, self.current_function);
-            }
+        let mut func_count: u32 = 0;
+        for expr in module.exprs.iter() {
+            let expr = context.expr(*expr);
+            let var_def = assert_matches!(expr, hir::Expr::VarDef);
 
-            let len = func_group.overloads.len();
-            let it = func_group
-                .overloads
-                .iter()
-                .enumerate()
-                .map(|(i, el)| (i == len - 1, el));
+            let value = context.expr(var_def.value);
+            let func_group = assert_matches!(value, hir::Expr::Function);
 
-            for (is_last, func) in it {
-                self.construct_function(func, context);
-                if !is_last {
-                    let func = Function::default();
-                    self.current_block = func.entry_block();
-                    self.current_function = self.functions.alloc(func);
+            let name = func_group.name.map(|(key, ..)| context.lookup(key));
+            for (i, function_expr) in func_group.overloads.iter().enumerate() {
+                let func_id: FuncId = (self.module_id, func_count).into();
+                if let Some(entry_point) = func_group.entry_point {
+                    // assumption: entry point functions cannot be overloaded
+                    // enforced by HIR / type checking
+                    self.entry_points.insert(entry_point, func_id);
                 }
+
+                self.functions_map
+                    .entry(var_def.symbol)
+                    .or_default()
+                    .push(func_id);
+                let func = Function::new(func_id);
+                self.current_block = func.entry_block();
+                self.current_function = self.functions.alloc(func);
+                let name = name.map(|n| {
+                    if i == 0 {
+                        n.to_string()
+                    } else {
+                        format!("{n}${i}")
+                    }
+                });
+                self.construct_function(function_expr, Some(var_def.symbol), name, context);
+                func_count += 1;
             }
         }
 
@@ -45,11 +56,14 @@ impl Builder {
     pub(crate) fn construct_function(
         &mut self,
         function_expr: &hir::FunctionExpr,
+        symbol: Option<ValueSymbol>,
+        name: Option<String>,
         context: &Context,
     ) -> Idx<Function> {
         let hir::FunctionExpr { params, body, .. } = function_expr;
-        let func = self.current_function_mut();
-        // func.name = *name;
+        self.scopes = Default::default();
+        let func: &mut Function = self.current_function_mut();
+        func.name = name;
 
         let return_ty = context.expr_type_idx(*body);
         self.construct_local(return_ty, None, Mutability::Mut);
@@ -142,11 +156,13 @@ impl Builder {
 
     fn construct_var_def(&mut self, var_def: &VarDefExpr, context: &Context) {
         // TODO: capture mutability in parser, AST, HIR, and through here
-        let VarDefExpr { symbol, value, .. } = var_def;
-        let symbol = Some(*symbol);
-        let ty = context.expr_type_idx(*value);
-        let local = self.construct_local(ty, symbol, Mutability::Not);
-        self.scopes.insert_local(local, symbol);
+        let ty = context.expr_type_idx(var_def.value);
+        if context.type_is_function(ty) {
+            // self.functions_map.insert(k, v)
+            todo!("handle local functions")
+        }
+        let local = self.construct_local(ty, Some(var_def.symbol), Mutability::Not);
+        self.scopes.insert_local(local, Some(var_def.symbol));
         self.block_var_defs.insert(local, self.current_block);
 
         let assign_place = Place::from(local);
@@ -164,16 +180,10 @@ impl Builder {
         let statement_expr = context.expr(statement_idx);
 
         match statement_expr {
-            Expr::BoolLiteral(b) => {
-                self.construct_statement_constant(Constant::bool(*b), assign_to)
-            }
-            Expr::FloatLiteral(f) => {
-                self.construct_statement_constant(Constant::Float(*f), assign_to)
-            }
-            Expr::StringLiteral(s) => {
-                self.construct_statement_constant(Constant::String(*s), assign_to)
-            }
-            Expr::IntLiteral(i) => self.construct_statement_constant(Constant::Int(*i), assign_to),
+            Expr::BoolLiteral(b) => self.construct_statement_constant((*b).into(), assign_to),
+            Expr::FloatLiteral(f) => self.construct_statement_constant((*f).into(), assign_to),
+            Expr::StringLiteral(s) => self.construct_statement_constant((*s).into(), assign_to),
+            Expr::IntLiteral(i) => self.construct_statement_constant((*i).into(), assign_to),
 
             // can't ignore because elements may cause side-effects
             // ex. [do_thing (), do_thing (), do_thing ()]
@@ -192,7 +202,7 @@ impl Builder {
                 // next statements into the existing Basic Block
                 // If these statements end without any explicit terminators, then
                 // construction just continues on in the current block.
-                self.scopes.push(statement_idx);
+                self.scopes.push();
                 self.construct_block(statement_idx, None, assign_to, context);
                 self.scopes.pop();
             }
@@ -200,7 +210,7 @@ impl Builder {
             Expr::Call(call) => {
                 if let Some(binop) = try_get_binop(call, context) {
                     // TODO: handle side-effects in non-assigned statement binops
-                    let rvalue = self.construct_binop(call, binop, context);
+                    let rvalue = self.construct_binop(&binop, context);
                     match assign_to {
                         Some(assign_place) => {
                             let assign = Statement::assign(assign_place.clone(), rvalue);
@@ -292,7 +302,7 @@ impl Builder {
     ) -> Option<Place> {
         match try_get_binop(call, context) {
             Some(binop) => {
-                self.construct_binop(call, binop, context);
+                self.construct_binop(&binop, context);
                 None
             }
             None => Some(self.construct_call_terminator(call, assign_to, context)),
@@ -319,8 +329,15 @@ impl Builder {
             .map(|arg| Operand::from_result(self.construct_operand(*arg, &None, context), context))
             .collect_vec();
 
-        let func = self.construct_operand(call.callee, assign_to, context);
-        let func = Operand::from_result(func, context);
+        let signature_index = call
+            .signature_index
+            .expect("signature to have been resolved in HIR");
+        let callee = self.construct_callee(call.callee, signature_index, assign_to, context);
+        let func = match callee {
+            Callee::Direct(func_id) => Operand::Constant(func_id.into()),
+            // TODO: confirm if Copy is fine? It should never be Move probably
+            Callee::Indirect(local) => Operand::Copy(local.into()),
+        };
         let next_block = self.new_block();
 
         let terminator = Terminator::Call {
@@ -349,7 +366,7 @@ impl Builder {
                 // New / temp local to hold the Rvalue
                 None => self.construct_local(ty, None, Mutability::Not).into(),
             };
-            let rvalue = self.construct_binop(call, binop, context);
+            let rvalue = self.construct_binop(&binop, context);
 
             let assign = Statement::assign(assign_place.clone(), rvalue);
             self.current_block_mut().statements.push(assign);
@@ -359,17 +376,36 @@ impl Builder {
             self.construct_call_terminator(call, assign_to, context)
         };
 
-        // TODO: use Context type information to determine Copy/Move/Share
         OperandResult::Place(place)
     }
 
-    fn construct_binop(&mut self, call: &CallExpr, binop: BinOp, context: &Context) -> Rvalue {
-        let operand1 = self.construct_operand(call.args[0], &None, context);
-        let operand1 = Operand::from_result(operand1, context);
-        let operand2 = self.construct_operand(call.args[1], &None, context);
-        let operand2 = Operand::from_result(operand2, context);
+    fn construct_callee(
+        &mut self,
+        callee: Idx<Expr>,
+        signature_index: u32,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Callee {
+        let callee_expr = context.expr(callee);
+        match callee_expr {
+            Expr::VarRef(var_ref) => self
+                .functions_map
+                .get(&var_ref.symbol)
+                .and_then(|func_ids| func_ids.get(signature_index as usize))
+                .map(Callee::from)
+                .unwrap_or_else(|| todo!("grab a local (indirect call)")),
 
-        Rvalue::BinaryOp(binop, Box::new((operand1, operand2)))
+            _ => todo!("come up with a better abstraction to not duplicate all this code"),
+        }
+    }
+
+    fn construct_binop(&mut self, binop: &BinOp, context: &Context) -> Rvalue {
+        let lhs = self.construct_operand(binop.lhs, &None, context);
+        let lhs = Operand::from_result(lhs, context);
+        let rhs = self.construct_operand(binop.rhs, &None, context);
+        let rhs = Operand::from_result(rhs, context);
+
+        Rvalue::BinaryOp(binop.kind, Box::new((lhs, rhs)))
     }
 
     fn construct_return(&mut self) {
@@ -438,14 +474,14 @@ impl Builder {
         let join_block = self.new_block();
 
         self.current_block = then_block;
-        self.scopes.push(*then_branch);
+        self.scopes.push();
         self.construct_block(*then_branch, Some(join_block), assign_to, context);
         self.scopes.pop();
 
         let else_zipped = else_branch.zip(else_block);
         if let Some((else_branch, else_block)) = else_zipped {
             self.current_block = else_block;
-            self.scopes.push(else_branch);
+            self.scopes.push();
             self.construct_block(else_branch, Some(join_block), assign_to, context);
             self.scopes.pop();
         }
@@ -473,6 +509,10 @@ impl Builder {
         self.construct_block(block_expr, None, assign_to, context);
     }
 
+    fn find_callee(&self, symbol: ValueSymbol) -> Callee {
+        todo!()
+    }
+
     fn find_symbol(&self, symbol: ValueSymbol) -> Idx<Local> {
         self.current_function()
             .locals_map
@@ -492,14 +532,14 @@ impl Builder {
 
         match context.expr(expr) {
             Expr::BoolLiteral(b) => {
-                self.construct_operand_assign(assign_to, Operand::constant_bool(*b))
+                self.construct_operand_assign(assign_to, Operand::Constant((*b).into()))
             }
 
             Expr::FloatLiteral(f) => {
-                self.construct_operand_assign(assign_to, Operand::constant_float(*f))
+                self.construct_operand_assign(assign_to, Operand::Constant((*f).into()))
             }
             Expr::IntLiteral(i) => {
-                self.construct_operand_assign(assign_to, Operand::constant_int(*i))
+                self.construct_operand_assign(assign_to, Operand::Constant((*i).into()))
             }
             Expr::StringLiteral(_) => todo!(),
             Expr::ArrayLiteral(_) => todo!(),
@@ -552,7 +592,7 @@ impl Builder {
                 // recursively
                 // until the Function::Expr is found OR
                 // a builtin is found
-                // in either case it should prod
+                // in either case it should produce a Callee (?)
                 todo!()
             }
             Expr::Path(_) => {
@@ -618,7 +658,11 @@ impl Builder {
 fn try_get_binop(call: &hir::CallExpr, context: &Context) -> Option<BinOp> {
     call.symbol
         .and_then(|symbol| context.lookup_operator(symbol))
-        .map(BinOp::from)
+        .map(|intrinsic| BinOp {
+            lhs: call.args[0],
+            rhs: call.args[1],
+            kind: intrinsic.into(),
+        })
 }
 
 pub enum OperandResult {

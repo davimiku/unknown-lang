@@ -30,21 +30,30 @@ use std::collections::HashMap;
 
 pub use display::MirWrite;
 use hir::{Context, Expr, Key};
-use la_arena::{Arena, Idx};
+use la_arena::Arena;
 pub use syntax::{
-    BasicBlock, BinOp, BlockParameters, Constant, Function, Local, Operand, Place, Rvalue,
-    Statement, SwitchIntTargets, Terminator, UnOp,
+    BasicBlock, BinOpKind, BlockParameters, Constant, FuncId, Function, Local, Operand, Place,
+    Rvalue, Statement, SwitchIntTargets, Terminator, UnOp,
 };
 use util_macros::assert_matches;
 
 use crate::builder::Builder;
 
-pub fn construct<'hir>(
+pub fn construct(input: &str) -> (Module, Context) {
+    let (hir_module, context) = hir::lower(input);
+    assert_eq!(context.diagnostics, vec![]);
+    let builder = Builder::new(hir_module.id, &context);
+
+    let module = builder.construct_module(&hir_module, &context);
+    (module, context)
+}
+
+pub fn construct_module<'hir>(
     hir_module: &'hir hir::Module,
     context: &'hir Context,
 ) -> (Module, &'hir Context) {
     assert_eq!(context.diagnostics, vec![]);
-    let builder = Builder::new(context);
+    let builder = Builder::new(hir_module.id, context);
 
     let module = builder.construct_module(hir_module, context);
 
@@ -73,31 +82,33 @@ pub fn construct_function(input: &str) -> (Module, &hir::Context) {
     // OK if it's restricted to tests only, probably
     let context: &'static _ = Box::leak(Box::new(hir_context));
 
-    let mut builder = Builder::new(context);
+    let mut builder = Builder::new(0, context);
 
     let root = context.expr(root);
     let func_group = assert_matches!(root, Expr::Function);
     let func = &func_group.overloads[0];
 
-    builder.construct_function(func, context);
+    builder.construct_function(func, None, None, context);
     (builder.build(), context)
 }
 
 #[derive(Debug)]
 pub struct Module {
     /// Control Flow Graph (CFG) representation of functions in this module
-    functions: Arena<Function>,
+    pub functions: Arena<Function>,
 
     /// Map of functions that are entry points in this module
-    entry_functions: HashMap<Key, Idx<Function>>,
+    ///
+    /// It is valid for this to be empty - most modules would not have
+    /// any entry points.
+    pub entry_points: HashMap<Key, FuncId>,
     // TODO: consts, in normal mode you should be able to set constants
     // and call constant functions at the module top-level
 }
 
 impl Module {
-    // FIXME: Assumes that the first function is main which is true for
-    // "script mode" or "function mode" but not normal/module mode
-    pub fn main(&self) -> &Function {
-        self.functions.values().next().unwrap()
+    pub fn main(&self, context: &Context) -> Option<FuncId> {
+        let main_key = context.interner.core_keys().main;
+        self.entry_points.get(&main_key).copied()
     }
 }

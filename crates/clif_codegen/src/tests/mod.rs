@@ -1,4 +1,5 @@
 mod arithmetic;
+mod calls;
 mod control_flow;
 mod scopes;
 
@@ -20,15 +21,22 @@ unsafe fn to_fn<I, O>(code_ptr: *const u8) -> fn(I) -> O {
     std::mem::transmute::<_, fn(I) -> O>(code_ptr)
 }
 
-use crate::builtins::{XBool, XInt, FALSE, TRUE};
-use crate::compile_function;
+use crate::{
+    builtins::{XBool, XInt, FALSE, TRUE},
+    compile_module,
+};
+
+fn compile_main(input: &str) -> *const u8 {
+    let functions = compile_module(input).unwrap();
+    *functions.get("main").unwrap()
+}
 
 #[allow(clippy::unit_cmp)]
 #[test]
 fn do_nothing() {
-    let input = r#"fun () -> { }"#;
+    let input = "let main = fun () -> { }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(), ()>(code_ptr) };
 
@@ -37,9 +45,9 @@ fn do_nothing() {
 
 #[test]
 fn constant_16() {
-    let input = r#"fun () -> { 16 }"#;
+    let input = "let main = fun () -> { 16 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -48,9 +56,9 @@ fn constant_16() {
 
 #[test]
 fn constant_16_by_addition() {
-    let input = r#"fun () -> { 10 + 6 }"#;
+    let input = "let main = fun () -> { 10 + 6 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -59,9 +67,9 @@ fn constant_16_by_addition() {
 
 #[test]
 fn one_param_constant_16() {
-    let input = "fun (i: Int) -> { 16 }";
+    let input = "let main = fun (i: Int) -> { 16 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -70,9 +78,9 @@ fn one_param_constant_16() {
 
 #[test]
 fn identity_int() {
-    let input = "fun (i: Int) -> { i }";
+    let input = "let main = fun (i: Int) -> { i }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -81,12 +89,12 @@ fn identity_int() {
 
 #[test]
 fn identity_int_with_variable() {
-    let input = "fun (i: Int) -> {
+    let input = "let main = fun (i: Int) -> {
         let i2 = i
         i2
     }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -95,9 +103,9 @@ fn identity_int_with_variable() {
 
 #[test]
 fn is_even() {
-    let input = "fun (a: Int) -> { a % 2 == 0 }";
+    let input = "let main = fun (a: Int) -> { a % 2 == 0 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
 
@@ -112,9 +120,9 @@ fn is_even() {
 
 #[test]
 fn int_equality() {
-    let input = "fun (a: Int, b: Int) -> { a == b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a == b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -124,9 +132,9 @@ fn int_equality() {
 
 #[test]
 fn int_not_equality() {
-    let input = "fun (a: Int, b: Int) -> { a != b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a != b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -136,9 +144,9 @@ fn int_not_equality() {
 
 #[test]
 fn int_less_than() {
-    let input = "fun (a: Int, b: Int) -> { a < b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a < b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -149,9 +157,9 @@ fn int_less_than() {
 
 #[test]
 fn int_less_than_or_equal() {
-    let input = "fun (a: Int, b: Int) -> { a <= b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a <= b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -162,9 +170,9 @@ fn int_less_than_or_equal() {
 
 #[test]
 fn int_greater_than() {
-    let input = "fun (a: Int, b: Int) -> { a > b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a > b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -175,9 +183,9 @@ fn int_greater_than() {
 
 #[test]
 fn int_greater_than_imm() {
-    let input = "fun (a: Int) -> { a > 16 }";
+    let input = "let main = fun (a: Int) -> { a > 16 }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
 
@@ -188,9 +196,9 @@ fn int_greater_than_imm() {
 
 #[test]
 fn int_greater_than_or_equal() {
-    let input = "fun (a: Int, b: Int) -> { a >= b }";
+    let input = "let main = fun (a: Int, b: Int) -> { a >= b }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -201,12 +209,12 @@ fn int_greater_than_or_equal() {
 
 #[test]
 fn variable_and_addition() {
-    let input = "fun (i: Int) -> {
+    let input = "let main = fun (i: Int) -> {
         let i2 = i + 10
         i2
     }";
 
-    let code_ptr = compile_function(input).unwrap();
+    let code_ptr = compile_main(input);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
