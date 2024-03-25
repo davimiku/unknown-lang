@@ -34,7 +34,7 @@ const CALL_ARG_START: [lexer::TokenKind; 10] = [
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
-    expr_binding_power(p, 0, parse_lhs)
+    expr_binding_power(p, 0, parse_lhs, &make_binary_op)
 }
 
 // TODO: remove this after language is more developed and switch to more opaque box tests
@@ -60,13 +60,15 @@ pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BlockExpr)
 }
 
-fn expr_binding_power<F>(
+fn expr_binding_power<FnParser, FnBinaryOp>(
     p: &mut Parser,
     minimum_binding_power: u8,
-    lhs_parser: F,
+    lhs_parser: FnParser,
+    make_op: &FnBinaryOp,
 ) -> Option<CompletedMarker>
 where
-    F: Fn(&mut Parser) -> Option<CompletedMarker>,
+    FnParser: Fn(&mut Parser) -> Option<CompletedMarker>,
+    FnBinaryOp: Fn(lexer::TokenKind) -> Option<BinaryOp>,
 {
     if p.peek() == Some(T::Newline) {
         let m = p.start();
@@ -83,29 +85,12 @@ where
             return Some(lhs);
         }
         let curr = curr.unwrap();
-        let op = match curr {
-            T::Plus => BinaryOp::Add,
-            T::PlusPlus => BinaryOp::Concat,
-            T::Dash => BinaryOp::Sub,
-            T::Star => BinaryOp::Mul,
-            T::Slash => BinaryOp::Div,
-            T::Percent => BinaryOp::Rem,
-            T::Caret => BinaryOp::Exp,
-            T::And => BinaryOp::And,
-            T::Or => BinaryOp::Or,
-            T::Dot => BinaryOp::Path,
-            // TODO: Arrow only applies for type expressions, should this be handled differently?
-            T::Arrow => BinaryOp::Function,
-            T::EqualsEquals => BinaryOp::Eq,
-            T::BangEquals => BinaryOp::Ne,
-            T::LAngle => BinaryOp::Lt,
-            T::LAngleEquals => BinaryOp::Le,
-            T::RAngle => BinaryOp::Gt,
-            T::RAngleEquals => BinaryOp::Ge,
+        let op = match make_op(curr) {
+            Some(op) => op,
 
             // Not at an operator, so is not a binary expression, so break
             // The "lhs" in this case is really the entire expression
-            _ => break,
+            None => break,
         };
 
         let (left_binding_power, right_binding_power) = op.binding_power();
@@ -121,7 +106,7 @@ where
         // an expression surrounding the LHS and RHS
         let m = lhs.precede(p);
 
-        let rhs = expr_binding_power(p, right_binding_power, parse_lhs);
+        let rhs = expr_binding_power(p, right_binding_power, parse_lhs, make_op);
 
         lhs = match op {
             BinaryOp::Function => m.complete(p, SyntaxKind::FunExpr),
@@ -284,7 +269,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator’s token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs);
+    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
 
     m.complete(p, SyntaxKind::NegationExpr)
 }
@@ -299,7 +284,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs);
+    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
 
     m.complete(p, SyntaxKind::NotExpr)
 }
@@ -314,7 +299,7 @@ fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs);
+    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
 
     m.complete(p, SyntaxKind::IntoStringExpr)
 }
@@ -349,7 +334,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
             return m.complete(p, SyntaxKind::ParenExpr);
         }
 
-        let expr_marker = expr_binding_power(p, 0, parse_lhs);
+        let expr_marker = expr_binding_power(p, 0, parse_lhs, &make_binary_op);
         if expr_marker.is_none() {
             break;
         }
@@ -577,7 +562,7 @@ fn parse_else_branch(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ElseBranchExpr)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum BinaryOp {
     /// `+`
     Add,
@@ -627,15 +612,42 @@ enum BinaryOp {
     /// `.`
     Path,
 
-    // `->`
+    /// `->`
     Function,
+
+    /// `=`  (initial assignment handled by let_binding)
+    ReAssign,
+}
+
+fn make_binary_op(token: T) -> Option<BinaryOp> {
+    Some(match token {
+        T::Plus => BinaryOp::Add,
+        T::PlusPlus => BinaryOp::Concat,
+        T::Dash => BinaryOp::Sub,
+        T::Star => BinaryOp::Mul,
+        T::Slash => BinaryOp::Div,
+        T::Percent => BinaryOp::Rem,
+        T::Caret => BinaryOp::Exp,
+        T::And => BinaryOp::And,
+        T::Or => BinaryOp::Or,
+        T::Dot => BinaryOp::Path,
+        T::Equals => BinaryOp::ReAssign,
+        T::EqualsEquals => BinaryOp::Eq,
+        T::BangEquals => BinaryOp::Ne,
+        T::LAngle => BinaryOp::Lt,
+        T::LAngleEquals => BinaryOp::Le,
+        T::RAngle => BinaryOp::Gt,
+        T::RAngleEquals => BinaryOp::Ge,
+
+        _ => return None,
+    })
 }
 
 impl BinaryOp {
-    /// Binding power tuple of (left, right)
-    fn binding_power(&self) -> (u8, u8) {
+    fn binding_power(self) -> (u8, u8) {
         match self {
             Self::Function => (1, 1),
+            Self::ReAssign => (1, 2),
             Self::Or => (3, 4),
             Self::And => (5, 6),
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => (7, 8),

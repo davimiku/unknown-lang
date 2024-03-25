@@ -1,6 +1,7 @@
-use crate::{Expr, TypeExpr};
+use crate::{expr::Mutability, Expr, TypeExpr};
 use util_macros::{assert_matches, assert_some};
 
+mod bindings;
 mod functions;
 
 fn parse_expr(input: &str) -> Expr {
@@ -175,37 +176,6 @@ fn if_else_if_expr() {
 
     let else_branch = assert_some!(if_expr.else_branch());
     assert_matches!(else_branch, Expr::If);
-}
-
-#[test]
-fn int_let_binding() {
-    let input = "let a = 1";
-
-    let parsed = parse_expr(input);
-
-    let let_binding = assert_matches!(parsed, Expr::LetBinding);
-    assert_eq!(let_binding.name().unwrap().text(), "a");
-    let value = assert_some!(let_binding.value());
-    let value = assert_matches!(value, Expr::IntLiteral);
-    assert_eq!(value.as_i64(), Some(1));
-}
-
-#[test]
-fn int_let_binding_with_type_annotation() {
-    let input = "let a: Int = 1";
-
-    let parsed = parse_expr(input);
-
-    let let_binding = assert_matches!(parsed, Expr::LetBinding);
-    assert_eq!(let_binding.name().unwrap().text(), "a");
-
-    let type_annotation = assert_some!(let_binding.type_annotation());
-    let type_annotation = assert_matches!(type_annotation, TypeExpr::Ident);
-    assert_eq!(type_annotation.as_string(), "Int");
-
-    let value = assert_some!(let_binding.value());
-    let value = assert_matches!(value, Expr::IntLiteral);
-    assert_eq!(value.as_i64(), Some(1));
 }
 
 #[test]

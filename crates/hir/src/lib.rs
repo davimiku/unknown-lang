@@ -12,13 +12,14 @@ mod typecheck;
 #[cfg(test)]
 mod tests;
 
+pub use ast::Mutability;
 use ast::Root;
 pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
     ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup,
-    FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, UnaryExpr, UnaryOp, ValueSymbol,
-    VarDefExpr, VarRefExpr,
+    FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, ReAssignment, UnaryExpr, UnaryOp,
+    ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{ArrayType, FuncSignature, FunctionType, Type};
@@ -111,7 +112,7 @@ pub fn lower_script(input: &str) -> (Idx<Expr>, Context) {
 
 fn parse(input: &str) -> (Root, Context) {
     let parsed = parser::parse(input);
-    assert!(parsed.errors().is_empty());
+    assert_eq!(parsed.errors(), &[]);
 
     let root = ast::Root::cast(parsed.syntax()).expect("valid Root node");
 

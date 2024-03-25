@@ -1,6 +1,7 @@
 mod arithmetic;
 mod calls;
 mod control_flow;
+mod mutability;
 mod scopes;
 
 /// Converts from an opaque pointer to a function pointer

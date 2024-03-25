@@ -1,11 +1,14 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
-use hir::{CallExpr, Context, Expr, FunctionParam, IfExpr, Type, ValueSymbol, VarDefExpr};
+use hir::{
+    CallExpr, Context, Expr, FunctionParam, IfExpr, Mutability, ReAssignment, Type, ValueSymbol,
+    VarDefExpr,
+};
 use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BasicBlock, BinOp, Callee, Constant, FuncId, Local, Mutability, Operand, Place, Rvalue,
+    BasicBlock, BinOp, Callee, Constant, FuncId, Local, Operand, OperandOrPlace, Place, Rvalue,
     Statement, SwitchIntTargets, Terminator,
 };
 use crate::{Builder, Function, Module};
@@ -44,6 +47,7 @@ impl Builder {
                         format!("{n}${i}")
                     }
                 });
+                self.function_names.insert(func_id, name.clone());
                 self.construct_function(function_expr, Some(var_def.symbol), name, context);
                 func_count += 1;
             }
@@ -83,8 +87,8 @@ impl Builder {
         let ty_idx = context.type_idx_of_value(&param.symbol);
         self.current_function_mut().params.push(ty_idx);
         let ty = context.type_idx_of_value(&param.symbol);
-        let local = self.construct_local(ty, Some(param.symbol), Mutability::Not); // TODO: depends on the param
-        self.block_var_defs.insert(local, self.current_block);
+        let local = self.construct_local(ty, Some(param.symbol), Mutability::Not);
+        // TODO: depends on the param
     }
 
     /// Creates a new block in the current function
@@ -161,13 +165,14 @@ impl Builder {
             // self.functions_map.insert(k, v)
             todo!("handle local functions")
         }
-        let local = self.construct_local(ty, Some(var_def.symbol), Mutability::Not);
+        let mutability = context.mutability_of(&var_def.symbol);
+        let local = self.construct_local(ty, Some(var_def.symbol), mutability);
         self.scopes.insert_local(local, Some(var_def.symbol));
-        self.block_var_defs.insert(local, self.current_block);
 
         let assign_place = Place::from(local);
-        // assumption: all branches in here create an Assign when assign_to is Some
-        self.construct_operand(var_def.value, &Some(assign_place), context);
+        // assumption: all branches in here create an Assign because assign_to is Some
+        // which is why the return value here can be ignored
+        let _ = self.construct_operand(var_def.value, &Some(assign_place), context);
     }
 
     fn construct_statement(
@@ -232,6 +237,8 @@ impl Builder {
             Expr::Function(_) => todo!(),
             Expr::If(if_expr) => self.construct_if_expr(if_expr, block_expr, assign_to, context),
 
+            Expr::ReAssignment(reassignment) => self.construct_reassign(reassignment, context),
+
             Expr::VarDef(_) => {
                 unreachable!("Compiler bug (MIR): Found hir::Expr::VarDefExpr inside of hir::Expr::Statement")
             }
@@ -285,12 +292,12 @@ impl Builder {
     second case is:
 
         _8 = call func (copy _3) -> [return to BB12]
-    BB12:
+    BB12(_8):
         SwitchInt (_8): [0 -> BB13, else -> BB14]
 
     third case:
         _8 = call func2 (copy _3) -> [return to BB12]
-    BB12:
+    BB12(_8):
         _9 = call func1 (copy _8) -> [return to BB13]
      */
 
@@ -326,7 +333,9 @@ impl Builder {
         let args = call
             .args
             .iter()
-            .map(|arg| Operand::from_result(self.construct_operand(*arg, &None, context), context))
+            .map(|arg| {
+                Operand::from_op_or_place(self.construct_operand(*arg, &None, context), context)
+            })
             .collect_vec();
 
         let signature_index = call
@@ -359,7 +368,7 @@ impl Builder {
         ty: Idx<Type>,
         assign_to: &Option<Place>,
         context: &Context,
-    ) -> OperandResult {
+    ) -> OperandOrPlace {
         let place = if let Some(binop) = try_get_binop(call, context) {
             let assign_place = match assign_to {
                 Some(assign_place) => assign_place.clone(),
@@ -376,7 +385,7 @@ impl Builder {
             self.construct_call_terminator(call, assign_to, context)
         };
 
-        OperandResult::Place(place)
+        OperandOrPlace::Place(place)
     }
 
     fn construct_callee(
@@ -401,9 +410,9 @@ impl Builder {
 
     fn construct_binop(&mut self, binop: &BinOp, context: &Context) -> Rvalue {
         let lhs = self.construct_operand(binop.lhs, &None, context);
-        let lhs = Operand::from_result(lhs, context);
+        let lhs = Operand::from_op_or_place(lhs, context);
         let rhs = self.construct_operand(binop.rhs, &None, context);
-        let rhs = Operand::from_result(rhs, context);
+        let rhs = Operand::from_op_or_place(rhs, context);
 
         Rvalue::BinaryOp(binop.kind, Box::new((lhs, rhs)))
     }
@@ -439,17 +448,30 @@ impl Builder {
         local
     }
 
+    fn construct_reassign(&mut self, reassignment: &ReAssignment, context: &Context) {
+        let op_or_place = self.construct_operand(reassignment.value, &None, context);
+        let operand = Operand::from_op_or_place(op_or_place, context);
+        let rvalue = Rvalue::from(operand);
+
+        let place = self
+            .construct_operand(reassignment.place, &None, context)
+            .as_place()
+            .expect("assign place to be a valid Place");
+        let assign = Statement::assign(place, rvalue);
+        self.current_block_mut().statements.push(assign);
+    }
+
     fn construct_operand_assign(
         &mut self,
         assign_to: &Option<Place>,
         operand: Operand,
-    ) -> OperandResult {
+    ) -> OperandOrPlace {
         if let Some(place) = assign_to {
             let assign = Statement::assign(place.clone(), operand.clone());
             self.current_block_mut().statements.push(assign);
         }
 
-        OperandResult::Operand(operand)
+        OperandOrPlace::Operand(operand)
     }
 
     fn construct_if_expr(
@@ -465,7 +487,12 @@ impl Builder {
             else_branch,
         } = if_expr;
         let discriminant = self.construct_operand(*condition, &None, context);
-        let discriminant = Operand::from_result(discriminant, context);
+        let discriminant = Operand::from_op_or_place(discriminant, context);
+
+        if let Some(local) = discriminant.as_local() {
+            self.use_local(local);
+        }
+
         // TODO: if the discriminant is a BoolLiteral, mark one of the blocks unreachable?
 
         let source_block = self.current_block;
@@ -486,11 +513,8 @@ impl Builder {
             self.scopes.pop();
         }
 
-        let target_block = if let Some(else_block) = else_block {
-            else_block
-        } else {
-            join_block
-        };
+        let target_block = else_block.unwrap_or(join_block);
+
         let targets = SwitchIntTargets {
             branches: Box::new([(0, target_block)]),
             otherwise: Some(then_block),
@@ -522,12 +546,13 @@ impl Builder {
             .0
     }
 
+    #[must_use]
     fn construct_operand(
         &mut self,
         expr: Idx<Expr>,
         assign_to: &Option<Place>,
         context: &Context,
-    ) -> OperandResult {
+    ) -> OperandOrPlace {
         let ty = context.expr_type_idx(expr);
 
         match context.expr(expr) {
@@ -547,7 +572,7 @@ impl Builder {
             Expr::Block(_) => todo!(),
             Expr::Call(call) => self.construct_call_operand(call, ty, assign_to, context),
             Expr::VarRef(var_ref) => {
-                OperandResult::Operand(self.construct_var_ref_operand(var_ref, assign_to, context))
+                OperandOrPlace::Operand(self.construct_var_ref_operand(var_ref, assign_to, context))
             }
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
@@ -624,12 +649,7 @@ impl Builder {
         let local = self.find_symbol(var_ref.symbol);
         let place = Place::from(local);
 
-        match self.block_var_defs.get(local) {
-            Some(bb) if *bb != self.current_block => {
-                self.current_block_mut().parameters.push(local);
-            }
-            _ => {}
-        }
+        self.use_local(local);
 
         if let Some(assign_place) = assign_to {
             let assign_from = Operand::from_place(place.clone(), context);
@@ -638,6 +658,19 @@ impl Builder {
         };
 
         Operand::from_place(place, context)
+    }
+
+    /// Marks this local as being used in the current block. The CLIF representation
+    /// requires explicit parameters for each block, and that's easiest to track
+    /// when constructing the MIR.
+    fn use_local(&mut self, local: Idx<Local>) {
+        let bb = self
+            .block_var_defs
+            .get(local)
+            .expect("local to have been defined");
+        if *bb != self.current_block {
+            self.current_block_mut().parameters.push(local);
+        }
     }
 
     fn construct_local(
@@ -650,6 +683,10 @@ impl Builder {
         let func = self.current_function_mut();
         let local = func.locals.alloc(local);
         func.locals_map.insert(local, symbol);
+        {
+            let current_block = self.current_block;
+            self.block_var_defs.insert(local, current_block);
+        }
 
         local
     }
@@ -663,10 +700,4 @@ fn try_get_binop(call: &hir::CallExpr, context: &Context) -> Option<BinOp> {
             rhs: call.args[1],
             kind: intrinsic.into(),
         })
-}
-
-pub enum OperandResult {
-    Operand(Operand),
-
-    Place(Place),
 }

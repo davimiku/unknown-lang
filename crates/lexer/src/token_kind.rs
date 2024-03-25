@@ -58,6 +58,10 @@ pub enum TokenKind {
     #[token("module")]
     Module,
 
+    /// `mut`
+    #[token("mut")]
+    Mut,
+
     /// `or`
     #[token("or")]
     Or,
@@ -261,6 +265,7 @@ impl fmt::Display for TokenKind {
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
             Self::Module => "‘module’",
+            Self::Mut => "‘mut’",
             Self::Or => "‘or’",
             Self::Return => "‘return’",
             Self::Struct => "‘struct’",

@@ -33,6 +33,7 @@ impl ContextDisplay for TypeDiagnosticVariant {
             V::CalleeNotFunction { actual } => todo!(),
             V::CannotConvertIntoString { actual } => todo!(),
             V::Empty { expr } => todo!(),
+            V::Immutable { expr } => immutable_message(&expr.display(context)),
             V::Incompatible { a, b } => todo!(),
             V::NoMatchingSignature { .. } => todo!(),
             V::TypeMismatch { expected, actual } => {
@@ -65,4 +66,8 @@ pub fn callee_not_function_message(actual: &str) -> String {
 
 pub fn type_mismatch_message(expected: &str, actual: &str) -> String {
     format!("Expected type {expected}, received type {actual}")
+}
+
+pub fn immutable_message(expr: &str) -> String {
+    format!("Expression '{expr}' attempts to mutate an immutable value.")
 }

@@ -13,7 +13,7 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr,
-    IndexIntExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    IndexIntExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
@@ -36,12 +36,11 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
     let mut result = TypeResult::new(&context.type_database);
     let (expr, range) = context.database.expr(expr_idx);
 
+    // clone/copy to remove the shared borrow from context to be able to mutate
     let expr = expr.clone();
     let range = *range;
 
     // each branch should mutate `result`
-    // currently, mutating `expr` is possible because it's owned here, but it's a clone
-    // so mutations won't have any effect
     match expr {
         Expr::Empty => {
             result.push_diag(TypeDiagnostic {
@@ -75,6 +74,9 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
         Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
+        Expr::ReAssignment(reassignment) => {
+            result.chain(infer_reassignment(&reassignment, context))
+        }
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
@@ -232,7 +234,7 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
     if let Some(annotation_idx) = type_annotation {
         let expected = infer_type_expr(*annotation_idx, context);
 
-        // FIXME: doesn't work when `expected` itself errors?
+        // FIXME: doesn't work when `expected` itself errors
         match check_expr(*value, expected.ty, context) {
             Ok(_) => {
                 context
@@ -243,7 +245,12 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
             Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
         }
     } else {
-        result.chain(infer_expr(*value, context));
+        let mut infer_result = infer_expr(*value, context);
+        if var_def.is_mutable(context) {
+            infer_result.ty = widen_to_scalar(infer_result.ty, context);
+            context.type_database.set_expr_type(*value, infer_result.ty);
+        }
+        result.chain(infer_result);
         if result.is_ok() {
             context
                 .type_database
@@ -252,6 +259,31 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
         }
     }
     // The full definition expression still returns Unit no matter what
+    result.ty = context.core_types().unit;
+
+    result
+}
+
+fn infer_reassignment(reassignment: &ReAssignment, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+
+    let place_result = infer_expr(reassignment.place, context);
+    let place_ty = place_result.ty;
+    result.chain(place_result);
+
+    // FIXME: need to check for if the assign place is mutable
+    //
+
+    // FIXME: doesn't work when `expected` itself errors
+    match check_expr(reassignment.value, place_ty, context) {
+        Ok(_) => {}
+        Err(mut diagnostics) => {
+            dbg!(&diagnostics);
+            result.diagnostics.append(&mut diagnostics)
+        }
+    }
+
+    // Reassignment returns Unit no matter what
     result.ty = context.core_types().unit;
 
     result

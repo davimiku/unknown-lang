@@ -1,10 +1,10 @@
-use super::check_function;
+use super::check_module;
 
 #[test]
 fn basic_arithmetic() {
-    let input = "fun () -> { 12 + 4 }";
+    let input = "let main = fun () -> { 12 + 4 }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: {none}
     mut _0: Int
     
@@ -13,14 +13,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_add_param_and_constant() {
-    let input = "fun (i: Int) -> { i + 16 }";
+    let input = "let main = fun (i: Int) -> { i + 16 }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: Int
     _1: Int
@@ -30,14 +30,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_sub_param_and_constant() {
-    let input = "fun (i: Int) -> { i - 16 }";
+    let input = "let main = fun (i: Int) -> { i - 16 }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: Int
     _1: Int
@@ -47,14 +47,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_mul_param_and_constant() {
-    let input = "fun (i: Int) -> { i * 16 }";
+    let input = "let main = fun (i: Int) -> { i * 16 }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: Int
     _1: Int
@@ -64,18 +64,17 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_variable_with_addition() {
-    let input = "
-fun (a: Int) -> { 
+    let input = "let main = fun (a: Int) -> { 
     let b = a + 16
     b
 }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: Int
     _1: Int
@@ -87,15 +86,15 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn much_arithmetic() {
-    let input = "fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
+    let input = "let main = fun (a: Int, b: Int) -> { a + 2 * b - 7 }";
 
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Int
     _1: Int
@@ -110,5 +109,5 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }

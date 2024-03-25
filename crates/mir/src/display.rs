@@ -7,8 +7,7 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BinOpKind, Constant, FuncId, Mutability, Operand, Place, Rvalue, Statement, SwitchIntTargets,
-    Terminator, UnOp,
+    BinOpKind, Constant, Operand, Place, Rvalue, Statement, SwitchIntTargets, Terminator, UnOp,
 };
 use crate::{BasicBlock, Function, Local, Module};
 
@@ -19,23 +18,22 @@ pub trait MirWrite {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()>;
 }
 
-impl MirWrite for Module {
-    fn write<W: io::Write>(
-        &self,
-        buf: &mut W,
-        context: &Context,
-        indent: &mut Indent,
-    ) -> io::Result<()> {
-        for function in self.functions.values() {
-            function.write(buf, context, indent)?;
-        }
-        Ok(())
+pub fn write_module<W: io::Write>(
+    module: &Module,
+    buf: &mut W,
+    context: &Context,
+    indent: &mut Indent,
+) -> io::Result<()> {
+    for function in module.functions.values() {
+        function.write(buf, module, context, indent)?;
     }
+    Ok(())
 }
 
 impl MirWrite for Function {
@@ -58,21 +56,20 @@ impl MirWrite for Function {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
-        write_signature(buf, self, context, indent)?;
+        write_signature(buf, self, module, context, indent)?;
 
-        write_locals_list(buf, self, context, indent)?;
+        write_locals_list(buf, self, module, context, indent)?;
 
         // TODO: debug & scope information
-        write_basic_blocks(buf, self, context, indent)?;
+        write_basic_blocks(buf, self, module, context, indent)?;
 
         write_line_and_dedent(buf, indent)
     }
 }
-
-impl Function {}
 
 fn write_line<W: io::Write>(buf: &mut W, indent: &mut Indent) -> io::Result<()> {
     writeln!(buf)?;
@@ -94,7 +91,8 @@ fn write_line_and_dedent<W: io::Write>(buf: &mut W, indent: &mut Indent) -> io::
 fn write_signature<W: io::Write>(
     buf: &mut W,
     function: &Function,
-    context: &Context,
+    _: &Module,
+    _: &Context,
     indent: &mut Indent,
 ) -> io::Result<()> {
     let function_name: &str = function.name.as_deref().unwrap_or("{anonymous}");
@@ -118,6 +116,7 @@ fn write_signature<W: io::Write>(
 fn write_locals_list<W: io::Write>(
     buf: &mut W,
     function: &Function,
+    _: &Module,
     context: &Context,
     indent: &mut Indent,
 ) -> io::Result<()> {
@@ -135,6 +134,7 @@ fn write_locals_list<W: io::Write>(
 fn write_basic_blocks<W: io::Write>(
     buf: &mut W,
     function: &Function,
+    module: &Module,
     context: &Context,
     indent: &mut Indent,
 ) -> io::Result<()> {
@@ -149,7 +149,7 @@ fn write_basic_blocks<W: io::Write>(
         let bb = idx_basic_block_to_string(i);
         write!(buf, "{bb}({params}):")?;
         write_line_and_indent(buf, indent)?;
-        basic_block.write(buf, context, indent)?;
+        basic_block.write(buf, module, context, indent)?;
     }
     Ok(())
 }
@@ -158,6 +158,7 @@ impl MirWrite for Idx<BasicBlock> {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        _: &Module,
         _context: &Context,
         _indent: &mut Indent,
     ) -> io::Result<()> {
@@ -173,15 +174,16 @@ impl MirWrite for BasicBlock {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
         for statement in self.statements.iter() {
-            statement.write(buf, context, indent)?;
+            statement.write(buf, module, context, indent)?;
             write_line(buf, indent)?;
         }
         if let Some(terminator) = &self.terminator {
-            terminator.write(buf, context, indent)?;
+            terminator.write(buf, module, context, indent)?;
         }
         write_line_and_dedent(buf, indent)?;
 
@@ -193,15 +195,16 @@ impl MirWrite for Statement {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
         match self {
             Statement::Assign(b) => {
                 let (place, rvalue) = b.deref();
-                place.write(buf, context, indent)?;
+                place.write(buf, module, context, indent)?;
                 write!(buf, " = ")?;
-                rvalue.write(buf, context, indent)
+                rvalue.write(buf, module, context, indent)
             }
             Statement::SetDiscriminant { .. } => todo!(),
             Statement::StorageLive(..) => todo!(),
@@ -215,13 +218,14 @@ impl MirWrite for Terminator {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
         match self {
             Terminator::Jump { target } => {
                 write!(buf, "Jump -> ")?;
-                target.write(buf, context, indent)
+                target.write(buf, module, context, indent)
             }
             Terminator::Return => write!(buf, "Return _0 ->"),
             Terminator::Call {
@@ -230,12 +234,12 @@ impl MirWrite for Terminator {
                 destination,
                 target,
             } => {
-                destination.write(buf, context, indent)?;
+                destination.write(buf, module, context, indent)?;
                 write!(buf, " = ")?;
-                func.write(buf, context, indent)?;
+                func.write(buf, module, context, indent)?;
                 write!(buf, "(")?;
                 for (i, arg) in args.iter().enumerate() {
-                    arg.write(buf, context, indent)?;
+                    arg.write(buf, module, context, indent)?;
                     if i < args.len() - 1 {
                         write!(buf, ", ")?;
                     }
@@ -251,10 +255,10 @@ impl MirWrite for Terminator {
                 targets,
             } => {
                 write!(buf, "SwitchInt(")?;
-                discriminant.write(buf, context, indent)?;
+                discriminant.write(buf, module, context, indent)?;
                 write!(buf, "): ")?;
 
-                targets.write(buf, context, indent)
+                targets.write(buf, module, context, indent)
             }
             Terminator::Drop { .. } => todo!(),
             Terminator::Unreachable => todo!(),
@@ -263,7 +267,13 @@ impl MirWrite for Terminator {
 }
 
 impl MirWrite for SwitchIntTargets {
-    fn write<W: io::Write>(&self, buf: &mut W, _: &Context, _: &mut Indent) -> io::Result<()> {
+    fn write<W: io::Write>(
+        &self,
+        buf: &mut W,
+        _: &Module,
+        _: &Context,
+        _: &mut Indent,
+    ) -> io::Result<()> {
         write!(buf, "[")?;
         let branch_targets = self
             .branches
@@ -284,7 +294,13 @@ impl MirWrite for SwitchIntTargets {
 }
 
 impl MirWrite for Place {
-    fn write<W: io::Write>(&self, buf: &mut W, _: &Context, _: &mut Indent) -> io::Result<()> {
+    fn write<W: io::Write>(
+        &self,
+        buf: &mut W,
+        _: &Module,
+        _: &Context,
+        _: &mut Indent,
+    ) -> io::Result<()> {
         write!(buf, "{}", idx_local_to_string(&self.local))
         // TODO: write projections, such as _1.2
         //                                    ^^ (field projection)
@@ -295,22 +311,23 @@ impl MirWrite for Rvalue {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
         match self {
-            Rvalue::Use(op) => op.write(buf, context, indent),
+            Rvalue::Use(op) => op.write(buf, module, context, indent),
             Rvalue::BinaryOp(binop, ops) => {
                 let (lhs, rhs) = ops.deref();
                 write!(buf, "{binop}(")?;
-                lhs.write(buf, context, indent)?;
+                lhs.write(buf, module, context, indent)?;
                 write!(buf, ", ")?;
-                rhs.write(buf, context, indent)?;
+                rhs.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }
             Rvalue::UnaryOp(unop, op) => {
                 write!(buf, "{unop}(")?;
-                op.write(buf, context, indent)?;
+                op.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }
         }
@@ -321,23 +338,24 @@ impl MirWrite for Operand {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         indent: &mut Indent,
     ) -> io::Result<()> {
         match self {
             Operand::Copy(place) => {
                 write!(buf, "copy ")?;
-                place.write(buf, context, indent)
+                place.write(buf, module, context, indent)
             }
             Operand::Move(place) => {
                 write!(buf, "move ")?;
-                place.write(buf, context, indent)
+                place.write(buf, module, context, indent)
             }
             Operand::Constant(constant) => {
                 if !matches!(constant, Constant::Func(_)) {
                     write!(buf, "const ")?;
                 }
-                constant.write(buf, context, indent)
+                constant.write(buf, module, context, indent)
             }
         }
     }
@@ -347,6 +365,7 @@ impl MirWrite for Constant {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
         context: &Context,
         _: &mut Indent,
     ) -> io::Result<()> {
@@ -354,19 +373,15 @@ impl MirWrite for Constant {
             Constant::Int(i) => write!(buf, "{i}"),
             Constant::Float(f) => {
                 let mut ryu_buf = ryu::Buffer::new();
-                write!(buf, "{}", ryu_buf.format_finite(*f))
+                write!(buf, "{}", ryu_buf.format(*f))
             }
             Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
-            Constant::Func(func_id) => write!(buf, "{func_id} "),
-        }
-    }
-}
-
-impl Display for Mutability {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Mutability::Not => f.write_str(""),
-            Mutability::Mut => f.write_str("mut "),
+            Constant::Func(func_id) => {
+                let name = module.function_names[func_id]
+                    .clone()
+                    .unwrap_or_else(|| func_id.to_string());
+                write!(buf, "{name} ")
+            }
         }
     }
 }

@@ -13,6 +13,15 @@ pub enum Diagnostic {
     Type(TypeDiagnostic),
 }
 
+impl Diagnostic {
+    pub(crate) fn range(&self) -> TextRange {
+        match self {
+            Diagnostic::Lowering(_) => todo!(),
+            Diagnostic::Type(diag) => diag.range,
+        }
+    }
+}
+
 impl From<TypeDiagnostic> for LSPDiagnostic {
     fn from(value: TypeDiagnostic) -> Self {
         Self {
@@ -49,7 +58,7 @@ impl From<&Diagnostic> for LSPDiagnostic {
     }
 }
 
-/// Diagnostics found while lowering the AST to HIR
+/// Diagnostics found while lowering the AST to HIR not related to type checking
 #[derive(Debug, PartialEq)]
 pub struct LoweringDiagnostic;
 
@@ -134,6 +143,12 @@ pub enum TypeDiagnosticVariant {
     },
     Empty {
         expr: Idx<Expr>,
+    },
+    Immutable {
+        /// Expression that is trying to do the mutation
+        expr: Idx<Expr>,
+        // The original definition of the immutable symbol
+        // symbol: ValueSymbol,
     },
     Incompatible {
         a: Idx<Type>,

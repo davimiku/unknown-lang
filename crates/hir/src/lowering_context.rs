@@ -1,6 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use ast::Mutability;
 use itertools::Itertools;
 use la_arena::Idx;
 use parser::SyntaxKind;
@@ -10,7 +11,7 @@ use util_macros::assert_matches;
 use crate::diagnostic::Diagnostic;
 use crate::expr::{
     ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    IntrinsicExpr, UnaryExpr, VarRefExpr,
+    IntrinsicExpr, ReAssignment, UnaryExpr, VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -196,6 +197,14 @@ impl Context {
     pub fn core_types(&self) -> &CoreTypes {
         &self.type_database.core
     }
+
+    pub fn mutability_of(&self, symbol: &ValueSymbol) -> Mutability {
+        *self
+            .database
+            .mutabilities
+            .get(symbol)
+            .expect("symbol to exist")
+    }
 }
 
 impl Context {
@@ -276,6 +285,7 @@ impl Context {
                 E::Loop(ast) => self.lower_loop(ast),
                 E::Paren(ast) => return self.lower_expr(ast.expr()),
                 E::Path(ast) => self.lower_path(ast),
+                E::ReAssignment(ast) => self.lower_reassignment(ast),
                 E::Return(ast) => self.lower_return_statement(ast),
                 E::StringLiteral(ast) => self.lower_string_literal(ast),
                 E::Unary(ast) => self.lower_unary(ast),
@@ -296,6 +306,10 @@ impl Context {
         self.database.value_names.insert(symbol, key);
         self.current_let_binding_symbol = Some((key, symbol));
 
+        let mutability = ast.mutability();
+
+        self.database.mutabilities.insert(symbol, mutability);
+
         let value = self.lower_expr(ast.value());
 
         let type_annotation = ast
@@ -303,6 +317,13 @@ impl Context {
             .map(|type_expr| self.lower_type_expr(type_expr.into()));
 
         Expr::variable_def(symbol, value, type_annotation)
+    }
+
+    fn lower_reassignment(&mut self, ast: ast::ReAssignment) -> Expr {
+        let place = self.lower_expr(ast.place());
+        let value = self.lower_expr(ast.value());
+
+        Expr::ReAssignment(ReAssignment { place, value })
     }
 
     fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {

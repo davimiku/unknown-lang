@@ -11,6 +11,7 @@
 //! let a: A = 1
 //!
 //! let b = "Hello, World"
+//! let mut i = 0
 //! ```
 
 use lexer::TokenKind;
@@ -25,9 +26,10 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.bump();
 
+    p.bump_if(TokenKind::Mut);
+
     if !p.at(TokenKind::Equals) {
-        // TODO: Pattern rather than Ident for destructuring
-        parse_ident(p);
+        parse_pattern(p);
 
         if p.at(TokenKind::Colon) {
             p.bump();
@@ -44,6 +46,11 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
     parse_expr(p);
 
     m.complete(p, SyntaxKind::LetBinding)
+}
+
+fn parse_pattern(p: &mut Parser) -> CompletedMarker {
+    // TODO: other kinds of patterns
+    parse_ident(p)
 }
 
 pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {

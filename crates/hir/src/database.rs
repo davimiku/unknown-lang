@@ -2,13 +2,10 @@ use std::collections::HashMap;
 
 use crate::interner::Key;
 use crate::type_expr::TypeSymbol;
-use crate::{
-    BlockExpr, Context, ContextDisplay, Expr, FuncSignature, IntrinsicExpr, Type, TypeExpr,
-    ValueSymbol,
-};
+use crate::{Context, ContextDisplay, Expr, IntrinsicExpr, TypeExpr, ValueSymbol};
+use ast::Mutability;
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
-use util_macros::assert_matches;
 
 // TODO: remove pub(crate) ?
 #[derive(Debug, Default)]
@@ -38,6 +35,9 @@ pub struct Database {
     /// Reverse mapping between every symbol defining a type (i.e. type variable)
     /// and its interned string name.
     pub(crate) type_names: HashMap<TypeSymbol, Key>,
+
+    /// Tracks the mutability of all ValueSymbols in this module
+    pub(crate) mutabilities: HashMap<ValueSymbol, Mutability>,
 }
 
 impl ContextDisplay for Database {

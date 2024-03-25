@@ -1,15 +1,13 @@
-#[cfg(test)]
-mod tests {
-    use expect_test::expect;
+use expect_test::expect;
 
-    use crate::grammar::check;
+use crate::grammar::check;
 
-    #[test]
-    fn parse_let_binding() {
-        let input = "let foo = bar";
-        check(
-            input,
-            expect![[r#"
+#[test]
+fn parse_let_binding() {
+    let input = "let foo = bar";
+    check(
+        input,
+        expect![[r#"
 Root@0..13
   LetBinding@0..13
     LetKw@0..3 "let"
@@ -22,15 +20,15 @@ Root@0..13
     PathExpr@10..13
       Ident@10..13
         Ident@10..13 "bar""#]],
-        );
-    }
+    );
+}
 
-    #[test]
-    fn parse_let_binding_with_type() {
-        let input = "let x: Int = 1";
-        check(
-            input,
-            expect![[r#"
+#[test]
+fn parse_let_binding_with_type() {
+    let input = "let x: Int = 1";
+    check(
+        input,
+        expect![[r#"
 Root@0..14
   LetBinding@0..14
     LetKw@0..3 "let"
@@ -47,15 +45,99 @@ Root@0..14
     Emptyspace@12..13 " "
     IntLiteralExpr@13..14
       IntLiteral@13..14 "1""#]],
-        )
-    }
+    )
+}
 
-    #[test]
-    fn parse_let_binding_no_ident() {
-        let input = "let = 1";
-        check(
-            input,
-            expect![[r#"
+#[test]
+fn parse_let_mut_binding() {
+    let input = "let mut foo = bar";
+    check(
+        input,
+        expect![[r#"
+Root@0..17
+  LetBinding@0..17
+    LetKw@0..3 "let"
+    Emptyspace@3..4 " "
+    MutKw@4..7 "mut"
+    Emptyspace@7..8 " "
+    Ident@8..12
+      Ident@8..11 "foo"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    PathExpr@14..17
+      Ident@14..17
+        Ident@14..17 "bar""#]],
+    );
+}
+
+#[test]
+fn parse_let_mut_binding_with_type() {
+    let input = "let mut x: Int = 1";
+    check(
+        input,
+        expect![[r#"
+Root@0..18
+  LetBinding@0..18
+    LetKw@0..3 "let"
+    Emptyspace@3..4 " "
+    MutKw@4..7 "mut"
+    Emptyspace@7..8 " "
+    Ident@8..9
+      Ident@8..9 "x"
+    Colon@9..10 ":"
+    Emptyspace@10..11 " "
+    TypeExpr@11..15
+      Ident@11..15
+        Ident@11..14 "Int"
+        Emptyspace@14..15 " "
+    Equals@15..16 "="
+    Emptyspace@16..17 " "
+    IntLiteralExpr@17..18
+      IntLiteral@17..18 "1""#]],
+    )
+}
+
+#[test]
+fn parse_binding_reassignment() {
+    let input = "let mut a = 10
+a = 20";
+    check(
+        input,
+        expect![[r#"
+Root@0..21
+  LetBinding@0..14
+    LetKw@0..3 "let"
+    Emptyspace@3..4 " "
+    MutKw@4..7 "mut"
+    Emptyspace@7..8 " "
+    Ident@8..10
+      Ident@8..9 "a"
+      Emptyspace@9..10 " "
+    Equals@10..11 "="
+    Emptyspace@11..12 " "
+    IntLiteralExpr@12..14
+      IntLiteral@12..14 "10"
+  Newline@14..15
+    Newline@14..15 "\n"
+  InfixExpr@15..21
+    PathExpr@15..17
+      Ident@15..17
+        Ident@15..16 "a"
+        Emptyspace@16..17 " "
+    Equals@17..18 "="
+    Emptyspace@18..19 " "
+    IntLiteralExpr@19..21
+      IntLiteral@19..21 "20""#]],
+    )
+}
+
+#[test]
+fn parse_let_binding_no_ident() {
+    let input = "let = 1";
+    check(
+        input,
+        expect![[r#"
 Root@0..7
   LetBinding@0..7
     LetKw@0..3 "let"
@@ -64,16 +146,16 @@ Root@0..7
     Emptyspace@5..6 " "
     IntLiteralExpr@6..7
       IntLiteral@6..7 "1""#]],
-        )
-    }
+    )
+}
 
-    #[test]
-    #[ignore = "Recovery not implemented yet"]
-    fn recover_on_let_token() {
-        let input = "let a =\nlet b = a";
-        check(
-            input,
-            expect![[r#"
+#[test]
+#[ignore = "Recovery not implemented yet"]
+fn recover_on_let_token() {
+    let input = "let a =\nlet b = a";
+    check(
+        input,
+        expect![[r#"
 Root@0..17
   LetBinding@0..8
     LetKw@0..3 "let"
@@ -93,15 +175,15 @@ Root@0..17
     Path@16..17
       Ident@16..17 "a"
 error at 8..11: expected Int, identifier, ‘-’ or ‘(’ but found ‘let’"#]],
-        );
-    }
+    );
+}
 
-    #[test]
-    fn parse_type_binding_alias() {
-        let input = "type A = String";
-        check(
-            input,
-            expect![[r#"
+#[test]
+fn parse_type_binding_alias() {
+    let input = "type A = String";
+    check(
+        input,
+        expect![[r#"
 Root@0..15
   TypeBinding@0..15
     TypeKw@0..4 "type"
@@ -114,15 +196,15 @@ Root@0..15
     TypeExpr@9..15
       Ident@9..15
         Ident@9..15 "String""#]],
-        )
-    }
+    )
+}
 
-    #[test]
-    fn parse_type_binding_no_ident() {
-        let input = "type = String";
-        check(
-            input,
-            expect![[r#"
+#[test]
+fn parse_type_binding_no_ident() {
+    let input = "type = String";
+    check(
+        input,
+        expect![[r#"
 Root@0..13
   TypeBinding@0..13
     TypeKw@0..4 "type"
@@ -132,6 +214,5 @@ Root@0..13
     TypeExpr@7..13
       Ident@7..13
         Ident@7..13 "String""#]],
-        )
-    }
+    )
 }

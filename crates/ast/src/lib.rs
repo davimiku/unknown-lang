@@ -6,8 +6,8 @@ mod tests;
 
 pub use expr::{
     ArrayLiteral, Binary, Block, BoolLiteral, CallExpr, FloatLiteral, ForInLoop, Function, Ident,
-    If, IntLiteral, LetBinding, Loop, PathExpr, ReturnStatement, StringLiteral, TypePathExpr,
-    Unary,
+    If, IntLiteral, LetBinding, Loop, Mutability, PathExpr, ReAssignment, ReturnStatement,
+    StringLiteral, TypePathExpr, Unary,
 };
 pub use expr::{Expr, TypeExpr};
 use parser::{Parse, SyntaxKind, SyntaxNode};

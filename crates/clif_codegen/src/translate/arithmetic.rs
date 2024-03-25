@@ -150,7 +150,7 @@ impl FunctionTranslator<'_> {
             (Some(a), Some(b)) => {
                 // TODO: overflow should probably have been detected earlier
                 // but we could also detect that here and report a diagnostic, or _maybe_ an ICE
-                let c = *a + *b;
+                let c = (*a) + (*b);
                 self.builder.ins().iconst(I64, c)
             }
         }
@@ -176,7 +176,7 @@ impl FunctionTranslator<'_> {
             (Some(a), Some(b)) => {
                 // TODO: overflow should probably have been detected earlier
                 // but we could also detect that here and report a diagnostic, or _maybe_ an ICE
-                let c = *a - *b;
+                let c = (*a) - (*b);
                 self.builder.ins().iconst(I64, c)
             }
         }
@@ -201,7 +201,7 @@ impl FunctionTranslator<'_> {
             (Some(a), Some(b)) => {
                 // TODO: overflow should probably have been detected earlier
                 // but we could also detect that here and report a diagnostic, or _maybe_ an ICE
-                let c = *a * *b;
+                let c = (*a) * (*b);
                 self.builder.ins().iconst(I64, c)
             }
         }

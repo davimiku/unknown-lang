@@ -1,5 +1,7 @@
 mod type_expr;
 
+use std::fmt::{self, Display};
+
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
@@ -22,6 +24,7 @@ pub enum Expr {
     Loop(Loop),
     Paren(ParenExpr),
     Path(PathExpr),
+    ReAssignment(ReAssignment),
     Return(ReturnStatement),
     StringLiteral(StringLiteral),
     // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
@@ -78,6 +81,7 @@ impl Expr {
             E::Loop(e) => e.range(),
             E::Paren(e) => e.range(),
             E::Path(e) => e.range(),
+            E::ReAssignment(e) => e.range(),
             E::Return(e) => e.range(),
             E::StringLiteral(e) => e.range(),
             E::Unary(e) => e.range(),
@@ -85,13 +89,14 @@ impl Expr {
     }
 }
 
+// FIXME: for ReAssign make a new kind of Expr
 fn cast_infix(node: SyntaxNode) -> Expr {
     let binary = Binary(node.clone());
     if let Some(token) = binary.op() {
-        if token.kind() == SyntaxKind::Dot {
-            Expr::Path(PathExpr(node))
-        } else {
-            Expr::Binary(binary)
+        match token.kind() {
+            SyntaxKind::Dot => Expr::Path(PathExpr(node)),
+            SyntaxKind::Equals => Expr::ReAssignment(ReAssignment(node)),
+            _ => Expr::Binary(binary),
         }
     } else {
         Expr::Binary(binary)
@@ -153,6 +158,7 @@ impl Binary {
                 | S::Percent
                 | S::Dot
                 | S::Caret
+                | S::Equals
                 | S::EqualsEquals
                 | S::BangEquals
                 | S::LAngle
@@ -457,6 +463,17 @@ impl LetBinding {
             .and_then(|ident| ident.first_token())
     }
 
+    pub fn mutability(&self) -> Mutability {
+        match self
+            .0
+            .children_with_tokens()
+            .find(|child| child.kind() == SyntaxKind::MutKw)
+        {
+            Some(_) => Mutability::Mut,
+            None => Mutability::Not,
+        }
+    }
+
     pub fn type_annotation(&self) -> Option<TypeExpr> {
         self.0
             .children()
@@ -484,6 +501,43 @@ impl LetBinding {
 }
 
 #[derive(Debug, Clone)]
+pub struct ReAssignment(SyntaxNode);
+
+impl ReAssignment {
+    /// Assignment "place", which may be an arbitrarily complex expression itself
+    /// ```ignore
+    ///    a = 4
+    /// // ^
+    ///    a.b = 4
+    /// // ^^^
+    ///    a().b = 4
+    /// // ^^^^^
+    /// ```
+    pub fn place(&self) -> Option<Expr> {
+        self.0
+            .children_with_tokens()
+            .take_while(|child| child.kind() != SyntaxKind::Equals)
+            .filter_map(SyntaxElement::into_node)
+            .find_map(Expr::cast)
+    }
+
+    pub fn value(&self) -> Option<Expr> {
+        self.0
+            .children_with_tokens()
+            .skip_while(|child| match child.as_token() {
+                Some(token) => token.kind() != SyntaxKind::Equals,
+                None => true,
+            })
+            .skip(1) // consume the Equals
+            .filter_map(SyntaxElement::into_node)
+            .find_map(Expr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+#[derive(Debug, Clone)]
 pub struct Loop(SyntaxNode);
 
 impl Loop {
@@ -497,6 +551,21 @@ impl Loop {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mutability {
+    Not,
+    Mut,
+}
+
+impl Display for Mutability {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Mutability::Not => f.write_str(""),
+            Mutability::Mut => f.write_str("mut "),
+        }
     }
 }
 

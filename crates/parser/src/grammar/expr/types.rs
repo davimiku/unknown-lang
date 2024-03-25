@@ -5,12 +5,14 @@ use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use super::{expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal};
+use super::{
+    expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal, BinaryOp,
+};
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
-    expr_binding_power(p, 0, parse_lhs);
+    expr_binding_power(p, 0, parse_lhs, &make_binary_op);
 
     Some(m.complete(p, SyntaxKind::TypeExpr))
 }
@@ -68,7 +70,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     }
 
     loop {
-        let expr_marker = expr_binding_power(p, 0, parse_lhs);
+        let expr_marker = expr_binding_power(p, 0, parse_lhs, &make_binary_op);
 
         if expr_marker.is_none() {
             break;
@@ -181,14 +183,38 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
 
     if p.bump_if(T::Colon) {
         let type_marker = p.start();
-        expr_binding_power(p, 0, parse_lhs);
+        expr_binding_power(p, 0, parse_lhs, &make_binary_op);
         type_marker.complete(p, SyntaxKind::CompoundTypeItemType);
     }
     if p.bump_if(T::Equals) {
         let default_marker = p.start();
-        expr_binding_power(p, 0, parse_lhs);
+        expr_binding_power(p, 0, parse_lhs, &make_binary_op);
         default_marker.complete(p, SyntaxKind::CompoundTypeItemDefault);
     }
 
     m.complete(p, SyntaxKind::CompoundTypeItem)
+}
+
+fn make_binary_op(token: T) -> Option<BinaryOp> {
+    Some(match token {
+        T::Plus => BinaryOp::Add,
+        T::PlusPlus => BinaryOp::Concat,
+        T::Dash => BinaryOp::Sub,
+        T::Star => BinaryOp::Mul,
+        T::Slash => BinaryOp::Div,
+        T::Percent => BinaryOp::Rem,
+        T::Caret => BinaryOp::Exp,
+        T::And => BinaryOp::And,
+        T::Or => BinaryOp::Or,
+        T::Dot => BinaryOp::Path,
+        T::EqualsEquals => BinaryOp::Eq,
+        T::BangEquals => BinaryOp::Ne,
+        T::LAngle => BinaryOp::Lt,
+        T::LAngleEquals => BinaryOp::Le,
+        T::RAngle => BinaryOp::Gt,
+        T::RAngleEquals => BinaryOp::Ge,
+        T::Arrow => BinaryOp::Function,
+
+        _ => return None,
+    })
 }

@@ -1,10 +1,10 @@
-use super::check_function;
+use super::check_module;
 
 #[test]
 fn int_equals() {
-    let input = "fun (a: Int, b: Int) -> Bool { a == b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a == b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -15,14 +15,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_not_equals() {
-    let input = "fun (a: Int, b: Int) -> Bool { a != b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a != b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -33,14 +33,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_less_than() {
-    let input = "fun (a: Int, b: Int) -> Bool { a < b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a < b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -51,14 +51,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_less_than_or_equal() {
-    let input = "fun (a: Int, b: Int) -> Bool { a <= b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a <= b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -69,14 +69,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_greater_than() {
-    let input = "fun (a: Int, b: Int) -> Bool { a > b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a > b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -87,14 +87,14 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn int_greater_than_or_equal() {
-    let input = "fun (a: Int, b: Int) -> Bool { a >= b }";
+    let input = "let main = fun (a: Int, b: Int) -> Bool { a >= b }";
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1, _2
     mut _0: Bool
     _1: Int
@@ -105,15 +105,15 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
 fn is_even() {
-    let input = "fun (a: Int) -> { a % 2 == 0 }";
+    let input = "let main = fun (a: Int) -> { a % 2 == 0 }";
 
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: Bool
     _1: Int
@@ -125,5 +125,5 @@ fun {anonymous}:
         Return _0 ->
 ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }

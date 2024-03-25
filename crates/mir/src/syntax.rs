@@ -1,12 +1,8 @@
-use std::{
-    fmt::{self, Display, Write},
-    slice::Iter,
-};
+use std::fmt::{self, Display};
+use std::slice::Iter;
 
-use hir::{Context, Expr, IntrinsicExpr, Key, Type, ValueSymbol};
+use hir::{Context, Expr, IntrinsicExpr, Key, Mutability, Type, ValueSymbol};
 use la_arena::{Arena, ArenaMap, Idx};
-
-use crate::construct::OperandResult;
 
 // rustc calls a function "Body"
 // TODO: is that a good name?
@@ -233,11 +229,7 @@ pub enum Statement {
 }
 
 impl Statement {
-    pub(crate) fn assign<IntoPlace, IntoRvalue>(place: IntoPlace, rvalue: IntoRvalue) -> Self
-    where
-        IntoPlace: Into<Place>,
-        IntoRvalue: Into<Rvalue>,
-    {
+    pub(crate) fn assign(place: impl Into<Place>, rvalue: impl Into<Rvalue>) -> Self {
         Self::Assign(Box::new((place.into(), rvalue.into())))
     }
 }
@@ -436,12 +428,6 @@ impl Local {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Mutability {
-    Not,
-    Mut,
-}
-
-#[derive(Debug, Clone, Copy)]
 struct FieldIdx {
     private: u32,
 }
@@ -608,10 +594,10 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub fn from_result(result: OperandResult, context: &Context) -> Self {
-        match result {
-            OperandResult::Operand(operand) => operand,
-            OperandResult::Place(place) => Self::from_place(place, context),
+    pub fn from_op_or_place(op_or_place: OperandOrPlace, context: &Context) -> Self {
+        match op_or_place {
+            OperandOrPlace::Operand(operand) => operand,
+            OperandOrPlace::Place(place) => Self::from_place(place, context),
         }
     }
 
@@ -619,23 +605,16 @@ impl Operand {
         // TODO: use Context to get type information to determine Copy/Move/Share
         Self::Copy(place)
     }
+
+    pub fn as_local(&self) -> Option<Idx<Local>> {
+        match self {
+            Operand::Copy(place) | Operand::Move(place) => Some(place.local),
+            Operand::Constant(_) => None,
+        }
+    }
 }
 
 impl Operand {
-    // pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
-    //     let core = context.core_types();
-    //     match self {
-    //         Operand::Copy(place) | Operand::Move(place) => place.type_idx_of(func, context),
-    //         Operand::Constant(constant) => match constant {
-    //             Constant::Int(_) => core.int,
-    //             Constant::Float(_) => core.float,
-    //             Constant::String(_) => core.string,
-    //             // TODO: is this whole function unused?
-    //             Constant::Func(_) => core.unknown,
-    //         },
-    //     }
-    // }
-
     pub fn as_constant(&self) -> Option<&Constant> {
         match self {
             Operand::Constant(c) => Some(c),
@@ -654,6 +633,25 @@ impl Operand {
 impl From<Constant> for Operand {
     fn from(constant: Constant) -> Self {
         Self::Constant(constant)
+    }
+}
+
+pub enum OperandOrPlace {
+    Operand(Operand),
+
+    Place(Place),
+}
+
+impl OperandOrPlace {
+    pub fn as_place(self) -> Option<Place> {
+        match self {
+            OperandOrPlace::Operand(operand) => match operand {
+                Operand::Copy(place) => Some(place),
+                Operand::Constant(_) => None,
+                Operand::Move(place) => Some(place),
+            },
+            OperandOrPlace::Place(place) => Some(place),
+        }
     }
 }
 

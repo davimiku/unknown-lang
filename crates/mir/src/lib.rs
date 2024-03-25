@@ -97,6 +97,8 @@ pub struct Module {
     /// Control Flow Graph (CFG) representation of functions in this module
     pub functions: Arena<Function>,
 
+    pub function_names: HashMap<FuncId, Option<String>>,
+
     /// Map of functions that are entry points in this module
     ///
     /// It is valid for this to be empty - most modules would not have

@@ -40,14 +40,8 @@ pub struct Builder {
 
     pub functions_map: HashMap<ValueSymbol, Vec<FuncId>>,
 
-    /// The final statement of the current block is constructed as
-    /// an assignment to this Place.
-    // pub assign_to: Option<Place>,
-
-    /// When constructing a block with no natural terminator, this value will
-    /// be used as the Jump terminator. For example, when the branches of if-else
-    /// join back together.
-    // pub jump_to: Option<Idx<BasicBlock>>,
+    /// Reverse mapping from a FuncId back to its name, usually for debugging
+    pub function_names: HashMap<FuncId, Option<String>>,
 
     /// Tracks scopes while constructing the MIR. When a scope is entered,
     /// a new Scope is pushed on here. This tracks the current statement counter
@@ -75,6 +69,7 @@ impl Builder {
             module_id,
             current_function,
             current_block,
+            function_names: Default::default(),
             entry_points: Default::default(),
             block_var_defs: Default::default(),
             functions_map: Default::default(),
@@ -87,6 +82,7 @@ impl Builder {
     pub fn build(self) -> Module {
         Module {
             functions: self.functions,
+            function_names: self.function_names,
             entry_points: self.entry_points,
         }
     }

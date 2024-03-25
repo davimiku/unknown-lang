@@ -8,7 +8,9 @@ use crate::{ArrayType, Context, Type};
 ///
 /// For example, an `IntLiteral(123)` is widened to `Int`
 ///
-/// This is used to handle the subtype nature of the literals
+/// This is used to help with the subtype nature of the literals. One use case is
+/// inferring `let mut a = 10`. This should be inferred as `Int` rather than `IntLiteral(10)`
+/// because it may be reassigned.
 pub(super) fn widen_to_scalar(ty_idx: Idx<Type>, context: &mut Context) -> Idx<Type> {
     let ty = context.type_(ty_idx);
     match ty {

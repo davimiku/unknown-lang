@@ -2,6 +2,7 @@ mod display;
 
 use std::fmt;
 
+use ast::Mutability;
 use la_arena::Idx;
 use util_macros::assert_matches;
 
@@ -63,6 +64,8 @@ pub enum Expr {
     /// Variable definition
     VarDef(VarDefExpr),
 
+    ReAssignment(ReAssignment),
+
     /// Branch based on boolean condition, with possible "else" branch
     If(IfExpr),
 
@@ -71,8 +74,6 @@ pub enum Expr {
 
     /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
-    // Represents the container around a module
-    // Module(Vec<Idx<Expr>>),
 }
 
 // convenience constructors
@@ -119,6 +120,23 @@ pub struct VarDefExpr {
 
     /// Optional type annotation
     pub type_annotation: Option<Idx<TypeExpr>>,
+}
+
+impl VarDefExpr {
+    pub fn is_mutable(&self, context: &Context) -> bool {
+        let mutability = context.mutability_of(&self.symbol);
+
+        mutability == Mutability::Mut
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ReAssignment {
+    /// Place being reassigned, such as `a`, `a.b`, or `a.b()`
+    pub place: Idx<Expr>,
+
+    /// Expression value of the RHS of the reassignment
+    pub value: Idx<Expr>,
 }
 
 /// Unique identifier for a symbol that lives in the "value" universe

@@ -5,7 +5,7 @@ use crate::{
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
-use super::{FunctionExprGroup, FunctionParam};
+use super::{FunctionExprGroup, FunctionParam, ReAssignment};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -74,6 +74,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
 
         Expr::Function(function) => fmt_function_expr_group(s, function, context, indent),
         Expr::VarDef(local_def) => fmt_var_def(s, local_def, context, indent),
+        Expr::ReAssignment(reassignment) => fmt_reassignment(s, reassignment, context, indent),
 
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Path(_) => todo!(),
@@ -149,7 +150,7 @@ fn fmt_function_expr_group(
     s: &mut String,
     function_group: &FunctionExprGroup,
     context: &Context,
-    indent: usize,
+    _: usize,
 ) {
     let FunctionExprGroup {
         overloads,
@@ -179,7 +180,7 @@ fn fmt_function_expr_group(
 fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
     let FunctionExpr { params, body, .. } = function;
 
-    s.push_str("(");
+    s.push('(');
     for param in params.iter() {
         s.push_str(&param.symbol.display(context));
         s.push_str(" : ");
@@ -209,18 +210,26 @@ fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent
         value,
         type_annotation,
     } = local_def;
+    let mutability = context.mutability_of(symbol);
     let type_buffer = if let Some(type_annotation) = type_annotation {
         type_annotation.display(context)
     } else {
         context.expr_type(*value).display(context)
     };
     s.push_str(&format!(
-        "{} : {} = ",
+        "{} : {}{} = ",
         &symbol.display(context),
+        mutability,
         type_buffer
     ));
     fmt_idx_expr(s, *value, context, indent);
     s.push(';');
+}
+
+fn fmt_reassignment(s: &mut String, reassignment: &ReAssignment, context: &Context, indent: usize) {
+    fmt_idx_expr(s, reassignment.place, context, indent);
+    s.push_str(" <- ");
+    fmt_idx_expr(s, reassignment.value, context, indent);
 }
 
 fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: usize) {

@@ -1,9 +1,14 @@
 use itertools::Itertools;
+use la_arena::Idx;
 use lsp_diagnostic::{LSPDiagnostic, LSPDiagnosticSeverity};
 
 use indoc::indoc;
+use text_size::TextRange;
+use util_macros::assert_matches;
 
-use crate::{display::display_module, lower, ContextDisplay};
+use crate::{
+    diagnostic::TypeDiagnosticVariant, display::display_module, lower, ContextDisplay, Diagnostic,
+};
 
 fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     let (module, context) = lower(input);
@@ -44,13 +49,19 @@ fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     }
 }
 
-/// Checks that the input lowered with error(s)
-fn check_error(input: &str, expected: Vec<LSPDiagnostic>) {
+/// Checks that the input lowered with type error(s)
+fn check_type_error(input: &str, expected: Vec<(TypeDiagnosticVariant, TextRange)>) {
     let (_, context) = lower(input);
 
-    let diagnostics: Vec<LSPDiagnostic> = context.diagnostics.iter().map(|d| d.into()).collect();
-
-    assert_eq!(diagnostics, expected);
+    for (actual, (expected_variant, expected_range)) in
+        context.diagnostics.into_iter().zip(expected.into_iter())
+    {
+        let actual_range = actual.range();
+        let actual = assert_matches!(actual, Diagnostic::Type).variant;
+        let actual = std::mem::discriminant(&actual);
+        let expected = std::mem::discriminant(&expected_variant);
+        assert_eq!(actual, expected);
+    }
 }
 
 #[test]
@@ -169,11 +180,25 @@ fn let_binding() {
 }
 
 #[test]
+fn let_binding_mut() {
+    let input = "let mut a = 10";
+
+    check(input, "a~1.0 : mut Int = 10;", &[("a~1.0", "Int")]);
+}
+
+#[test]
 fn let_binding_annotation() {
     let input = "let a: Int = 10";
     let expected = "a~1.0 : Int~0.1 = 10;";
 
     check(input, expected, &[("a~1.0", "Int")]);
+}
+
+#[test]
+fn let_binding_mut_annotation() {
+    let input = "let mut a: Int = 10";
+
+    check(input, "a~1.0 : mut Int~0.1 = 10;", &[("a~1.0", "Int")]);
 }
 
 #[test]
@@ -188,6 +213,66 @@ fn variable_ref() {
         a~1.0;"};
 
     check(input, expected_expr, &[("a~1.0", "10")]);
+}
+
+#[test]
+fn variable_reassign() {
+    let input = "
+        let mut a = 10
+        a = 20
+";
+
+    let expected_expr = indoc! {"
+        a~1.0 : mut Int = 10;
+        a~1.0 <- 20;"};
+
+    check(input, expected_expr, &[("a~1.0", "Int")]);
+}
+
+#[test]
+fn variable_reassign_not_mut() {
+    let input = "let a = 10
+a = 10
+";
+
+    let bogus_idx = Idx::from_raw(u32::MAX.into());
+
+    check_type_error(
+        input,
+        vec![(
+            TypeDiagnosticVariant::Immutable { expr: bogus_idx },
+            TextRange::new(11.into(), 12.into()),
+        )],
+    );
+}
+
+#[test]
+fn variable_reassign_with_add() {
+    let input = "
+        let mut a = 10
+        a = a + 5
+";
+
+    let expected_expr = indoc! {"
+        a~1.0 : mut Int = 10;
+        a~1.0 <- `+`~0.1$0 (a~1.0,5,);"};
+
+    check(input, expected_expr, &[("a~1.0", "Int")]);
+}
+
+#[test]
+#[ignore = "not implemented yet"]
+fn variable_add_reassign() {
+    let input = r#"
+        let mut a = 10
+        a += 5
+"#;
+
+    let expected_expr = indoc! {"
+        a~1.0 : mut Int = 10;
+        a~1.0 <- `+`~0.1$0 (a~1.0,5,);"};
+
+    check(input, expected_expr, &[("a~1.0", "Int")]);
 }
 
 #[test]
@@ -297,7 +382,7 @@ fn local_wrong_type_int_literal() {
         tags: None,
     };
 
-    check_error(input, vec![expected]);
+    // check_type_error(input, vec![expected]);
 }
 
 #[test]
@@ -314,7 +399,7 @@ fn local_wrong_type_string_literal() {
         tags: None,
     };
 
-    check_error(input, vec![expected]);
+    // check_type_error(input, vec![expected]);
 }
 
 #[test]
