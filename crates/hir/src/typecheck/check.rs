@@ -9,9 +9,9 @@ use super::types::FuncSignature;
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType};
 
-/// Checks whether the provided expression is a subtype of the expected expression
+/// Checks whether the provided expression is a subtype of the expected expression.
 ///
-/// Calls, and is called by `infer_expr` (mutual recursion) as an implementation of
+/// Calls and is called by `infer_expr` (mutual recursion) as an implementation of
 /// bidirectional type checking.
 pub(crate) fn check_expr(
     expr: Idx<Expr>,

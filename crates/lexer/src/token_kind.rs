@@ -26,6 +26,9 @@ pub enum TokenKind {
     #[token("and")]
     And,
 
+    #[token("break")]
+    Break,
+
     /// `else`
     #[token("else")]
     Else,
@@ -257,6 +260,7 @@ impl fmt::Display for TokenKind {
 
             // Keywords
             Self::And => "‘and’",
+            Self::Break => "‘break’",
             Self::Else => "‘else’",
             Self::For => "‘for’",
             Self::Fun => "‘fun’",

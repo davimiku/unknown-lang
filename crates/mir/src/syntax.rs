@@ -2,7 +2,10 @@ use std::fmt::{self, Display};
 use std::slice::Iter;
 
 use hir::{Context, Expr, IntrinsicExpr, Key, Mutability, Type, ValueSymbol};
+use itertools::Itertools;
 use la_arena::{Arena, ArenaMap, Idx};
+
+use crate::predecessors::Predecessors;
 
 // rustc calls a function "Body"
 // TODO: is that a good name?
@@ -60,6 +63,9 @@ pub struct Function {
     pub locals: Arena<Local>,
 
     pub locals_map: ArenaMap<Idx<Local>, Option<ValueSymbol>>,
+
+    /// Maps between each BasicBlock and all of its predecessors
+    pub predecessors: Predecessors,
 }
 
 impl Function {
@@ -73,9 +79,10 @@ impl Function {
             id,
             blocks,
             name: None,
-            params: Vec::default(),
-            locals: Arena::default(),
-            locals_map: ArenaMap::default(),
+            params: Default::default(),
+            locals: Default::default(),
+            locals_map: Default::default(),
+            predecessors: Default::default(),
         }
     }
 }
@@ -160,6 +167,10 @@ pub struct BasicBlock {
     /// CLIF codegen requires these parameters to be explicitly passed to
     /// jump instructions to the next block. Currently these are being
     /// captured here in the MIR for easier translation to CLIF.
+    ///
+    /// TODO: May prefer to track these in the Terminator themselves for more
+    /// direct translation to CLIF. In that case, move this out of the `BasicBlock`
+    /// data and into a separate map that gets thrown away after MIR construction.
     pub parameters: BlockParameters,
 }
 
@@ -184,15 +195,20 @@ impl BlockParameters {
         }
     }
 
-    // TODO: use newtype_derive or something else to not do this so hacky
+    // TODO: use newtype_derive to reduce this boilerplate?
     pub fn iter(&self) -> Iter<'_, Idx<Local>> {
         self.0.iter()
+    }
+
+    pub fn take_inner(self) -> Vec<Idx<Local>> {
+        self.0
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     Assign(Box<(Place, Rvalue)>),
+    ReAssign(Box<(Place, Rvalue)>),
 
     SetDiscriminant {
         place: Box<Place>,
@@ -232,6 +248,10 @@ impl Statement {
     pub(crate) fn assign(place: impl Into<Place>, rvalue: impl Into<Rvalue>) -> Self {
         Self::Assign(Box::new((place.into(), rvalue.into())))
     }
+
+    pub(crate) fn reassign(place: impl Into<Place>, rvalue: impl Into<Rvalue>) -> Self {
+        Self::ReAssign(Box::new((place.into(), rvalue.into())))
+    }
 }
 
 /// Source-order index of a variant in a union type
@@ -244,18 +264,16 @@ pub struct VariantIdx {
 pub enum Terminator {
     /// Continues execution in the next block.
     /// This terminator has a single successor.
-    Jump {
-        target: Idx<BasicBlock>,
-    },
+    Jump(BlockTarget),
 
     /// Chooses between multiple branches to determine the next block.
     ///
     /// Tests the discriminant for an integer value and picks the corresponding
     /// target. Boolean checks are included here, which are represented by
     /// integer values.
-    SwitchInt {
+    BranchInt {
         discriminant: Operand,
-        targets: SwitchIntTargets,
+        targets: BranchIntTargets,
     },
 
     /// Returns from the current function
@@ -284,7 +302,7 @@ pub enum Terminator {
         /// Where to go after this call returns.
         ///
         /// None indicates a diverging call, such as `panic` or `abort`
-        target: Option<Idx<BasicBlock>>,
+        target: Option<BlockTarget>,
         // EXAMPLE FROM RUSTC:
         // / Action to be taken if the call unwinds.
         // unwind: UnwindAction,
@@ -311,19 +329,67 @@ pub enum Terminator {
 }
 
 impl Terminator {
+    pub fn jump(target: Idx<BasicBlock>, args: Vec<Idx<Local>>) -> Self {
+        Self::Jump(BlockTarget { target, args })
+    }
+
+    pub fn branch_int(
+        discriminant: Operand,
+        branches: Box<[(i64, BlockTarget)]>,
+        otherwise: Option<Box<BlockTarget>>,
+    ) -> Self {
+        let targets = BranchIntTargets {
+            branches,
+            otherwise,
+        };
+
+        Self::BranchInt {
+            discriminant,
+            targets,
+        }
+    }
+}
+
+impl Terminator {
     pub const fn name(&self) -> &'static str {
         match self {
-            Terminator::Jump { .. } => "Goto",
-            Terminator::SwitchInt { .. } => "SwitchInt",
+            Terminator::Jump(..) => "Goto",
+            Terminator::BranchInt { .. } => "BranchInt",
             Terminator::Return => "Return",
             Terminator::Call { .. } => "Call",
             Terminator::Drop { .. } => "Drop",
             Terminator::Unreachable => "Unreachable",
         }
     }
+
+    pub fn targets(&self) -> Vec<Idx<BasicBlock>> {
+        match self {
+            Terminator::Jump(BlockTarget { target, .. }) => vec![*target],
+            Terminator::BranchInt { targets, .. } => {
+                let mut result = targets
+                    .branches
+                    .iter()
+                    .map(|(_, block_target)| block_target.target)
+                    .collect_vec();
+                if let Some(block_target) = &targets.otherwise {
+                    result.push(block_target.target);
+                }
+                result
+            }
+            Terminator::Return => vec![],
+            Terminator::Call {
+                target: block_target,
+                ..
+            } => block_target
+                .as_ref()
+                .map_or(Vec::default(), |block_target| vec![block_target.target]),
+            Terminator::Drop { target, .. } => vec![*target],
+            Terminator::Unreachable => vec![],
+        }
+    }
 }
 
-/// Targets / branches for a SwitchInt terminator
+/// Targets / branches for a BranchInt terminator
 ///
 /// The branches are organized into pairs of Int + Block to
 /// switch to.
@@ -331,10 +397,28 @@ impl Terminator {
 /// an exhaustive match.
 // TODO: use a SmallVec to stack allocate branches with 1 item
 #[derive(Debug, Default, Clone)]
-pub struct SwitchIntTargets {
-    pub branches: Box<[(i64, Idx<BasicBlock>)]>,
+pub struct BranchIntTargets {
+    pub branches: Box<[(i64, BlockTarget)]>,
 
-    pub otherwise: Option<Idx<BasicBlock>>,
+    pub otherwise: Option<Box<BlockTarget>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockTarget {
+    pub target: Idx<BasicBlock>,
+    pub args: Vec<Idx<Local>>,
+}
+
+impl BlockTarget {
+    pub fn with_args(target: Idx<BasicBlock>, args: Vec<Idx<Local>>) -> Self {
+        Self { target, args }
+    }
+    pub fn with_empty_args(target: Idx<BasicBlock>) -> Self {
+        Self {
+            target,
+            args: Vec::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -353,11 +437,19 @@ impl From<Idx<Local>> for Place {
 }
 
 impl Place {
-    pub fn type_idx_of(&self, func: &Function, context: &hir::Context) -> Idx<Type> {
+    pub fn type_idx_of(&self, func: &Function, _: &hir::Context) -> Idx<Type> {
         // TODO: include projections
         let local = &func.locals[self.local];
         local.type_idx_of()
     }
+
+    pub fn is_return(&self) -> bool {
+        is_return(self.local)
+    }
+}
+
+fn is_return(local: Idx<Local>) -> bool {
+    local.into_raw().into_u32() == 0
 }
 
 type PlaceElem = ProjectionElem<Idx<Local>, hir::Type>;
@@ -640,6 +732,18 @@ pub enum OperandOrPlace {
     Operand(Operand),
 
     Place(Place),
+}
+
+impl From<Operand> for OperandOrPlace {
+    fn from(operand: Operand) -> Self {
+        Self::Operand(operand)
+    }
+}
+
+impl From<Place> for OperandOrPlace {
+    fn from(place: Place) -> Self {
+        Self::Place(place)
+    }
 }
 
 impl OperandOrPlace {

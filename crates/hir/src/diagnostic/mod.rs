@@ -16,7 +16,7 @@ pub enum Diagnostic {
 impl Diagnostic {
     pub(crate) fn range(&self) -> TextRange {
         match self {
-            Diagnostic::Lowering(_) => todo!(),
+            Diagnostic::Lowering(diag) => diag.range,
             Diagnostic::Type(diag) => diag.range,
         }
     }
@@ -60,7 +60,31 @@ impl From<&Diagnostic> for LSPDiagnostic {
 
 /// Diagnostics found while lowering the AST to HIR not related to type checking
 #[derive(Debug, PartialEq)]
-pub struct LoweringDiagnostic;
+pub struct LoweringDiagnostic {
+    pub variant: LoweringDiagnosticVariant,
+    pub range: TextRange,
+}
+
+impl From<LoweringDiagnostic> for Diagnostic {
+    fn from(diagnostic: LoweringDiagnostic) -> Self {
+        Diagnostic::Lowering(diagnostic)
+    }
+}
+
+impl LoweringDiagnostic {
+    pub fn break_outside_loop(range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::BreakOutsideLoop,
+            range,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LoweringDiagnosticVariant {
+    BreakOutsideLoop,
+    // ReturnOutsideFunction
+}
 
 /// Diagnostics found during type checking and type inference
 #[derive(Debug, PartialEq)]
@@ -70,8 +94,8 @@ pub struct TypeDiagnostic {
 }
 
 impl From<TypeDiagnostic> for Diagnostic {
-    fn from(value: TypeDiagnostic) -> Self {
-        Diagnostic::Type(value)
+    fn from(diagnostic: TypeDiagnostic) -> Self {
+        Diagnostic::Type(diagnostic)
     }
 }
 

@@ -11,7 +11,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Eq(copy _1, copy _2)
+        _0 := Eq(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -29,7 +29,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Ne(copy _1, copy _2)
+        _0 := Ne(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -47,7 +47,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Lt(copy _1, copy _2)
+        _0 := Lt(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -65,7 +65,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Le(copy _1, copy _2)
+        _0 := Le(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -83,7 +83,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Gt(copy _1, copy _2)
+        _0 := Gt(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -101,7 +101,7 @@ fun main:
     _2: Int
     
     BB0():
-        _0 = Ge(copy _1, copy _2)
+        _0 := Ge(copy _1, copy _2)
         Return _0 ->
 ";
 
@@ -120,8 +120,8 @@ fun main:
     _2: Int
     
     BB0():
-        _2 = Rem(copy _1, const 2)
-        _0 = Eq(copy _2, const 0)
+        _2 := Rem(copy _1, const 2)
+        _0 := Eq(copy _2, const 0)
         Return _0 ->
 ";
 

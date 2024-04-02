@@ -13,7 +13,7 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr,
-    IndexIntExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    IndexIntExpr, LoopExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr};
@@ -36,21 +36,21 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
     let mut result = TypeResult::new(&context.type_database);
     let (expr, range) = context.database.expr(expr_idx);
 
-    // clone/copy to remove the shared borrow from context to be able to mutate
+    // clone/copy to remove the shared borrow to be able to mutate `context`
     let expr = expr.clone();
     let range = *range;
 
     // each branch should mutate `result`
     match expr {
-        Expr::Empty => {
-            result.push_diag(TypeDiagnostic {
-                variant: TypeDiagnosticVariant::Empty { expr: expr_idx },
-                range,
-            });
-        }
+        Expr::Empty => result.ty = context.core_types().unit,
+
         Expr::Statement(inner_idx) => {
             result.chain(infer_expr(inner_idx, context));
             result.ty = context.core_types().unit;
+        }
+        Expr::BreakStatement(break_value) => {
+            result.chain(infer_expr(break_value, context));
+            result.ty = context.core_types().bottom;
         }
         Expr::ReturnStatement(return_value) => {
             result.chain(infer_expr(return_value, context));
@@ -69,15 +69,17 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             range,
         }),
 
-        Expr::Unary(expr) => result.chain(infer_unary(expr_idx, &expr, context)),
+        Expr::Unary(unary) => result.chain(infer_unary(expr_idx, &unary, context)),
         Expr::Block(block) => result.chain(infer_block(&block, context)),
-        Expr::Call(expr) => result.chain(infer_call(expr_idx, &expr, context)),
+        Expr::Call(call) => result.chain(infer_call(expr_idx, &call, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
         Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
         Expr::ReAssignment(reassignment) => {
             result.chain(infer_reassignment(&reassignment, context))
         }
+
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
+        Expr::Loop(loop_expr) => result.chain(infer_loop_expr(&loop_expr, context)),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
@@ -277,10 +279,7 @@ fn infer_reassignment(reassignment: &ReAssignment, context: &mut Context) -> Typ
     // FIXME: doesn't work when `expected` itself errors
     match check_expr(reassignment.value, place_ty, context) {
         Ok(_) => {}
-        Err(mut diagnostics) => {
-            dbg!(&diagnostics);
-            result.diagnostics.append(&mut diagnostics)
-        }
+        Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
     }
 
     // Reassignment returns Unit no matter what
@@ -503,6 +502,45 @@ fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
     } else {
         result.ty = context.core_types().unit;
     }
+    result
+}
+
+fn infer_loop_expr(loop_expr: &LoopExpr, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+    result.chain(infer_expr(loop_expr.body, context));
+
+    // the *body* of a loop is Unit regardless of what happens inside. The overall
+    // loop type is determined by the `break` expression(s)
+    context
+        .type_database
+        .set_expr_type(loop_expr.body, context.core_types().unit);
+
+    if loop_expr.breaks.is_empty() {
+        result.ty = context.core_types().bottom;
+        return result;
+    }
+
+    let mut first_successful: Option<Idx<Type>> = None;
+
+    for break_expr in loop_expr.breaks.iter() {
+        match first_successful {
+            Some(expected) => result.check(*break_expr, expected, context),
+
+            None => {
+                let infer_result = infer_expr(*break_expr, context);
+                match infer_result.is_ok() {
+                    true => first_successful = Some(infer_result.ty),
+                    false => result.chain(infer_result),
+                }
+            }
+        }
+    }
+
+    match first_successful {
+        Some(ty) => result.ty = ty,
+        None => result.ty = context.core_types().error,
+    }
+
     result
 }
 

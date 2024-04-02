@@ -10,10 +10,10 @@ hir = { path = "../hir" }
 mir = { path = "../mir" }
 util_macros = { path = "../util_macros" }
 
-cranelift = "0.105.2"
-cranelift-module = "0.105.2"
-cranelift-jit = "0.105.2"
-cranelift-native = "0.105.2"
+cranelift = "0.106.1"
+cranelift-module = "0.106.1"
+cranelift-jit = "0.106.1"
+cranelift-native = "0.106.1"
 la-arena = "0.3.1"
 ryu = "1.0"
 proc-macro2 = "1.0.43"

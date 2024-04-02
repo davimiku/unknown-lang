@@ -70,12 +70,14 @@ impl Codegen {
             Expr::VarDef(var_def) => self.write_var_def(var_def, context),
             Expr::ReAssignment(reassignment) => todo!(),
             Expr::If(if_expr) => self.write_if_expr(if_expr, assign_to, context),
+            Expr::Loop(loop_expr) => todo!(),
             Expr::Statement(inner) => {
                 self.write_indent();
                 let inner = context.expr(*inner);
                 self.write_expr(inner, None, context);
                 self.push(";\n");
             }
+            Expr::BreakStatement(value) => todo!(),
             Expr::ReturnStatement(inner) => todo!(),
         };
     }

@@ -69,8 +69,14 @@ pub enum Expr {
     /// Branch based on boolean condition, with possible "else" branch
     If(IfExpr),
 
+    /// Loop expression
+    Loop(LoopExpr),
+
     /// "Expression statement", an expression that the return value is unused
     Statement(Idx<Expr>),
+
+    /// Breaks from the current loop
+    BreakStatement(Idx<Expr>),
 
     /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
@@ -373,6 +379,15 @@ pub struct IfExpr {
 
     /// Expression that is executed when the condition is false
     pub else_branch: Option<Idx<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LoopExpr {
+    /// The body of the loop expression, which is a `BlockExpr`
+    pub body: Idx<Expr>,
+
+    /// The `break` expressions within this loop
+    pub breaks: Vec<Idx<Expr>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

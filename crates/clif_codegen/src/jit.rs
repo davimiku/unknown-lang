@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
+use cranelift::codegen::print_errors::{self, pretty_error};
 #[cfg(debug_assertions)]
 use cranelift::codegen::write_function;
 use cranelift::prelude::types::*;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleResult};
+use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleError, ModuleResult};
 
 use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
@@ -116,12 +117,14 @@ impl JIT {
         func_map: &mut HashMap<mir::FuncId, FuncId>,
         hir_context: &hir::Context,
     ) -> ModuleResult<FuncId> {
-        let mut fn_builder_ctx = FunctionBuilderContext::new();
-        let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
-        let mut translator =
-            FunctionTranslator::new(&mut builder, &mut self.module, func, func_map, hir_context);
+        {
+            let mut fn_builder_ctx = FunctionBuilderContext::new();
+            let builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
+            let translator =
+                FunctionTranslator::new(builder, &mut self.module, func, func_map, hir_context);
 
-        translator.translate_function();
+            translator.translate_function();
+        }
 
         let func_name = func.name.as_deref().unwrap_or("{anonymous}");
 

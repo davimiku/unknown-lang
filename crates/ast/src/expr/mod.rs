@@ -13,6 +13,7 @@ pub enum Expr {
     Block(Block),
     Binary(Binary),
     BoolLiteral(BoolLiteral),
+    Break(BreakStatement),
     Call(CallExpr),
     FloatLiteral(FloatLiteral),
     ForInLoop(ForInLoop),
@@ -37,6 +38,7 @@ impl Expr {
             SyntaxKind::ArrayLiteral => Self::ArrayLiteral(ArrayLiteral(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
+            SyntaxKind::BreakStatement => Self::Break(BreakStatement(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
             // TODO: clean up code here
             SyntaxKind::ConditionExpr | SyntaxKind::ThenBranchExpr | SyntaxKind::ElseBranchExpr => {
@@ -70,6 +72,7 @@ impl Expr {
             E::Block(e) => e.range(),
             E::Binary(e) => e.range(),
             E::BoolLiteral(e) => e.range(),
+            E::Break(e) => e.range(),
             E::Call(e) => e.range(),
             E::FloatLiteral(e) => e.range(),
             E::ForInLoop(e) => e.range(),
@@ -196,6 +199,23 @@ impl BoolLiteral {
 
     pub fn value(&self) -> parser::SyntaxToken {
         self.0.first_token().expect("BoolLiteral to have a token")
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakStatement(SyntaxNode);
+
+impl BreakStatement {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::BreakStatement).then_some(Self(node))
+    }
+
+    pub fn value(&self) -> Option<Expr> {
+        self.0.children().find_map(Expr::cast)
     }
 
     pub fn range(&self) -> TextRange {

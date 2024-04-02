@@ -110,8 +110,8 @@ fn much_int_arithmetic() {
 #[test]
 fn float_add_param_and_constant() {
     let inputs = [
-        "fun (i: Float) -> { i + 6.0 }",
-        "fun (i: Float) -> { i + 6 }",
+        "let main = fun (i: Float) -> { i + 6.0 }",
+        "let main = fun (i: Float) -> { i + 6 }",
     ];
 
     for input in inputs {
@@ -127,8 +127,8 @@ fn float_add_param_and_constant() {
 #[test]
 fn float_sub_param_and_constant() {
     let inputs = [
-        "fun (i: Float) -> { i - 10.0 }",
-        "fun (i: Float) -> { i - 10 }",
+        "let main = fun (i: Float) -> { i - 10.0 }",
+        "let main = fun (i: Float) -> { i - 10 }",
     ];
 
     for input in inputs {
@@ -144,8 +144,8 @@ fn float_sub_param_and_constant() {
 #[test]
 fn float_mul_param_and_constant() {
     let inputs = [
-        "fun (i: Float) -> { i * 8.0 }",
-        "fun (i: Float) -> { i * 8 }",
+        "let main = fun (i: Float) -> { i * 8.0 }",
+        "let main = fun (i: Float) -> { i * 8 }",
     ];
 
     for input in inputs {

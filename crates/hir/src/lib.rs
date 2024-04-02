@@ -18,7 +18,7 @@ pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
     ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup,
-    FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, ReAssignment, UnaryExpr, UnaryOp,
+    FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, LoopExpr, ReAssignment, UnaryExpr, UnaryOp,
     ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};

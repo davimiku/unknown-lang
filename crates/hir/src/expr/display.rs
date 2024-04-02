@@ -1,11 +1,12 @@
 use la_arena::Idx;
+use util_macros::assert_matches;
 
 use crate::{
     ArrayLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
-use super::{FunctionExprGroup, FunctionParam, ReAssignment};
+use super::{FunctionExprGroup, FunctionParam, LoopExpr, ReAssignment};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -43,10 +44,17 @@ fn fmt_idx_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
     let mut indent = indent;
     match expr {
-        Expr::Empty => s.push_str("{{empty}}"),
+        Expr::Empty => {}
         Expr::Statement(expr_idx) => {
             fmt_idx_expr(s, *expr_idx, context, indent);
             s.push(';');
+        }
+        Expr::BreakStatement(break_value) => {
+            s.push_str("break");
+            if !matches!(context.expr(*break_value), Expr::Empty) {
+                s.push(' ');
+            }
+            fmt_idx_expr(s, *break_value, context, indent);
         }
         Expr::ReturnStatement(return_value) => {
             s.push_str("return ");
@@ -77,6 +85,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::ReAssignment(reassignment) => fmt_reassignment(s, reassignment, context, indent),
 
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
+        Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
     }
@@ -247,6 +256,13 @@ fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: usiz
         s.push_str(" else ");
         fmt_idx_expr(s, *else_branch, context, indent)
     }
+}
+
+fn fmt_loop_expr(s: &mut String, loop_expr: &LoopExpr, context: &Context, indent: &mut usize) {
+    s.push_str("loop ");
+    let body = context.expr(loop_expr.body);
+    let block = assert_matches!(body, Expr::Block);
+    fmt_block_expr(s, block, context, indent);
 }
 
 fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Context, indent: usize) {

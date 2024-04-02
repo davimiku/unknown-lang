@@ -21,6 +21,8 @@
 mod builder;
 mod construct;
 mod display;
+mod optimize;
+mod predecessors;
 mod scopes;
 mod syntax;
 #[cfg(test)]
@@ -29,22 +31,23 @@ mod tests;
 use std::collections::HashMap;
 
 pub use display::MirWrite;
-use hir::{Context, Expr, Key};
+use hir::{Context, Key};
 use la_arena::Arena;
 pub use syntax::{
-    BasicBlock, BinOpKind, BlockParameters, Constant, FuncId, Function, Local, Operand, Place,
-    Rvalue, Statement, SwitchIntTargets, Terminator, UnOp,
+    BasicBlock, BinOpKind, BlockParameters, BlockTarget, BranchIntTargets, Constant, FuncId,
+    Function, Local, Operand, Place, Rvalue, Statement, Terminator, UnOp,
 };
-use util_macros::assert_matches;
 
-use crate::builder::Builder;
+use crate::{builder::Builder, optimize::optimize};
 
 pub fn construct(input: &str) -> (Module, Context) {
     let (hir_module, context) = hir::lower(input);
     assert_eq!(context.diagnostics, vec![]);
     let builder = Builder::new(hir_module.id, &context);
 
-    let module = builder.construct_module(&hir_module, &context);
+    let mut module = builder.construct_module(&hir_module, &context);
+
+    optimize(&mut module);
     (module, context)
 }
 
@@ -60,38 +63,10 @@ pub fn construct_module<'hir>(
     (module, context)
 }
 
-pub fn construct_script(input: &str) -> (Module, &hir::Context) {
-    let (_, hir_context) = hir::lower_script(input);
-
-    // I solemnly swear I am up to no good
-    // FIXME: This definitely does not work in a language server or
-    // compiler server that JIT compiles scripts as plugins
-    // OK if it's restricted to CLI scripts only, probably
-    let _: &'static _ = Box::leak(Box::new(hir_context));
-
-    todo!("decide whether to abandon this entirely")
-}
-
-pub fn construct_function(input: &str) -> (Module, &hir::Context) {
-    let (root, hir_context) = hir::lower_function(input);
-    assert_eq!(hir_context.diagnostics, vec![]);
-
-    // I solemnly swear I am up to no good
-    // FIXME: This definitely does not work in a language server or
-    // compiler server that JIT compiles functions as plugins
-    // OK if it's restricted to tests only, probably
-    let context: &'static _ = Box::leak(Box::new(hir_context));
-
-    let mut builder = Builder::new(0, context);
-
-    let root = context.expr(root);
-    let func_group = assert_matches!(root, Expr::Function);
-    let func = &func_group.overloads[0];
-
-    builder.construct_function(func, None, None, context);
-    (builder.build(), context)
-}
-
+/// Data of the Mid Level Representation (MIR) for a module
+///
+/// This mainly contains the Control Flow Graph (CFG) and other
+/// supplemental data.
 #[derive(Debug)]
 pub struct Module {
     /// Control Flow Graph (CFG) representation of functions in this module

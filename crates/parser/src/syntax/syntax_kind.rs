@@ -14,6 +14,7 @@ pub enum SyntaxKind {
 
     // Keywords
     AndKw,
+    BreakKw,
     ElseKw,
     ForKw,
     FunKw,
@@ -138,6 +139,7 @@ pub enum SyntaxKind {
     LetBinding,
     TypeBinding,
     ForInLoop,
+    BreakStatement,
     ReturnStatement,
 
     // Type components
@@ -173,6 +175,7 @@ impl From<TokenKind> for SyntaxKind {
         match token_kind {
             // Keywords
             TokenKind::And => Self::AndKw,
+            TokenKind::Break => Self::BreakKw,
             TokenKind::Else => Self::ElseKw,
             TokenKind::For => Self::ForKw,
             TokenKind::Fun => Self::FunKw,

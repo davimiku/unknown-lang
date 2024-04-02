@@ -35,10 +35,10 @@ let main = fun (a: Int) -> Int {
 ";
     let main = compile_main(input);
 
-    // let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
 
-    // assert_eq!(code_fn((-1,)), 7);
-    // assert_eq!(code_fn((0,)), 16);
-    // assert_eq!(code_fn((1,)), 7);
-    // assert_eq!(code_fn((2,)), 16);
+    assert_eq!(code_fn((-1,)), 7);
+    assert_eq!(code_fn((0,)), 16);
+    assert_eq!(code_fn((1,)), 7);
+    assert_eq!(code_fn((2,)), 16);
 }

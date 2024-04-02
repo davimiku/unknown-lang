@@ -43,6 +43,10 @@ pub struct Builder {
     /// Reverse mapping from a FuncId back to its name, usually for debugging
     pub function_names: HashMap<FuncId, Option<String>>,
 
+    /// Tracks the blocks that `break` statements need to jump to, outside the current loop
+    /// The length of this stack also indicates the current loop depth
+    pub breaks_stack: Vec<Idx<BasicBlock>>,
+
     /// Tracks scopes while constructing the MIR. When a scope is entered,
     /// a new Scope is pushed on here. This tracks the current statement counter
     /// so that when a scope is popped back into an earlier scope, the statements
@@ -74,6 +78,7 @@ impl Builder {
             block_var_defs: Default::default(),
             functions_map: Default::default(),
             scopes: Default::default(),
+            breaks_stack: Default::default(),
         }
     }
 }
@@ -99,8 +104,22 @@ impl Builder {
         &mut self.functions[self.current_function]
     }
 
+    pub fn block(&self, idx: Idx<BasicBlock>) -> &BasicBlock {
+        &self.current_function().blocks[idx]
+    }
+
     pub fn block_mut(&mut self, idx: Idx<BasicBlock>) -> &mut BasicBlock {
         &mut self.current_function_mut().blocks[idx]
+    }
+
+    /// Returns an iterator to block indexes without a lifetime tied to
+    /// `self`, by copying the indexes
+    pub fn block_indexes(&self) -> Vec<Idx<BasicBlock>> {
+        self.current_function()
+            .blocks
+            .iter()
+            .map(|(idx, _)| idx)
+            .collect()
     }
 
     pub fn current_block(&self) -> &BasicBlock {

@@ -166,6 +166,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::Let => parse_let_binding(p),
         T::Type => parse_type_binding(p),
 
+        T::Break => parse_break(p),
         T::Return => parse_return(p),
 
         T::If => parse_if_expr(p),
@@ -517,12 +518,26 @@ fn parse_function_param(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::FunParam)
 }
 
+fn parse_break(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::Break);
+    let m = p.start();
+    p.bump();
+
+    if p.at_end() || p.at_set(&[T::Newline, T::RBrace]) {
+        p.bump_all_space();
+    } else {
+        parse_expr(p);
+    }
+
+    m.complete(p, SyntaxKind::BreakStatement)
+}
+
 fn parse_return(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::Return);
     let m = p.start();
     p.bump();
 
-    if p.at_end() || p.at(T::Newline) {
+    if p.at_end() || p.at_set(&[T::Newline, T::RBrace]) {
         p.bump_all_space();
     } else {
         parse_expr(p);

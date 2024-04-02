@@ -1,30 +1,31 @@
 mod arithmetic;
+mod branches;
 mod calls;
 mod comparison;
-mod control_flow;
+mod loops;
 mod mutability;
 mod params;
 mod scopes;
 
+use hir::ContextDisplay;
+
 use crate::display::write_module;
 use crate::Module;
 
-use crate::{construct_function, construct_module};
+use crate::construct_module;
 
 /// Lowers the provided input to MIR
 ///
 /// Uses "normal mode" which represents a module
 fn check_module(input: &str, expected: &str) {
     let (module, context) = hir::lower(input);
+    if !context.diagnostics.is_empty() {
+        for diagnostic in &context.diagnostics {
+            println!("{}", diagnostic.display(&context));
+        }
+        assert_eq!(context.diagnostics, vec![]);
+    }
     let (module, context) = construct_module(&module, &context);
-
-    check(module, context, expected)
-}
-
-/// Lowers the provided input to MIR from "function mode"
-/// Input must be a single function expression
-fn check_function(input: &str, expected: &str) {
-    let (module, context) = construct_function(input);
 
     check(module, context, expected)
 }

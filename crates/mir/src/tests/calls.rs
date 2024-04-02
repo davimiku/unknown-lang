@@ -1,12 +1,12 @@
-use super::{check_function, check_module};
+use super::check_module;
 
 #[test]
 #[ignore = "builtin calls not implemented yet"]
-fn print_call() {
-    let input = "fun (i: Int) -> { print i }";
+fn builtin_call() {
+    let input = "let main = fun (i: Int) -> { print i }";
 
     let expected = "
-fun {anonymous}:
+fun main:
     params: _1
     mut _0: ()
     _1: Int
@@ -15,7 +15,7 @@ fun {anonymous}:
         Call -> [TODO]
         ";
 
-    check_function(input, expected);
+    check_module(input, expected);
 }
 
 #[test]
@@ -36,8 +36,8 @@ fun is_even:
     _2: Int
     
     BB0():
-        _2 = Rem(copy _1, const 2)
-        _0 = Eq(copy _2, const 0)
+        _2 := Rem(copy _1, const 2)
+        _0 := Eq(copy _2, const 0)
         Return _0 ->
     
 fun main:
@@ -46,7 +46,7 @@ fun main:
     _1: Int
     
     BB0():
-        _0 = is_even (copy _1) -> [return: BB1, unwind -> TODO]
+        _0 := is_even (copy _1) -> [return: BB1, unwind -> TODO]
     BB1(_0):
         Return _0 ->
 ";
@@ -76,8 +76,8 @@ fun is_even:
     _2: Int
     
     BB0():
-        _2 = Rem(copy _1, const 2)
-        _0 = Eq(copy _2, const 0)
+        _2 := Rem(copy _1, const 2)
+        _0 := Eq(copy _2, const 0)
         Return _0 ->
     
 fun main:
@@ -87,14 +87,14 @@ fun main:
     _2: Bool
     
     BB0():
-        _2 = is_even (copy _1) -> [return: BB1, unwind -> TODO]
+        _2 := is_even (copy _1) -> [return: BB1, unwind -> TODO]
     BB1(_2):
-        SwitchInt(copy _2): [0 -> BB3, else -> BB2]
+        BranchInt(copy _2): [0 -> BB3, else -> BB2]
     BB2():
-        _0 = const 16
+        _0 := const 16
         Jump -> BB4
     BB3():
-        _0 = const 7
+        _0 := const 7
         Jump -> BB4
     BB4(_0):
         Return _0 ->

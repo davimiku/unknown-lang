@@ -8,10 +8,10 @@ use parser::SyntaxKind;
 use text_size::TextRange;
 use util_macros::assert_matches;
 
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    IntrinsicExpr, ReAssignment, UnaryExpr, VarRefExpr,
+    IntrinsicExpr, LoopExpr, ReAssignment, UnaryExpr, VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -43,6 +43,8 @@ pub struct Context {
 
     pub interner: Interner,
 
+    breaks_stack: BreaksStack,
+
     // HACK: when lowering a let binding for a function like this:
     // `let identity = fun (i: Int) -> { i }`
     // It's useful to store the Key/Symbol of "identity" with the FuncExpr for later use
@@ -68,10 +70,11 @@ impl Context {
         Self {
             database,
             type_database,
-            diagnostics: Default::default(),
             current_module_id,
             module_scopes: vec![scopes, ModuleScopes::new(current_module_id)],
             interner,
+            diagnostics: Default::default(),
+            breaks_stack: Default::default(),
             current_let_binding_symbol: None,
         }
     }
@@ -92,6 +95,7 @@ impl fmt::Display for Context {
 
 impl Context {
     pub(crate) fn type_check_module(&mut self, module: &Module) {
+        // TODO: raise a diagnostic if `main` returns `bottom`?
         let result = infer_module(module, self);
 
         self.diagnostics.append(&mut result.diagnostics());
@@ -274,6 +278,7 @@ impl Context {
                 E::Binary(ast) => self.lower_binary(ast),
                 E::Block(ast) => self.lower_block(ast),
                 E::BoolLiteral(ast) => self.lower_bool_literal(ast),
+                E::Break(ast) => self.lower_break_statement(ast),
                 E::Call(ast) => self.lower_call(ast),
                 E::FloatLiteral(ast) => self.lower_float_literal(ast),
                 E::Function(ast) => self.lower_function_expr(ast),
@@ -478,14 +483,17 @@ impl Context {
         todo!()
     }
 
-    fn lower_loop(&mut self, _ast: ast::Loop) -> Expr {
-        self.push_scope();
-        // identify break expressions
-        // lower statements/expressions
-        self.pop_scope();
+    fn lower_loop(&mut self, ast: ast::Loop) -> Expr {
+        if let Some(block) = ast.block() {
+            self.breaks_stack.push_loop();
+            let block = Some(ast::Expr::Block(block));
+            let body = self.lower_expr(block);
 
-        // break value?
-        todo!()
+            let breaks = self.breaks_stack.pop();
+            Expr::Loop(LoopExpr { body, breaks })
+        } else {
+            Expr::Empty
+        }
     }
 
     fn lower_call(&mut self, ast: ast::CallExpr) -> Expr {
@@ -681,9 +689,23 @@ impl Context {
         })
     }
 
+    fn lower_break_statement(&mut self, ast: ast::BreakStatement) -> Expr {
+        // TODO: Confirm it is OK to create Expr::Empty here for the None case
+        let break_value = self.lower_expr(ast.value());
+
+        if self.breaks_stack.is_empty() {
+            let diagnostic = LoweringDiagnostic::break_outside_loop(ast.range());
+            self.diagnostics.push(diagnostic.into());
+        } else {
+            self.breaks_stack.add(break_value);
+        }
+
+        Expr::BreakStatement(break_value)
+    }
+
     fn lower_return_statement(&mut self, ast: ast::ReturnStatement) -> Expr {
         let return_value = ast.return_value();
-        // TODO: None variant should be substituted with Unit value?
+        // TODO: Confirm it is OK to create Expr::Empty here for the None case
         let return_value = self.lower_expr(return_value);
 
         Expr::ReturnStatement(return_value)
@@ -797,4 +819,28 @@ fn parse_ignore_underscore<T: FromStr>(s: &str) -> Option<T> {
     s.retain(|c| c != '_');
 
     s.parse().ok()
+}
+
+#[derive(Debug, Default)]
+struct BreaksStack(Vec<Vec<Idx<Expr>>>);
+
+impl BreaksStack {
+    pub fn push_loop(&mut self) {
+        self.0.push(Vec::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn add(&mut self, expr: Idx<Expr>) {
+        self.0
+            .last_mut()
+            .expect("Compiler Bug: BreaksStack was empty")
+            .push(expr);
+    }
+
+    pub fn pop(&mut self) -> Vec<Idx<Expr>> {
+        self.0.pop().expect("Compiler Bug: BreaksStack was empty")
+    }
 }

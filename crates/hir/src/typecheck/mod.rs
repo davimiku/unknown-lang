@@ -285,7 +285,7 @@ pub struct CoreTypes {
     /// Top type, all values are inhabitants
     pub top: Idx<Type>,
 
-    /// Bottom type, has no inhabitants
+    /// Bottom type, has no inhabitants. Also known as `Never`
     pub bottom: Idx<Type>,
 
     /// Unit type, has only one inhabitant

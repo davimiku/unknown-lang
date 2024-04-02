@@ -4,7 +4,8 @@ use super::compile_main;
 
 #[test]
 fn integer_reassignment() {
-    let input = "let main = fun () -> { 
+    let input = "
+let main = fun () -> { 
     let mut i = 0
     i = i + 2
     i
@@ -19,7 +20,8 @@ fn integer_reassignment() {
 
 #[test]
 fn integer_reassignment_from_param() {
-    let input = "let main = fun (a: Int) -> { 
+    let input = "
+let main = fun (a: Int) -> { 
     let mut b = a + 2
     b = b + 6
     b

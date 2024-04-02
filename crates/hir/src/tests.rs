@@ -716,12 +716,73 @@ fn array_literal_index() {
     check(input, expected, expected_vars);
 }
 
+#[test]
+fn empty_loop() {
+    let input = "loop {}";
+
+    let expected = "loop {};";
+
+    let expected_vars = &[];
+
+    check(input, expected, expected_vars);
+}
+
+#[test]
+fn loop_immediate_break() {
+    let input = "loop { break }";
+
+    let expected = "loop { break; };";
+
+    let expected_vars = &[];
+
+    check(input, expected, expected_vars);
+}
+
+#[test]
+fn loop_break_later() {
+    let input = "loop { 
+if true { break }
+}";
+
+    let expected = "loop { if (true) { break; }; };";
+
+    let expected_vars = &[];
+
+    check(input, expected, expected_vars);
+}
+
+#[test]
+fn loop_full_example() {
+    let input = "
+let main = fun () -> {
+    let mut i = 0
+    loop {
+        if i > 5 { break }
+        i = i + 1
+    }
+    i
+}";
+
+    let expected = "main~1.0 : () -> Int = fun \"main\"() -> Int {
+    i~1.1 : mut Int = 0;
+    loop {
+        if (`>`~0.11$0 (i~1.1,5,)) { break; };
+        i~1.1 <- `+`~0.1$0 (i~1.1,1,);
+    };
+    i~1.1;
+};";
+
+    let expected_vars = &[("i~1.1", "Int"), ("main~1.0", "() -> Int")];
+
+    check(input, expected, expected_vars);
+}
+
 mod typecheck_tests {
     use util_macros::assert_matches;
 
     use crate::{lower_script, ContextDisplay, Expr, Type};
 
-    fn check_script(input: &str, expected_return_type: &Type) {
+    fn check(input: &str, expected_return_type: &Type) {
         let (root_expr, context) = lower_script(input);
 
         if !context.diagnostics.is_empty() {
@@ -745,7 +806,7 @@ mod typecheck_tests {
 
         let expected_return_type = Type::IntLiteral(1);
 
-        check_script(input, &expected_return_type);
+        check(input, &expected_return_type);
     }
 
     #[test]
@@ -754,15 +815,15 @@ mod typecheck_tests {
 
         let expected_return_type = Type::Int;
 
-        check_script(input, &expected_return_type);
+        check(input, &expected_return_type);
     }
 
     #[test]
     fn float_addition() {
         let expected_return_type = Type::Float;
 
-        check_script("1.0 + 2.0", &expected_return_type);
-        check_script("1 + 2.0", &expected_return_type);
-        check_script("1.0 + 2", &expected_return_type);
+        check("1.0 + 2.0", &expected_return_type);
+        check("1 + 2.0", &expected_return_type);
+        check("1.0 + 2", &expected_return_type);
     }
 }
