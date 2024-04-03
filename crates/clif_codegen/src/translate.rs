@@ -145,7 +145,7 @@ impl<'a> FunctionTranslator<'a> {
             self.builder
                 .append_block_params_for_function_params(entry_block);
             self.builder.switch_to_block(entry_block);
-            self.seal_block(entry_block_idx, entry_block);
+            self.safe_seal_block(entry_block_idx, entry_block);
             entry_block
         };
 
@@ -269,10 +269,10 @@ impl<'a> FunctionTranslator<'a> {
     }
 
     fn translate_jump_terminator(&mut self, target: ClifBlock, args: &[Idx<Local>]) {
-        let args = self.locals_to_values(args);
-        dbg!(target, &args);
+        // let args = self.locals_to_values(args);
+        // dbg!(target, &args);
 
-        self.builder.ins().jump(target, &args);
+        self.builder.ins().jump(target, &[]);
     }
 
     fn translate_call_terminator(
@@ -508,13 +508,16 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn seal_block(&mut self, idx: Idx<mir::BasicBlock>, block: ClifBlock) {
-        if self.status.all_finished(self.func.predecessors.get(idx)) {
-            let status = self.status.get(idx);
-            if matches!(status, Status::Empty | Status::Finished) {
-                self.builder.seal_block(block);
-                self.status.insert(idx, status.seal());
-            };
+    /// Seals the given block if:
+    /// 1. The block is not sealed
+    /// 2. All of the predecessors are finished
+    fn safe_seal_block(&mut self, idx: Idx<mir::BasicBlock>, block: ClifBlock) {
+        let status = self.status.get(idx);
+        if matches!(status, Status::Empty | Status::Finished)
+            && self.status.all_finished(self.func.predecessors.get(idx))
+        {
+            self.builder.seal_block(block);
+            self.status.insert(idx, status.seal());
         }
     }
 }

@@ -14,9 +14,9 @@ fn basic_if_else() {
 
     let main = compile_main(input);
 
-    let code_fn = unsafe { to_fn::<(XBool,), XFloat>(main) };
-    assert_eq!(code_fn((TRUE,)), 16.0);
-    assert_eq!(code_fn((FALSE,)), 8.0);
+    let code_fn = unsafe { to_fn::<(XBool,), XInt>(main) };
+    assert_eq!(code_fn((TRUE,)), 16);
+    assert_eq!(code_fn((FALSE,)), 8);
 }
 
 #[test]
@@ -47,6 +47,10 @@ let main = fun (condition: Bool, i: Int) -> Int {
 }";
 
     let main = compile_main(input);
+
+    let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
+    assert_eq!(code_fn((TRUE, 16)), 16);
+    assert_eq!(code_fn((FALSE, 16)), 16);
 }
 
 #[test]

@@ -6,32 +6,15 @@ use cranelift::codegen::settings;
 use cranelift::codegen::verifier::verify_function;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 
-fn before(sig: Signature) -> (FunctionBuilderContext, Function) {
-    let ctx = FunctionBuilderContext::new();
-    let func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
-
-    (ctx, func)
-}
-
-// TODO: make this a macro
-fn after(builder: FunctionBuilder, func: &Function) {
-    builder.finalize();
-    let flags = settings::Flags::new(settings::builder());
-    let res = verify_function(&func, &flags);
-    println!("{}", func.display());
-    if let Err(errors) = res {
-        panic!("{}", errors);
-    }
-}
-
 #[test]
 fn test_branch_block_param() {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(I64));
-    sig.params.push(AbiParam::new(I64));
     sig.returns.push(AbiParam::new(I64));
 
-    let (mut ctx, mut func) = before(sig);
+    let mut ctx = FunctionBuilderContext::new();
+    let mut func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
+
     let mut builder = FunctionBuilder::new(&mut func, &mut ctx);
 
     {
@@ -42,13 +25,9 @@ fn test_branch_block_param() {
 
         let return_var = Variable::new(0);
         let condition = Variable::new(1);
-        let int_from_params = Variable::new(2);
-        let int_from_conditional = Variable::new(3);
 
         builder.declare_var(return_var, I64);
         builder.declare_var(condition, I64);
-        builder.declare_var(int_from_params, I64);
-        builder.declare_var(int_from_conditional, I64);
 
         builder.append_block_params_for_function_params(block0_entry);
 
@@ -56,7 +35,6 @@ fn test_branch_block_param() {
         builder.seal_block(block0_entry);
 
         builder.def_var(condition, builder.block_params(block0_entry)[0]);
-        builder.def_var(int_from_params, builder.block_params(block0_entry)[1]);
 
         let condition_val = builder.use_var(condition);
         builder
@@ -64,23 +42,21 @@ fn test_branch_block_param() {
             .brif(condition_val, block1_then, &[], block2_else, &[]);
 
         builder.switch_to_block(block1_then);
-        // builder.seal_block(block1_then);
-        let val = builder.ins().iconst(I64, 11);
-        builder.def_var(int_from_conditional, val);
+        builder.seal_block(block1_then);
+        let val = builder.ins().iconst(I64, 16);
+        builder.def_var(return_var, val);
+        let block_arg = builder.use_var(return_var);
         builder.ins().jump(block3_join, &[]);
 
         builder.switch_to_block(block2_else);
-        // builder.seal_block(block2_else);
-        let val = builder.ins().iconst(I64, 22);
-        builder.def_var(int_from_conditional, val);
+        builder.seal_block(block2_else);
+        let val = builder.ins().iconst(I64, 8);
+        builder.def_var(return_var, val);
+        let block_arg = builder.use_var(return_var);
         builder.ins().jump(block3_join, &[]);
 
         builder.switch_to_block(block3_join);
-        // builder.seal_block(block3_join);
-        let lhs = builder.use_var(int_from_params);
-        let rhs = builder.use_var(int_from_conditional);
-        let return_val = builder.ins().iadd(lhs, rhs);
-        builder.def_var(return_var, return_val);
+        builder.seal_block(block3_join);
 
         let return_val = builder.use_var(return_var);
         builder.ins().return_(&[return_val]);

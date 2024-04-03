@@ -3,26 +3,26 @@ use super::check_module;
 #[test]
 fn basic_if_else() {
     let input = "
-let main = fun (condition: Bool) -> Float { 
+let main = fun (condition: Bool) -> Int { 
     if condition {
-        16.0
+        16
     } else {
-        8.0
+        8
     }
 }";
     let expected = "
 fun main:
     params: _1
-    mut _0: Float
+    mut _0: Int
     _1: Bool
     
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
     BB1():
-        _0 := const 16.0
+        _0 := const 16
         Jump -> BB3(_0)
     BB2():
-        _0 := const 8.0
+        _0 := const 8
         Jump -> BB3(_0)
     BB3(_0):
         Return _0 ->
