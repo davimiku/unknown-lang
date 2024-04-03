@@ -144,12 +144,8 @@ impl Builder {
                     Terminator::branch_int(discriminant, branches, otherwise)
                 }
                 Terminator::Return => Terminator::Return,
-                Terminator::Call {
-                    func,
-                    args,
-                    destination,
-                    target,
-                } => todo!(),
+
+                terminator @ Terminator::Call { .. } => terminator,
                 Terminator::Drop { place, target } => todo!(),
                 Terminator::Unreachable => Terminator::Unreachable,
             };

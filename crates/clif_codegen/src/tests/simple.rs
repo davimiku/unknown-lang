@@ -56,3 +56,34 @@ fn identity_int() {
 
     assert_eq!(code_fn((16,)), 16);
 }
+
+#[test]
+fn identity_int_with_variable() {
+    let input = "
+let main = fun (i: Int) -> {
+    let i2 = i
+    i2
+}";
+
+    let code_ptr = compile_main(input);
+
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+
+    assert_eq!(code_fn((16,)), 16);
+}
+
+#[test]
+fn variable_and_addition() {
+    let input = "
+let main = fun (i: Int) -> {
+    let i2 = i + 10
+    i2
+}";
+
+    let code_ptr = compile_main(input);
+
+    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+
+    assert_eq!(code_fn((6,)), 16);
+    assert_eq!(code_fn((-4,)), 6);
+}

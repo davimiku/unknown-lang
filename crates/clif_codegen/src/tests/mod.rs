@@ -42,43 +42,9 @@ unsafe fn to_fn<I, O>(code_ptr: *const u8) -> fn(I) -> O {
     std::mem::transmute::<_, fn(I) -> O>(code_ptr)
 }
 
-use cranelift::codegen::print_errors::{pretty_error, pretty_verifier_error};
-
-use crate::builtins::XInt;
 use crate::compile_module;
 
 fn compile_main(input: &str) -> *const u8 {
     let functions = compile_module(input).unwrap();
     *functions.get("main").unwrap()
-}
-
-#[test]
-fn identity_int_with_variable() {
-    let input = "
-let main = fun (i: Int) -> {
-    let i2 = i
-    i2
-}";
-
-    let code_ptr = compile_main(input);
-
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((16,)), 16);
-}
-
-#[test]
-fn variable_and_addition() {
-    let input = "
-let main = fun (i: Int) -> {
-    let i2 = i + 10
-    i2
-}";
-
-    let code_ptr = compile_main(input);
-
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
-
-    assert_eq!(code_fn((6,)), 16);
-    assert_eq!(code_fn((-4,)), 6);
 }

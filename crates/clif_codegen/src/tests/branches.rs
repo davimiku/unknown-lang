@@ -1,4 +1,4 @@
-use crate::builtins::{XBool, XFloat, XInt, FALSE, TRUE};
+use crate::builtins::{XBool, XInt, FALSE, TRUE};
 use crate::tests::{compile_main, to_fn};
 
 #[test]
