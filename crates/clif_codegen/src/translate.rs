@@ -243,8 +243,8 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_terminator(&mut self, terminator: &Terminator, block_map: &BlockMap) {
         match terminator {
-            Terminator::Jump(BlockTarget { target, args }) => {
-                self.translate_jump_terminator(block_map[*target], args)
+            Terminator::Jump(BlockTarget { target, .. }) => {
+                self.translate_jump_terminator(block_map[*target])
             }
 
             Terminator::Return => self.translate_return_terminator(),
@@ -268,10 +268,7 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_jump_terminator(&mut self, target: ClifBlock, args: &[Idx<Local>]) {
-        // let args = self.locals_to_values(args);
-        // dbg!(target, &args);
-
+    fn translate_jump_terminator(&mut self, target: ClifBlock) {
         self.builder.ins().jump(target, &[]);
     }
 

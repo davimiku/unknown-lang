@@ -132,7 +132,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn iadd(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
-        match (lhs.as_int(), rhs.as_int()) {
+        match (lhs.as_const(), rhs.as_const()) {
             (None, None) => {
                 let lhs_val = self.translate_operand(lhs);
                 let rhs_val = self.translate_operand(rhs);
@@ -157,7 +157,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn isub(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
-        match (lhs.as_int(), rhs.as_int()) {
+        match (lhs.as_const(), rhs.as_const()) {
             (None, None) => {
                 let lhs_val = self.translate_operand(lhs);
                 let rhs_val = self.translate_operand(rhs);
@@ -183,7 +183,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn imul(&mut self, lhs: &Operand, rhs: &Operand) -> Value {
-        match (lhs.as_int(), rhs.as_int()) {
+        match (lhs.as_const(), rhs.as_const()) {
             (None, None) => {
                 let lhs_val = self.translate_operand(lhs);
                 let rhs_val = self.translate_operand(rhs);

@@ -714,7 +714,7 @@ impl Operand {
         }
     }
 
-    pub fn as_int(&self) -> Option<&i64> {
+    pub fn as_const(&self) -> Option<&i64> {
         self.as_constant().and_then(|constant| match constant {
             Constant::Int(i) => Some(i),
             _ => None,
