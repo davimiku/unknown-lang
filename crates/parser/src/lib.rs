@@ -11,7 +11,7 @@ use rowan::GreenNode;
 use sink::Sink;
 use source::Source;
 use std::fmt::Write;
-pub use syntax::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
+pub use syntax::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxNodeExt, SyntaxToken};
 
 pub fn parse(input: &str) -> Parse {
     parse_from_input(input, ParseEntryPoint::Root)

@@ -7,6 +7,7 @@ use crate::grammar::check_type_expr;
 // a top-level expression), but it should still be parsed as a successful
 // UnionTypeExpr but we can report an error at the AST
 #[test]
+#[ignore = "need to remove this kind of parsing after syntax change"]
 fn type_union() {
     let input = "union ( a: A, b: B )";
     check_type_expr(

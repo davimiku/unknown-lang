@@ -1,4 +1,4 @@
-use parser::{SyntaxKind, SyntaxNode};
+use parser::{SyntaxKind, SyntaxNode, SyntaxNodeExt};
 use text_size::TextRange;
 
 use super::{BoolLiteral, CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
@@ -16,7 +16,7 @@ pub enum TypeExpr {
     IntLiteral(IntLiteral),
     // Paren(ParenExpr), // parameterize to work on either Expr | TypeExpr
     StringLiteral(StringLiteral),
-    // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
+    Union(Union),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
 
@@ -58,15 +58,16 @@ impl TypeExpr {
             // If(e) => e.range(),
             // Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),
+            T::Union(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
 
     fn cast_infix(node: SyntaxNode) -> Self {
-        let is_function = node.children().any(|node| node.kind() == SyntaxKind::Arrow);
-
-        if is_function {
+        if node.has_child_of(SyntaxKind::Arrow) {
             Self::Function(Function(node))
+        } else if node.has_child_of(SyntaxKind::Bar) {
+            Self::Union(Union(node))
         } else {
             todo!()
             // Self::Binary(Binary(node))
@@ -101,10 +102,6 @@ impl Function {
 pub struct PathExpr(SyntaxNode);
 
 impl PathExpr {
-    pub fn range(&self) -> TextRange {
-        self.0.text_range()
-    }
-
     /// The expression to the left of the dot
     ///
     /// The subject is the noun that drives the action of the sentence, ex.
@@ -120,5 +117,102 @@ impl PathExpr {
             .take_while(|p| p.kind() == SyntaxKind::Dot)
             .next()
             .and_then(TypeExpr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Union(SyntaxNode);
+
+impl Union {
+    // flattens the (possibly) nested InfixExpr with Bar
+    // operators into a list - see the parser tests/binding.rs
+    // for an example of this structure
+    pub fn variants(&self) -> Vec<CompoundTypeItem> {
+        // TODO: code needs a real clean-up
+        // idea is that the first variant will be Ident | CompoundTypeItem
+        // subsequent variants will be after Bar and will be Ident | CompoundTypeItem | InfixExpr
+        // if it is InfixExpr, should loop until it ends at Ident | CompoundTypeItem
+        let first = self.0.children().find_map(CompoundTypeItem::cast).unwrap();
+        let mut v = vec![first];
+        let mut next = self
+            .0
+            .children_with_tokens()
+            .skip_while(|child| child.kind() != SyntaxKind::Bar)
+            .skip(1) // consume the `|`
+            .find_map(|node_or_token| {
+                let node = node_or_token.as_node();
+                if let Some(node) = node {
+                    if Self::is_variant(node) {
+                        return Some(node.clone());
+                    }
+                }
+                None
+            })
+            .unwrap();
+        if let Some(item) = CompoundTypeItem::cast(next) {
+            v.push(item);
+            return v;
+        }
+        // loop {
+        //     match node.children().find_map(CompoundTypeItem::cast) {
+        //         Some(item) => v.push(item),
+        //         None => break,
+        //     }
+        // }
+        v
+    }
+
+    pub fn is_variant(node: &SyntaxNode) -> bool {
+        matches!(
+            node.kind(),
+            SyntaxKind::Ident | SyntaxKind::CompoundTypeItem
+        ) || node.has_child_of(SyntaxKind::Bar)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompoundTypeItem(SyntaxNode);
+
+impl CompoundTypeItem {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        match node.kind() {
+            SyntaxKind::Ident | SyntaxKind::CompoundTypeItem => Some(Self(node)),
+
+            _ => None,
+        }
+    }
+
+    pub fn ident_as_string(&self) -> String {
+        match self.0.kind() {
+            SyntaxKind::Ident => self
+                .0
+                .first_token()
+                .expect("parsed Ident to have a token")
+                .text()
+                .to_owned(),
+
+            SyntaxKind::CompoundTypeItem => self
+                .0
+                .children()
+                .find(|node| node.kind() == SyntaxKind::Ident)
+                .expect("CompoundTypeItem to have Ident")
+                .first_token()
+                .expect("Ident to have token")
+                .to_string(),
+
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }

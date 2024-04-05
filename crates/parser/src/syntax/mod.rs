@@ -22,3 +22,13 @@ impl rowan::Language for UnknownLanguage {
 pub type SyntaxNode = rowan::SyntaxNode<UnknownLanguage>;
 pub type SyntaxToken = rowan::SyntaxToken<UnknownLanguage>;
 pub type SyntaxElement = rowan::SyntaxElement<UnknownLanguage>;
+
+pub trait SyntaxNodeExt {
+    fn has_child_of(&self, kind: SyntaxKind) -> bool;
+}
+
+impl SyntaxNodeExt for SyntaxNode {
+    fn has_child_of(&self, kind: SyntaxKind) -> bool {
+        self.children_with_tokens().any(|node| node.kind() == kind)
+    }
+}

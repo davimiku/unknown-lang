@@ -1,10 +1,11 @@
-use crate::{expr::Mutability, Expr, TypeExpr};
+use crate::Expr;
 use util_macros::{assert_matches, assert_some};
 
 mod bindings;
 mod branches;
 mod functions;
 mod loops;
+mod types;
 
 fn parse_expr(input: &str) -> Expr {
     let node = parser::test_parse_expr(input).syntax();

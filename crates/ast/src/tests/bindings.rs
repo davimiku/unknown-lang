@@ -1,6 +1,8 @@
 use util_macros::{assert_matches, assert_some};
 
-use crate::{expr::Mutability, tests::parse_expr, Expr, TypeExpr};
+use crate::expr::Mutability;
+use crate::tests::parse_expr;
+use crate::{Expr, TypeExpr};
 
 #[test]
 fn int_let_binding() {

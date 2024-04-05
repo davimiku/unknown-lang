@@ -293,6 +293,7 @@ impl Context {
                 E::ReAssignment(ast) => self.lower_reassignment(ast),
                 E::Return(ast) => self.lower_return_statement(ast),
                 E::StringLiteral(ast) => self.lower_string_literal(ast),
+                E::TypeBinding(ast) => todo!(),
                 E::Unary(ast) => self.lower_unary(ast),
             }
         } else {
@@ -727,6 +728,7 @@ impl Context {
                 TE::Function(_) => todo!(),
                 TE::Path(ast) => self.lower_type_path(ast),
                 TE::Call(ast) => self.lower_type_call(ast),
+                TE::Union(ast) => todo!(),
             };
             self.alloc_type_expr(type_expr, range)
         } else {

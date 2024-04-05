@@ -34,7 +34,7 @@ const CALL_ARG_START: [lexer::TokenKind; 10] = [
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
-    expr_binding_power(p, 0, parse_lhs, &make_binary_op)
+    expr_binding_power(p, 0)
 }
 
 // TODO: remove this after language is more developed and switch to more opaque box tests
@@ -60,16 +60,7 @@ pub(super) fn parse_block(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::BlockExpr)
 }
 
-fn expr_binding_power<FnParser, FnBinaryOp>(
-    p: &mut Parser,
-    minimum_binding_power: u8,
-    lhs_parser: FnParser,
-    make_op: &FnBinaryOp,
-) -> Option<CompletedMarker>
-where
-    FnParser: Fn(&mut Parser) -> Option<CompletedMarker>,
-    FnBinaryOp: Fn(lexer::TokenKind) -> Option<BinaryOp>,
-{
+fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
     if p.peek() == Some(T::Newline) {
         let m = p.start();
         p.bump();
@@ -77,7 +68,7 @@ where
     }
 
     // Uses `parse_lhs` from either value expressions or type expressions
-    let mut lhs = lhs_parser(p)?;
+    let mut lhs = parse_lhs(p)?;
 
     loop {
         let curr = p.peek();
@@ -85,7 +76,7 @@ where
             return Some(lhs);
         }
         let curr = curr.unwrap();
-        let op = match make_op(curr) {
+        let op = match make_binary_op(curr) {
             Some(op) => op,
 
             // Not at an operator, so is not a binary expression, so break
@@ -106,7 +97,7 @@ where
         // an expression surrounding the LHS and RHS
         let m = lhs.precede(p);
 
-        let rhs = expr_binding_power(p, right_binding_power, parse_lhs, make_op);
+        let rhs = expr_binding_power(p, right_binding_power);
 
         lhs = match op {
             BinaryOp::Function => m.complete(p, SyntaxKind::FunExpr),
@@ -270,7 +261,7 @@ fn parse_negation_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator’s token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
+    expr_binding_power(p, right_binding_power);
 
     m.complete(p, SyntaxKind::NegationExpr)
 }
@@ -285,7 +276,7 @@ fn parse_not_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
+    expr_binding_power(p, right_binding_power);
 
     m.complete(p, SyntaxKind::NotExpr)
 }
@@ -300,7 +291,7 @@ fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
     // Consume the operator's token.
     p.bump();
 
-    expr_binding_power(p, right_binding_power, parse_lhs, &make_binary_op);
+    expr_binding_power(p, right_binding_power);
 
     m.complete(p, SyntaxKind::IntoStringExpr)
 }
@@ -335,7 +326,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
             return m.complete(p, SyntaxKind::ParenExpr);
         }
 
-        let expr_marker = expr_binding_power(p, 0, parse_lhs, &make_binary_op);
+        let expr_marker = expr_binding_power(p, 0);
         if expr_marker.is_none() {
             break;
         }
@@ -600,6 +591,9 @@ enum BinaryOp {
     /// `^`
     Exp,
 
+    /// `|`
+    Union,
+
     /// `and`
     And,
 
@@ -662,6 +656,7 @@ impl BinaryOp {
     fn binding_power(self) -> (u8, u8) {
         match self {
             Self::Function => (1, 1),
+            Self::Union => (1, 1),
             Self::ReAssign => (1, 2),
             Self::Or => (3, 4),
             Self::And => (5, 6),

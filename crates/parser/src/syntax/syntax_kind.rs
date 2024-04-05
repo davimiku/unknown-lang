@@ -79,6 +79,8 @@ pub enum SyntaxKind {
     Caret,
     /// `%`
     Percent,
+    /// `|`
+    Bar,
     /// `!`
     Bang,
     /// `~`
@@ -222,6 +224,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Slash => Self::Slash,
             TokenKind::Caret => Self::Caret,
             TokenKind::Percent => Self::Percent,
+            TokenKind::Bar => Self::Bar,
             TokenKind::Bang => Self::Bang,
             TokenKind::Tilde => Self::Tilde,
 

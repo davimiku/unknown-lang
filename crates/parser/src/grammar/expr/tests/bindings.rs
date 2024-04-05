@@ -216,3 +216,168 @@ Root@0..13
         Ident@7..13 "String""#]],
     )
 }
+
+#[test]
+fn parse_type_binding_union() {
+    let input = "type Status = pending | done";
+    check(
+        input,
+        expect![[r#"
+Root@0..28
+  TypeBinding@0..28
+    TypeKw@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..12
+      Ident@5..11 "Status"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    TypeExpr@14..28
+      InfixExpr@14..28
+        Ident@14..22
+          Ident@14..21 "pending"
+          Emptyspace@21..22 " "
+        Bar@22..23 "|"
+        Emptyspace@23..24 " "
+        Ident@24..28
+          Ident@24..28 "done""#]],
+    )
+}
+
+#[test]
+fn parse_type_binding_union_payload1() {
+    let input = "type Status = pending: Int | done";
+    check(
+        input,
+        expect![[r#"
+Root@0..33
+  TypeBinding@0..33
+    TypeKw@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..12
+      Ident@5..11 "Status"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    TypeExpr@14..33
+      InfixExpr@14..33
+        CompoundTypeItem@14..27
+          Ident@14..21
+            Ident@14..21 "pending"
+          Colon@21..22 ":"
+          Emptyspace@22..23 " "
+          CompoundTypeItemType@23..27
+            Ident@23..27
+              Ident@23..26 "Int"
+              Emptyspace@26..27 " "
+        Bar@27..28 "|"
+        Emptyspace@28..29 " "
+        Ident@29..33
+          Ident@29..33 "done""#]],
+    )
+}
+
+#[test]
+fn parse_type_binding_union_payload2() {
+    let input = "type Status = pending | done: Int";
+    check(
+        input,
+        expect![[r#"
+Root@0..33
+  TypeBinding@0..33
+    TypeKw@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..12
+      Ident@5..11 "Status"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    TypeExpr@14..33
+      InfixExpr@14..33
+        Ident@14..22
+          Ident@14..21 "pending"
+          Emptyspace@21..22 " "
+        Bar@22..23 "|"
+        Emptyspace@23..24 " "
+        CompoundTypeItem@24..33
+          Ident@24..28
+            Ident@24..28 "done"
+          Colon@28..29 ":"
+          Emptyspace@29..30 " "
+          CompoundTypeItemType@30..33
+            Ident@30..33
+              Ident@30..33 "Int""#]],
+    )
+}
+
+#[test]
+fn parse_type_binding_union_payload_both() {
+    let input = "type Status = pending: Int | done: Int";
+    check(
+        input,
+        expect![[r#"
+Root@0..38
+  TypeBinding@0..38
+    TypeKw@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..12
+      Ident@5..11 "Status"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    TypeExpr@14..38
+      InfixExpr@14..38
+        CompoundTypeItem@14..27
+          Ident@14..21
+            Ident@14..21 "pending"
+          Colon@21..22 ":"
+          Emptyspace@22..23 " "
+          CompoundTypeItemType@23..27
+            Ident@23..27
+              Ident@23..26 "Int"
+              Emptyspace@26..27 " "
+        Bar@27..28 "|"
+        Emptyspace@28..29 " "
+        CompoundTypeItem@29..38
+          Ident@29..33
+            Ident@29..33 "done"
+          Colon@33..34 ":"
+          Emptyspace@34..35 " "
+          CompoundTypeItemType@35..38
+            Ident@35..38
+              Ident@35..38 "Int""#]],
+    )
+}
+
+#[test]
+fn parse_type_binding_union_three() {
+    let input = "type Status = not_started | in_progress | done";
+    check(
+        input,
+        expect![[r#"
+Root@0..46
+  TypeBinding@0..46
+    TypeKw@0..4 "type"
+    Emptyspace@4..5 " "
+    Ident@5..12
+      Ident@5..11 "Status"
+      Emptyspace@11..12 " "
+    Equals@12..13 "="
+    Emptyspace@13..14 " "
+    TypeExpr@14..46
+      InfixExpr@14..46
+        Ident@14..26
+          Ident@14..25 "not_started"
+          Emptyspace@25..26 " "
+        Bar@26..27 "|"
+        Emptyspace@27..28 " "
+        InfixExpr@28..46
+          Ident@28..40
+            Ident@28..39 "in_progress"
+            Emptyspace@39..40 " "
+          Bar@40..41 "|"
+          Emptyspace@41..42 " "
+          Ident@42..46
+            Ident@42..46 "done""#]],
+    )
+}

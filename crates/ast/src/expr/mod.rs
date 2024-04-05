@@ -28,7 +28,7 @@ pub enum Expr {
     ReAssignment(ReAssignment),
     Return(ReturnStatement),
     StringLiteral(StringLiteral),
-    // TypeBinding(TypeBinding), // the full `type A = struct { ... }`
+    TypeBinding(TypeBinding), // the full `type A = struct { ... }`
     Unary(Unary),
 }
 
@@ -60,6 +60,7 @@ impl Expr {
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             SyntaxKind::ReturnStatement => Self::Return(ReturnStatement(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
+            SyntaxKind::TypeBinding => Self::TypeBinding(TypeBinding(node)),
 
             _ => return None,
         })
@@ -87,6 +88,7 @@ impl Expr {
             E::ReAssignment(e) => e.range(),
             E::Return(e) => e.range(),
             E::StringLiteral(e) => e.range(),
+            E::TypeBinding(e) => e.range(),
             E::Unary(e) => e.range(),
         }
     }
@@ -683,6 +685,56 @@ impl StringLiteral {
 
     pub fn as_string(&self) -> Option<String> {
         self.value().map(|token| token.text().to_owned())
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeBinding(SyntaxNode);
+
+impl TypeBinding {
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.0
+            .children()
+            .find(|child| child.kind() == SyntaxKind::Ident)
+            .and_then(|ident| ident.first_token())
+    }
+
+    /*
+    TODO: type parameters? i.e.
+
+    type Option 'A = none | some: 'A
+                ^^
+    type Result ('Err, 'Ok) = err: 'Err | ok: 'Ok
+                ^^^^^^^^^^^
+     */
+
+    /// Type Expression i.e. the RHS of this binding
+    ///
+    /// ex.
+    /// ```ignore
+    /// type MyAlias = String
+    /// //             ^^^^^^
+    ///
+    /// type Option 'A = none | some: 'A
+    /// //               ^^^^^^^^^^^^^^^
+    ///
+    /// type InnerData = MyData.inner
+    /// //               ^^^^^^^^^^^^
+    /// ```
+    pub fn type_expr(&self) -> Option<TypeExpr> {
+        self.0
+            .children_with_tokens()
+            .skip_while(|child| match child.as_token() {
+                Some(token) => token.kind() != SyntaxKind::Equals,
+                None => true,
+            })
+            .skip(1) // consume the Equals
+            .filter_map(SyntaxElement::into_node)
+            .find_map(TypeExpr::cast)
     }
 
     pub fn range(&self) -> TextRange {

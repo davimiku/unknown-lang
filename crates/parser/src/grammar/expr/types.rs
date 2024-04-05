@@ -1,20 +1,88 @@
 use lexer::TokenKind as T;
 
-use crate::grammar::expr::parse_ident;
 use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
 use super::{
-    expr_binding_power, parse_bool_literal, parse_int_literal, parse_string_literal, BinaryOp,
+    parse_bool_literal, parse_call_arguments, parse_ident, parse_int_literal, parse_string_literal,
+    BinaryOp, CALL_ARG_START,
 };
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
 
-    expr_binding_power(p, 0, parse_lhs, &make_binary_op);
+    type_expr_binding_power(p, 0);
 
     Some(m.complete(p, SyntaxKind::TypeExpr))
+}
+
+fn type_expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<CompletedMarker> {
+    if p.peek() == Some(T::Newline) {
+        let m = p.start();
+        p.bump();
+        return Some(m.complete(p, SyntaxKind::Newline));
+    }
+
+    // Uses `parse_lhs` from either value expressions or type expressions
+    let mut lhs = parse_lhs(p)?;
+
+    loop {
+        let curr = p.peek();
+        if curr.is_none() {
+            return Some(lhs);
+        }
+        let curr = curr.unwrap();
+        let op = match make_binary_op(curr) {
+            Some(op) => op,
+
+            // Not at an operator, so is not a binary expression, so break
+            // The "lhs" in this case is really the entire expression
+            None => break,
+        };
+
+        let (left_binding_power, right_binding_power) = op.binding_power();
+
+        if left_binding_power < minimum_binding_power {
+            break;
+        }
+
+        // Consume the operator token
+        p.bump();
+
+        // Starts a new marker that "wraps" the already parsed LHS, so that we can have
+        // an expression surrounding the LHS and RHS
+        let m = lhs.precede(p);
+
+        let rhs = type_expr_binding_power(p, right_binding_power);
+
+        lhs = match op {
+            BinaryOp::Function => m.complete(p, SyntaxKind::FunExpr),
+            BinaryOp::Path => m.complete(p, SyntaxKind::PathExpr),
+
+            _ => m.complete(p, SyntaxKind::InfixExpr),
+        };
+
+        if rhs.is_none() {
+            // TODO: add error like "expected expression on RHS"
+            break;
+        }
+    }
+
+    // Having just finished parsing an expression, check if the next token
+    // could be the start of function arguments, thereby making this just-parsed
+    // expression the callee of a Call expression.
+    if p.at_set(&CALL_ARG_START) {
+        // Starts a new marker that "wraps" the already parsed callee, so that we
+        // can have a CallExpr with callee and args
+        let m = lhs.precede(p);
+
+        parse_call_arguments(p);
+
+        lhs = m.complete(p, SyntaxKind::Call);
+    }
+
+    Some(lhs)
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
@@ -25,7 +93,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     } else if p.at(T::False) || p.at(T::True) {
         parse_bool_literal(p)
     } else if p.at(T::Ident) {
-        parse_ident(p)
+        parse_compound_type_item(p)
     } else if p.at(T::Union) {
         parse_union(p)
     } else if p.at(T::Struct) {
@@ -70,7 +138,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     }
 
     loop {
-        let expr_marker = expr_binding_power(p, 0, parse_lhs, &make_binary_op);
+        let expr_marker = type_expr_binding_power(p, 0);
 
         if expr_marker.is_none() {
             break;
@@ -175,24 +243,23 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
     // FIXME: remove assertion because it's not true?
     p.debug_assert_at(T::Ident);
 
-    let m = p.start();
-
-    let ident_marker = p.start();
-    parse_ident(p);
-    ident_marker.complete(p, SyntaxKind::CompoundTypeItemIdent);
+    let ident_marker = parse_ident(p);
 
     if p.bump_if(T::Colon) {
-        let type_marker = p.start();
-        expr_binding_power(p, 0, parse_lhs, &make_binary_op);
-        type_marker.complete(p, SyntaxKind::CompoundTypeItemType);
-    }
-    if p.bump_if(T::Equals) {
-        let default_marker = p.start();
-        expr_binding_power(p, 0, parse_lhs, &make_binary_op);
-        default_marker.complete(p, SyntaxKind::CompoundTypeItemDefault);
-    }
+        let compound_marker = ident_marker.precede(p);
 
-    m.complete(p, SyntaxKind::CompoundTypeItem)
+        let type_marker = p.start();
+        type_expr_binding_power(p, 2);
+        type_marker.complete(p, SyntaxKind::CompoundTypeItemType);
+        if p.bump_if(T::Equals) {
+            let default_marker = p.start();
+            type_expr_binding_power(p, 0);
+            default_marker.complete(p, SyntaxKind::CompoundTypeItemDefault);
+        }
+        compound_marker.complete(p, SyntaxKind::CompoundTypeItem)
+    } else {
+        ident_marker
+    }
 }
 
 fn make_binary_op(token: T) -> Option<BinaryOp> {
@@ -204,6 +271,7 @@ fn make_binary_op(token: T) -> Option<BinaryOp> {
         T::Slash => BinaryOp::Div,
         T::Percent => BinaryOp::Rem,
         T::Caret => BinaryOp::Exp,
+        T::Bar => BinaryOp::Union,
         T::And => BinaryOp::And,
         T::Or => BinaryOp::Or,
         T::Dot => BinaryOp::Path,

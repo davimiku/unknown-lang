@@ -177,6 +177,10 @@ pub enum TokenKind {
     #[token("%")]
     Percent,
 
+    /// `|`
+    #[token("|")]
+    Bar,
+
     /// `!`
     #[token("!")]
     Bang,
@@ -306,6 +310,7 @@ impl fmt::Display for TokenKind {
             Self::Slash => "‘/’",
             Self::Caret => "‘^’",
             Self::Percent => "‘%’",
+            Self::Bar => "‘|’",
             Self::Bang => "‘!’",
             Self::Tilde => "‘~’",
 
