@@ -718,12 +718,19 @@ impl TypeBinding {
     /// ```ignore
     /// type MyAlias = String
     /// //             ^^^^^^
+    /// //             Ident
+    ///
+    /// type Bool = union ( false, true )
+    /// //          ^^^^^^^^^^^^^^^^^^^^^
+    /// //          Union
     ///
     /// type Option 'A = none | some: 'A
     /// //               ^^^^^^^^^^^^^^^
+    /// //               Union (new syntax)
     ///
     /// type InnerData = MyData.inner
     /// //               ^^^^^^^^^^^^
+    /// //               Path/Member
     /// ```
     pub fn type_expr(&self) -> Option<TypeExpr> {
         self.0

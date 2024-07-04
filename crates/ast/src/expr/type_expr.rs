@@ -17,6 +17,7 @@ pub enum TypeExpr {
     // Paren(ParenExpr), // parameterize to work on either Expr | TypeExpr
     StringLiteral(StringLiteral),
     Union(Union),
+    Union__NewSyntax(Union__NewSyntax),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
 
@@ -40,6 +41,7 @@ impl TypeExpr {
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             // SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
+            SyntaxKind::UnionTypeExpr => Self::Union(Union(node)),
             _ => return None,
         })
     }
@@ -59,6 +61,7 @@ impl TypeExpr {
             // Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),
             T::Union(e) => e.range(),
+            T::Union__NewSyntax(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
@@ -67,7 +70,7 @@ impl TypeExpr {
         if node.has_child_of(SyntaxKind::Arrow) {
             Self::Function(Function(node))
         } else if node.has_child_of(SyntaxKind::Bar) {
-            Self::Union(Union(node))
+            Self::Union__NewSyntax(Union__NewSyntax(node))
         } else {
             todo!()
             // Self::Binary(Binary(node))
@@ -124,20 +127,65 @@ impl PathExpr {
     }
 }
 
+/// Union with the current syntax
+///
+/// ```ignore
+/// type Bool = union ( false, true )
+/// type Status = union (
+///     pending,
+///     active,
+///     complete: Int,
+///     failed: String,
+/// )
+/// ```
 #[derive(Debug, Clone)]
 pub struct Union(SyntaxNode);
 
 impl Union {
+    pub fn variants(&self) -> Vec<CompoundTypeItem> {
+        self.compound_type_block()
+            .map(|block| block.items())
+            .unwrap_or_default()
+    }
+
+    pub fn compound_type_block(&self) -> Option<CompoundTypeBlock> {
+        self.0.children().find_map(CompoundTypeBlock::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+/// Eventually want to switch to the syntax with a vertical bar
+///
+/// ```ignore
+/// type Bool = true | false
+/// type Status =
+///     | pending
+///     | active
+///     | complete: Int
+///     | failed: String
+/// ```
+#[derive(Debug, Clone)]
+pub struct Union__NewSyntax(SyntaxNode);
+
+impl Union__NewSyntax {
     // flattens the (possibly) nested InfixExpr with Bar
-    // operators into a list - see the parser tests/binding.rs
-    // for an example of this structure
+    // operators into a list
+    // type Stooge = larry | moe | curly
+    //               ^^^^^^^^^^^^
+    //               ^^^^^^^^^^^^^^^^^^^
+    // nested InfixExpr here, almost like `(a | b) | c`
+    // see the parser tests/binding.rs
+    // for a full example of this structure
     pub fn variants(&self) -> Vec<CompoundTypeItem> {
         // TODO: code needs a real clean-up
         // idea is that the first variant will be Ident | CompoundTypeItem
         // subsequent variants will be after Bar and will be Ident | CompoundTypeItem | InfixExpr
         // if it is InfixExpr, should loop until it ends at Ident | CompoundTypeItem
         let first = self.0.children().find_map(CompoundTypeItem::cast).unwrap();
-        let mut v = vec![first];
+        let mut variants = vec![first];
         let mut next = self
             .0
             .children_with_tokens()
@@ -153,9 +201,10 @@ impl Union {
                 None
             })
             .unwrap();
+        dbg!(&next);
         if let Some(item) = CompoundTypeItem::cast(next) {
-            v.push(item);
-            return v;
+            variants.push(item);
+            return variants;
         }
         // loop {
         //     match node.children().find_map(CompoundTypeItem::cast) {
@@ -163,7 +212,7 @@ impl Union {
         //         None => break,
         //     }
         // }
-        v
+        variants
     }
 
     pub fn is_variant(node: &SyntaxNode) -> bool {
@@ -175,6 +224,22 @@ impl Union {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompoundTypeBlock(SyntaxNode);
+
+impl CompoundTypeBlock {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::CompoundTypeBlock).then_some(Self(node))
+    }
+
+    pub fn items(&self) -> Vec<CompoundTypeItem> {
+        self.0
+            .children()
+            .filter_map(CompoundTypeItem::cast)
+            .collect()
     }
 }
 

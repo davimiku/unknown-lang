@@ -20,8 +20,8 @@ fn type_binding_alias() {
 }
 
 #[test]
-fn type_binding_union() {
-    let input = "type U = a | b";
+fn union_type() {
+    let input = "type U = union ( a, b: B )";
 
     let parsed = parse_expr(input);
 
@@ -40,7 +40,29 @@ fn type_binding_union() {
 }
 
 #[test]
-fn type_binding_union_three() {
+#[ignore = "new syntax not implemented yet"]
+fn union_type_new() {
+    let input = "type U = a | b";
+
+    let parsed = parse_expr(input);
+
+    let type_binding = assert_matches!(parsed, Expr::TypeBinding);
+
+    let name = assert_some!(type_binding.name()).to_string();
+    assert_eq!("U", name);
+
+    let type_expr = assert_some!(type_binding.type_expr());
+    let union = assert_matches!(type_expr, TypeExpr::Union__NewSyntax);
+    let variants = union.variants();
+
+    assert_eq!(variants.len(), 2);
+    assert_eq!(variants[0].ident_as_string(), "a");
+    assert_eq!(variants[1].ident_as_string(), "b");
+}
+
+#[test]
+#[ignore = "new syntax not implemented yet"]
+fn union_type_three_new() {
     let input = "type U = a | b | c";
 
     let parsed = parse_expr(input);
@@ -51,6 +73,11 @@ fn type_binding_union_three() {
     assert_eq!("U", name);
 
     let type_expr = assert_some!(type_binding.type_expr());
-    let union = assert_matches!(type_expr, TypeExpr::Union);
-    assert_eq!(union.variants().len(), 3);
+    let union = assert_matches!(type_expr, TypeExpr::Union__NewSyntax);
+    let variants = union.variants();
+
+    assert_eq!(variants.len(), 3);
+    assert_eq!(variants[0].ident_as_string(), "a");
+    assert_eq!(variants[1].ident_as_string(), "b");
+    assert_eq!(variants[2].ident_as_string(), "c");
 }
