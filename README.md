@@ -26,6 +26,13 @@ To write code in this unnamed language and execute it, please follow these steps
 git clone git@github.com:davimiku/unknown-lang.git
 ```
 
+Currently, most work is happening on the `dev` branch.
+
+```sh
+cd unknown-lang
+git switch dev
+```
+
 2. In the root of this repository, with `cargo` installed from the Rust installation in Step 0, run the following command:
 
 ```sh
@@ -78,6 +85,10 @@ To run a specific script file, for example named `test.prog` which exists in the
 MIRIFLAGS="-Zmiri-disable-stacked-borrows" cargo miri run -- run test.prog
 ```
 
-Note that currently the stacked borrows check is disabled via this `miri-disable-stacked-borrows` flag. This is due to this issue in [rust-analyzer/rowan](https://github.com/rust-analyzer/rowan/issues/108) which is the library used for the syntax tree. Please don't comment on that issue asking it to be fixed, as Rowan is _not_ intended as a general-purpose public library, it is only developed for Rust Analyzer. In order to be able to run Miri with the stacked borrows checks, we can either contribute the fix to the rowan library (preferred, if possible) or develop a new syntax tree library (doesn't seem like a good idea, would likely be reinventing the wheel but a worse wheel).
+Note that currently the stacked borrows check is disabled via this `miri-disable-stacked-borrows` flag. This is due to this issue in [rust-analyzer/rowan](https://github.com/rust-analyzer/rowan/issues/108) which is the library used for the syntax tree.
+
+> Please don't comment on that issue asking it to be fixed, as Rowan is _not_ intended as a general-purpose public library, it is only developed for Rust Analyzer.
+
+In order to be able to run Miri with the stacked borrows checks, we can either contribute the fix to the rowan library (preferred, if possible) or develop a new syntax tree library (doesn't seem like a good idea, would likely be reinventing the wheel but a worse wheel).
 
 We should also keep an eye on [tree borrows](https://perso.crans.org/vanille/treebor/), the new aliasing model for Rust programs which may replace (or supplement) the stacked borrow model.
