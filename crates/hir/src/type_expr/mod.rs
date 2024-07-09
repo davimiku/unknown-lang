@@ -5,7 +5,7 @@ use la_arena::Idx;
 use crate::interner::Key;
 use crate::{BinaryOp, UnaryOp};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TypeExpr {
     /// A missing expression from the parse tree
     Empty,
@@ -27,6 +27,7 @@ pub enum TypeExpr {
 
     /// Unary expression, ex. `-a`, `!b`
     Unary(UnaryTypeExpr),
+
     // Block(BlockExpr),
     Call(CallExpr),
 
@@ -40,27 +41,30 @@ pub enum TypeExpr {
 
     /// Definition of a local type variable
     LocalDef(TypeDefExpr),
+
+    Union(UnionTypeExpr),
+
+    /// Expression evaluating to the unit type, such as `()`
+    Unit,
     // Call(CallExpr),
     // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?
     // If(IfExpr),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-/// Binary expression
+/// Binary type expression
+///
+/// ```ignore
+/// type Five = 2 + 3
+/// //          ^^^^^
+/// ```
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BinaryTypeExpr {
     pub op: BinaryOp,
     pub lhs: Idx<TypeExpr>,
     pub rhs: Idx<TypeExpr>,
 }
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct UnaryTypeExpr {
-    pub op: UnaryOp,
-    pub expr: Idx<TypeExpr>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CallExpr {
     // TODO: create a Path struct to handle multiple
     pub path: String,
@@ -68,11 +72,21 @@ pub struct CallExpr {
     /// Arguments to the parametric type
     pub args: Vec<Idx<TypeExpr>>,
 }
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct UnaryTypeExpr {
+    pub op: UnaryOp,
+    pub expr: Idx<TypeExpr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct UnionTypeExpr {
+    pub variants: Vec<(Key, Idx<TypeExpr>)>,
+}
 
 /// Local type definition
 ///
 /// Defines a new type in a given scope.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDefExpr {
     pub key: TypeSymbol,
 
@@ -99,7 +113,7 @@ impl TypeSymbol {
 }
 
 /// Reference to a variable that lives in the "type" universe
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TypeRefExpr {
     /// Interned string of the type name
     pub key: Key,

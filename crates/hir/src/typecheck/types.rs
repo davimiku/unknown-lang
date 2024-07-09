@@ -26,16 +26,16 @@ pub enum Type {
     String,
 
     // Sum
-    // Union
+    Sum(SumType),
 
     // Product
-    // Struct
+    // Product(ProductType)
 
     // Exponential
-    // TODO: consider arena allocating FunctionType, would reduce Type to 16 bytes,
-    // and could consider making this Copy at that size
     Function(FunctionType),
     Array(ArrayType),
+    // TODO: consider arena allocating larger variants
+    // and could consider making this Copy
 }
 
 impl Type {
@@ -61,6 +61,10 @@ impl Type {
 }
 
 impl Type {
+    pub(crate) fn sum(variants: Vec<(Key, Idx<Type>)>) -> Self {
+        Self::Sum(SumType { variants })
+    }
+
     pub(crate) fn array_of(of: Idx<Type>) -> Self {
         Self::Array(ArrayType { of })
     }
@@ -93,6 +97,8 @@ impl ContextDisplay for Type {
             Type::String => "String".to_owned(),
             Type::StringLiteral(key) => format!("\"{}\"", context.lookup(*key)),
 
+            Type::Sum(sum_type) => sum_type.display(context),
+
             Type::Function(func) => func.display(context),
             Type::Array(arr) => arr.display(context),
 
@@ -103,6 +109,25 @@ impl ContextDisplay for Type {
             Type::Unknown => "{unknown}".to_owned(),
             Type::Error => "{ERROR}".to_owned(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SumType {
+    pub variants: Vec<(Key, Idx<Type>)>,
+}
+
+impl ContextDisplay for SumType {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        s.push('\n');
+        for (tag, ty) in self.variants.iter() {
+            s.push_str("| ");
+            s.push_str(context.lookup(*tag));
+            s.push_str(": ");
+            s.push_str(&ty.display(context));
+        }
+        s
     }
 }
 

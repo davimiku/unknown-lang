@@ -19,6 +19,7 @@ pub(super) fn widen_to_scalar(ty_idx: Idx<Type>, context: &mut Context) -> Idx<T
         Type::IntLiteral(_) | Type::Int => context.core_types().int,
         Type::StringLiteral(_) | Type::String => context.core_types().string,
 
+        // Sum types...? Don't think so
         Type::Array(ArrayType { of }) => {
             let of = widen_to_scalar(*of, context);
             // TODO: pre-allocate `Array Bool`, `Array Float`, `Array Int`, `Array String`

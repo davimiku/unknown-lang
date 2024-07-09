@@ -4,6 +4,7 @@
 //! the expression and recursively calls infer when necessary. Base cases are
 //! for value literals and types that have already been inferred.
 
+use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
 use util_macros::assert_matches;
@@ -13,10 +14,11 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     ArrayLiteralExpr, BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr,
-    IndexIntExpr, LoopExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    IndexIntExpr, LoopExpr, MatchExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
-use crate::type_expr::{TypeExpr, TypeRefExpr};
+use crate::type_expr::{TypeExpr, TypeRefExpr, UnionTypeExpr};
+use crate::typecheck::types::SumType;
 use crate::{ArrayType, CallExpr, Context, FunctionType, Module};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
@@ -78,6 +80,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             result.chain(infer_reassignment(&reassignment, context))
         }
 
+        Expr::Match(match_expr) => result.chain(infer_match_expr(&match_expr, context)),
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Loop(loop_expr) => result.chain(infer_loop_expr(&loop_expr, context)),
         Expr::Path(_) => todo!(),
@@ -105,28 +108,57 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
     if let Some(ty) = context.type_database.type_expr_types.get(idx) {
         return ty.into();
     }
-    let (type_expr, _range) = context.database.type_expr(idx);
+    // TODO: need `range`?
+    let type_expr = context.database.type_expr(idx).0.clone();
+    use TypeExpr as TE;
     let result: TypeResult = match type_expr {
-        TypeExpr::BoolLiteral(b) => context.type_database.alloc_type(Type::BoolLiteral(*b)),
-        TypeExpr::FloatLiteral(f) => context.type_database.alloc_type(Type::FloatLiteral(*f)),
-        TypeExpr::IntLiteral(i) => context.type_database.alloc_type(Type::IntLiteral(*i)),
-        TypeExpr::StringLiteral(s) => context.type_database.alloc_type(Type::StringLiteral(*s)),
-        TypeExpr::Binary(_) => todo!(),
-        TypeExpr::Unary(_) => todo!(),
+        TE::BoolLiteral(b) => context
+            .type_database
+            .alloc_type(Type::BoolLiteral(b))
+            .into(),
+        TE::FloatLiteral(f) => context
+            .type_database
+            .alloc_type(Type::FloatLiteral(f))
+            .into(),
+        TE::IntLiteral(i) => context.type_database.alloc_type(Type::IntLiteral(i)).into(),
+        TE::StringLiteral(s) => context
+            .type_database
+            .alloc_type(Type::StringLiteral(s))
+            .into(),
 
-        TypeExpr::Call(_) => todo!(),
-        TypeExpr::VarRef(TypeRefExpr { symbol, .. }) => {
-            context.type_database.get_type_symbol(symbol)
+        TE::VarRef(TypeRefExpr { symbol, .. }) => {
+            context.type_database.get_type_symbol(&symbol).into()
         }
-        TypeExpr::UnresolvedVarRef { key } => {
-            println!("unresolved type key '{}'", context.lookup(*key));
+        TE::UnresolvedVarRef { key } => {
+            println!("unresolved type key '{}'", context.lookup(key));
             todo!()
         }
-        TypeExpr::LocalDef(_) => todo!(),
+        TE::Unit => context.type_database.core.unit.into(),
 
-        TypeExpr::Empty => todo!(),
-    }
-    .into();
+        TE::LocalDef(_) => todo!(),
+        TE::Call(_) => todo!(),
+        TE::Union(union) => {
+            let mut result = TypeResult::new(&context.type_database);
+
+            let mut variants: Vec<(Key, Idx<Type>)> = Vec::with_capacity(union.variants.len());
+            for (key, type_expr) in &union.variants {
+                let inferred = infer_type_expr(*type_expr, context);
+                let ty = inferred.ty;
+                result.chain(inferred);
+                variants.push((*key, ty));
+            }
+
+            result.ty = context
+                .type_database
+                .alloc_type(Type::Sum(SumType { variants }));
+
+            result
+        }
+        TE::Binary(_) => todo!(),
+        TE::Unary(_) => todo!(),
+
+        TE::Empty => todo!(),
+    };
     context.type_database.set_type_expr_type(idx, result.ty);
 
     result
@@ -262,6 +294,27 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
     }
     // The full definition expression still returns Unit no matter what
     result.ty = context.core_types().unit;
+
+    result
+}
+
+fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+
+    let variants = union
+        .variants
+        .iter()
+        .map(|(key, type_expr)| (*key, infer_type_expr(*type_expr, context)))
+        .map(|(key, type_result)| {
+            let ty = type_result.ty;
+            result.chain(type_result);
+            (key, ty)
+        })
+        .collect_vec();
+
+    result.ty = context
+        .type_database
+        .alloc_type(Type::Sum(SumType { variants }));
 
     result
 }
@@ -481,6 +534,28 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
             }
         }
     }
+    result
+}
+
+fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+
+    result.chain(infer_expr(match_expr.scrutinee, context));
+
+    let mut overall_ty: Option<Idx<Type>> = None;
+    for arm in &match_expr.arms {
+        let arm_ty = infer_expr(arm.expr, context);
+        if arm_ty.is_ok() && overall_ty.is_none() {
+            overall_ty = Some(arm_ty.ty);
+        }
+        result.chain(arm_ty);
+    }
+
+    match overall_ty {
+        Some(ty) => result.ty = ty,
+        None => result.ty = context.core_types().error,
+    }
+
     result
 }
 

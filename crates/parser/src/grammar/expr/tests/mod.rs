@@ -8,6 +8,7 @@ mod compound_types;
 mod functions;
 mod if_else;
 mod loops;
+mod r#match;
 mod path;
 mod scalar_literals;
 mod types;

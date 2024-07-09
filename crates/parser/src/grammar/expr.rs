@@ -16,21 +16,21 @@ use self::types::parse_type_expr;
 
 /// Tokens that may be the start of a call argument
 // Note that although blocks are expressions, LBrace can't be the
-// start of a function arg due to ambiguity with `if a {}`
-// (is the condition `a` or is the condition `a` called with empty block as arg)
+// start of a function arg due to ambiguity with `match a {}`
+// (is the scrutinee `a` or is the scrutinee `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const CALL_ARG_START: [lexer::TokenKind; 10] = [
+const CALL_ARG_START: [lexer::TokenKind; 8] = [
     T::LParen,
     T::LBracket,
     T::Ident,
     T::IntLiteral,
     T::FloatLiteral,
     T::StringLiteral,
-    T::Bang,  // expression is higher precedence than function application
+    T::Bang, // expression is higher precedence than function application
     T::Tilde, // temporary IntoString operator
-    T::False, // TODO: remove when true/false are turned into idents
-    T::True,  // TODO: remove when true/false are turned into idents
+             // T::False, // TODO: remove when true/false are turned into idents
+             // T::True,  // TODO: remove when true/false are turned into idents
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -140,9 +140,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::IntLiteral => parse_int_literal(p),
         T::FloatLiteral => parse_float_literal(p),
         T::StringLiteral => parse_string_literal(p),
-        T::False => parse_bool_literal(p),
-        T::True => parse_bool_literal(p),
-
+        // T::False => parse_bool_literal(p),
+        // T::True => parse_bool_literal(p),
         T::Ident => parse_path_ident(p),
 
         T::Dash => parse_negation_expr(p),
@@ -161,6 +160,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::Return => parse_return(p),
 
         T::If => parse_if_expr(p),
+        T::Match => parse_match_expr(p),
         T::For => parse_for_in_loop(p),
         T::Fun => parse_function(p),
 
@@ -197,13 +197,13 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::StringLiteralExpr)
 }
 
-fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at_set(&[T::False, T::True]));
+// fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
+//     debug_assert!(p.at_set(&[T::False, T::True]));
 
-    let m = p.start();
-    p.bump();
-    m.complete(p, SyntaxKind::BoolLiteralExpr)
-}
+//     let m = p.start();
+//     p.bump();
+//     m.complete(p, SyntaxKind::BoolLiteralExpr)
+// }
 
 // Helps wrap a lone Ident into a Path to make AST easier
 // TODO: is this hacky?
@@ -217,6 +217,13 @@ fn parse_path_ident(p: &mut Parser) -> CompletedMarker {
     } else {
         cm.precede(p).complete(p, SyntaxKind::PathExpr)
     }
+}
+
+pub(crate) fn parse_pattern(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    p.bump_if(T::Dot);
+    parse_ident(p);
+    m.complete(p, SyntaxKind::Pattern)
 }
 
 pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
@@ -378,7 +385,7 @@ fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {
 fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::If);
     let m = p.start();
-    p.bump();
+    p.expect(T::If);
 
     parse_condition_expr(p);
 
@@ -393,6 +400,18 @@ fn parse_if_expr(p: &mut Parser) -> CompletedMarker {
     }
 
     m.complete(p, SyntaxKind::IfExpr)
+}
+
+fn parse_match_expr(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::Match);
+    let m = p.start();
+    p.expect(T::Match);
+
+    parse_scrutinee_expr(p);
+
+    parse_match_block(p);
+
+    m.complete(p, SyntaxKind::MatchExpr)
 }
 
 fn parse_for_in_loop(p: &mut Parser) -> CompletedMarker {
@@ -541,6 +560,33 @@ fn parse_condition_expr(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     parse_expr(p);
     m.complete(p, SyntaxKind::ConditionExpr)
+}
+
+fn parse_scrutinee_expr(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    parse_expr(p);
+    m.complete(p, SyntaxKind::ScrutineeExpr)
+}
+
+fn parse_match_block(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+
+    p.expect(T::LBrace);
+    if p.bump_if(T::RBrace) {
+        return m.complete(p, SyntaxKind::MatchBlock);
+    }
+    loop {
+        let arm_marker = p.start();
+        parse_pattern(p);
+        p.expect(T::Arrow);
+        parse_expr(p);
+        p.expect_one_of([T::Comma, T::Newline]);
+        arm_marker.complete(p, SyntaxKind::MatchArm);
+        if p.bump_if(T::RBrace) {
+            return m.complete(p, SyntaxKind::MatchBlock);
+        }
+    }
+    // TODO - this greedily consumes everything if there's no RBrace?
 }
 
 fn parse_then_branch(p: &mut Parser) -> CompletedMarker {

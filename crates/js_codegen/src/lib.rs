@@ -69,6 +69,7 @@ impl Codegen {
             Expr::Function(func) => self.write_function_literal(func, context),
             Expr::VarDef(var_def) => self.write_var_def(var_def, context),
             Expr::ReAssignment(reassignment) => todo!(),
+            Expr::Match(match_expr) => todo!(),
             Expr::If(if_expr) => self.write_if_expr(if_expr, assign_to, context),
             Expr::Loop(loop_expr) => todo!(),
             Expr::Statement(inner) => {

@@ -4,6 +4,7 @@ use std::fmt;
 
 use ast::Mutability;
 use la_arena::Idx;
+use text_size::TextRange;
 use util_macros::assert_matches;
 
 use crate::interner::Key;
@@ -65,6 +66,9 @@ pub enum Expr {
     VarDef(VarDefExpr),
 
     ReAssignment(ReAssignment),
+
+    /// Branch based on the value of a "scrutinee", usually a union type
+    Match(MatchExpr),
 
     /// Branch based on boolean condition, with possible "else" branch
     If(IfExpr),
@@ -388,6 +392,68 @@ pub struct LoopExpr {
 
     /// The `break` expressions within this loop
     pub breaks: Vec<Idx<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MatchExpr {
+    /// The scrutinee of the match expression is the value being tested
+    pub scrutinee: Idx<Expr>,
+
+    /// The arms of the match expression
+    pub arms: Vec<MatchArm>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+
+    pub expr: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Pattern {
+    /// The wildcard pattern, written as `_`
+    Wild(PatternMeta),
+
+    /// Pattern that creates a binding to a variable, such as
+    /// a `let` binding with a simple variable name, or (?) matching
+    /// a union variant
+    Binding {
+        meta: PatternMeta,
+        binding: PatternBinding,
+    },
+
+    // Record/Tuple/Struct
+    // PatA | PatB | PatC
+    // Or(Vec<Pattern>)
+    Path(PatternMeta),
+
+    Literal(PatternMeta),
+    // Slice
+
+    // Range
+}
+
+impl Pattern {
+    pub fn binding(symbol: ValueSymbol, range: TextRange) -> Self {
+        let meta = PatternMeta { range };
+        let binding = PatternBinding { symbol };
+        Self::Binding { meta, binding }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PatternMeta {
+    pub range: TextRange,
+    // pub id ?? some kind of HirId like rustc?
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PatternBinding {
+    // `mut` or anything else
+    // annotation: BindingAnnotation
+    // hir_id ?
+    symbol: ValueSymbol,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

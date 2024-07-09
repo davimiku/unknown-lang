@@ -8,6 +8,7 @@ pub enum SyntaxKind {
     Hash,
     At,
 
+    Pattern,
     Ident,
     Call,
     CallArgs,
@@ -22,6 +23,7 @@ pub enum SyntaxKind {
     InKw,
     LetKw,
     LoopKw,
+    MatchKw,
     ModuleKw,
     MutKw,
     OrKw,
@@ -117,6 +119,7 @@ pub enum SyntaxKind {
     InfixExpr,
     IntLiteralExpr,
     LoopExpr,
+    MatchExpr,
     NegationExpr,
     NotExpr,
     ParenExpr,
@@ -131,7 +134,12 @@ pub enum SyntaxKind {
     // Supplemental
     ParenExprItem,
 
-    // IfExpr
+    // related to MatchExpr
+    ScrutineeExpr,
+    MatchBlock,
+    MatchArm,
+
+    // related to IfExpr
     ConditionExpr,
     ThenBranchExpr,
     ElseBranchExpr,
@@ -185,6 +193,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::In => Self::InKw,
             TokenKind::Let => Self::LetKw,
             TokenKind::Loop => Self::LoopKw,
+            TokenKind::Match => Self::MatchKw,
             TokenKind::Module => Self::ModuleKw,
             TokenKind::Mut => Self::MutKw,
             TokenKind::Or => Self::OrKw,
@@ -197,8 +206,8 @@ impl From<TokenKind> for SyntaxKind {
 
             // Literals
             TokenKind::Ident => Self::Ident,
-            TokenKind::False => Self::FalseLiteral,
-            TokenKind::True => Self::TrueLiteral,
+            // TokenKind::False => Self::FalseLiteral,
+            // TokenKind::True => Self::TrueLiteral,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
             TokenKind::StringLiteral => Self::StringLiteralExpr,

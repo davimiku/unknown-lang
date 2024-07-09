@@ -1,7 +1,63 @@
 use util_macros::{assert_matches, assert_some};
 
+use crate::expr::Pattern;
 use crate::tests::parse_expr;
 use crate::Expr;
+
+#[test]
+fn match_arms_empty() {
+    // valid syntax, would produce a value of type `Never`
+    let input = "match u {}";
+
+    let parsed = parse_expr(input);
+    let match_expr = assert_matches!(parsed, Expr::Match);
+
+    let scrutinee = assert_some!(match_expr.scrutinee());
+    let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "u");
+
+    assert_eq!(match_expr.arms().len(), 0);
+}
+
+#[test]
+fn match_arms_one() {
+    let input = "match u {
+    .a -> 4
+}";
+
+    let parsed = parse_expr(input);
+    let match_expr = assert_matches!(parsed, Expr::Match);
+
+    let scrutinee = assert_some!(match_expr.scrutinee());
+    let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "u");
+
+    let arms = match_expr.arms();
+    assert_eq!(arms.len(), 1);
+
+    assert_matches!(assert_some!(arms[0].pattern()), Pattern::DotIdentifier);
+}
+
+#[test]
+fn match_arms_two() {
+    let input = "match u {
+    .a -> 4
+    .b -> 8
+}";
+
+    let parsed = parse_expr(input);
+    let match_expr = assert_matches!(parsed, Expr::Match);
+
+    let scrutinee = assert_some!(match_expr.scrutinee());
+    let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "a");
+
+    let arms = match_expr.arms();
+    assert_eq!(arms.len(), 1);
+
+    assert_matches!(assert_some!(arms[0].pattern()), Pattern::DotIdentifier);
+    assert_matches!(assert_some!(arms[1].pattern()), Pattern::DotIdentifier);
+}
 
 #[test]
 fn if_expr_empty() {

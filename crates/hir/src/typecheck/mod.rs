@@ -19,7 +19,7 @@ pub use types::{ArrayType, FuncSignature, FunctionType, Type};
 
 use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::type_expr::{TypeExpr, TypeSymbol};
-use crate::{Context, ContextDisplay, Expr, ValueSymbol};
+use crate::{Context, ContextDisplay, Expr, Interner, ValueSymbol};
 
 pub(crate) use self::check::check_expr;
 pub(crate) use self::infer::{infer_expr, infer_module};
@@ -39,14 +39,14 @@ pub struct TypeDatabase {
     /// ```ignore
     /// let square = (a: Int) -> a * a
     /// //               ^^^
-    /// type Point = struct { x: Float, y: Float }
-    /// //           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// type Point = ( x: Float, y: Float )
+    /// //           ^^^^^^^^^^^^^^^^^^^^^^
     /// ```
     /// The `Int` is a type expression that would be mapped to
     /// `Type::Int`.
     ///
-    /// The `struct ...` is a type expression that is mapped to
-    /// `Type::Struct { ... }`
+    /// The RHS of `Point` is a type expression that is mapped to
+    /// `Type::Record { ... }`
     type_expr_types: ArenaMap<Idx<TypeExpr>, Idx<Type>>,
 
     /// Types that have been inferred for local variables
@@ -77,20 +77,32 @@ pub struct TypeDatabase {
     pub(crate) core: CoreTypes,
 }
 
-impl Default for TypeDatabase {
-    fn default() -> Self {
+impl TypeDatabase {
+    pub(crate) fn new(interner: &Interner) -> Self {
         let mut types = Arena::new();
-        // TODO: preallocate Array versions of all the types below
+
+        let unknown = types.alloc(Type::Unknown);
+        let error = types.alloc(Type::Error);
+        let top = types.alloc(Type::Top);
+        let bottom = types.alloc(Type::Bottom);
+        let unit = types.alloc(Type::Unit);
+        let float = types.alloc(Type::Float);
+        let int = types.alloc(Type::Int);
+        let string = types.alloc(Type::String);
+        let r#bool = types.alloc(Type::sum(vec![
+            (interner.core_keys().r#false, unit),
+            (interner.core_keys().r#true, unit),
+        ]));
         let core = CoreTypes {
-            unknown: types.alloc(Type::Unknown),
-            error: types.alloc(Type::Error),
-            top: types.alloc(Type::Top),
-            bottom: types.alloc(Type::Bottom),
-            unit: types.alloc(Type::Unit),
-            bool: types.alloc(Type::Bool),
-            float: types.alloc(Type::Float),
-            int: types.alloc(Type::Int),
-            string: types.alloc(Type::String),
+            unknown,
+            error,
+            top,
+            bottom,
+            unit,
+            float,
+            int,
+            string,
+            bool,
         };
         Self {
             types,
@@ -262,7 +274,7 @@ impl TypeResult {
     /// Chains two results together, applying the newer inferred type,
     /// or accumulating the diagnostics if these exist.
     pub fn chain(&mut self, mut other: TypeResult) {
-        if other.diagnostics.is_empty() {
+        if other.is_ok() {
             self.ty = other.ty;
         } else {
             self.diagnostics.append(&mut other.diagnostics);

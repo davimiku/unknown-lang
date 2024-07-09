@@ -5,8 +5,8 @@ use crate::parser::Parser;
 use crate::SyntaxKind;
 
 use super::{
-    parse_bool_literal, parse_call_arguments, parse_ident, parse_int_literal, parse_string_literal,
-    BinaryOp, CALL_ARG_START,
+    parse_call_arguments, parse_ident, parse_int_literal, parse_string_literal, BinaryOp,
+    CALL_ARG_START,
 };
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -90,8 +90,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_int_literal(p)
     } else if p.at(T::StringLiteral) {
         parse_string_literal(p)
-    } else if p.at(T::False) || p.at(T::True) {
-        parse_bool_literal(p)
+    // } else if p.at(T::False) || p.at(T::True) {
+    //     parse_bool_literal(p)
     } else if p.at(T::Ident) {
         parse_compound_type_item(p)
     } else if p.at(T::Union) {

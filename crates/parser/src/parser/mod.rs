@@ -75,6 +75,16 @@ impl<'t, 'input> Parser<'t, 'input> {
         }
     }
 
+    pub(crate) fn expect_one_of<const N: usize>(&mut self, kinds: [TokenKind; N]) {
+        for kind in kinds {
+            if self.at(kind) {
+                self.bump();
+                return;
+            }
+        }
+        self.error();
+    }
+
     pub(crate) fn expect_no_skip(&mut self, kind: TokenKind) {
         if self.at(kind) {
             self.bump();
@@ -125,7 +135,7 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events.push(Event::AddToken);
     }
 
-    /// Bumps the parser if it's at the given token
+    /// Bumps the parser if it's at the given token.
     /// Useful for optional tokens, such as trailing commas
     pub(crate) fn bump_if(&mut self, kind: TokenKind) -> bool {
         self.bump_all_space();

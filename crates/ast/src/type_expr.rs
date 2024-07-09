@@ -1,7 +1,7 @@
-use parser::{SyntaxKind, SyntaxNode, SyntaxNodeExt};
+use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxNodeExt};
 use text_size::TextRange;
 
-use super::{BoolLiteral, CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
+use crate::expr::{BoolLiteral, CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
 
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
@@ -272,6 +272,25 @@ impl CompoundTypeItem {
                 .first_token()
                 .expect("Ident to have token")
                 .to_string(),
+
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn type_expr(&self) -> Option<TypeExpr> {
+        match self.0.kind() {
+            SyntaxKind::Ident => None,
+            SyntaxKind::CompoundTypeItem => {
+                self.0
+                    .children_with_tokens()
+                    .skip_while(|child| match child.as_token() {
+                        Some(token) => token.kind() != SyntaxKind::Colon,
+                        None => true,
+                    })
+                    .skip(1) // consume the Colon
+                    .filter_map(SyntaxElement::into_node)
+                    .find_map(TypeExpr::cast)
+            }
 
             _ => unreachable!(),
         }

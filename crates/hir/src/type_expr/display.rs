@@ -20,11 +20,14 @@ impl ContextDisplay for TypeExpr {
             TypeExpr::FloatLiteral(f) => f.to_string(),
             TypeExpr::IntLiteral(i) => i.to_string(),
             TypeExpr::StringLiteral(key) => format!(r#""{}""#, context.lookup(*key)),
-            TypeExpr::Call(_) => todo!(),
 
-            TypeExpr::LocalDef(_) => todo!(),
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
             TypeExpr::UnresolvedVarRef { .. } => todo!(),
+
+            TypeExpr::LocalDef(_) => todo!(),
+            TypeExpr::Union(_) => todo!(),
+            TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),
             TypeExpr::Unary(_) => todo!(),
         }

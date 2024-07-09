@@ -84,6 +84,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::VarDef(local_def) => fmt_var_def(s, local_def, context, indent),
         Expr::ReAssignment(reassignment) => fmt_reassignment(s, reassignment, context, indent),
 
+        Expr::Match(match_expr) => todo!(),
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(_) => todo!(),

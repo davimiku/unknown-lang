@@ -37,14 +37,19 @@ impl Interner {
 
 #[derive(Debug, Default)]
 pub struct CoreKeys {
-    /// `Bool`
-    pub bool: Key,
     /// `Int`
     pub int: Key,
     /// `Float`
     pub float: Key,
     /// `String`
     pub string: Key,
+
+    /// `Bool`
+    pub bool: Key,
+    /// `false`
+    pub r#false: Key,
+    /// `true`
+    pub r#true: Key,
 
     /// `print`
     pub print: Key,
@@ -83,10 +88,13 @@ pub struct CoreKeys {
 impl CoreKeys {
     fn new(interner: &mut Interner) -> Self {
         Self {
-            bool: interner.intern("Bool"),
             int: interner.intern("Int"),
             float: interner.intern("Float"),
             string: interner.intern("String"),
+
+            bool: interner.intern("Bool"),
+            r#false: interner.intern("false"),
+            r#true: interner.intern("true"),
 
             print: interner.intern("print"),
             args: interner.intern("args"),

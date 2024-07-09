@@ -1,6 +1,21 @@
 use super::check_module;
 
 #[test]
+fn basic_match() {
+    let input = "
+let main = fun (condition: Bool) -> Int {
+    match condition {
+        .false -> 8
+        .true -> 16
+    }
+}";
+
+    let expected = "";
+
+    check_module(input, expected);
+}
+
+#[test]
 fn basic_if_else() {
     let input = "
 let main = fun (condition: Bool) -> Int { 

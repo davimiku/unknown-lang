@@ -1,11 +1,9 @@
-mod type_expr;
-
 use std::fmt::{self, Display};
 
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
-pub use type_expr::{PathExpr as TypePathExpr, TypeExpr};
+use crate::TypeExpr;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -23,6 +21,7 @@ pub enum Expr {
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
     Loop(Loop),
+    Match(Match),
     Paren(ParenExpr),
     Path(PathExpr),
     ReAssignment(ReAssignment),
@@ -53,6 +52,7 @@ impl Expr {
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
+            SyntaxKind::MatchExpr => Self::Match(Match(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::IntoStringExpr => Self::Unary(Unary(node)),
@@ -83,6 +83,7 @@ impl Expr {
             E::IntLiteral(e) => e.range(),
             E::LetBinding(e) => e.range(),
             E::Loop(e) => e.range(),
+            E::Match(e) => e.range(),
             E::Paren(e) => e.range(),
             E::Path(e) => e.range(),
             E::ReAssignment(e) => e.range(),
@@ -192,7 +193,7 @@ impl Block {
 }
 
 #[derive(Debug, Clone)]
-pub struct BoolLiteral(SyntaxNode);
+pub struct BoolLiteral(pub(crate) SyntaxNode);
 
 impl BoolLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
@@ -226,7 +227,7 @@ impl BreakStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct CallExpr(SyntaxNode);
+pub struct CallExpr(pub(crate) SyntaxNode);
 
 impl CallExpr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
@@ -264,7 +265,7 @@ impl CallArgs {
 }
 
 #[derive(Debug, Clone)]
-pub struct FloatLiteral(SyntaxNode);
+pub struct FloatLiteral(pub(crate) SyntaxNode);
 
 impl FloatLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
@@ -390,7 +391,7 @@ impl FunctionBody {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ident(SyntaxNode);
+pub struct Ident(pub(crate) SyntaxNode);
 
 impl Ident {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
@@ -445,7 +446,7 @@ impl If {
 }
 
 #[derive(Debug, Clone)]
-pub struct IntLiteral(SyntaxNode);
+pub struct IntLiteral(pub(crate) SyntaxNode);
 
 impl IntLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
@@ -518,6 +519,160 @@ impl LetBinding {
     }
 
     pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Match(SyntaxNode);
+
+impl Match {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::MatchExpr).then_some(Self(node))
+    }
+
+    pub fn scrutinee(&self) -> Option<Scrutinee> {
+        self.0.children().find_map(Scrutinee::cast)
+    }
+
+    pub fn arms(&self) -> Vec<MatchArm> {
+        let match_block = self
+            .0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::MatchBlock);
+
+        match match_block {
+            Some(node) => node.children().filter_map(MatchArm::cast).collect(),
+            None => vec![],
+        }
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Scrutinee(SyntaxNode);
+
+impl Scrutinee {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::ScrutineeExpr).then_some(Self(node))
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        self.0.first_child().and_then(Expr::cast)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchArm(SyntaxNode);
+
+impl MatchArm {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::MatchArm).then_some(Self(node))
+    }
+
+    pub fn pattern(&self) -> Option<Pattern> {
+        self.0.children().find_map(Pattern::cast)
+    }
+
+    pub fn expr(&self) -> Option<Expr> {
+        // TODO: better abstraction for "go until {thing}, then take the next thing"
+
+        self.0
+            .children_with_tokens()
+            .skip_while(|child| match child.as_token() {
+                Some(token) => token.kind() != SyntaxKind::Arrow,
+                None => true,
+            })
+            .skip(1) // consume the Arrow
+            .filter_map(SyntaxElement::into_node)
+            .find_map(Expr::cast)
+    }
+}
+
+// TODO: replace each SyntaxNode here with a newtype
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    /// ex. `ident` as used in a simple variable assignment
+    ///
+    /// ```ignore
+    /// let ident = 16
+    /// //  ^^^^^
+    /// ```
+    Identifier(SyntaxNode),
+
+    /// ex. `.ident` as used in a match arm
+    ///
+    /// ```ignore
+    /// match u {
+    ///     .ident -> 16
+    /// //  ^^^^^^
+    /// }
+    /// ```
+    DotIdentifier(DotIdentifier),
+
+    /// ex. literal strings
+    ///
+    /// ```ignore
+    /// match message {
+    ///     "hello" -> 16
+    /// //  ^^^^^^^
+    ///     "world" -> 32
+    /// //  ^^^^^^^
+    /// }
+    /// ```
+    StringLiteral(SyntaxNode),
+
+    /// ex. literal integers
+    ///
+    /// ```ignore
+    /// match message {
+    ///     -16 -> -32
+    /// //  ^^^
+    ///     16 -> 32
+    /// //  ^^
+    /// }
+    /// ```
+    IntLiteral(SyntaxNode),
+}
+
+impl Pattern {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() != SyntaxKind::Pattern {
+            return None;
+        };
+        match node.first_child_or_token()?.kind() {
+            SyntaxKind::Dot => Some(Self::DotIdentifier(DotIdentifier(node))),
+            SyntaxKind::Ident => Some(Self::Identifier(node)),
+            _ => None,
+        }
+    }
+
+    pub fn range(&self) -> TextRange {
+        match self {
+            Pattern::Identifier(node) => todo!(),
+            Pattern::DotIdentifier(dot_ident) => dot_ident.range(),
+            Pattern::StringLiteral(node) => todo!(),
+            Pattern::IntLiteral(node) => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DotIdentifier(SyntaxNode);
+
+impl DotIdentifier {
+    pub fn name(&self) -> String {
+        self.0
+            .children()
+            .find(|node| node.kind() == SyntaxKind::Ident)
+            .map(|node| node.text().to_string())
+            .unwrap_or_default() // TODO: is this fine?
+    }
+
+    fn range(&self) -> TextRange {
         self.0.text_range()
     }
 }
@@ -623,11 +778,12 @@ impl PathExpr {
     /// The subject is the noun that drives the action of the sentence, ex.
     /// "Karl runs", Karl is the subject. i.e. in `karl.runs`, karl is the subject.
     // FIXME: take only the first child before the Dot
-    // user may be in the middle of typing `|.foo` ("|" is their cursor)
+    // user may be in the middle of typing `‸.foo`
     pub fn subject(&self) -> Option<Expr> {
         self.0.first_child().and_then(Expr::cast)
     }
 
+    /// Returns the expression to the left of the dot as an Ident, if it is
     pub fn subject_as_ident(&self) -> Option<Ident> {
         if let Some(Expr::Ident(ident)) = self.subject() {
             Some(ident)
@@ -672,7 +828,7 @@ impl ReturnStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct StringLiteral(SyntaxNode);
+pub struct StringLiteral(pub(crate) SyntaxNode);
 
 impl StringLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {

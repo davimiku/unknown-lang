@@ -1,17 +1,22 @@
-mod expr;
+pub mod expr;
+mod type_expr;
 mod validation;
 
 #[cfg(test)]
 mod tests;
 
+pub use expr::Expr;
+// TODO: don't export these individually, have the HIR use them as `ast::expr::T`
+// motivation: can duplicate things in type_expr if necessary without renaming and
+// don't need "Expr" suffix, it's clear from full name
+pub use expr::{ArrayLiteral, BoolLiteral, FloatLiteral, IntLiteral, StringLiteral};
 pub use expr::{
-    ArrayLiteral, Binary, Block, BoolLiteral, BreakStatement, CallExpr, FloatLiteral, ForInLoop,
-    Function, Ident, If, IntLiteral, LetBinding, Loop, Mutability, PathExpr, ReAssignment,
-    ReturnStatement, StringLiteral, TypePathExpr, Unary,
+    Binary, Block, Function, Ident, LetBinding, Mutability, PathExpr, ReAssignment, Unary,
 };
-pub use expr::{Expr, TypeExpr};
+pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 use parser::{Parse, SyntaxKind, SyntaxNode};
 use text_size::TextRange;
+pub use type_expr::{PathExpr as TypePathExpr, TypeExpr, Union};
 
 impl From<Parse> for Root {
     fn from(parse_tree: Parse) -> Self {

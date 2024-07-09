@@ -57,6 +57,10 @@ pub enum TokenKind {
     #[token("loop")]
     Loop,
 
+    /// `match`
+    #[token("match")]
+    Match,
+
     /// `module`
     #[token("module")]
     Module,
@@ -97,12 +101,12 @@ pub enum TokenKind {
     // Well-known values
     // ==========
     /// `false`
-    #[token("false")]
-    False,
+    // #[token("false")]
+    // False,
 
-    /// `true`
-    #[token("true")]
-    True,
+    // /// `true`
+    // #[token("true")]
+    // True,
 
     // ==========
     // Delimiters
@@ -272,6 +276,7 @@ impl fmt::Display for TokenKind {
             Self::In => "‘in’",
             Self::Let => "‘let’",
             Self::Loop => "‘loop’",
+            Self::Match => "‘match’",
             Self::Module => "‘module’",
             Self::Mut => "‘mut’",
             Self::Or => "‘or’",
@@ -283,8 +288,8 @@ impl fmt::Display for TokenKind {
             Self::While => "‘while’",
 
             // Literals
-            Self::False => "‘false’",
-            Self::True => "‘true’",
+            // Self::False => "‘false’",
+            // Self::True => "‘true’",
             Self::IntLiteral => "Int",
             Self::FloatLiteral => "Float",
             Self::StringLiteral => "String",
@@ -460,15 +465,15 @@ mod tests {
         check("while", TokenKind::While);
     }
 
-    #[test]
-    fn lex_false_value() {
-        check("false", TokenKind::False);
-    }
+    // #[test]
+    // fn lex_false_value() {
+    //     check("false", TokenKind::False);
+    // }
 
-    #[test]
-    fn lex_true_keyword() {
-        check("true", TokenKind::True);
-    }
+    // #[test]
+    // fn lex_true_keyword() {
+    //     check("true", TokenKind::True);
+    // }
 
     #[test]
     fn lex_plus() {

@@ -1,6 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use ast::expr::Scrutinee;
 use ast::Mutability;
 use itertools::Itertools;
 use la_arena::Idx;
@@ -11,12 +12,12 @@ use util_macros::assert_matches;
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    IntrinsicExpr, LoopExpr, ReAssignment, UnaryExpr, VarRefExpr,
+    IntrinsicExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr, VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
 use crate::scope::ModuleScopes;
-use crate::type_expr::{CallExpr, TypeExpr, TypeRefExpr, TypeSymbol};
+use crate::type_expr::{CallExpr, TypeExpr, TypeRefExpr, TypeSymbol, UnionTypeExpr};
 use crate::typecheck::{check_expr, infer_expr, infer_module, CoreTypes, TypeDatabase};
 use crate::{BlockExpr, ContextDisplay, Database, Expr, Module, Type, UnaryOp, ValueSymbol};
 
@@ -61,7 +62,7 @@ impl Context {
         let mut database = Database::default();
         let mut current_module_id = 0;
         let mut scopes = ModuleScopes::new(current_module_id);
-        let mut type_database = TypeDatabase::default();
+        let mut type_database = TypeDatabase::new(&interner);
 
         insert_core_values(&mut database, &mut type_database, &mut scopes, &interner);
 
@@ -288,6 +289,7 @@ impl Context {
                 E::IntLiteral(ast) => self.lower_int_literal(ast),
                 E::LetBinding(ast) => self.lower_let_binding(ast),
                 E::Loop(ast) => self.lower_loop(ast),
+                E::Match(ast) => self.lower_match(ast),
                 E::Paren(ast) => return self.lower_expr(ast.expr()),
                 E::Path(ast) => self.lower_path(ast),
                 E::ReAssignment(ast) => self.lower_reassignment(ast),
@@ -303,13 +305,20 @@ impl Context {
         self.alloc_expr(expr, ast)
     }
 
-    fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
-        // TODO: desugar patterns into separate definitions
-        let name = ast.name().unwrap().text().to_string();
+    fn lower_name(&mut self, name: String) -> (Key, ValueSymbol) {
         let key = self.interner.intern(&name);
 
         let symbol = self.current_scopes_mut().insert_value(key);
         self.database.value_names.insert(symbol, key);
+        (key, symbol)
+    }
+
+    fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
+        // TODO: desugar patterns into separate definitions
+        let name = ast.name().unwrap().text().to_string();
+
+        let (key, symbol) = self.lower_name(name);
+
         self.current_let_binding_symbol = Some((key, symbol));
 
         let mutability = ast.mutability();
@@ -497,7 +506,42 @@ impl Context {
         }
     }
 
-    fn lower_call(&mut self, ast: ast::CallExpr) -> Expr {
+    fn lower_match(&mut self, ast: ast::expr::Match) -> Expr {
+        let scrutinee = ast.scrutinee().and_then(|s| s.expr());
+        let scrutinee = self.lower_expr(scrutinee);
+
+        let arms = ast
+            .arms()
+            .into_iter()
+            .filter_map(|arm| self.lower_match_arm(arm))
+            .collect();
+
+        Expr::Match(MatchExpr { scrutinee, arms })
+    }
+
+    fn lower_match_arm(&mut self, ast: ast::expr::MatchArm) -> Option<MatchArm> {
+        ast.pattern().map(|pattern| {
+            let pattern = self.lower_pattern(pattern);
+            let expr = self.lower_expr(ast.expr());
+            MatchArm { pattern, expr }
+        })
+    }
+
+    fn lower_pattern(&mut self, ast: ast::expr::Pattern) -> Pattern {
+        let range = ast.range();
+        match ast {
+            ast::expr::Pattern::Identifier(node) => todo!(),
+            ast::expr::Pattern::DotIdentifier(dot_ident) => {
+                let name = dot_ident.name();
+                let (_, symbol) = self.lower_name(name);
+                Pattern::binding(symbol, range)
+            }
+            ast::expr::Pattern::StringLiteral(node) => todo!(),
+            ast::expr::Pattern::IntLiteral(node) => todo!(),
+        }
+    }
+
+    fn lower_call(&mut self, ast: ast::expr::CallExpr) -> Expr {
         let callee = ast.callee().unwrap();
         let symbol = match &callee {
             ast::Expr::Ident(ident) => {
@@ -728,7 +772,8 @@ impl Context {
                 TE::Function(_) => todo!(),
                 TE::Path(ast) => self.lower_type_path(ast),
                 TE::Call(ast) => self.lower_type_call(ast),
-                TE::Union(ast) => todo!(),
+                TE::Union(ast) => self.lower_union(ast),
+                TE::Union__NewSyntax(ast) => todo!(),
             };
             self.alloc_type_expr(type_expr, range)
         } else {
@@ -771,7 +816,25 @@ impl Context {
         }
     }
 
-    fn lower_type_call(&mut self, ast: ast::CallExpr) -> TypeExpr {
+    fn lower_union(&mut self, ast: ast::Union) -> TypeExpr {
+        let variants = ast
+            .variants()
+            .iter()
+            .map(|item| {
+                let key = self.interner.intern(&item.ident_as_string());
+                let type_expr = item
+                    .type_expr()
+                    .map(|t| self.lower_type_expr(Some(t)))
+                    .unwrap_or_else(|| self.database.alloc_type_expr(TypeExpr::Unit, item.range()));
+
+                (key, type_expr)
+            })
+            .collect_vec();
+
+        TypeExpr::Union(UnionTypeExpr { variants })
+    }
+
+    fn lower_type_call(&mut self, ast: ast::expr::CallExpr) -> TypeExpr {
         // let path = ast.path().unwrap();
         // let mut idents = path.ident_strings();
 

@@ -9,7 +9,7 @@ mod types;
 
 fn parse_expr(input: &str) -> Expr {
     let node = parser::test_parse_expr(input).syntax();
-    Expr::cast(node).unwrap()
+    Expr::cast(node).expect("parsing to have produced an Expr")
 }
 
 #[test]
