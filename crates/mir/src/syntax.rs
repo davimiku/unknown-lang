@@ -561,10 +561,10 @@ pub enum Rvalue {
     // examples : sizeof, alignof, typeof
     // NullaryOp(NullOp<'tcx>, Ty<'tcx>),
     // -------------------------
-    // / Computes the discriminant of the place, returning it as an integer
-    // / of type discriminant_ty.
-    // / Returns zero for types without discriminant
-    // Discriminant(Place),
+    /// Computes the discriminant of the place, returning it as an integer
+    /// of type discriminant_ty.
+    /// Returns zero for types without discriminant
+    Discriminant(Place),
     // -------------------------
     // / Yields the length of the value at the given place
     // /
@@ -747,7 +747,7 @@ impl From<Place> for OperandOrPlace {
 }
 
 impl OperandOrPlace {
-    pub fn as_place(self) -> Option<Place> {
+    pub fn into_place(self) -> Option<Place> {
         match self {
             OperandOrPlace::Operand(operand) => match operand {
                 Operand::Copy(place) => Some(place),
@@ -762,8 +762,6 @@ impl OperandOrPlace {
 #[derive(Debug, Clone)]
 pub enum Constant {
     /// Integer constants.
-    ///
-    /// Boolean constants are 0 (false) or 1 (true)
     Int(i64),
 
     /// Floating point constants.

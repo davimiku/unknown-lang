@@ -367,6 +367,7 @@ impl<'a> FunctionTranslator<'a> {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
+            Rvalue::Discriminant(place) => todo!(),
         }
     }
 
@@ -463,8 +464,11 @@ impl<'a> FunctionTranslator<'a> {
             HType::IntLiteral(_) | HType::Int => self.types.int,
             HType::StringLiteral(_) | HType::String => todo!(),
 
+            // TODO: split tag and payload somehow (likely before this point)
+            HType::Sum(sum) => self.types.int,
+
             HType::Unit => unreachable!("unit types should be unused rather than translated"),
-            _ => todo!(),
+            t => todo!("{t:?}"),
         }
     }
 

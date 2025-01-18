@@ -1,8 +1,8 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
 use hir::{
-    CallExpr, Context, Expr, FunctionParam, IfExpr, LoopExpr, Mutability, ReAssignment, Type,
-    ValueSymbol, VarDefExpr,
+    CallExpr, Context, ContextDisplay, Expr, FunctionParam, IfExpr, LoopExpr, MatchExpr,
+    Mutability, ReAssignment, Type, ValueSymbol, VarDefExpr,
 };
 use itertools::Itertools;
 use la_arena::Idx;
@@ -251,7 +251,7 @@ impl Builder {
             Expr::Unary(_) => todo!(),
 
             Expr::Block(_) => {
-                // when a new block is encountered as a statement, there isn't actually any
+                // when a new block is encountered as a *statement*, there isn't actually any
                 // control flow, the new block is immediately jumped into
                 // Therefore here we don't create a new BasicBlock, and instead construct the
                 // next statements into the existing Basic Block
@@ -285,6 +285,7 @@ impl Builder {
             Expr::Path(_) => todo!(),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
+            Expr::Match(match_expr) => self.construct_match_expr(match_expr, assign_to, context),
             Expr::If(if_expr) => self.construct_if_expr(if_expr, assign_to, context),
             Expr::Loop(loop_expr) => self.construct_loop_expr(loop_expr, assign_to, context),
 
@@ -509,7 +510,7 @@ impl Builder {
 
         let place = self
             .construct_operand(reassignment.place, &None, context)
-            .as_place()
+            .into_place()
             .expect("assign place to be a valid Place");
         let assign = Statement::reassign(place, rvalue);
         self.current_block_mut().statements.push(assign);
@@ -526,6 +527,85 @@ impl Builder {
         }
 
         OperandOrPlace::from(operand)
+    }
+
+    fn construct_match_expr(
+        &mut self,
+        match_expr: &MatchExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) {
+        // FIXME: assumes that scrutinee is an enum. eventually will have literal patterns
+        // and more complex patterns like records
+        // let scrutinee_op = self.construct_operand(match_expr.scrutinee, assign_to, context);
+        // let scrutinee_place = scrutinee_op
+        //     .as_place()
+        //     .expect("FIXME: scrutinee was not a place");
+
+        let scrutinee_ty = context.expr_type(match_expr.scrutinee);
+        let scrutinee = self.construct_operand(match_expr.scrutinee, &None, context);
+        let scrutinee = Operand::from_op_or_place(scrutinee, context);
+
+        // let discriminant = Rvalue::Discriminant(scrutinee_place);
+
+        // self.construct_assign(discriminant, context.core_types().int, None);
+
+        let source_block = self.current_block;
+        let branch_blocks = match_expr
+            .arms
+            .iter()
+            .map(|_| self.new_block())
+            .collect_vec();
+        let join_block = self.new_block();
+
+        for (i, branch_block) in branch_blocks.iter().enumerate() {
+            self.current_block = *branch_block;
+            self.scopes.push();
+            self.construct_block(
+                match_expr.arms[i].expr,
+                Some(join_block),
+                assign_to,
+                context,
+            );
+            self.scopes.pop();
+        }
+
+        let mut branches = vec![];
+        let mut otherwise = None;
+        for (arm_index, arm) in match_expr.arms.iter().enumerate() {
+            match &arm.pattern {
+                hir::Pattern::Wild(_) => todo!(),
+                hir::Pattern::Binding { meta, binding } => {
+                    // need to get union variant index as int
+                    let variant_index = match scrutinee_ty {
+                        Type::Sum(s) => s.index_of(binding.ident),
+                        _ => unreachable!(),
+                    };
+                    if variant_index.is_none() {
+                        let s = context.lookup(binding.ident);
+                        let ty_s = scrutinee_ty.display(context);
+                        panic!("Found '{s}' binding, expected that to exist on type {ty_s}")
+                    }
+                    let variant_index = variant_index.unwrap();
+
+                    branches.push((
+                        variant_index,
+                        BlockTarget::with_empty_args(branch_blocks[arm_index]),
+                    ));
+                }
+                hir::Pattern::Path(_) => todo!(),
+                hir::Pattern::Literal(_) => todo!(),
+            }
+        }
+
+        let targets = BranchIntTargets {
+            branches: branches.into(),
+            otherwise,
+        };
+
+        self.construct_branch_terminator(source_block, scrutinee, targets);
+
+        self.current_block = join_block;
     }
 
     fn construct_if_expr(
@@ -615,13 +695,21 @@ impl Builder {
         self.current_block = break_to;
     }
 
-    fn find_symbol(&self, symbol: ValueSymbol) -> Idx<Local> {
+    fn try_find_symbol(&self, symbol: ValueSymbol) -> Option<Idx<Local>> {
         self.current_function()
             .locals_map
             .iter()
             .find(|(_, s)| **s == Some(symbol))
-            .expect("this symbol to have a corresponding Local")
-            .0
+            .map(|i| i.0)
+    }
+
+    fn find_symbol(&self, symbol: ValueSymbol, context: &Context) -> Idx<Local> {
+        self.try_find_symbol(symbol).unwrap_or_else(|| {
+            panic!(
+                "expected symbol `{}` to have a corresponding Local",
+                context.value_symbol_str(symbol)
+            )
+        })
     }
 
     #[must_use]
@@ -656,6 +744,15 @@ impl Builder {
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
             Expr::VarDef(_) => todo!(),
+            Expr::Match(match_expr) => {
+                self.construct_match_expr(match_expr, assign_to, context);
+
+                let assign_place = assign_to.clone().expect(
+                    "construct_operand with Expr::Match should only be called when assign_to is Some",
+                );
+
+                OperandOrPlace::from(assign_place)
+            }
             Expr::If(if_expr) => {
                 self.construct_if_expr(if_expr, assign_to, context);
 
@@ -732,8 +829,17 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Operand {
-        let local = self.find_symbol(var_ref.symbol);
-        let place = Place::from(local);
+        // TODO - check if its a defined symbol (like "true" defined in Bool.true union)
+        // and create a local for it
+        dbg!(context.type_of_value(&var_ref.symbol));
+        // context.value_symbol_str(var_ref.symbol);
+
+        let place = if let Some(local_idx) = self.try_find_symbol(var_ref.symbol) {
+            Place::from(local_idx)
+        } else {
+            // TODO: maybe it's an union variant in scope like "false" / "true"
+            todo!();
+        };
 
         if let Some(assign_place) = assign_to {
             let assign_from = Operand::from_place(place.clone(), context);

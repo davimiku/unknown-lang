@@ -531,6 +531,7 @@ impl Match {
         (node.kind() == SyntaxKind::MatchExpr).then_some(Self(node))
     }
 
+    /// scrutinee is the subject of the match expression
     pub fn scrutinee(&self) -> Option<Scrutinee> {
         self.0.children().find_map(Scrutinee::cast)
     }
@@ -664,11 +665,16 @@ impl Pattern {
 pub struct DotIdentifier(SyntaxNode);
 
 impl DotIdentifier {
+    /// Returns the name of the identifier without the leading Dot
     pub fn name(&self) -> String {
         self.0
             .children()
-            .find(|node| node.kind() == SyntaxKind::Ident)
-            .map(|node| node.text().to_string())
+            .find_map(|node| {
+                (node.kind() == SyntaxKind::Ident)
+                    .then(|| node.first_token())
+                    .flatten()
+            })
+            .map(|token| token.text().to_string())
             .unwrap_or_default() // TODO: is this fine?
     }
 

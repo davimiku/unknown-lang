@@ -5,12 +5,27 @@ fn basic_match() {
     let input = "
 let main = fun (condition: Bool) -> Int {
     match condition {
-        .false -> 8
-        .true -> 16
+        .false -> { 8 }
+        .true -> { 16 }
     }
 }";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: 8
+    _1: | false: () | true: ()
+    
+    BB0():
+        BranchInt(copy _1): [0 -> BB1(), 1 -> BB2()]
+    BB1():
+        _0 := const 8
+        Jump -> BB3()
+    BB2():
+        _0 := const 16
+        Jump -> BB3()
+    BB3():
+        Return _0 ->";
 
     check_module(input, expected);
 }

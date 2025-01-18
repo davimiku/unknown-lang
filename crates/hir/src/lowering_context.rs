@@ -533,8 +533,14 @@ impl Context {
             ast::expr::Pattern::Identifier(node) => todo!(),
             ast::expr::Pattern::DotIdentifier(dot_ident) => {
                 let name = dot_ident.name();
-                let (_, symbol) = self.lower_name(name);
-                Pattern::binding(symbol, range)
+                let key = self.interner.intern(&name);
+
+                // TODO: capture the bound variable
+                // should use `self.lower_name(name)` to ensure it's added to scope
+                // between push_scope() / pop_scope()
+                // .some(example) -> { ... }
+                //       ^^^^^^^
+                Pattern::binding(key, None, range)
             }
             ast::expr::Pattern::StringLiteral(node) => todo!(),
             ast::expr::Pattern::IntLiteral(node) => todo!(),

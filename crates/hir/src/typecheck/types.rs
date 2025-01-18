@@ -117,16 +117,34 @@ pub struct SumType {
     pub variants: Vec<(Key, Idx<Type>)>,
 }
 
+impl SumType {
+    pub fn index_of(&self, key: Key) -> Option<i64> {
+        // TODO: this is O(n), is that OK or 
+        self.variants
+            .iter()
+            .position(|(k, _)| *k == key)
+            .map(|u| u as i64)
+    }
+}
+
 impl ContextDisplay for SumType {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        s.push('\n');
-        for (tag, ty) in self.variants.iter() {
-            s.push_str("| ");
+        s.push('(');
+        let mut variants = self.variants.iter().peekable();
+        while let Some((tag, ty)) = variants.next() {
             s.push_str(context.lookup(*tag));
-            s.push_str(": ");
-            s.push_str(&ty.display(context));
+            if *ty != context.core_types().unit {
+                s.push_str(": ");
+                s.push_str(&ty.display(context));
+            }
+            if variants.peek().is_some() {
+                s.push_str(" | ");
+            }
         }
+        s.push(')');
+
+        s.truncate(s.trim_end().len());
         s
     }
 }

@@ -361,6 +361,11 @@ impl MirWrite for Rvalue {
                 op.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }
+            Rvalue::Discriminant(place) => {
+                write!(buf, "discriminant(")?;
+                place.write(buf, module, context, indent)?;
+                write!(buf, ")")
+            }
         }
     }
 }

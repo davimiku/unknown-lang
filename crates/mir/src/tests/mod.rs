@@ -6,6 +6,7 @@ mod loops;
 mod mutability;
 mod params;
 mod scopes;
+mod sum_types;
 
 use hir::ContextDisplay;
 

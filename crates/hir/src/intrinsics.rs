@@ -37,6 +37,16 @@ pub(crate) fn insert_core_values(
 
     insert_value(keys.print, Type::func(print_signatures(&t)));
 
+    {
+        let false_symbol = scopes.insert_value(keys.r#false);
+        database.value_names.insert(false_symbol, keys.r#false);
+        type_database.insert_value_symbol(false_symbol, type_database.core.bool);
+
+        let true_symbol = scopes.insert_value(keys.r#true);
+        database.value_names.insert(true_symbol, keys.r#true);
+        type_database.insert_value_symbol(true_symbol, type_database.core.bool);
+    }
+
     let mut insert_intrinsic = |key: Key, fn_type: Type, intrinsic: IntrinsicExpr| {
         let symbol = scopes.insert_value(key);
         database.value_names.insert(symbol, key);

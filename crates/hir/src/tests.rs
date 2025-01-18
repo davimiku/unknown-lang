@@ -777,6 +777,18 @@ let main = fun () -> {
     check(input, expected, expected_vars);
 }
 
+#[test]
+fn always_returns_true() {
+    let input = "let main = fun () -> { true }";
+
+    let expected =
+        "main~1.0 : () -> (false | true) = fun \"main\"() -> (false | true) { true~0.2; };";
+
+    let expected_vars = &[("main~1.0", "() -> (false | true)")];
+
+    check(input, expected, expected_vars);
+}
+
 mod typecheck_tests {
     use util_macros::assert_matches;
 

@@ -50,10 +50,10 @@ fn match_arms_two() {
 
     let scrutinee = assert_some!(match_expr.scrutinee());
     let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
-    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "a");
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "u");
 
     let arms = match_expr.arms();
-    assert_eq!(arms.len(), 1);
+    assert_eq!(arms.len(), 2);
 
     assert_matches!(assert_some!(arms[0].pattern()), Pattern::DotIdentifier);
     assert_matches!(assert_some!(arms[1].pattern()), Pattern::DotIdentifier);

@@ -303,7 +303,7 @@ pub struct CoreTypes {
     /// Unit type, has only one inhabitant
     pub unit: Idx<Type>,
 
-    /// Boolean, true or false
+    /// Bool, union with variants `false | true`
     pub bool: Idx<Type>,
 
     /// Floating point number

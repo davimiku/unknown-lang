@@ -435,9 +435,9 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    pub fn binding(symbol: ValueSymbol, range: TextRange) -> Self {
+    pub fn binding(ident: Key, symbol: Option<ValueSymbol>, range: TextRange) -> Self {
         let meta = PatternMeta { range };
-        let binding = PatternBinding { symbol };
+        let binding = PatternBinding { ident, symbol };
         Self::Binding { meta, binding }
     }
 }
@@ -453,7 +453,8 @@ pub struct PatternBinding {
     // `mut` or anything else
     // annotation: BindingAnnotation
     // hir_id ?
-    symbol: ValueSymbol,
+    pub ident: Key,
+    pub symbol: Option<ValueSymbol>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
