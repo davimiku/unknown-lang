@@ -9,7 +9,7 @@ pub use expr::Expr;
 // TODO: don't export these individually, have the HIR use them as `ast::expr::T`
 // motivation: can duplicate things in type_expr if necessary without renaming and
 // don't need "Expr" suffix, it's clear from full name
-pub use expr::{ArrayLiteral, BoolLiteral, FloatLiteral, IntLiteral, StringLiteral};
+pub use expr::{ArrayLiteral, FloatLiteral, IntLiteral, StringLiteral};
 pub use expr::{
     Binary, Block, Function, Ident, LetBinding, Mutability, PathExpr, ReAssignment, Unary,
 };

@@ -18,7 +18,6 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, UnionTypeExpr};
-use crate::typecheck::types::SumType;
 use crate::{ArrayType, CallExpr, Context, FunctionType, Module};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
@@ -59,7 +58,6 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             result.ty = context.core_types().bottom;
         }
 
-        Expr::BoolLiteral(b) => result.chain(infer_bool_literal(expr_idx, b, context)),
         Expr::FloatLiteral(f) => result.chain(infer_float_literal(expr_idx, f, context)),
         Expr::IntLiteral(i) => result.chain(infer_int_literal(expr_idx, i, context)),
         Expr::StringLiteral(key) => result.chain(infer_string_literal(expr_idx, key, context)),
@@ -112,10 +110,6 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
     let type_expr = context.database.type_expr(idx).0.clone();
     use TypeExpr as TE;
     let result: TypeResult = match type_expr {
-        TE::BoolLiteral(b) => context
-            .type_database
-            .alloc_type(Type::BoolLiteral(b))
-            .into(),
         TE::FloatLiteral(f) => context
             .type_database
             .alloc_type(Type::FloatLiteral(f))
@@ -443,14 +437,6 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
     result
 }
 
-fn infer_bool_literal(idx: Idx<Expr>, b: bool, context: &mut Context) -> TypeResult {
-    let inferred = Type::BoolLiteral(b);
-    let inferred = context.type_database.alloc_type(inferred);
-    context.type_database.set_expr_type(idx, inferred);
-
-    inferred.into()
-}
-
 fn infer_float_literal(idx: Idx<Expr>, f: f64, context: &mut Context) -> TypeResult {
     let inferred = Type::FloatLiteral(f);
     let inferred = context.type_database.alloc_type(inferred);
@@ -639,11 +625,9 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
 
         UnaryOp::IntoString => match inner_type {
             Type::Unit
-            | Type::BoolLiteral(_)
             | Type::FloatLiteral(_)
             | Type::IntLiteral(_)
             | Type::StringLiteral(_)
-            | Type::Bool
             | Type::Float
             | Type::Int
             // | Type::Function(_)

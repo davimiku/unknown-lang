@@ -197,14 +197,6 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::StringLiteralExpr)
 }
 
-// fn parse_bool_literal(p: &mut Parser) -> CompletedMarker {
-//     debug_assert!(p.at_set(&[T::False, T::True]));
-
-//     let m = p.start();
-//     p.bump();
-//     m.complete(p, SyntaxKind::BoolLiteralExpr)
-// }
-
 // Helps wrap a lone Ident into a Path to make AST easier
 // TODO: is this hacky?
 fn parse_path_ident(p: &mut Parser) -> CompletedMarker {

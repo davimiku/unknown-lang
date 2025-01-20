@@ -283,7 +283,6 @@ impl Context {
                 E::ArrayLiteral(ast) => self.lower_array_literal(ast),
                 E::Binary(ast) => self.lower_binary(ast),
                 E::Block(ast) => self.lower_block(ast),
-                E::BoolLiteral(ast) => self.lower_bool_literal(ast),
                 E::Break(ast) => self.lower_break_statement(ast),
                 E::Call(ast) => self.lower_call(ast),
                 E::FloatLiteral(ast) => self.lower_float_literal(ast),
@@ -344,12 +343,6 @@ impl Context {
         let value = self.lower_expr(ast.value());
 
         Expr::ReAssignment(ReAssignment { place, value })
-    }
-
-    fn lower_bool_literal(&mut self, ast: ast::BoolLiteral) -> Expr {
-        let value = ast.value().text().parse().expect("valid BoolLiteral value");
-
-        Expr::BoolLiteral(value)
     }
 
     fn lower_float_literal(&mut self, ast: ast::FloatLiteral) -> Expr {
@@ -775,7 +768,6 @@ impl Context {
         if let Some(ast) = ast {
             let range = ast.range();
             let type_expr = match ast {
-                TE::BoolLiteral(ast) => self.lower_type_bool_literal(ast),
                 TE::FloatLiteral(ast) => self.lower_type_float_literal(ast),
                 TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
                 TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
@@ -790,12 +782,6 @@ impl Context {
         } else {
             self.alloc_type_expr(TypeExpr::Empty, TextRange::default())
         }
-    }
-
-    fn lower_type_bool_literal(&mut self, ast: ast::BoolLiteral) -> TypeExpr {
-        let value: bool = ast.value().text().parse().expect("valid BoolLiteral");
-
-        TypeExpr::BoolLiteral(value)
     }
 
     fn lower_type_float_literal(&mut self, ast: ast::FloatLiteral) -> TypeExpr {

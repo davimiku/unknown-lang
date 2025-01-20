@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    hash::{DefaultHasher, Hash, Hasher},
-};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use la_arena::Idx;
@@ -19,13 +16,11 @@ pub enum Type {
     Unit,
 
     // Literals
-    BoolLiteral(bool),
     FloatLiteral(f64), // TODO: shared alias of Float
     IntLiteral(i64),   // TODO: shared alias of Int
     StringLiteral(Key),
 
     // Scalars
-    Bool,
     Float,
     Int,
     String,
@@ -44,10 +39,6 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn is_bool(&self) -> bool {
-        matches!(self, Type::BoolLiteral(_) | Type::Bool)
-    }
-
     pub fn is_int(&self) -> bool {
         matches!(self, Type::IntLiteral(_) | Type::Int)
     }
@@ -97,8 +88,6 @@ impl ContextDisplay for Idx<Type> {
 impl ContextDisplay for Type {
     fn display(&self, context: &Context) -> String {
         match self {
-            Type::Bool => "Bool".to_owned(),
-            Type::BoolLiteral(b) => b.to_string(),
             Type::Float => "Float".to_owned(),
             Type::FloatLiteral(f) => {
                 let mut buf = ryu::Buffer::new();

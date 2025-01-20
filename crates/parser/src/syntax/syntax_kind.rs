@@ -112,7 +112,6 @@ pub enum SyntaxKind {
     // Expr
     AssignmentExpr,
     BlockExpr,
-    BoolLiteralExpr,
     FloatLiteralExpr,
     FunExpr,
     IfExpr,

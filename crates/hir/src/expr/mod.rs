@@ -18,9 +18,6 @@ pub enum Expr {
     #[default]
     Empty,
 
-    /// Boolean literal value, `true` or `false`
-    BoolLiteral(bool),
-
     /// 64-bit Floating point literal value, ex. `1.0`, `-7654.321`
     FloatLiteral(f64),
 

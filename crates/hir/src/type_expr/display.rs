@@ -16,7 +16,6 @@ impl ContextDisplay for TypeExpr {
         match self {
             TypeExpr::Empty => "{{empty}}".to_owned(),
 
-            TypeExpr::BoolLiteral(b) => b.to_string(),
             TypeExpr::FloatLiteral(f) => f.to_string(),
             TypeExpr::IntLiteral(i) => i.to_string(),
             TypeExpr::StringLiteral(key) => format!(r#""{}""#, context.lookup(*key)),

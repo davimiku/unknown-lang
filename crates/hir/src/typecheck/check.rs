@@ -53,9 +53,6 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         (_, Type::Top) => true,
         (_, Type::Bottom) => false,
 
-        (Type::BoolLiteral(_), Type::Bool) => true,
-        (Type::BoolLiteral(a), Type::BoolLiteral(b)) => a == b,
-
         (Type::FloatLiteral(_), Type::Float) => true,
         (Type::FloatLiteral(a), Type::FloatLiteral(b)) => a == b,
 

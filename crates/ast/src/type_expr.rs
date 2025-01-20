@@ -1,12 +1,11 @@
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxNodeExt};
 use text_size::TextRange;
 
-use crate::expr::{BoolLiteral, CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
+use crate::expr::{CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
 
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
     // Binary(Binary), // parameterize to work on either Expr | TypeExpr
-    BoolLiteral(BoolLiteral),
     FloatLiteral(FloatLiteral),
     Function(Function),
     Path(PathExpr),
@@ -30,7 +29,6 @@ impl TypeExpr {
         }
         Some(match node.kind() {
             // SyntaxKind::BlockExpr => Self::Block(Block(node)),
-            SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
             SyntaxKind::FloatLiteralExpr => Self::FloatLiteral(FloatLiteral(node)),
             SyntaxKind::Ident => Self::Ident(Ident(node)),
@@ -50,7 +48,6 @@ impl TypeExpr {
         use TypeExpr as T;
         match self {
             // Binary(e) => e.range(),
-            T::BoolLiteral(e) => e.range(),
             T::Call(e) => e.range(),
             T::FloatLiteral(e) => e.range(),
             T::Function(e) => e.range(),

@@ -235,7 +235,6 @@ impl Builder {
         let statement_expr = context.expr(statement_idx);
 
         match statement_expr {
-            Expr::BoolLiteral(b) => self.construct_statement_constant((*b).into(), assign_to),
             Expr::FloatLiteral(f) => self.construct_statement_constant((*f).into(), assign_to),
             Expr::StringLiteral(s) => self.construct_statement_constant((*s).into(), assign_to),
             Expr::IntLiteral(i) => self.construct_statement_constant((*i).into(), assign_to),
@@ -632,7 +631,6 @@ impl Builder {
             // TODO: this needs to be tested for when the discriminant is a Call
             return;
         }
-        // TODO: if the discriminant is a BoolLiteral, mark one of the blocks unreachable?
         let source_block = self.current_block;
         let then_block = self.new_block();
         let else_block = else_branch.map(|_| self.new_block());
@@ -722,10 +720,6 @@ impl Builder {
         let ty = context.expr_type_idx(expr);
 
         match context.expr(expr) {
-            Expr::BoolLiteral(b) => {
-                self.construct_operand_assign(assign_to, Operand::Constant((*b).into()))
-            }
-
             Expr::FloatLiteral(f) => {
                 self.construct_operand_assign(assign_to, Operand::Constant((*f).into()))
             }

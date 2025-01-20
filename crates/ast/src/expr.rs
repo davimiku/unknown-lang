@@ -10,7 +10,6 @@ pub enum Expr {
     ArrayLiteral(ArrayLiteral),
     Block(Block),
     Binary(Binary),
-    BoolLiteral(BoolLiteral),
     Break(BreakStatement),
     Call(CallExpr),
     FloatLiteral(FloatLiteral),
@@ -36,7 +35,6 @@ impl Expr {
         Some(match node.kind() {
             SyntaxKind::ArrayLiteral => Self::ArrayLiteral(ArrayLiteral(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
-            SyntaxKind::BoolLiteralExpr => Self::BoolLiteral(BoolLiteral(node)),
             SyntaxKind::BreakStatement => Self::Break(BreakStatement(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
             // TODO: clean up code here
@@ -72,7 +70,6 @@ impl Expr {
             E::ArrayLiteral(e) => e.range(),
             E::Block(e) => e.range(),
             E::Binary(e) => e.range(),
-            E::BoolLiteral(e) => e.range(),
             E::Break(e) => e.range(),
             E::Call(e) => e.range(),
             E::FloatLiteral(e) => e.range(),
@@ -185,23 +182,6 @@ impl Block {
 
     pub fn exprs(&self) -> impl Iterator<Item = Expr> {
         self.0.children().filter_map(Expr::cast)
-    }
-
-    pub fn range(&self) -> TextRange {
-        self.0.text_range()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BoolLiteral(pub(crate) SyntaxNode);
-
-impl BoolLiteral {
-    pub fn cast(node: SyntaxNode) -> Option<Self> {
-        (node.kind() == SyntaxKind::BoolLiteralExpr).then_some(Self(node))
-    }
-
-    pub fn value(&self) -> parser::SyntaxToken {
-        self.0.first_token().expect("BoolLiteral to have a token")
     }
 
     pub fn range(&self) -> TextRange {

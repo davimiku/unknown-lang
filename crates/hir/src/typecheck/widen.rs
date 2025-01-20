@@ -14,7 +14,6 @@ use crate::{ArrayType, Context, Type};
 pub(super) fn widen_to_scalar(ty_idx: Idx<Type>, context: &mut Context) -> Idx<Type> {
     let ty = context.type_(ty_idx);
     match ty {
-        Type::BoolLiteral(_) | Type::Bool => context.core_types().bool,
         Type::FloatLiteral(_) | Type::Float => context.core_types().float,
         Type::IntLiteral(_) | Type::Int => context.core_types().int,
         Type::StringLiteral(_) | Type::String => context.core_types().string,

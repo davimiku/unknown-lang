@@ -36,7 +36,6 @@ use crate::ext::function_builder::FunctionBuilderExt;
 pub(crate) struct CommonTypes {
     int: ClifType,
     float: ClifType,
-    bool: ClifType,
     ptr: ClifType,
 }
 
@@ -45,9 +44,6 @@ impl Default for CommonTypes {
         Self {
             int: types::I64,
             float: types::F64,
-            // For now, booleans are 8 bytes defined as 1 is true and 0 is false (no other value is valid)
-            // TODO - bool could still be defined like this for codegen but it's essentially an enum
-            bool: types::I64,
 
             // TODO - cranelift got rid of the R64 type
             // https://github.com/bytecodealliance/wasmtime/pull/9164
@@ -422,7 +418,7 @@ impl<'a> FunctionTranslator<'a> {
         let rhs_val = self.translate_operand(rhs);
 
         let val_i8 = self.builder.ins().icmp(comparison, lhs_val, rhs_val);
-        self.builder.ins().sextend(self.types.bool, val_i8)
+        self.builder.ins().sextend(self.types.int, val_i8)
     }
 
     fn emit_int_constant_comparison(&mut self, lhs: i64, rhs: i64, comparison: IntCC) -> Value {
@@ -464,7 +460,6 @@ impl<'a> FunctionTranslator<'a> {
 
     fn translate_type(&mut self, ty: &HType) -> ClifType {
         match ty {
-            HType::BoolLiteral(_) | HType::Bool => self.types.bool,
             HType::FloatLiteral(_) | HType::Float => self.types.float,
             HType::IntLiteral(_) | HType::Int => self.types.int,
             HType::StringLiteral(_) | HType::String => todo!(),
@@ -479,7 +474,6 @@ impl<'a> FunctionTranslator<'a> {
 
     fn op_type(&self, op: &Operand) -> &HType {
         match self.context.type_(self.op_type_idx(op)) {
-            HType::BoolLiteral(_) => &HType::Bool,
             HType::FloatLiteral(_) => &HType::Float,
             HType::IntLiteral(_) => &HType::Int,
             HType::StringLiteral(_) => &HType::String,

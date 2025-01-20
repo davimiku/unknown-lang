@@ -54,7 +54,6 @@ impl Codegen {
     fn write_expr(&mut self, expr: &Expr, assign_to: Option<&str>, context: &Context) {
         match expr {
             Expr::Empty => todo!(),
-            Expr::BoolLiteral(b) => self.push(b.to_string()),
             Expr::FloatLiteral(f) => self.push(f.to_string()),
             Expr::IntLiteral(i) => self.push(i.to_string()),
             Expr::StringLiteral(key) => self.push(&format!("\"{}\"", context.lookup(*key))),

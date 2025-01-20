@@ -61,7 +61,6 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
             fmt_idx_expr(s, *return_value, context, indent);
         }
 
-        Expr::BoolLiteral(b) => s.push_str(&b.to_string()),
         Expr::FloatLiteral(f) => {
             let mut buffer = ryu::Buffer::new();
             s.push_str(buffer.format_finite(*f))
