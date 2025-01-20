@@ -14,7 +14,7 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
-    pub(crate) fn range(&self) -> TextRange {
+    pub fn range(&self) -> TextRange {
         match self {
             Diagnostic::Lowering(diag) => diag.range,
             Diagnostic::Type(diag) => diag.range,

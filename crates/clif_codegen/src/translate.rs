@@ -46,8 +46,13 @@ impl Default for CommonTypes {
             int: types::I64,
             float: types::F64,
             // For now, booleans are 8 bytes defined as 1 is true and 0 is false (no other value is valid)
+            // TODO - bool could still be defined like this for codegen but it's essentially an enum
             bool: types::I64,
-            ptr: types::R64,
+
+            // TODO - cranelift got rid of the R64 type
+            // https://github.com/bytecodealliance/wasmtime/pull/9164
+            // https://github.com/bytecodealliance/wasmtime/pull/8728
+            ptr: types::I64, // types::R64
         }
     }
 }

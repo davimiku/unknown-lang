@@ -1,3 +1,8 @@
+use std::{
+    any::Any,
+    hash::{DefaultHasher, Hash, Hasher},
+};
+
 use itertools::Itertools;
 use la_arena::Idx;
 
@@ -62,7 +67,14 @@ impl Type {
 
 impl Type {
     pub(crate) fn sum(variants: Vec<(Key, Idx<Type>)>) -> Self {
-        Self::Sum(SumType { variants })
+        let mut s = DefaultHasher::new();
+        for (key, ty) in variants.iter() {
+            (*key).hash(&mut s);
+            (*ty).into_raw().into_u32().hash(&mut s);
+        }
+        let hash = s.finish();
+
+        Self::Sum(SumType { variants, hash })
     }
 
     pub(crate) fn array_of(of: Idx<Type>) -> Self {
@@ -114,12 +126,16 @@ impl ContextDisplay for Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SumType {
+    /// Named variants of the sum type in the form of `key: Type`
     pub variants: Vec<(Key, Idx<Type>)>,
+
+    /// Hash computed on creation for faster comparisons
+    pub(crate) hash: u64,
 }
 
 impl SumType {
     pub fn index_of(&self, key: Key) -> Option<i64> {
-        // TODO: this is O(n), is that OK or 
+        // TODO: this is O(n), is that OK or...?
         self.variants
             .iter()
             .position(|(k, _)| *k == key)

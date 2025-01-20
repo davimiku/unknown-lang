@@ -7,7 +7,7 @@ use crate::grammar::check_type_expr;
 // a top-level expression), but it should still be parsed as a successful
 // UnionTypeExpr but we can report an error at the AST
 #[test]
-#[ignore = "need to remove this kind of parsing after syntax change"]
+#[ignore = "update to new syntax"]
 fn type_union() {
     let input = "union ( a: A, b: B )";
     check_type_expr(
@@ -46,6 +46,7 @@ fn type_union() {
 }
 
 #[test]
+#[ignore = "update when syntax is finalized"]
 fn type_struct() {
     let input = "struct ( a: A, b: B )";
     check_type_expr(

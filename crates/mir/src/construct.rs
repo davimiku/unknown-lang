@@ -829,26 +829,34 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Operand {
-        // TODO - check if its a defined symbol (like "true" defined in Bool.true union)
-        // and create a local for it
-        dbg!(context.type_of_value(&var_ref.symbol));
-        // context.value_symbol_str(var_ref.symbol);
-
-        let place = if let Some(local_idx) = self.try_find_symbol(var_ref.symbol) {
-            Place::from(local_idx)
+        let operand = if let Some(local_idx) = self.try_find_symbol(var_ref.symbol) {
+            Operand::from_place(Place::from(local_idx), context)
         } else {
-            // TODO: maybe it's an union variant in scope like "false" / "true"
-            todo!();
+            // check if it's a defined symbol like "false" or "true" from the Bool union
+            match context.type_of_value(&var_ref.symbol) {
+                Type::Sum(sum_type) => {
+                    let key = context.value_symbol_key(var_ref.symbol);
+                    let index_of = sum_type.index_of(key);
+                    let index_of = index_of.unwrap_or_else(|| {
+                        panic!(
+                            "expected symbol {} to have been defiend in union {}",
+                            var_ref.symbol.display(context),
+                            sum_type.display(context)
+                        )
+                    });
+                    Operand::Constant(Constant::Int(index_of))
+                }
+                _ => todo!("is this possible?"),
+            }
         };
 
         if let Some(assign_place) = assign_to {
-            let assign_from = Operand::from_place(place.clone(), context);
-            let assign = Statement::assign(assign_place.clone(), assign_from);
+            let assign = Statement::assign(assign_place.clone(), operand.clone());
             self.current_block_mut().statements.push(assign);
             self.def_local(assign_place.local);
         };
 
-        Operand::from_place(place, context)
+        operand
     }
 
     fn def_local(&mut self, local: Idx<Local>) {
@@ -870,7 +878,7 @@ impl Builder {
         }
     }
 
-    fn construct_local(
+    pub fn construct_local(
         &mut self,
         ty: Idx<hir::Type>,
         symbol: Option<ValueSymbol>,

@@ -14,7 +14,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: 8
-    _1: | false: () | true: ()
+    _1: (false | true)
     
     BB0():
         BranchInt(copy _1): [0 -> BB1(), 1 -> BB2()]
@@ -44,7 +44,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: Bool
+    _1: (false | true)
     
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
@@ -77,7 +77,7 @@ let main = fun (condition: Bool, b: Float) -> Float {
 fun main:
     params: _1, _2
     mut _0: Float
-    _1: Bool
+    _1: (false | true)
     _2: Float
     _3: Float
     
@@ -110,7 +110,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: Bool
+    _1: (false | true)
     _2: Int
     
     BB0():
@@ -135,16 +135,16 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: Bool
+    _1: (false | true)
     _2: Int
     _3: 1
     
     BB0():
-        BranchInt(copy _1): [0 -> BB2(_2), else -> BB1()]
+        BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
     BB1():
         _3 := const 1
-        Jump -> BB2(_2)
-    BB2(_2):
+        Jump -> BB2()
+    BB2():
         _0 := copy _2
         Return _0 ->
 ";

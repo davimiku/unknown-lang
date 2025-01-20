@@ -75,6 +75,8 @@ pub struct TypeDatabase {
 
     /// Core types that are builtin to all programs
     pub(crate) core: CoreTypes,
+    // TODO - keep a map/list of core symbols, like "false" and "true"?
+    // pub(crate) core_symbols:
 }
 
 impl TypeDatabase {

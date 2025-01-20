@@ -31,9 +31,8 @@ fn path_type() {
                 Ident@0..1
                   Ident@0..1 "A"
                 Dot@1..2 "."
-                PathExpr@2..3
-                  Ident@2..3
-                    Ident@2..3 "B""#]],
+                Ident@2..3
+                  Ident@2..3 "B""#]],
     )
 }
 
@@ -84,9 +83,8 @@ fn type_function_no_params() {
                   Emptyspace@2..3 " "
                 Arrow@3..5 "->"
                 Emptyspace@5..6 " "
-                PathExpr@6..7
-                  Ident@6..7
-                    Ident@6..7 "A""#]],
+                Ident@6..7
+                  Ident@6..7 "A""#]],
     );
 }
 
@@ -103,9 +101,8 @@ fn type_function_one_param() {
                   Emptyspace@1..2 " "
                 Arrow@2..4 "->"
                 Emptyspace@4..5 " "
-                PathExpr@5..6
-                  Ident@5..6
-                    Ident@5..6 "B""#]],
+                Ident@5..6
+                  Ident@5..6 "B""#]],
     );
 }
 
@@ -125,9 +122,8 @@ fn type_function_one_param_with_paren() {
                   Emptyspace@3..4 " "
                 Arrow@4..6 "->"
                 Emptyspace@6..7 " "
-                PathExpr@7..8
-                  Ident@7..8
-                    Ident@7..8 "B""#]],
+                Ident@7..8
+                  Ident@7..8 "B""#]],
     );
 }
 
@@ -151,9 +147,8 @@ fn type_function_two_params() {
                   Emptyspace@6..7 " "
                 Arrow@7..9 "->"
                 Emptyspace@9..10 " "
-                PathExpr@10..11
-                  Ident@10..11
-                    Ident@10..11 "C""#]],
+                Ident@10..11
+                  Ident@10..11 "C""#]],
     );
 }
 

@@ -119,21 +119,21 @@ fn multiple_string_literals() {
 fn int_addition() {
     let input = "1 + 2";
 
-    check(input, "`+`~0.1$0 (1,2,);", &[]);
+    check(input, "`+`~0.3$0 (1,2,);", &[]);
 }
 
 #[test]
 fn not_false() {
     let input = "!false";
 
-    check(input, "!false;", &[]);
+    check(input, "!false~0.1;", &[]);
 }
 
 #[test]
 fn not_true() {
     let input = "!true";
 
-    check(input, "!true;", &[]);
+    check(input, "!true~0.2;", &[]);
 }
 
 #[test]
@@ -143,10 +143,10 @@ fn not_variable_ref() {
     let b = !a
 "#;
     let expected_expr = indoc! {"
-        a~1.0 : true = true;
-        b~1.1 : false = !a~1.0;"};
+        a~1.0 : (false | true) = true~0.2;
+        b~1.1 : (false | true) = !a~1.0;"};
 
-    let expected_vars = &[("a~1.0", "true"), ("b~1.1", "false")];
+    let expected_vars = &[("a~1.0", "(false | true)"), ("b~1.1", "(false | true)")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -169,7 +169,7 @@ fn print_int_to_string() {
 fn string_concatenation() {
     let input = r#""Hello " ++ "World!""#;
 
-    check(input, "`++`~0.6$0 (\"Hello \",\"World!\",);", &[]);
+    check(input, "`++`~0.8$0 (\"Hello \",\"World!\",);", &[]);
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn variable_reassign_with_add() {
 
     let expected_expr = indoc! {"
         a~1.0 : mut Int = 10;
-        a~1.0 <- `+`~0.1$0 (a~1.0,5,);"};
+        a~1.0 <- `+`~0.3$0 (a~1.0,5,);"};
 
     check(input, expected_expr, &[("a~1.0", "Int")]);
 }
@@ -270,7 +270,7 @@ fn variable_add_reassign() {
 
     let expected_expr = indoc! {"
         a~1.0 : mut Int = 10;
-        a~1.0 <- `+`~0.1$0 (a~1.0,5,);"};
+        a~1.0 <- `+`~0.3$0 (a~1.0,5,);"};
 
     check(input, expected_expr, &[("a~1.0", "Int")]);
 }
@@ -487,7 +487,7 @@ fn print_float() {
 fn print_bool() {
     let input = "print true";
 
-    let expected_expr = "print~0.0$3 (true,);";
+    let expected_expr = "print~0.0$3 (true~0.2,);";
 
     check(input, expected_expr, &[])
 }
@@ -540,14 +540,14 @@ let main = fun (a: Int) -> {
 ";
 
     let expected_expr = indoc! {"
-        is_even~1.0 : (Int) -> Bool = fun \"is_even\"(a~1.1 : Int) -> Bool { `==`~0.7$0 (%~0.5$0 (a~1.1,2,),0,); };
-        main~1.2 : (Int) -> Bool = fun \"main\"(a~1.3 : Int) -> Bool { is_even~1.0$0 (a~1.3,); };"};
+        is_even~1.0 : (Int) -> (false | true) = fun \"is_even\"(a~1.1 : Int) -> (false | true) { `==`~0.9$0 (%~0.7$0 (a~1.1,2,),0,); };
+        main~1.2 : (Int) -> (false | true) = fun \"main\"(a~1.3 : Int) -> (false | true) { is_even~1.0$0 (a~1.3,); };"};
 
     let expected_vars = &[
         ("a~1.1", "Int"),
         ("a~1.3", "Int"),
-        ("is_even~1.0", "(Int) -> Bool"),
-        ("main~1.2", "(Int) -> Bool"),
+        ("is_even~1.0", "(Int) -> (false | true)"),
+        ("main~1.2", "(Int) -> (false | true)"),
     ];
 
     check(input, expected_expr, expected_vars);
@@ -591,7 +591,7 @@ print a"#;
 fn concat_strings() {
     let input = r#""a" ++ "a""#;
 
-    let expected_expr = indoc! {r#"`++`~0.6$0 ("a","a",);"#};
+    let expected_expr = indoc! {r#"`++`~0.8$0 ("a","a",);"#};
 
     let expected_vars = &[];
 
@@ -605,7 +605,7 @@ let repeat = fun (s: String) -> { s ++ s }
 "#;
 
     let expected_expr = indoc! {"
-    repeat~1.0 : (String) -> String = fun \"repeat\"(s~1.1 : String) -> String { `++`~0.6$0 (s~1.1,s~1.1,); };"};
+    repeat~1.0 : (String) -> String = fun \"repeat\"(s~1.1 : String) -> String { `++`~0.8$0 (s~1.1,s~1.1,); };"};
 
     let expected_vars = &[("repeat~1.0", "(String) -> String"), ("s~1.1", "String")];
 
@@ -620,7 +620,7 @@ let hello_hello = repeat "Hello "
 print hello_hello"#;
 
     let expected_expr = indoc! {"
-        repeat~1.0 : (String) -> String = fun \"repeat\"(s~1.1 : String) -> String { `++`~0.6$0 (s~1.1,s~1.1,); };
+        repeat~1.0 : (String) -> String = fun \"repeat\"(s~1.1 : String) -> String { `++`~0.8$0 (s~1.1,s~1.1,); };
         hello_hello~1.2 : String = repeat~1.0$0 (\"Hello \",);
         print~0.0$0 (hello_hello~1.2,);"};
 
@@ -645,9 +645,9 @@ fun (condition: Bool) -> Float {
 }";
 
     let expected_expr = indoc! {"
-    fun (condition~1.0 : Bool) -> Float { if (condition~1.0) { 16.0; } else { 8.0; }; };"};
+    fun (condition~1.0 : (false | true)) -> Float { if (condition~1.0) { 16.0; } else { 8.0; }; };"};
 
-    let expected_vars = &[("condition~1.0", "Bool")];
+    let expected_vars = &[("condition~1.0", "(false | true)")];
 
     check(input, expected_expr, expected_vars);
 }
@@ -672,10 +672,10 @@ if res {
 }"#;
 
     let expected = indoc! {"
-res~1.0 : true = true;
+res~1.0 : (false | true) = true~0.2;
 if (res~1.0) { return 1; };"};
 
-    let expected_vars = &[("res~1.0", "true")];
+    let expected_vars = &[("res~1.0", "(false | true)")];
 
     check(input, expected, expected_vars);
 }
@@ -744,7 +744,7 @@ fn loop_break_later() {
 if true { break }
 }";
 
-    let expected = "loop { if (true) { break; }; };";
+    let expected = "loop { if (true~0.2) { break; }; };";
 
     let expected_vars = &[];
 
@@ -766,8 +766,8 @@ let main = fun () -> {
     let expected = "main~1.0 : () -> Int = fun \"main\"() -> Int {
     i~1.1 : mut Int = 0;
     loop {
-        if (`>`~0.11$0 (i~1.1,5,)) { break; };
-        i~1.1 <- `+`~0.1$0 (i~1.1,1,);
+        if (`>`~0.13$0 (i~1.1,5,)) { break; };
+        i~1.1 <- `+`~0.3$0 (i~1.1,1,);
     };
     i~1.1;
 };";

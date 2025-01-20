@@ -5,7 +5,7 @@
 use la_arena::Idx;
 
 use super::infer::infer_expr;
-use super::types::FuncSignature;
+use super::types::{FuncSignature, SumType};
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType};
 
@@ -69,6 +69,8 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 
         (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
 
+        (Type::Sum(a), Type::Sum(b)) => is_sumtype_subtype(a, b, context),
+
         _ => false,
     }
 }
@@ -110,4 +112,24 @@ fn is_signature_subtype(a: &FuncSignature, b: &FuncSignature, context: &Context)
     let return_check = is_subtype(a.return_ty, b.return_ty, context);
 
     params_check && return_check
+}
+
+fn is_sumtype_subtype(a: &SumType, b: &SumType, context: &Context) -> bool {
+    if a.hash == b.hash {
+        return true;
+    }
+
+    if a.variants.len() != b.variants.len() {
+        return false;
+    }
+    for ((a_key, a_type), (b_key, b_type)) in a.variants.iter().zip(b.variants.iter()) {
+        if *a_key != *b_key {
+            return false;
+        }
+        if !is_subtype(*a_type, *b_type, context) {
+            return false;
+        }
+    }
+
+    true
 }

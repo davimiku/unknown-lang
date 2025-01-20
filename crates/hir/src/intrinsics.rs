@@ -21,6 +21,7 @@ pub(crate) fn insert_core_values(
         type_database.insert_type_symbol(symbol, ty);
     };
 
+    // core types - Bool, Int, Float, String
     insert_type(keys.bool, t.bool);
     insert_type(keys.int, t.int);
     insert_type(keys.float, t.float);
@@ -35,8 +36,16 @@ pub(crate) fn insert_core_values(
         symbol
     };
 
+    // core function - Print
+    // eventually could be removed in favor of a Display trait
     insert_value(keys.print, Type::func(print_signatures(&t)));
 
+    // false, true
+    // like if this was at the top of every module:
+    // ```
+    // let false = Bool.false ()
+    // let true = Bool.true ()
+    // ```
     {
         let false_symbol = scopes.insert_value(keys.r#false);
         database.value_names.insert(false_symbol, keys.r#false);
@@ -56,6 +65,7 @@ pub(crate) fn insert_core_values(
         database.operators.insert(symbol, intrinsic);
     };
 
+    // intrinsic operators - `+`, `-`, `*`, `/`, `%`, `++`, `==`, `!=`, `<`, `<=`, `>`, `>=`
     insert_intrinsic(keys.add, Type::func(add_signatures(&t)), IE::Add);
     insert_intrinsic(keys.sub, Type::func(sub_signatures(&t)), IE::Sub);
     insert_intrinsic(keys.mul, Type::func(mul_signatures(&t)), IE::Mul);

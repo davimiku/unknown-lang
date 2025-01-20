@@ -23,6 +23,8 @@ fn check_module(input: &str, expected: &str) {
     if !context.diagnostics.is_empty() {
         for diagnostic in &context.diagnostics {
             println!("{}", diagnostic.display(&context));
+            let range = diagnostic.range();
+            println!("{}", &input[range]);
         }
         assert_eq!(context.diagnostics, vec![]);
     }

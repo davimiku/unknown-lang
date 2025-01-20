@@ -31,7 +31,7 @@ let main = fun (a: Int) -> {
     let expected = "
 fun is_even:
     params: _1
-    mut _0: Bool
+    mut _0: (false | true)
     _1: Int
     _2: Int
     
@@ -42,12 +42,12 @@ fun is_even:
     
 fun main:
     params: _1
-    mut _0: Bool
+    mut _0: (false | true)
     _1: Int
     
     BB0():
-        _0 := is_even (copy _1) -> [return: BB1, unwind -> TODO]
-    BB1(_0):
+        _0 = is_even (copy _1) -> [return: BB1(), unwind -> TODO]
+    BB1():
         Return _0 ->
 ";
 
@@ -71,7 +71,7 @@ let main = fun (a: Int) -> Int {
     let expected = "
 fun is_even:
     params: _1
-    mut _0: Bool
+    mut _0: (false | true)
     _1: Int
     _2: Int
     
@@ -84,18 +84,18 @@ fun main:
     params: _1
     mut _0: Int
     _1: Int
-    _2: Bool
+    _2: (false | true)
     
     BB0():
-        _2 := is_even (copy _1) -> [return: BB1, unwind -> TODO]
-    BB1(_2):
-        BranchInt(copy _2): [0 -> BB3, else -> BB2]
+        _2 = is_even (copy _1) -> [return: BB1(), unwind -> TODO]
+    BB1():
+        BranchInt(copy _2): [0 -> BB3(), else -> BB2()]
     BB2():
         _0 := const 16
-        Jump -> BB4
+        Jump -> BB4(_0)
     BB3():
         _0 := const 7
-        Jump -> BB4
+        Jump -> BB4(_0)
     BB4(_0):
         Return _0 ->
 ";

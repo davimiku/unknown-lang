@@ -68,7 +68,12 @@ impl Builder {
 
         let current_block = Idx::from_raw(u32::MAX.into());
         let current_function = Idx::from_raw(u32::MAX.into());
-        Self {
+        let mut scopes = ScopesStack::default();
+        // insert false=0, true=1  ??
+        // let local: Local = Local::from(value);
+        // scopes.insert_local(local, symbol);
+        // scopes.insert_local(local, symbol);
+        let builder = Self {
             functions,
             module_id,
             current_function,
@@ -77,9 +82,13 @@ impl Builder {
             entry_points: Default::default(),
             block_var_defs: Default::default(),
             functions_map: Default::default(),
-            scopes: Default::default(),
+            scopes,
             breaks_stack: Default::default(),
-        }
+        };
+
+        // builder.construct_local(ty, symbol, Mutability::Not)
+
+        builder
     }
 }
 

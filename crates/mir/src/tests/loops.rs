@@ -13,9 +13,9 @@ fun main:
     mut _0: {bottom}
     
     BB0():
-        Jump -> BB1
+        Jump -> BB1()
     BB1():
-        Jump -> BB1
+        Jump -> BB1()
 ";
 
     check_module(input, expected);
@@ -34,10 +34,10 @@ fun main:
     mut _0: ()
     
     BB0():
-        Jump -> BB1
+        Jump -> BB1()
     BB1():
-        Jump -> BB2
-    BB2(_0):
+        Jump -> BB2()
+    BB2():
         Return _0 ->
 ";
 
@@ -59,7 +59,27 @@ let main = fun (i: Int) -> {
     }
 }";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: ()
+    _1: Int
+    _2: (false | true)
+    _3: Int
+    
+    BB0():
+        Jump -> BB1()
+    BB1():
+        _2 := Gt(copy _1, const 5)
+        BranchInt(copy _2): [0 -> BB4(), else -> BB3()]
+    BB2():
+        Return _0 ->
+    BB3():
+        Jump -> BB2()
+    BB4():
+        _3 := Add(copy _1, const 1)
+        _1 <- copy _3
+        Jump -> BB1()";
 
     check_module(input, expected);
 }
@@ -77,7 +97,29 @@ let main = fun (i: Int) -> {
     }
 }";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: ()
+    _1: Int
+    _2: (false | true)
+    _3: Int
+    
+    BB0():
+        Jump -> BB1()
+    BB1():
+        _2 := Gt(copy _1, const 5)
+        BranchInt(copy _2): [0 -> BB4(), else -> BB3()]
+    BB2():
+        Return _0 ->
+    BB3():
+        Jump -> BB2()
+    BB4():
+        _3 := Add(copy _1, const 1)
+        _1 <- copy _3
+        Jump -> BB5(_0)
+    BB5(_0):
+        Jump -> BB1()";
 
     check_module(input, expected);
 }
@@ -99,24 +141,24 @@ fun main:
     params: {none}
     mut _0: Int
     mut _1: Int
-    _2: Bool
+    _2: (false | true)
     _3: Int
     
     BB0():
         _1 := const 0
-        Jump -> BB1(_1)
-    BB1(_1):
+        Jump -> BB1()
+    BB1():
         _2 := Gt(copy _1, const 5)
-        BranchInt(copy _2): [0 -> BB4(_1, _0), else -> BB3()]
-    BB2(_1, _0):
+        BranchInt(copy _2): [0 -> BB4(), else -> BB3()]
+    BB2():
         _0 := copy _1
         Return _0 ->
     BB3():
-        Jump -> BB2(_1, _0)
-    BB4(_1):
+        Jump -> BB2()
+    BB4():
         _3 := Add(copy _1, const 1)
         _1 <- copy _3
-        Jump -> BB1(_1)
+        Jump -> BB1()
 ";
 
     check_module(input, expected);

@@ -183,6 +183,11 @@ impl Context {
         self.find_value(key)
     }
 
+    /// Gets the interned Key for a value symbol
+    pub fn value_symbol_key(&self, symbol: ValueSymbol) -> Key {
+        self.database.value_names[&symbol]
+    }
+
     /// Gets the interned string for a value symbol
     pub fn value_symbol_str(&self, symbol: ValueSymbol) -> &str {
         let key = self.database.value_names[&symbol];

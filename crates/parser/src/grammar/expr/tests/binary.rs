@@ -179,13 +179,15 @@ fn logical_and() {
         "true and false",
         expect![[r#"
 InfixExpr@0..14
-  BoolLiteralExpr@0..5
-    TrueLiteral@0..4 "true"
-    Emptyspace@4..5 " "
+  PathExpr@0..5
+    Ident@0..5
+      Ident@0..4 "true"
+      Emptyspace@4..5 " "
   AndKw@5..8 "and"
   Emptyspace@8..9 " "
-  BoolLiteralExpr@9..14
-    FalseLiteral@9..14 "false""#]],
+  PathExpr@9..14
+    Ident@9..14
+      Ident@9..14 "false""#]],
     )
 }
 
@@ -195,13 +197,15 @@ fn logical_or() {
         "true or false",
         expect![[r#"
 InfixExpr@0..13
-  BoolLiteralExpr@0..5
-    TrueLiteral@0..4 "true"
-    Emptyspace@4..5 " "
+  PathExpr@0..5
+    Ident@0..5
+      Ident@0..4 "true"
+      Emptyspace@4..5 " "
   OrKw@5..7 "or"
   Emptyspace@7..8 " "
-  BoolLiteralExpr@8..13
-    FalseLiteral@8..13 "false""#]],
+  PathExpr@8..13
+    Ident@8..13
+      Ident@8..13 "false""#]],
     )
 }
 

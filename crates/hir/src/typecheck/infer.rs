@@ -52,7 +52,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         }
         Expr::BreakStatement(break_value) => {
             result.chain(infer_expr(break_value, context));
-            result.ty = context.core_types().bottom;
+            result.ty = context.core_types().unit;
         }
         Expr::ReturnStatement(return_value) => {
             result.chain(infer_expr(return_value, context));
@@ -148,9 +148,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 variants.push((*key, ty));
             }
 
-            result.ty = context
-                .type_database
-                .alloc_type(Type::Sum(SumType { variants }));
+            result.ty = context.type_database.alloc_type(Type::sum(variants));
 
             result
         }
@@ -312,9 +310,7 @@ fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
         })
         .collect_vec();
 
-    result.ty = context
-        .type_database
-        .alloc_type(Type::Sum(SumType { variants }));
+    result.ty = context.type_database.alloc_type(Type::sum(variants));
 
     result
 }
@@ -630,19 +626,16 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
 
     match op {
         UnaryOp::Neg => todo!(),
-        UnaryOp::Not => result.chain(match inner_type {
-            Type::BoolLiteral(b) => infer_bool_literal(expr_idx, !b, context),
-            Type::Bool => context.core_types().bool.into(),
-
-            _ => TypeResult::from_diag(
-                TypeDiagnostic::mismatch(
-                    context.core_types().bool,
-                    result.ty,
-                    TextRange::default(),
+        UnaryOp::Not => {
+            let bool_ty = context.core_types().bool;
+            result.chain(match result.ty == bool_ty {
+                true => bool_ty.into(),
+                false => TypeResult::from_diag(
+                    TypeDiagnostic::mismatch(bool_ty, result.ty, TextRange::default()),
+                    context.core_types().error,
                 ),
-                context.core_types().error,
-            ),
-        }),
+            })
+        }
 
         UnaryOp::IntoString => match inner_type {
             Type::Unit
