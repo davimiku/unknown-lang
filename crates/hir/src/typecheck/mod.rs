@@ -252,6 +252,13 @@ impl TypeResult {
         }
     }
 
+    fn from_ty(ty: Idx<Type>) -> Self {
+        Self {
+            ty,
+            diagnostics: vec![],
+        }
+    }
+
     pub fn is_ok(&self) -> bool {
         self.diagnostics.is_empty()
     }

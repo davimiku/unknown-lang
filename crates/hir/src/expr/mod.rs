@@ -9,7 +9,7 @@ use util_macros::assert_matches;
 
 use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
-use crate::type_expr::TypeExpr;
+use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{Context, Type};
 
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -81,6 +81,11 @@ pub enum Expr {
 
     /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
+
+    /// The whole "statement" at the type level
+    ///
+    /// i.e. `type Color = red | green | blue`
+    TypeStatement(Idx<TypeExpr>),
 }
 
 // convenience constructors

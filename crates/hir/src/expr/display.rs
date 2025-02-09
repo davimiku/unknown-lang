@@ -1,6 +1,7 @@
 use la_arena::Idx;
 use util_macros::assert_matches;
 
+use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{
     ArrayLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
@@ -88,6 +89,9 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(_) => todo!(),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
+        Expr::TypeStatement(.., type_expr) => {
+            s.push_str(&type_expr.display(context).to_string());
+        }
     }
 }
 
@@ -270,6 +274,16 @@ fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Conte
     fmt_idx_expr(s, *subject, context, indent);
     s.push('.');
     fmt_idx_expr(s, *index, context, indent);
+}
+
+fn fmt_type_statement(
+    s: &mut String,
+    symbol: TypeSymbol,
+    type_expr: Idx<TypeExpr>,
+    context: &Context,
+    indent: usize,
+) {
+    s.push_str(&type_expr.display(context).to_string());
 }
 
 // impl ContextDisplay for CallExprSignature {

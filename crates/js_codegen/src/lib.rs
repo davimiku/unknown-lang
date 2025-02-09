@@ -79,6 +79,7 @@ impl Codegen {
             }
             Expr::BreakStatement(value) => todo!(),
             Expr::ReturnStatement(inner) => todo!(),
+            Expr::TypeStatement(idx) => {}
         };
     }
 

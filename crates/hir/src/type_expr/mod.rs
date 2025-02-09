@@ -37,7 +37,7 @@ pub enum TypeExpr {
     },
 
     /// Definition of a local type variable
-    LocalDef(TypeDefExpr),
+    VarDef(TypeVarDefExpr),
 
     Union(UnionTypeExpr),
 
@@ -47,6 +47,12 @@ pub enum TypeExpr {
     // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?
     // If(IfExpr),
+}
+
+impl TypeExpr {
+    pub(crate) fn type_variable_def(symbol: TypeSymbol, type_expr: Idx<TypeExpr>) -> Self {
+        Self::VarDef(TypeVarDefExpr { symbol, type_expr })
+    }
 }
 
 /// Binary type expression
@@ -61,6 +67,7 @@ pub struct BinaryTypeExpr {
     pub lhs: Idx<TypeExpr>,
     pub rhs: Idx<TypeExpr>,
 }
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CallExpr {
     // TODO: create a Path struct to handle multiple
@@ -69,6 +76,7 @@ pub struct CallExpr {
     /// Arguments to the parametric type
     pub args: Vec<Idx<TypeExpr>>,
 }
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UnaryTypeExpr {
     pub op: UnaryOp,
@@ -84,11 +92,11 @@ pub struct UnionTypeExpr {
 ///
 /// Defines a new type in a given scope.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TypeDefExpr {
-    pub key: TypeSymbol,
+pub struct TypeVarDefExpr {
+    pub symbol: TypeSymbol,
 
     /// Expression value assigned to the type
-    pub value: Idx<TypeExpr>,
+    pub type_expr: Idx<TypeExpr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

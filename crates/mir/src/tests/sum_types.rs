@@ -14,3 +14,26 @@ fun main:
 
     check_module(input, expected);
 }
+
+#[test]
+fn define_and_pass_through_sum_type() {
+    let input = "
+type Color = (red | green | blue)
+
+let main = fun (c: Color) -> { c }";
+
+    let expected = "";
+    check_module(input, expected);
+}
+
+#[test]
+fn define_and_use_sum_type() {
+    let input = "
+type Color = (red | green | blue)
+
+let main = fun () -> { Color.red }";
+
+    let expected = "";
+
+    check_module(input, expected);
+}

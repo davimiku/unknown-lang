@@ -17,12 +17,13 @@ use crate::expr::{
     IndexIntExpr, LoopExpr, MatchExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
-use crate::type_expr::{TypeExpr, TypeRefExpr, UnionTypeExpr};
-use crate::{ArrayType, CallExpr, Context, FunctionType, Module};
+use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
+use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
     for expr in module.exprs.iter() {
+        dbg!(expr.display(context));
         result.chain(infer_expr(*expr, context));
     }
     result.ty = context.core_types().top;
@@ -56,6 +57,10 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::ReturnStatement(return_value) => {
             result.chain(infer_expr(return_value, context));
             result.ty = context.core_types().bottom;
+        }
+        Expr::TypeStatement(type_expr) => {
+            result.chain(infer_type_expr(type_expr, context));
+            result.ty = context.core_types().unit;
         }
 
         Expr::FloatLiteral(f) => result.chain(infer_float_literal(expr_idx, f, context)),
@@ -121,6 +126,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             .into(),
 
         TE::VarRef(TypeRefExpr { symbol, .. }) => {
+            dbg!(symbol.display(context));
             context.type_database.get_type_symbol(&symbol).into()
         }
         TE::UnresolvedVarRef { key } => {
@@ -129,7 +135,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
         }
         TE::Unit => context.type_database.core.unit.into(),
 
-        TE::LocalDef(_) => todo!(),
+        TE::VarDef(type_var_def) => infer_type_var_def(&type_var_def, context),
         TE::Call(_) => todo!(),
         TE::Union(union) => {
             let mut result = TypeResult::new(&context.type_database);
@@ -288,6 +294,19 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
     result.ty = context.core_types().unit;
 
     result
+}
+
+fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> TypeResult {
+    let TypeVarDefExpr { symbol, type_expr } = type_var_def;
+
+    let inferred = infer_type_expr(*type_expr, context);
+    context
+        .type_database
+        .type_symbols
+        .insert(*symbol, inferred.ty);
+
+    // TODO for the "type statement" itself, unit or never?
+    TypeResult::from_ty(context.core_types().unit)
 }
 
 fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {

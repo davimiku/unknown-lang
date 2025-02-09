@@ -2,7 +2,7 @@ use la_arena::Idx;
 
 use crate::{Context, ContextDisplay, COMPILER_BRAND};
 
-use super::{TypeExpr, TypeRefExpr, TypeSymbol};
+use super::{TypeExpr, TypeRefExpr, TypeSymbol, TypeVarDefExpr};
 
 impl ContextDisplay for Idx<TypeExpr> {
     fn display(&self, context: &Context) -> String {
@@ -24,7 +24,14 @@ impl ContextDisplay for TypeExpr {
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
             TypeExpr::UnresolvedVarRef { .. } => todo!(),
 
-            TypeExpr::LocalDef(_) => todo!(),
+            TypeExpr::VarDef(type_var_def) => {
+                let mut s = String::new();
+                let TypeVarDefExpr { symbol, type_expr } = type_var_def;
+                s.push_str(&symbol.display(context).to_string());
+                s.push_str(" := ");
+                s.push_str(&type_expr.display(context).to_string());
+                s
+            }
             TypeExpr::Union(_) => todo!(),
             TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),

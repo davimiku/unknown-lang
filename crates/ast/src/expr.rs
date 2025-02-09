@@ -26,7 +26,7 @@ pub enum Expr {
     ReAssignment(ReAssignment),
     Return(ReturnStatement),
     StringLiteral(StringLiteral),
-    TypeBinding(TypeBinding), // the full `type A = struct { ... }`
+    TypeBinding(TypeBinding), // the full `type A = ( ... )`
     Unary(Unary),
 }
 
@@ -862,13 +862,13 @@ impl TypeBinding {
     /// //             ^^^^^^
     /// //             Ident
     ///
-    /// type Bool = union ( false, true )
-    /// //          ^^^^^^^^^^^^^^^^^^^^^
+    /// type Bool = false | true
+    /// //          ^^^^^^^^^^^^
     /// //          Union
     ///
     /// type Option 'A = none | some: 'A
     /// //               ^^^^^^^^^^^^^^^
-    /// //               Union (new syntax)
+    /// //               Union
     ///
     /// type InnerData = MyData.inner
     /// //               ^^^^^^^^^^^^

@@ -11,7 +11,8 @@ pub use expr::Expr;
 // don't need "Expr" suffix, it's clear from full name
 pub use expr::{ArrayLiteral, FloatLiteral, IntLiteral, StringLiteral};
 pub use expr::{
-    Binary, Block, Function, Ident, LetBinding, Mutability, PathExpr, ReAssignment, Unary,
+    Binary, Block, Function, Ident, LetBinding, Mutability, PathExpr, ReAssignment, TypeBinding,
+    Unary,
 };
 pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 use parser::{Parse, SyntaxKind, SyntaxNode};

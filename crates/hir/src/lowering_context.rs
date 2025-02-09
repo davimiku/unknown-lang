@@ -249,6 +249,7 @@ impl Context {
     }
 
     pub(crate) fn alloc_type_expr(&mut self, expr: TypeExpr, range: TextRange) -> Idx<TypeExpr> {
+        // self.type_database.insert_type_symbol(key, ty);
         self.database.alloc_type_expr(expr, range)
     }
 
@@ -299,7 +300,7 @@ impl Context {
                 E::ReAssignment(ast) => self.lower_reassignment(ast),
                 E::Return(ast) => self.lower_return_statement(ast),
                 E::StringLiteral(ast) => self.lower_string_literal(ast),
-                E::TypeBinding(ast) => todo!(),
+                E::TypeBinding(ast) => self.lower_type_binding(ast),
                 E::Unary(ast) => self.lower_unary(ast),
             }
         } else {
@@ -317,16 +318,22 @@ impl Context {
         (key, symbol)
     }
 
+    fn lower_type_name(&mut self, name: String) -> (Key, TypeSymbol) {
+        let key = self.interner.intern(&name);
+
+        let symbol = self.current_scopes_mut().insert_type(key);
+        self.database.type_names.insert(symbol, key);
+        (key, symbol)
+    }
+
     fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
         // TODO: desugar patterns into separate definitions
+        // or not until MIR?
         let name = ast.name().unwrap().text().to_string();
-
         let (key, symbol) = self.lower_name(name);
-
         self.current_let_binding_symbol = Some((key, symbol));
 
         let mutability = ast.mutability();
-
         self.database.mutabilities.insert(symbol, mutability);
 
         let value = self.lower_expr(ast.value());
@@ -620,7 +627,7 @@ impl Context {
                 Expr::Block(_) => todo!(), // technically allowed? Or prevent in AST
                 Expr::If(_) => todo!(),    // technically allowed? Or prevent in AST
 
-                _ => todo!(),
+                e => todo!("{}", e.display(self)),
             }
         } else {
             let subject = path
@@ -822,7 +829,7 @@ impl Context {
                 let type_expr = item
                     .type_expr()
                     .map(|t| self.lower_type_expr(Some(t)))
-                    .unwrap_or_else(|| self.database.alloc_type_expr(TypeExpr::Unit, item.range()));
+                    .unwrap_or_else(|| self.alloc_type_expr(TypeExpr::Unit, item.range()));
 
                 (key, type_expr)
             })
@@ -866,6 +873,16 @@ impl Context {
         let key = self.interner.intern(&ident.as_string());
 
         self.lower_type_name_ref(key)
+    }
+
+    fn lower_type_binding(&mut self, ast: ast::TypeBinding) -> Expr {
+        let name = ast.name().unwrap().text().to_string();
+        let (.., symbol) = self.lower_type_name(name);
+
+        let type_expr = self.lower_type_expr(ast.type_expr());
+        let type_var_def = TypeExpr::type_variable_def(symbol, type_expr);
+        let type_var_def = self.alloc_type_expr(type_var_def, ast.range());
+        Expr::TypeStatement(type_var_def)
     }
 
     fn lower_type_name_ref(&mut self, key: Key) -> TypeExpr {

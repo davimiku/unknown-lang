@@ -1,7 +1,5 @@
-use cranelift::codegen::ir::{
-    types::{F64, I64},
-    InstBuilder, Value,
-};
+use cranelift::codegen::ir::types::{F64, I64};
+use cranelift::codegen::ir::{InstBuilder, Value};
 use hir::Type as HType;
 use mir::Operand;
 
