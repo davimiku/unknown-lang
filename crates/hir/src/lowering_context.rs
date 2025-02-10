@@ -270,6 +270,7 @@ impl Context {
 
         match self.expr(inner) {
             Expr::VarDef(_) => inner,
+            Expr::TypeStatement(_) => inner,
             _ => {
                 let statement = Expr::Statement(inner);
                 self.alloc_expr(statement, ast)
@@ -340,7 +341,7 @@ impl Context {
 
         let type_annotation = ast
             .type_annotation()
-            .map(|type_expr| self.lower_type_expr(type_expr.into()));
+            .map(|type_expr| self.lower_type_expr(type_expr.into(), None));
 
         Expr::variable_def(symbol, value, type_annotation)
     }
@@ -603,6 +604,8 @@ impl Context {
         // -> subject: `arr`
         // -> index: `point.x` (path)
 
+        dbg!(&path);
+
         if let Some(member) = path.member() {
             let subject = self.lower_expr(path.subject());
             let member = self.lower_expr(Some(member));
@@ -627,7 +630,16 @@ impl Context {
                 Expr::Block(_) => todo!(), // technically allowed? Or prevent in AST
                 Expr::If(_) => todo!(),    // technically allowed? Or prevent in AST
 
-                e => todo!("{}", e.display(self)),
+                Expr::UnresolvedVarRef { key } => panic!(
+                    "Internal Compiler Error: Unresolved variable '{}'",
+                    self.lookup(*key)
+                ),
+
+                // Expr::
+                e => {
+                    dbg!(e);
+                    todo!("{}", e.display(self))
+                }
             }
         } else {
             let subject = path
@@ -681,7 +693,7 @@ impl Context {
 
                 let annotation = param
                     .type_expr()
-                    .map(|type_expr| self.lower_type_expr(Some(type_expr)));
+                    .map(|type_expr| self.lower_type_expr(Some(type_expr), None));
 
                 FunctionParam {
                     name,
@@ -703,7 +715,7 @@ impl Context {
         let body = body.expect("TODO: handle missing function body");
         self.pop_scope();
 
-        let return_ty = self.lower_type_expr(function_ast.return_type());
+        let return_ty = self.lower_type_expr(function_ast.return_type(), None);
         let return_type_annotation = if matches!(self.type_expr(return_ty), TypeExpr::Empty) {
             None
         } else {
@@ -770,20 +782,21 @@ impl Context {
 
 // Lowering functions - TypeExpr
 impl Context {
-    fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>) -> Idx<TypeExpr> {
+    fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>, name: Option<Key>) -> Idx<TypeExpr> {
         use ast::TypeExpr as TE;
         if let Some(ast) = ast {
             let range = ast.range();
             let type_expr = match ast {
-                TE::FloatLiteral(ast) => self.lower_type_float_literal(ast),
-                TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
-                TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
-                TE::Ident(ast) => self.lower_type_ident(ast),
-                TE::Function(_) => todo!(),
-                TE::Path(ast) => self.lower_type_path(ast),
                 TE::Call(ast) => self.lower_type_call(ast),
-                TE::Union(ast) => self.lower_union(ast),
-                TE::Union__NewSyntax(ast) => todo!(),
+                TE::FloatLiteral(ast) => self.lower_type_float_literal(ast),
+                TE::Ident(ast) => self.lower_type_ident(ast),
+                TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
+                TE::Function(_) => todo!(),
+                TE::Paren(ast) => return self.lower_type_expr(ast.expr(), name),
+                TE::Path(ast) => self.lower_type_path(ast),
+                TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
+                TE::Union__Old(ast) => self.lower_union__old(ast),
+                TE::Union(ast) => self.lower_union(ast, name),
             };
             self.alloc_type_expr(type_expr, range)
         } else {
@@ -820,7 +833,30 @@ impl Context {
         }
     }
 
-    fn lower_union(&mut self, ast: ast::Union) -> TypeExpr {
+    fn lower_union(&mut self, ast: ast::Union, name: Option<Key>) -> TypeExpr {
+        let variants = ast
+            .variants()
+            .iter()
+            .map(|item| {
+                let ident_str = &item.ident_as_string();
+                let key = self.interner.intern(ident_str);
+                let variant_name = name.map(|k| {
+                    let s = format!("{}.{}", self.lookup(key), ident_str);
+                    self.interner.intern(&s)
+                });
+                let type_expr = item
+                    .type_expr()
+                    .map(|t| self.lower_type_expr(Some(t), variant_name))
+                    .unwrap_or_else(|| self.alloc_type_expr(TypeExpr::Unit, item.range()));
+
+                (key, type_expr)
+            })
+            .collect_vec();
+
+        TypeExpr::Union(UnionTypeExpr { name, variants })
+    }
+
+    fn lower_union__old(&mut self, ast: ast::Union__Old) -> TypeExpr {
         let variants = ast
             .variants()
             .iter()
@@ -828,16 +864,20 @@ impl Context {
                 let key = self.interner.intern(&item.ident_as_string());
                 let type_expr = item
                     .type_expr()
-                    .map(|t| self.lower_type_expr(Some(t)))
+                    .map(|t| self.lower_type_expr(Some(t), None))
                     .unwrap_or_else(|| self.alloc_type_expr(TypeExpr::Unit, item.range()));
 
                 (key, type_expr)
             })
             .collect_vec();
 
-        TypeExpr::Union(UnionTypeExpr { variants })
+        TypeExpr::Union(UnionTypeExpr {
+            name: None,
+            variants,
+        })
     }
 
+    ///
     fn lower_type_call(&mut self, ast: ast::expr::CallExpr) -> TypeExpr {
         // let path = ast.path().unwrap();
         // let mut idents = path.ident_strings();
@@ -850,7 +890,7 @@ impl Context {
         if let Some(call_args) = ast.args() {
             let args = call_args
                 .type_args()
-                .map(|expr| self.lower_type_expr(Some(expr)))
+                .map(|expr| self.lower_type_expr(Some(expr), None))
                 .collect();
 
             TypeExpr::Call(CallExpr { path: name, args })
@@ -877,9 +917,9 @@ impl Context {
 
     fn lower_type_binding(&mut self, ast: ast::TypeBinding) -> Expr {
         let name = ast.name().unwrap().text().to_string();
-        let (.., symbol) = self.lower_type_name(name);
+        let (key, symbol) = self.lower_type_name(name);
 
-        let type_expr = self.lower_type_expr(ast.type_expr());
+        let type_expr = self.lower_type_expr(ast.type_expr(), Some(key));
         let type_var_def = TypeExpr::type_variable_def(symbol, type_expr);
         let type_var_def = self.alloc_type_expr(type_var_def, ast.range());
         Expr::TypeStatement(type_var_def)

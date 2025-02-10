@@ -23,7 +23,6 @@ use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module};
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
     for expr in module.exprs.iter() {
-        dbg!(expr.display(context));
         result.chain(infer_expr(*expr, context));
     }
     result.ty = context.core_types().top;
@@ -126,7 +125,6 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             .into(),
 
         TE::VarRef(TypeRefExpr { symbol, .. }) => {
-            dbg!(symbol.display(context));
             context.type_database.get_type_symbol(&symbol).into()
         }
         TE::UnresolvedVarRef { key } => {

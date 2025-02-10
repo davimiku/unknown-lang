@@ -26,6 +26,11 @@ pub enum TypeExpr {
     Unary(UnaryTypeExpr),
 
     // Block(BlockExpr),
+    /// Creating an instance of a parameterized type
+    ///
+    /// A "call" at the type level would be like `Map (String, Int)` where
+    /// `Map` is a function taking two type parameters and returning the concrete
+    /// type.
     Call(CallExpr),
 
     /// Reference to a type variable
@@ -85,6 +90,13 @@ pub struct UnaryTypeExpr {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UnionTypeExpr {
+    /// User-given name, if part of a type binding statement, i.e. `type Color = ...`
+    ///                                                                  ^^^^^
+    pub name: Option<Key>,
+
+    /// Variants of the union, i.e. `a | b: B | c`
+    ///                                  ^^^^
+    /// Each variant has a key/name, and a type (unit, if not specified by the user)
     pub variants: Vec<(Key, Idx<TypeExpr>)>,
 }
 

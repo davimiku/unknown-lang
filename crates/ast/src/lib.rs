@@ -17,7 +17,7 @@ pub use expr::{
 pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 use parser::{Parse, SyntaxKind, SyntaxNode};
 use text_size::TextRange;
-pub use type_expr::{PathExpr as TypePathExpr, TypeExpr, Union};
+pub use type_expr::{PathExpr as TypePathExpr, TypeExpr, Union, Union__Old};
 
 impl From<Parse> for Root {
     fn from(parse_tree: Parse) -> Self {

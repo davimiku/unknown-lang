@@ -13,10 +13,10 @@ pub enum TypeExpr {
     Ident(Ident),
     // If(IfExpr), // todo
     IntLiteral(IntLiteral),
-    // Paren(ParenExpr), // parameterize to work on either Expr | TypeExpr
+    Paren(ParenExpr),
     StringLiteral(StringLiteral),
+    Union__Old(Union__Old),
     Union(Union),
-    Union__NewSyntax(Union__NewSyntax),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
 
@@ -24,7 +24,10 @@ impl TypeExpr {
     pub fn cast(mut node: SyntaxNode) -> Option<Self> {
         // being forgiving if the caller passed the "wrapper" TypeExpr
         // eventually remove and fix the callsites, but not urgent
-        if node.kind() == SyntaxKind::TypeExpr {
+        if matches!(
+            node.kind(),
+            SyntaxKind::TypeExpr | SyntaxKind::CompoundTypeItemType
+        ) {
             node = node.first_child().unwrap();
         }
         Some(match node.kind() {
@@ -37,9 +40,10 @@ impl TypeExpr {
             // SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             // SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
-            // SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
+            SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
-            SyntaxKind::UnionTypeExpr => Self::Union(Union(node)),
+            SyntaxKind::UnionTypeExpr => Self::Union__Old(Union__Old(node)),
+
             _ => return None,
         })
     }
@@ -55,10 +59,10 @@ impl TypeExpr {
             T::IntLiteral(e) => e.range(),
             T::Path(e) => e.range(),
             // If(e) => e.range(),
-            // Paren(e) => e.range(),
+            T::Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),
+            T::Union__Old(e) => e.range(),
             T::Union(e) => e.range(),
-            T::Union__NewSyntax(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
@@ -67,7 +71,7 @@ impl TypeExpr {
         if node.has_child_of(SyntaxKind::Arrow) {
             Self::Function(Function(node))
         } else if node.has_child_of(SyntaxKind::Bar) {
-            Self::Union__NewSyntax(Union__NewSyntax(node))
+            Self::Union(Union(node))
         } else {
             todo!()
             // Self::Binary(Binary(node))
@@ -136,9 +140,9 @@ impl PathExpr {
 /// )
 /// ```
 #[derive(Debug, Clone)]
-pub struct Union(SyntaxNode);
+pub struct Union__Old(SyntaxNode);
 
-impl Union {
+impl Union__Old {
     pub fn variants(&self) -> Vec<CompoundTypeItem> {
         self.compound_type_block()
             .map(|block| block.items())
@@ -147,6 +151,19 @@ impl Union {
 
     pub fn compound_type_block(&self) -> Option<CompoundTypeBlock> {
         self.0.children().find_map(CompoundTypeBlock::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParenExpr(SyntaxNode);
+
+impl ParenExpr {
+    pub fn expr(&self) -> Option<TypeExpr> {
+        self.0.children().find_map(TypeExpr::cast)
     }
 
     pub fn range(&self) -> TextRange {
@@ -165,9 +182,9 @@ impl Union {
 ///     | failed: String
 /// ```
 #[derive(Debug, Clone)]
-pub struct Union__NewSyntax(SyntaxNode);
+pub struct Union(SyntaxNode);
 
-impl Union__NewSyntax {
+impl Union {
     // flattens the (possibly) nested InfixExpr with Bar
     // operators into a list
     // type Stooge = larry | moe | curly
@@ -177,38 +194,38 @@ impl Union__NewSyntax {
     // see the parser tests/binding.rs
     // for a full example of this structure
     pub fn variants(&self) -> Vec<CompoundTypeItem> {
-        // TODO: code needs a real clean-up
-        // idea is that the first variant will be Ident | CompoundTypeItem
-        // subsequent variants will be after Bar and will be Ident | CompoundTypeItem | InfixExpr
-        // if it is InfixExpr, should loop until it ends at Ident | CompoundTypeItem
-        let first = self.0.children().find_map(CompoundTypeItem::cast).unwrap();
-        let mut variants = vec![first];
-        let mut next = self
-            .0
-            .children_with_tokens()
-            .skip_while(|child| child.kind() != SyntaxKind::Bar)
-            .skip(1) // consume the `|`
-            .find_map(|node_or_token| {
-                let node = node_or_token.as_node();
-                if let Some(node) = node {
-                    if Self::is_variant(node) {
-                        return Some(node.clone());
-                    }
+        /*
+        [crates/ast/src/type_expr.rs:193:9] self = Union(
+            InfixExpr@9..18
+              Ident@9..11
+                Ident@9..10 "a"
+                Emptyspace@10..11 " "
+              Bar@11..12 "|"
+              Emptyspace@12..13 " "
+              InfixExpr@13..18
+                Ident@13..15
+                  Ident@13..14 "b"
+                  Emptyspace@14..15 " "
+                Bar@15..16 "|"
+                Emptyspace@16..17 " "
+                Ident@17..18
+                  Ident@17..18 "c"
+            ,
+        )
+                 */
+        // this is fairly flakey, if the CST changes slightly this will definitely break
+        let mut variants: Vec<CompoundTypeItem> = vec![];
+        for child in self.0.children() {
+            let kind = child.kind();
+            match kind {
+                // TODO - first child should be one of these
+                SyntaxKind::Ident | SyntaxKind::CompoundTypeItem => {
+                    variants.push(CompoundTypeItem(child));
                 }
-                None
-            })
-            .unwrap();
-        dbg!(&next);
-        if let Some(item) = CompoundTypeItem::cast(next) {
-            variants.push(item);
-            return variants;
+                SyntaxKind::InfixExpr => variants.append(&mut Union(child).variants()),
+                _ => {}
+            }
         }
-        // loop {
-        //     match node.children().find_map(CompoundTypeItem::cast) {
-        //         Some(item) => v.push(item),
-        //         None => break,
-        //     }
-        // }
         variants
     }
 

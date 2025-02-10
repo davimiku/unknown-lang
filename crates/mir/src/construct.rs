@@ -19,6 +19,31 @@ impl Builder {
         let mut func_count: u32 = 0;
         for expr in module.exprs.iter() {
             let expr = context.expr(*expr);
+
+            if let Expr::TypeStatement(_) = expr {
+                continue;
+            }
+
+            // match expr {
+            //     // type definitions, others?
+            //     Expr::Statement(statement) => {
+            //         todo!()
+            //     }
+            //     // should be most things - `let main = () -> { ... }`
+            //     // constants too - `let base_url = "..."`
+            //     Expr::VarDef(var_def) => {
+            //         todo!()
+            //     }
+
+            //     Expr::TypeStatement(type_statement) => {
+            //         todo!()
+            //     }
+            // }
+            if let Expr::Statement(x) = expr {
+                dbg!(x.display(context));
+                let x = context.expr(*x);
+                dbg!(x);
+            }
             let var_def = assert_matches!(expr, hir::Expr::VarDef);
 
             let value = context.expr(var_def.value);

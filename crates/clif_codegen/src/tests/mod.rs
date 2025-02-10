@@ -6,6 +6,7 @@ mod loops;
 mod mutability;
 mod scopes;
 mod simple;
+mod unions;
 
 /// Converts from an opaque pointer to a function pointer
 ///
