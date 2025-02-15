@@ -182,6 +182,7 @@ impl TypeDatabase {
         self.type_expr_types.insert(idx, ty);
     }
 
+    // todo - panics if called before type checking, move to another module?
     pub(super) fn get_value_symbol(&self, key: &ValueSymbol) -> Idx<Type> {
         self.value_symbols[key]
     }
@@ -190,6 +191,7 @@ impl TypeDatabase {
         self.value_symbols.insert(key, ty);
     }
 
+    // todo - panics if called before type checking, move to another module?
     pub(super) fn get_type_symbol(&self, key: &TypeSymbol) -> Idx<Type> {
         self.type_symbols[key]
     }
@@ -197,10 +199,7 @@ impl TypeDatabase {
     pub(super) fn insert_type_symbol(&mut self, key: TypeSymbol, ty: Idx<Type>) {
         self.type_symbols.insert(key, ty);
     }
-}
 
-// mutating functions
-impl TypeDatabase {
     pub(super) fn alloc_type(&mut self, ty: Type) -> Idx<Type> {
         self.types.alloc(ty)
     }

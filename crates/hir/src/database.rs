@@ -20,6 +20,10 @@ pub struct Database {
     /// Allocated type expressions
     pub(crate) type_exprs: Arena<TypeExpr>,
 
+    /// Type expressions defined in a type binding (i.e. alias), so these
+    /// have a name in the type namespace
+    pub(crate) named_type_exprs: HashMap<TypeSymbol, Idx<TypeExpr>>,
+
     /// Text ranges of the expressions from `type_exprs`
     /// Invariant: The indexes must be kept in sync
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
@@ -38,6 +42,13 @@ pub struct Database {
 
     /// Tracks the mutability of all ValueSymbols in this module
     pub(crate) mutabilities: HashMap<ValueSymbol, Mutability>,
+
+    /// Mapping between symbols defining a type and symbols defining a value
+    /// for cases where the symbol exists in both namespaces (like unions)
+    /// `type Color = red | green | blue`
+    /// `let myColor = Color.green`
+    ///                ^^^^^
+    pub(crate) type_value_symbols: HashMap<ValueSymbol, TypeSymbol>,
 }
 
 impl ContextDisplay for Database {

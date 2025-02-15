@@ -85,7 +85,16 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::Match(match_expr) => result.chain(infer_match_expr(&match_expr, context)),
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Loop(loop_expr) => result.chain(infer_loop_expr(&loop_expr, context)),
-        Expr::Path(_) => todo!(),
+        Expr::Path(_) => todo!("typecheck paths"),
+        // TODO - this should be just a part of a Path, ex. `>Color<.green` and not type checked itself
+        // but could someone do: `type Color = red | green | blue; let some_var = Color` ?
+        // what would be the type of some_var ? Or we treat it like a namespace which isn't typed
+        // Or treat it as a record of `( red: Color, green: Color, blue: Color )`
+        Expr::UnionNamespace(_) => todo!(),
+        Expr::UnionVariant(_) => {
+            todo!("function that takes param(s) and gives an instance of the union type")
+        }
+        Expr::UnionUnitVariant(_) => todo!("an instance of the union type"),
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
 

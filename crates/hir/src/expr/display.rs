@@ -88,6 +88,11 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(_) => todo!(),
+        Expr::UnionNamespace(union_namespace) => {
+            s.push_str(&union_namespace.name.display(context).to_string())
+        }
+        Expr::UnionVariant(_) => todo!(),
+        Expr::UnionUnitVariant(_) => todo!(),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
         Expr::TypeStatement(.., type_expr) => {
             s.push_str(&type_expr.display(context).to_string());

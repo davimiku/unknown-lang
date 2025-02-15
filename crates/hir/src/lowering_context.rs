@@ -1,7 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
 
-use ast::expr::Scrutinee;
 use ast::Mutability;
 use itertools::Itertools;
 use la_arena::Idx;
@@ -12,7 +11,8 @@ use util_macros::assert_matches;
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    IntrinsicExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr, VarRefExpr,
+    IntrinsicExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr, UnionNamespace,
+    VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -311,12 +311,17 @@ impl Context {
         self.alloc_expr(expr, ast)
     }
 
-    fn lower_name(&mut self, name: String) -> (Key, ValueSymbol) {
+    fn lower_value_name(&mut self, name: String) -> (Key, ValueSymbol) {
         let key = self.interner.intern(&name);
+        let symbol = self.lower_value_key(key);
 
-        let symbol = self.current_scopes_mut().insert_value(key);
-        self.database.value_names.insert(symbol, key);
         (key, symbol)
+    }
+
+    fn lower_value_key(&mut self, name: Key) -> ValueSymbol {
+        let symbol = self.current_scopes_mut().insert_value(name);
+        self.database.value_names.insert(symbol, name);
+        symbol
     }
 
     fn lower_type_name(&mut self, name: String) -> (Key, TypeSymbol) {
@@ -331,7 +336,7 @@ impl Context {
         // TODO: desugar patterns into separate definitions
         // or not until MIR?
         let name = ast.name().unwrap().text().to_string();
-        let (key, symbol) = self.lower_name(name);
+        let (key, symbol) = self.lower_value_name(name);
         self.current_let_binding_symbol = Some((key, symbol));
 
         let mutability = ast.mutability();
@@ -581,48 +586,58 @@ impl Context {
 
     fn lower_path(&mut self, path: ast::PathExpr) -> Expr {
         // `a`
-        // -> subject: `a`
+        // -> subject: `a`  (Ident)
         // -> member: None
 
+        // `Color.green` (VariantExpr)
+        // -> subject: `Color`  (UnionNamespace)
+        // -> member: `green`   (UnionUnitVariant)
+
+        // `Status.pending start_time`
+        // -> subject: `Status` (UnionNamespace)
+        // -> member: `pending` (UnionVariant)
+
         // `a.b.c` (MemberExpr)
-        // -> subject: `a.b`
-        // -> member: `.c`
+        // -> subject: `a.b` (PathExpr)
+        // -> member: `c`    (RecordField)
 
-        // `a.b.1` (IndexExpr)
-        // -> subject: `a.b`
-        // -> index: `1` (Int)
+        // Need to recognize "Color" as a namespace / union namespace kind of thing, and
+        // recognize "green" as a UnitVariant
 
-        // `loc.point."x"` (IndexExpr)
-        // -> subject: `loc.point`
-        // -> index: `"x"` (String)
-
-        // `arr.(mid)` (IndexExpr)
-        // -> subject: `arr`
-        // -> index: `mid` (variable)
-
-        // `arr.(point.x)` (IndexExpr)
-        // -> subject: `arr`
-        // -> index: `point.x` (path)
-
-        dbg!(&path);
+        // or is Color more of a "record"?
+        // pseudo `let Color = ( red={...}, green={...}, blue={...} )`
 
         if let Some(member) = path.member() {
+            dbg!(&path.subject());
             let subject = self.lower_expr(path.subject());
+            dbg!(self.expr(subject));
+
+            // if subject is UnionNamespace
+            // and if member Key matches any UnionNamespace.members
+            // make a UnionUnitVariant or UnionVariant accordingly
+
+            // FIXME - this just produces UnresolvedVarRef, because "green" doesn't
+            // exists as a value in the current namespace, it only exists as a value in
+            // the "Color" namespace
+            // Pass in a namespace to self.lower_expr?
+            // change some kind of state on self?
             let member = self.lower_expr(Some(member));
             //
 
+            // if subject is UnionNamespace, member should be UnionVariant/UnionUnitVariant
+
             match self.expr(member) {
-                // Index
+                // Index - TODO: maybe remove indexing completely
                 Expr::IntLiteral(_) => Expr::IndexInt(IndexIntExpr {
                     subject,
                     index: member,
                 }),
-                Expr::StringLiteral(_) => todo!(),
-                Expr::Path(_) => todo!(),
+                Expr::StringLiteral(_) => todo!("allowed? `rec.\"field\"`"),
+                Expr::Path(path) => todo!(),
 
-                Expr::Unary(_) => todo!(), // arr.(-x)     // ??
+                Expr::Unary(_) => todo!(), // arr.(-x)     // allowed??
 
-                Expr::Call(_) => todo!(), // arr.(max arr2) // ??
+                Expr::Call(_) => todo!(), // arr.(max arr2) // allowed??
 
                 // How do we distinguish between `a.b` (member) and `a.(b)` (index) ?
                 Expr::VarRef(_) => todo!(),
@@ -658,8 +673,30 @@ impl Context {
         let key = self.interner.intern(name);
 
         let value_symbol = self.find_value(key);
+        dbg!(name);
+        dbg!(value_symbol);
+
+        // TODO - figure out if its unionnamespace
+        // Expr::UnionNamespace(UnionNamespace { name, members });
 
         if let Some(symbol) = value_symbol {
+            // if this ValueSymbol was originally defined by virtue of a type binding (ex. unions)
+            if let Some(type_symbol) = self.database.type_value_symbols.get(&symbol) {
+                let type_expr = self.database.named_type_exprs
+                    .get(type_symbol)
+                    .expect("value symbol with a corresponding type symbol has a corresponding type expression");
+                let (type_expr, ..) = self.database.type_expr(*type_expr);
+
+                match type_expr {
+                    TypeExpr::Union(union_type_expr) => {
+                        return Expr::UnionNamespace(UnionNamespace {
+                            name: symbol,
+                            members: union_type_expr.variants.clone(),
+                        });
+                    }
+                    _ => unreachable!(),
+                };
+            }
             Expr::VarRef(VarRefExpr { symbol })
         } else {
             Expr::UnresolvedVarRef { key }
@@ -782,9 +819,13 @@ impl Context {
 
 // Lowering functions - TypeExpr
 impl Context {
-    fn lower_type_expr(&mut self, ast: Option<ast::TypeExpr>, name: Option<Key>) -> Idx<TypeExpr> {
+    fn lower_type_expr(
+        &mut self,
+        ast: Option<ast::TypeExpr>,
+        name: Option<TypeSymbol>,
+    ) -> Idx<TypeExpr> {
         use ast::TypeExpr as TE;
-        if let Some(ast) = ast {
+        let type_expr = if let Some(ast) = ast {
             let range = ast.range();
             let type_expr = match ast {
                 TE::Call(ast) => self.lower_type_call(ast),
@@ -801,7 +842,14 @@ impl Context {
             self.alloc_type_expr(type_expr, range)
         } else {
             self.alloc_type_expr(TypeExpr::Empty, TextRange::default())
+        };
+
+        if let Some(type_symbol) = name {
+            self.database
+                .named_type_exprs
+                .insert(type_symbol, type_expr);
         }
+        type_expr
     }
 
     fn lower_type_float_literal(&mut self, ast: ast::FloatLiteral) -> TypeExpr {
@@ -833,25 +881,36 @@ impl Context {
         }
     }
 
-    fn lower_union(&mut self, ast: ast::Union, name: Option<Key>) -> TypeExpr {
+    fn lower_union(&mut self, ast: ast::Union, name: Option<TypeSymbol>) -> TypeExpr {
         let variants = ast
             .variants()
             .iter()
             .map(|item| {
                 let ident_str = &item.ident_as_string();
                 let key = self.interner.intern(ident_str);
-                let variant_name = name.map(|k| {
-                    let s = format!("{}.{}", self.lookup(key), ident_str);
-                    self.interner.intern(&s)
-                });
                 let type_expr = item
                     .type_expr()
-                    .map(|t| self.lower_type_expr(Some(t), variant_name))
+                    .map(|t| self.lower_type_expr(Some(t), None))
                     .unwrap_or_else(|| self.alloc_type_expr(TypeExpr::Unit, item.range()));
 
                 (key, type_expr)
             })
             .collect_vec();
+
+        // Union names also exist in the value namespace
+        // `type Color = red | green | blue`
+        // `let myColor = Color.green`
+        //                ^^^^^ ^^^^^
+        if let Some(type_symbol) = name {
+            let key = self.database.type_names[&type_symbol];
+            let value_symbol = self.lower_value_key(key);
+            self.database
+                .mutabilities
+                .insert(value_symbol, Mutability::Not);
+            self.database
+                .type_value_symbols
+                .insert(value_symbol, type_symbol);
+        }
 
         TypeExpr::Union(UnionTypeExpr { name, variants })
     }
@@ -917,9 +976,9 @@ impl Context {
 
     fn lower_type_binding(&mut self, ast: ast::TypeBinding) -> Expr {
         let name = ast.name().unwrap().text().to_string();
-        let (key, symbol) = self.lower_type_name(name);
+        let (.., symbol) = self.lower_type_name(name);
 
-        let type_expr = self.lower_type_expr(ast.type_expr(), Some(key));
+        let type_expr = self.lower_type_expr(ast.type_expr(), Some(symbol));
         let type_var_def = TypeExpr::type_variable_def(symbol, type_expr);
         let type_var_def = self.alloc_type_expr(type_var_def, ast.range());
         Expr::TypeStatement(type_var_def)

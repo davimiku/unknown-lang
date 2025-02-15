@@ -121,3 +121,17 @@ fn parse(input: &str) -> (Root, Context) {
 
     (root, context)
 }
+
+#[derive(Clone)]
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+fn test() {
+    let r = Color::Red;
+    let Color = Color::Green;
+    let Color = Color::Red;
+    let Color = Color.clone();
+}

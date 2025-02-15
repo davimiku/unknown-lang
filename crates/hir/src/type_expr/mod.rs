@@ -92,7 +92,7 @@ pub struct UnaryTypeExpr {
 pub struct UnionTypeExpr {
     /// User-given name, if part of a type binding statement, i.e. `type Color = ...`
     ///                                                                  ^^^^^
-    pub name: Option<Key>,
+    pub name: Option<TypeSymbol>,
 
     /// Variants of the union, i.e. `a | b: B | c`
     ///                                  ^^^^

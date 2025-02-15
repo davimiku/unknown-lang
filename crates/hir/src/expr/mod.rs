@@ -9,7 +9,7 @@ use util_macros::assert_matches;
 
 use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
-use crate::type_expr::{TypeExpr, TypeSymbol};
+use crate::type_expr::TypeExpr;
 use crate::{Context, Type};
 
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -50,6 +50,19 @@ pub enum Expr {
     },
 
     Path(PathExpr),
+
+    /// The value representation of a union type
+    ///
+    /// ```
+    /// type Color = red | green | blue
+    /// let g = Color.green
+    /// //      ^^^^^
+    /// ```
+    UnionNamespace(UnionNamespace),
+
+    UnionVariant(UnionVariant),
+
+    UnionUnitVariant(UnionUnitVariant),
 
     IndexInt(IndexIntExpr),
 
@@ -155,7 +168,10 @@ pub struct ReAssignment {
 ///
 /// Examples of symbols are variable names, function parameter names, etc.
 ///
-/// See also [TypeSymbol] for the analog that lives in the "type" universe
+/// See also [TypeSymbol](crate::type_expr::TypeSymbol) for the analog that lives in the "type" universe
+///
+/// Get the original string content of this symbol using [Database](crate::database::Database).value_names
+/// which gives a `Key` to lookup from the interner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueSymbol {
     /// Unique id of the module where this symbol resides
@@ -464,6 +480,33 @@ pub struct PathExpr {
     pub subject: Idx<Expr>,
 
     pub member: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionNamespace {
+    /// Name of the union in the value namespace
+    pub name: ValueSymbol,
+
+    /// Names of the variants (value namespace) with their type annotations
+    pub members: Vec<(Key, Idx<TypeExpr>)>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionVariant {
+    /// Name of the variant
+    pub name: ValueSymbol,
+
+    /// Value expression for the union namespace
+    pub union_namespace: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionUnitVariant {
+    /// Name of the variant
+    pub name: ValueSymbol,
+
+    /// Value expression for the union namespace
+    pub union_namespace: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
