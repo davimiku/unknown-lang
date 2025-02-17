@@ -20,7 +20,7 @@ let main = fun (c: Color) -> { c }";
 #[test]
 fn define_and_use_sum_type() {
     let input = "
-type Color = (red | green | blue)
+type Color = red | green | blue
 
 let main = fun () -> { Color.green }";
 

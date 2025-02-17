@@ -42,7 +42,14 @@ type Color = (red | green | blue)
 
 let main = fun () -> { Color.green }";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: {none}
+    mut _0: ()
+    
+    BB0():
+        _0 := const 1
+        Return _0 ->";
 
     check_module(input, expected);
 }

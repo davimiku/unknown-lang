@@ -290,13 +290,9 @@ impl Builder {
                 if let Some(binop) = try_get_binop(call, context) {
                     // TODO: handle side-effects in non-assigned statement binops
                     let rvalue = self.construct_binop(&binop, context);
-                    match assign_to {
-                        Some(assign_place) => {
-                            let assign = Statement::assign(assign_place.clone(), rvalue);
-                            self.current_block_mut().statements.push(assign);
-                        }
-                        // In a statement context, binop with nothing to assign is ignored
-                        None => {}
+                    if let Some(assign_place) = assign_to {
+                        let assign = Statement::assign(assign_place.clone(), rvalue);
+                        self.current_block_mut().statements.push(assign);
                     };
                 } else {
                     self.construct_call_terminator(call, assign_to, context);
@@ -339,6 +335,8 @@ impl Builder {
                 let dummy_block = self.new_block();
                 self.current_block = dummy_block;
             }
+            Expr::UnionUnitVariant(unit_variant) => self
+                .construct_statement_constant(Constant::Int(unit_variant.index as i64), assign_to),
 
             _ => unreachable!("Compiler Bug (MIR): Unknown expression {statement_expr:?}"),
         }

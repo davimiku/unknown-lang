@@ -91,10 +91,14 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         // what would be the type of some_var ? Or we treat it like a namespace which isn't typed
         // Or treat it as a record of `( red: Color, green: Color, blue: Color )`
         Expr::UnionNamespace(_) => todo!(),
-        Expr::UnionVariant(_) => {
+        Expr::UnionVariant(variant) => {
             todo!("function that takes param(s) and gives an instance of the union type")
         }
-        Expr::UnionUnitVariant(_) => todo!("an instance of the union type"),
+        // TODO - is this right?... what exactly does this correspond to -
+        // `Color.green` together might be Int, but a variable assigned to that should be
+        // inferred as type `Color`. So it stands to reason that `Color.green` should be type Color too, not Int
+        // a non-unit variant, like `Status.error` should be a function like `String -> Status`
+        Expr::UnionUnitVariant(unit_variant) => result.ty = context.core_types().int,
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
 

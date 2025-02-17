@@ -12,7 +12,7 @@ use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
     IntrinsicExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr, UnionNamespace,
-    VarRefExpr,
+    UnionUnitVariant, UnionVariant, VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -607,10 +607,60 @@ impl Context {
         // or is Color more of a "record"?
         // pseudo `let Color = ( red={...}, green={...}, blue={...} )`
 
+        // TODO - allow nested anonymous unions? paths of arbitrary depths
+        // ```
+        // type Example = a | b: Int | c: (dd: Int | ee: (ff: Int | gg: Int))
+        // let x = Example.c.ee.ff 3
+        // ```
+
+        // TODO - arbitrary depths, for when module namespaces are added
+        // Core.Net.Ip.v4    // or something like that
+
         if let Some(member) = path.member() {
-            dbg!(&path.subject());
             let subject = self.lower_expr(path.subject());
-            dbg!(self.expr(subject));
+
+            let member = self.lower_expr(Some(member));
+            let member_key = match self.expr(member) {
+                Expr::VarRef(var_ref_expr) => {
+                    self.database.value_names.get(&var_ref_expr.symbol).copied()
+                }
+                Expr::UnresolvedVarRef { key } => Some(*key),
+                Expr::Path(path_expr) => todo!(),
+                _ => None,
+            }
+            .expect("ast::PathExpr to have a member that can be string interned");
+
+            match self.expr(subject) {
+                Expr::Path(path_expr) => todo!(),
+                Expr::UnionNamespace(union_namespace) => {
+                    for (idx, (key, type_expr)) in union_namespace.members.iter().enumerate() {
+                        if member_key == *key {
+                            match self.type_expr(*type_expr) {
+                                TypeExpr::Unit => {
+                                    return Expr::UnionUnitVariant(UnionUnitVariant {
+                                        name: *key,
+                                        index: idx as u32,
+                                        union_namespace: subject,
+                                    })
+                                }
+
+                                _ => {
+                                    return Expr::UnionVariant(UnionVariant {
+                                        name: *key,
+                                        index: idx as u32,
+                                        union_namespace: subject,
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+                // is this possible?
+                Expr::UnionVariant(union_variant) => todo!(),
+                // is this possible?
+                Expr::UnionUnitVariant(union_unit_variant) => todo!(),
+                _ => {}
+            }
 
             // if subject is UnionNamespace
             // and if member Key matches any UnionNamespace.members
@@ -621,30 +671,11 @@ impl Context {
             // the "Color" namespace
             // Pass in a namespace to self.lower_expr?
             // change some kind of state on self?
-            let member = self.lower_expr(Some(member));
             //
 
             // if subject is UnionNamespace, member should be UnionVariant/UnionUnitVariant
 
             match self.expr(member) {
-                // Index - TODO: maybe remove indexing completely
-                Expr::IntLiteral(_) => Expr::IndexInt(IndexIntExpr {
-                    subject,
-                    index: member,
-                }),
-                Expr::StringLiteral(_) => todo!("allowed? `rec.\"field\"`"),
-                Expr::Path(path) => todo!(),
-
-                Expr::Unary(_) => todo!(), // arr.(-x)     // allowed??
-
-                Expr::Call(_) => todo!(), // arr.(max arr2) // allowed??
-
-                // How do we distinguish between `a.b` (member) and `a.(b)` (index) ?
-                Expr::VarRef(_) => todo!(),
-
-                Expr::Block(_) => todo!(), // technically allowed? Or prevent in AST
-                Expr::If(_) => todo!(),    // technically allowed? Or prevent in AST
-
                 Expr::UnresolvedVarRef { key } => panic!(
                     "Internal Compiler Error: Unresolved variable '{}'",
                     self.lookup(*key)
@@ -673,8 +704,6 @@ impl Context {
         let key = self.interner.intern(name);
 
         let value_symbol = self.find_value(key);
-        dbg!(name);
-        dbg!(value_symbol);
 
         // TODO - figure out if its unionnamespace
         // Expr::UnionNamespace(UnionNamespace { name, members });
@@ -694,7 +723,7 @@ impl Context {
                             members: union_type_expr.variants.clone(),
                         });
                     }
-                    _ => unreachable!(),
+                    _ => unreachable!("Values defined from types currently only include Unions"),
                 };
             }
             Expr::VarRef(VarRefExpr { symbol })

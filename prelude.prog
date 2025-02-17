@@ -1,6 +1,7 @@
 type Int = intrinsic
 type Float = intrinsic
 type String = intrinsic
+// TODO
 type List 'A = intrinsic
 
 type Bool = false | true

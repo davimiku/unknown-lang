@@ -12,6 +12,7 @@ use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
 use crate::{Context, Type};
 
+/// HIR Expression
 #[derive(Default, Debug, PartialEq, Clone)]
 pub enum Expr {
     /// A missing expression from the parse tree
@@ -494,7 +495,10 @@ pub struct UnionNamespace {
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnionVariant {
     /// Name of the variant
-    pub name: ValueSymbol,
+    pub name: Key,
+
+    /// Index of this variant in the union
+    pub index: u32,
 
     /// Value expression for the union namespace
     pub union_namespace: Idx<Expr>,
@@ -503,7 +507,10 @@ pub struct UnionVariant {
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnionUnitVariant {
     /// Name of the variant
-    pub name: ValueSymbol,
+    pub name: Key,
+
+    /// Index of this variant in the union
+    pub index: u32,
 
     /// Value expression for the union namespace
     pub union_namespace: Idx<Expr>,
