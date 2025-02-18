@@ -94,11 +94,15 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::UnionVariant(variant) => {
             todo!("function that takes param(s) and gives an instance of the union type")
         }
-        // TODO - is this right?... what exactly does this correspond to -
+        // TODO - find the Idx<Type::Sum> from this
         // `Color.green` together might be Int, but a variable assigned to that should be
         // inferred as type `Color`. So it stands to reason that `Color.green` should be type Color too, not Int
         // a non-unit variant, like `Status.error` should be a function like `String -> Status`
-        Expr::UnionUnitVariant(unit_variant) => result.ty = context.core_types().int,
+        Expr::UnionUnitVariant(unit_variant) => {
+            // let ty = context.expr_type(unit_variant.union_namespace); // doesn't work because UnionNamespace never hit
+            // dbg!(ty);
+            result.ty = context.core_types().int
+        }
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
 
@@ -377,6 +381,7 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
             result.ty = match tail_expr {
                 Expr::Statement(inner) => context.type_database.get_expr_type(*inner),
                 Expr::VarDef(_) => context.core_types().unit,
+                Expr::TypeStatement(_) => context.core_types().unit,
                 e => {
                     dbg!(e);
                     unreachable!();
@@ -683,10 +688,9 @@ mod tests {
 
     use super::infer_expr;
 
-    fn check(input: &str) -> (TypeResult, Context) {
+    fn check(input: &str, context: &mut Context) -> TypeResult {
         let parsed = parser::parse(input).syntax();
         let root = ast::Root::cast(parsed).expect("valid Root node");
-        let mut context = Context::new(Interner::default());
 
         let exprs: Vec<Idx<Expr>> = root
             .exprs()
@@ -701,13 +705,22 @@ mod tests {
         });
         let root = context.alloc_expr(root, None);
 
-        let result = infer_expr(root, &mut context);
-
-        (result, context)
+        infer_expr(root, context)
     }
 
     fn check_infer_type(input: &str, expected: &Type) {
-        let (result, context) = check(input);
+        let mut context = Context::new(Interner::default());
+
+        let result = check(input, &mut context);
+
+        assert!(result.is_ok());
+        let actual = context.type_(result.ty);
+
+        assert_eq!(actual, expected);
+    }
+
+    fn check_with_context(input: &str, expected: &Type, context: &mut Context) {
+        let result = check(input, context);
 
         assert!(result.is_ok());
         let actual = context.type_(result.ty);
@@ -742,12 +755,34 @@ mod tests {
 
     #[test]
     fn infer_block() {
-        let input = r#"{
+        let input = "{
     let a = 1
     a
-}"#;
+}";
         let expected = Type::IntLiteral(1);
 
         check_infer_type(input, &expected);
+    }
+
+    #[test]
+    fn infer_union() {
+        let mut context = Context::new(Interner::default());
+        let red = context.interner.intern("red");
+        let green = context.interner.intern("green");
+        let blue = context.interner.intern("blue");
+
+        let input = "{
+        type Color = red | green | blue
+
+        Color.green
+        ";
+
+        let expected = Type::sum(vec![
+            (red, context.core_types().unit),
+            (green, context.core_types().unit),
+            (blue, context.core_types().unit),
+        ]);
+
+        check_with_context(input, &expected, &mut context);
     }
 }
