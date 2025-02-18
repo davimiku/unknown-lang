@@ -3,7 +3,7 @@ use util_macros::assert_matches;
 
 use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{
-    ArrayLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
+    ListLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
     IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
@@ -68,7 +68,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         }
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.lookup(*key))),
-        Expr::ArrayLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
+        Expr::ListLiteral(array_expr) => fmt_array_literal(s, array_expr, context, indent),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
@@ -100,10 +100,10 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
     }
 }
 
-fn fmt_array_literal(s: &mut String, array: &ArrayLiteralExpr, context: &Context, indent: usize) {
+fn fmt_array_literal(s: &mut String, array: &ListLiteralExpr, context: &Context, indent: usize) {
     match array {
-        ArrayLiteralExpr::Empty => s.push_str("[]"),
-        ArrayLiteralExpr::NonEmpty { elements } => {
+        ListLiteralExpr::Empty => s.push_str("[]"),
+        ListLiteralExpr::NonEmpty { elements } => {
             s.push('[');
             for element in elements {
                 fmt_idx_expr(s, *element, context, indent);

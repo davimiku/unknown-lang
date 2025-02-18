@@ -10,9 +10,9 @@ use util_macros::assert_matches;
 
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
-    ArrayLiteralExpr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    IntrinsicExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr, UnionNamespace,
-    UnionUnitVariant, UnionVariant, VarRefExpr,
+    FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr,
+    ListLiteralExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr,
+    UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -282,7 +282,7 @@ impl Context {
         use ast::Expr as E;
         let expr = if let Some(ast) = ast.clone() {
             match ast {
-                E::ArrayLiteral(ast) => self.lower_array_literal(ast),
+                E::ListLiteral(ast) => self.lower_array_literal(ast),
                 E::Binary(ast) => self.lower_binary(ast),
                 E::Block(ast) => self.lower_block(ast),
                 E::Break(ast) => self.lower_break_statement(ast),
@@ -386,15 +386,15 @@ impl Context {
         Expr::StringLiteral(key)
     }
 
-    fn lower_array_literal(&mut self, ast: ast::ArrayLiteral) -> Expr {
+    fn lower_array_literal(&mut self, ast: ast::ListLiteral) -> Expr {
         let elements = ast
             .items()
             .map(|item| self.lower_expr(Some(item)))
             .collect_vec();
 
-        Expr::ArrayLiteral(match elements.len() {
-            0 => ArrayLiteralExpr::Empty,
-            _ => ArrayLiteralExpr::NonEmpty { elements },
+        Expr::ListLiteral(match elements.len() {
+            0 => ListLiteralExpr::Empty,
+            _ => ListLiteralExpr::NonEmpty { elements },
         })
     }
 

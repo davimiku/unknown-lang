@@ -137,7 +137,7 @@ fn array_literal_int() {
 
     let parsed = parse_expr(input);
 
-    let array_literal = assert_matches!(parsed, Expr::ArrayLiteral);
+    let array_literal = assert_matches!(parsed, Expr::ListLiteral);
     let items: Vec<_> = array_literal
         .items()
         .map(|item| assert_matches!(item, Expr::IntLiteral))
@@ -157,7 +157,7 @@ fn array_literal_index() {
 
     let path = assert_matches!(parsed, Expr::Path);
 
-    assert_matches!(assert_some!(path.subject()), Expr::ArrayLiteral);
+    assert_matches!(assert_some!(path.subject()), Expr::ListLiteral);
     assert_matches!(assert_some!(path.member()), Expr::IntLiteral);
 }
 

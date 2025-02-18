@@ -17,7 +17,7 @@ use ast::Root;
 pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
-    ArrayLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup,
+    ListLiteralExpr, BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup,
     FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr, LoopExpr, MatchExpr, Pattern, ReAssignment,
     UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };

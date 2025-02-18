@@ -6,7 +6,7 @@ mod function;
 mod tests;
 
 use hir::{
-    ArrayLiteralExpr, BlockExpr, CallExpr, Context, Expr, IfExpr, Type, VarDefExpr, VarRefExpr,
+    ListLiteralExpr, BlockExpr, CallExpr, Context, Expr, IfExpr, Type, VarDefExpr, VarRefExpr,
 };
 
 const INDENT_SIZE: usize = 4;
@@ -57,7 +57,7 @@ impl Codegen {
             Expr::FloatLiteral(f) => self.push(f.to_string()),
             Expr::IntLiteral(i) => self.push(i.to_string()),
             Expr::StringLiteral(key) => self.push(format!("\"{}\"", context.lookup(*key))),
-            Expr::ArrayLiteral(arr) => self.write_array_literal(arr, context),
+            Expr::ListLiteral(arr) => self.write_array_literal(arr, context),
             Expr::Unary(_) => unreachable!("will be removed, in favor of Call"),
             Expr::Block(block) => self.write_block(block, assign_to, context),
             Expr::Call(call) => self.write_call_expr(call, context),
@@ -86,7 +86,7 @@ impl Codegen {
         };
     }
 
-    fn write_array_literal(&mut self, arr: &ArrayLiteralExpr, context: &Context) {
+    fn write_array_literal(&mut self, arr: &ListLiteralExpr, context: &Context) {
         self.push_ch('[');
         for element in arr.elements() {
             let expr = context.expr(*element);

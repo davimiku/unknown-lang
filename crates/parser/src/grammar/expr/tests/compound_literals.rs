@@ -30,7 +30,7 @@ fn parse_array_int() {
     check_expr(
         "[1, 2, 3]",
         expect![[r#"
-ArrayLiteral@0..9
+ListLiteral@0..9
   LBracket@0..1 "["
   IntLiteralExpr@1..2
     IntLiteral@1..2 "1"

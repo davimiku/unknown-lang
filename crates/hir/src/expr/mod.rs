@@ -29,7 +29,7 @@ pub enum Expr {
     StringLiteral(Key),
 
     /// Array literal value, ex. `[1, 2, 3]`
-    ArrayLiteral(ArrayLiteralExpr),
+    ListLiteral(ListLiteralExpr),
 
     /// Unary expression, ex. `-a`, `!b`
     // TODO: remove and use a Call instead (unary function call)
@@ -222,12 +222,12 @@ pub struct VarRefExpr {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ArrayLiteralExpr {
+pub enum ListLiteralExpr {
     Empty,
     NonEmpty { elements: Vec<Idx<Expr>> },
 }
 
-impl ArrayLiteralExpr {
+impl ListLiteralExpr {
     pub fn elements(&self) -> &[Idx<Expr>] {
         match self {
             Self::Empty => &[],

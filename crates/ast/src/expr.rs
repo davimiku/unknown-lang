@@ -7,7 +7,6 @@ use crate::TypeExpr;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    ArrayLiteral(ArrayLiteral),
     Block(Block),
     Binary(Binary),
     Break(BreakStatement),
@@ -19,6 +18,7 @@ pub enum Expr {
     If(If),
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
+    ListLiteral(ListLiteral),
     Loop(Loop),
     Match(Match),
     Paren(ParenExpr),
@@ -33,7 +33,7 @@ pub enum Expr {
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         Some(match node.kind() {
-            SyntaxKind::ArrayLiteral => Self::ArrayLiteral(ArrayLiteral(node)),
+            SyntaxKind::ListLiteral => Self::ListLiteral(ListLiteral(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BreakStatement => Self::Break(BreakStatement(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
@@ -67,7 +67,7 @@ impl Expr {
     pub fn range(self) -> TextRange {
         use Expr as E;
         match self {
-            E::ArrayLiteral(e) => e.range(),
+            E::ListLiteral(e) => e.range(),
             E::Block(e) => e.range(),
             E::Binary(e) => e.range(),
             E::Break(e) => e.range(),
@@ -107,9 +107,9 @@ fn cast_infix(node: SyntaxNode) -> Expr {
 }
 
 #[derive(Debug, Clone)]
-pub struct ArrayLiteral(SyntaxNode);
+pub struct ListLiteral(SyntaxNode);
 
-impl ArrayLiteral {
+impl ListLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::BlockExpr).then_some(Self(node))
     }
