@@ -3,8 +3,8 @@ use util_macros::assert_matches;
 
 use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{
-    ListLiteralExpr, BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr,
-    IndexIntExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
+    BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr, IndexIntExpr,
+    ListLiteralExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
 use super::{FunctionExprGroup, FunctionParam, LoopExpr, ReAssignment};
@@ -92,7 +92,11 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
             s.push_str(&union_namespace.name.display(context).to_string())
         }
         Expr::UnionVariant(_) => todo!(),
-        Expr::UnionUnitVariant(_) => todo!(),
+        Expr::UnionUnitVariant(unit_variant) => s.push_str(&format!(
+            "{}.{}",
+            unit_variant.union_namespace.display(context),
+            context.lookup(unit_variant.name)
+        )),
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
         Expr::TypeStatement(.., type_expr) => {
             s.push_str(&type_expr.display(context).to_string());

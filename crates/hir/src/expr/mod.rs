@@ -54,7 +54,7 @@ pub enum Expr {
 
     /// The value representation of a union type
     ///
-    /// ```
+    /// ```ignore
     /// type Color = red | green | blue
     /// let g = Color.green
     /// //      ^^^^^
@@ -487,6 +487,11 @@ pub struct PathExpr {
 pub struct UnionNamespace {
     /// Name of the union in the value namespace
     pub name: ValueSymbol,
+
+    /// The original type expression defined for this union
+    /// i.e. `type Color = red | green | blue`
+    ///                    ^^^^^^^^^^^^^^^^^^
+    pub type_expr: Idx<TypeExpr>,
 
     /// Names of the variants (value namespace) with their type annotations
     pub members: Vec<(Key, Idx<TypeExpr>)>,

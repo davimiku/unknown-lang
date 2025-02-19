@@ -13,6 +13,7 @@ mod path;
 mod scalar_literals;
 mod types;
 mod unary;
+mod unions;
 
 use expect_test::expect;
 

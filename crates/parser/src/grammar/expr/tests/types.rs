@@ -151,21 +151,3 @@ fn type_function_two_params() {
                   Ident@10..11 "C""#]],
     );
 }
-
-#[test]
-fn union_no_payloads() {
-    let input = "a | b";
-    check(
-        input,
-        expect![[r#"
-TypeExpr@0..5
-  InfixExpr@0..5
-    Ident@0..2
-      Ident@0..1 "a"
-      Emptyspace@1..2 " "
-    Bar@2..3 "|"
-    Emptyspace@3..4 " "
-    Ident@4..5
-      Ident@4..5 "b""#]],
-    )
-}

@@ -27,10 +27,8 @@ const CALL_ARG_START: [lexer::TokenKind; 8] = [
     T::IntLiteral,
     T::FloatLiteral,
     T::StringLiteral,
-    T::Bang, // expression is higher precedence than function application
+    T::Bang,  // expression is higher precedence than function application
     T::Tilde, // temporary IntoString operator
-             // T::False, // TODO: remove when true/false are turned into idents
-             // T::True,  // TODO: remove when true/false are turned into idents
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {

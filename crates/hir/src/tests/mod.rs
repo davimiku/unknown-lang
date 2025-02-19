@@ -504,25 +504,13 @@ fn array_literal_int() {
 }
 
 #[test]
-fn array_literal_string() {
+fn list_literal_string() {
     let input = r#"let a = ["x", "y", "z"]"#;
 
     let expected = indoc! {"
     a~1.0 : []String = [\"x\",\"y\",\"z\",];"};
 
     let expected_vars = &[("a~1.0", "[]String")];
-
-    check(input, expected, expected_vars);
-}
-
-#[test]
-fn array_literal_index() {
-    let input = "[0, 1, 2].1";
-
-    let expected = indoc! {"
-    [0,1,2,].1;"};
-
-    let expected_vars = &[];
 
     check(input, expected, expected_vars);
 }

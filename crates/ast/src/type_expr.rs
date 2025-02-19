@@ -162,6 +162,7 @@ impl Union__Old {
 pub struct ParenExpr(SyntaxNode);
 
 impl ParenExpr {
+    /// Type Expression inside the parentheses
     pub fn expr(&self) -> Option<TypeExpr> {
         self.0.children().find_map(TypeExpr::cast)
     }
@@ -171,7 +172,7 @@ impl ParenExpr {
     }
 }
 
-/// Eventually want to switch to the syntax with a vertical bar
+/// Type containing disjoint variants
 ///
 /// ```ignore
 /// type Bool = true | false

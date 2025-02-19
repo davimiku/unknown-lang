@@ -119,6 +119,7 @@ fn is_sumtype_subtype(a: &SumType, b: &SumType, context: &Context) -> bool {
     if a.variants.len() != b.variants.len() {
         return false;
     }
+
     for ((a_key, a_type), (b_key, b_type)) in a.variants.iter().zip(b.variants.iter()) {
         if *a_key != *b_key {
             return false;

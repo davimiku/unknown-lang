@@ -45,7 +45,7 @@ let main = fun () -> { Color.green }";
     let expected = "
 fun main:
     params: {none}
-    mut _0: Int
+    mut _0: (red | green | blue)
     
     BB0():
         _0 := const 1

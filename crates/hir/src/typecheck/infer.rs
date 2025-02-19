@@ -88,20 +88,21 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::Path(_) => todo!("typecheck paths"),
         // TODO - this should be just a part of a Path, ex. `>Color<.green` and not type checked itself
         // but could someone do: `type Color = red | green | blue; let some_var = Color` ?
-        // what would be the type of some_var ? Or we treat it like a namespace which isn't typed
-        // Or treat it as a record of `( red: Color, green: Color, blue: Color )`
+        // what would be the type of some_var ? Or we treat it like a namespace which isn't typed?
+        // Or introduce the concept of a namespace type?
+        // Or treat it as a record of `( red: Color, green: Color, blue: Color )` when records are implemented?
         Expr::UnionNamespace(_) => todo!(),
+
+        // TODO - this should give a function that accepts parameter(s) and gives back an instance of the union
         Expr::UnionVariant(variant) => {
             todo!("function that takes param(s) and gives an instance of the union type")
         }
-        // TODO - find the Idx<Type::Sum> from this
-        // `Color.green` together might be Int, but a variable assigned to that should be
-        // inferred as type `Color`. So it stands to reason that `Color.green` should be type Color too, not Int
-        // a non-unit variant, like `Status.error` should be a function like `String -> Status`
+        // TODO - Does the UnionUnitVariant get the `Color` type or should that be the Path?
+        // this appears to work fine but maybe that's a lie
         Expr::UnionUnitVariant(unit_variant) => {
-            // let ty = context.expr_type(unit_variant.union_namespace); // doesn't work because UnionNamespace never hit
-            // dbg!(ty);
-            result.ty = context.core_types().int
+            let union_namespace = context.expr(unit_variant.union_namespace);
+            let union_namespace = assert_matches!(union_namespace, Expr::UnionNamespace);
+            result.chain(infer_type_expr(union_namespace.type_expr, context));
         }
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
@@ -689,8 +690,14 @@ mod tests {
     use super::infer_expr;
 
     fn check(input: &str, context: &mut Context) -> TypeResult {
-        let parsed = parser::parse(input).syntax();
-        let root = ast::Root::cast(parsed).expect("valid Root node");
+        let parse = parser::parse(input);
+        if !parse.errors().is_empty() {
+            dbg!(parse.errors());
+            assert!(parse.errors().is_empty());
+        }
+
+        let syntax = parse.syntax();
+        let root = ast::Root::cast(syntax).expect("valid Root node");
 
         let exprs: Vec<Idx<Expr>> = root
             .exprs()
@@ -739,8 +746,15 @@ mod tests {
     #[test]
     fn infer_int_addition() {
         let input = "2 + 3";
-        // TODO: is it possible to overload `+` for IntLiteral to return an IntLiteral ?
         let expected = Type::Int;
+
+        check_infer_type(input, &expected);
+    }
+
+    #[test]
+    fn infer_unit() {
+        let input = "()";
+        let expected = Type::Unit;
 
         check_infer_type(input, &expected);
     }
@@ -748,7 +762,7 @@ mod tests {
     #[test]
     fn infer_let_binding() {
         let input = "let a = 1";
-        let expected = Type::Unit;
+        let expected = Type::Unit; // the let binding itself is Unit
 
         check_infer_type(input, &expected);
     }
@@ -772,10 +786,10 @@ mod tests {
         let blue = context.interner.intern("blue");
 
         let input = "{
-        type Color = red | green | blue
+        type Color = (red | green | blue)
 
         Color.green
-        ";
+}";
 
         let expected = Type::sum(vec![
             (red, context.core_types().unit),

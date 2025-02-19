@@ -28,6 +28,7 @@ impl<'t, 'input> Source<'t, 'input> {
         self.peek_token_raw()
     }
 
+    /// Finds the next TokenKind, also eats trivia
     pub(super) fn peek_kind(&mut self) -> Option<TokenKind> {
         self.eat_trivia();
         self.peek_kind_raw()
@@ -55,7 +56,7 @@ impl<'t, 'input> Source<'t, 'input> {
     }
 
     fn at_trivia(&self) -> bool {
-        self.peek_kind_raw().map_or(false, TokenKind::is_trivia)
+        self.peek_kind_raw().is_some_and(TokenKind::is_trivia)
     }
 
     fn peek_kind_raw(&self) -> Option<TokenKind> {

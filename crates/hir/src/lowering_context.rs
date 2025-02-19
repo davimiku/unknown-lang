@@ -711,15 +711,16 @@ impl Context {
         if let Some(symbol) = value_symbol {
             // if this ValueSymbol was originally defined by virtue of a type binding (ex. unions)
             if let Some(type_symbol) = self.database.type_value_symbols.get(&symbol) {
-                let type_expr = self.database.named_type_exprs
+                let type_expr_idx = self.database.named_type_exprs
                     .get(type_symbol)
                     .expect("value symbol with a corresponding type symbol has a corresponding type expression");
-                let (type_expr, ..) = self.database.type_expr(*type_expr);
+                let (type_expr, ..) = self.database.type_expr(*type_expr_idx);
 
                 match type_expr {
                     TypeExpr::Union(union_type_expr) => {
                         return Expr::UnionNamespace(UnionNamespace {
                             name: symbol,
+                            type_expr: *type_expr_idx,
                             members: union_type_expr.variants.clone(),
                         });
                     }
@@ -862,7 +863,12 @@ impl Context {
                 TE::Ident(ast) => self.lower_type_ident(ast),
                 TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
                 TE::Function(_) => todo!(),
-                TE::Paren(ast) => return self.lower_type_expr(ast.expr(), name),
+                TE::Paren(ast) => {
+                    if let Some(type_expr) = ast.expr() {
+                        return self.lower_type_expr(Some(type_expr), name);
+                    }
+                    TypeExpr::Unit
+                }
                 TE::Path(ast) => self.lower_type_path(ast),
                 TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
                 TE::Union__Old(ast) => self.lower_union__old(ast),

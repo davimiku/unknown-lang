@@ -7,7 +7,7 @@ use crate::event::Event;
 use crate::grammar;
 use crate::source::Source;
 use crate::syntax::SyntaxKind;
-use lexer::TokenKind;
+use lexer::{Token, TokenKind};
 use marker::Marker;
 use std::mem;
 
@@ -202,15 +202,21 @@ impl<'t, 'input> Parser<'t, 'input> {
     }
 
     pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {
-        self.peek().map_or(false, |k| set.contains(&k))
+        self.peek().is_some_and(|k| set.contains(&k))
     }
 
     pub(crate) fn at_end(&mut self) -> bool {
         self.peek().is_none()
     }
 
+    /// Peeks for the next TokenKind, also eats trivia
     pub(crate) fn peek(&mut self) -> Option<TokenKind> {
         self.source.peek_kind()
+    }
+
+    pub(crate) fn peek_token(&mut self) -> Option<&Token> {
+        // self. source.peek_next()
+        self.source.peek_token()
     }
 }
 
