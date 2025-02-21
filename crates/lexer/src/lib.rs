@@ -4,6 +4,8 @@ use logos::Logos;
 use text_size::{TextRange, TextSize};
 pub use token_kind::TokenKind;
 
+#[cfg(test)]
+mod tests;
 mod token_kind;
 
 pub struct Lexer<'a> {
@@ -42,38 +44,4 @@ pub struct Token<'a> {
     pub kind: TokenKind,
     pub text: &'a str,
     pub range: TextRange,
-}
-
-#[cfg(test)]
-mod tests {
-    use text_size::{TextRange, TextSize};
-
-    use crate::{Lexer, Token};
-
-    use super::token_kind::TokenKind as T;
-
-    impl<'a> Token<'a> {
-        fn new(kind: T, text: &'a str, range: TextRange) -> Self {
-            Token { kind, text, range }
-        }
-    }
-
-    fn range<S: Into<TextSize>>(start: S, end: S) -> TextRange {
-        TextRange::new(start.into(), end.into())
-    }
-
-    #[test]
-    fn test_basic_operators() {
-        let expected = vec![
-            Token::new(T::Plus, "+", range(0, 1)),
-            Token::new(T::Dash, "-", range(1, 2)),
-            Token::new(T::Star, "*", range(2, 3)),
-            Token::new(T::Slash, "/", range(3, 4)),
-        ];
-        let lexer = Lexer::new("+-*/");
-
-        let actual: Vec<Token> = lexer.collect();
-
-        assert_eq!(actual, expected);
-    }
 }

@@ -8,6 +8,12 @@ pub enum TokenKind {
     #[regex("[A-Za-z][A-Za-z0-9_]*")]
     Ident,
 
+    #[regex("_[A-Za-z0-9_]*", priority = 3)]
+    InvalidLeadingUnderscore,
+
+    #[token("_")]
+    Underscore,
+
     // TODO: implement better numbers
     // https://github.com/maciejhirsz/logos/issues/133#issuecomment-687281059
     #[regex("(?&decimal)")]
@@ -265,6 +271,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Ident => "identifier",
+            Self::InvalidLeadingUnderscore => "_invalid_identifier",
 
             // Keywords
             Self::And => "‘and’",
@@ -302,6 +309,9 @@ impl fmt::Display for TokenKind {
             Self::LParen => "‘(’",
             Self::RParen => "‘)’",
 
+            // Placehodlers
+            Self::Underscore => "‘_’",
+
             // Separators
             Self::Colon => "‘:’",
             Self::Semicolon => "‘;’",
@@ -338,220 +348,5 @@ impl fmt::Display for TokenKind {
 
             Self::Root => "root",
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use logos::Logos;
-
-    use crate::TokenKind;
-
-    fn check(input: &str, kind: TokenKind) {
-        let mut lexer = TokenKind::lexer(input);
-
-        assert_eq!(lexer.next(), Some(kind));
-        assert_eq!(lexer.slice(), input);
-    }
-
-    fn check_err(input: &str) {
-        let mut lexer = TokenKind::lexer(input);
-
-        assert_eq!(lexer.next(), Some(TokenKind::Error));
-    }
-
-    #[test]
-    fn lex_alphabetic_identifier() {
-        check("abcd", TokenKind::Ident);
-    }
-
-    #[test]
-    fn lex_alphanumeric_identifier() {
-        check("ab123cde456", TokenKind::Ident);
-    }
-
-    #[test]
-    fn lex_mixed_case_identifier() {
-        check("ABCdef", TokenKind::Ident);
-    }
-
-    #[test]
-    fn lex_snake_case_identifier() {
-        check("abc_def", TokenKind::Ident);
-    }
-
-    #[test]
-    fn lex_invalid_identifier_start_with_underscore() {
-        check_err("_abc");
-    }
-
-    #[test]
-    fn lex_integer() {
-        check("123456", TokenKind::IntLiteral);
-    }
-
-    #[test]
-    fn lex_integer_with_separators() {
-        check("123_456_789", TokenKind::IntLiteral);
-    }
-
-    #[test]
-    fn lex_float() {
-        check("1.23", TokenKind::FloatLiteral);
-    }
-
-    #[test]
-    fn lex_float_with_separators() {
-        check("123_456.789", TokenKind::FloatLiteral);
-    }
-
-    #[test]
-    fn lex_bang() {
-        check("!", TokenKind::Bang);
-    }
-
-    #[test]
-    fn lex_emptyspace() {
-        check("   ", TokenKind::Emptyspace);
-    }
-
-    #[test]
-    fn lex_and_keyword() {
-        check("and", TokenKind::And);
-    }
-
-    #[test]
-    fn lex_else_keyword() {
-        check("else", TokenKind::Else);
-    }
-
-    #[test]
-    fn lex_for_keyword() {
-        check("for", TokenKind::For);
-    }
-
-    #[test]
-    fn lex_if_keyword() {
-        check("if", TokenKind::If);
-    }
-
-    #[test]
-    fn lex_in_keyword() {
-        check("in", TokenKind::In);
-    }
-
-    #[test]
-    fn lex_let_keyword() {
-        check("let", TokenKind::Let);
-    }
-
-    #[test]
-    fn lex_or_keyword() {
-        check("or", TokenKind::Or);
-    }
-
-    #[test]
-    fn lex_return_keyword() {
-        check("return", TokenKind::Return);
-    }
-
-    #[test]
-    fn lex_try_keyword() {
-        check("try", TokenKind::Try);
-    }
-
-    #[test]
-    fn lex_while_keyword() {
-        check("while", TokenKind::While);
-    }
-
-    // #[test]
-    // fn lex_false_value() {
-    //     check("false", TokenKind::False);
-    // }
-
-    // #[test]
-    // fn lex_true_keyword() {
-    //     check("true", TokenKind::True);
-    // }
-
-    #[test]
-    fn lex_plus() {
-        check("+", TokenKind::Plus);
-    }
-
-    #[test]
-    fn lex_plusplus() {
-        check("++", TokenKind::PlusPlus);
-    }
-
-    #[test]
-    fn lex_minus() {
-        check("-", TokenKind::Dash);
-    }
-
-    #[test]
-    fn lex_star() {
-        check("*", TokenKind::Star);
-    }
-
-    #[test]
-    fn lex_caret() {
-        check("^", TokenKind::Caret);
-    }
-
-    #[test]
-    fn lex_left_angle() {
-        check("<", TokenKind::LAngle);
-    }
-
-    #[test]
-    fn lex_left_angle_equals() {
-        check("<=", TokenKind::LAngleEquals);
-    }
-
-    #[test]
-    fn lex_right_angle() {
-        check(">", TokenKind::RAngle);
-    }
-
-    #[test]
-    fn lex_right_angle_equals() {
-        check(">=", TokenKind::RAngleEquals);
-    }
-
-    #[test]
-    fn lex_slash() {
-        check("/", TokenKind::Slash);
-    }
-
-    #[test]
-    fn lex_equals_equals() {
-        check("==", TokenKind::EqualsEquals);
-    }
-
-    #[test]
-    fn lex_dotdot() {
-        check("..", TokenKind::DotDot);
-    }
-
-    #[test]
-    fn lex_dot() {
-        check(".", TokenKind::Dot);
-    }
-
-    #[test]
-    fn lex_comment() {
-        check("/* test */", TokenKind::Comment);
-    }
-
-    #[test]
-    fn lex_empty_comment() {
-        check("/**/", TokenKind::Comment);
-    }
-
-    #[test]
-    fn lex_star_comment() {
-        check("/***/", TokenKind::Comment);
     }
 }
