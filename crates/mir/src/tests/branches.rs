@@ -13,7 +13,7 @@ let main = fun (condition: Bool) -> Int {
     let expected = "
 fun main:
     params: _1
-    mut _0: 8
+    mut _0: Int
     _1: (false | true)
     
     BB0():
@@ -25,6 +25,41 @@ fun main:
         _0 := const 16
         Jump -> BB3()
     BB3():
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn match_with_basic_union() {
+    let input = "
+type Color = (red | green | blue)
+let main = fun (condition: Color) -> Int {
+    match condition {
+        .red -> { 8 }
+        .green -> { 16 }
+        .blue -> { 24 }
+    }
+}";
+
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: (red | green | blue)
+    
+    BB0():
+        BranchInt(copy _1): [0 -> BB1(), 1 -> BB2(), 2 -> BB3()]
+    BB1():
+        _0 := const 8
+        Jump -> BB4()
+    BB2():
+        _0 := const 16
+        Jump -> BB4()
+    BB3():
+        _0 := const 24
+        Jump -> BB4()
+    BB4():
         Return _0 ->";
 
     check_module(input, expected);

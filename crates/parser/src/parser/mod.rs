@@ -198,11 +198,16 @@ impl<'t, 'input> Parser<'t, 'input> {
     ///
     /// Does not add to the list of expected tokens.
     pub(crate) fn debug_assert_at(&mut self, kind: TokenKind) {
-        debug_assert_eq!(self.peek(), Some(kind))
+        debug_assert_eq!(self.peek(), Some(kind));
     }
 
     pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {
+        // TODO - push into self.expected_kinds ?
         self.peek().is_some_and(|k| set.contains(&k))
+    }
+
+    pub(crate) fn debug_assert_at_set(&mut self, set: &[TokenKind]) {
+        debug_assert!(self.peek().is_some_and(|k| set.contains(&k)));
     }
 
     pub(crate) fn at_end(&mut self) -> bool {

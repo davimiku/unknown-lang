@@ -8,11 +8,6 @@ pub enum SyntaxKind {
     Hash,
     At,
 
-    Pattern,
-    Ident,
-    Call,
-    CallArgs,
-
     // Keywords
     AndKw,
     BreakKw,
@@ -65,6 +60,13 @@ pub enum SyntaxKind {
     SemiColon,
     /// `,`
     Comma,
+
+    // Placeholders
+    /// `_`
+    Underscore,
+    /// `_ident` - identifiers with leading underscores
+    /// (parse successfully for robustness, produces error at lowering)
+    InvalidLeadingUnderscore,
 
     // Operators
     /// `+`
@@ -158,6 +160,18 @@ pub enum SyntaxKind {
     CompoundTypeItemType,
     CompoundTypeItemDefault,
 
+    // Related to patterns
+    IdentPattern,
+    DotPattern,
+    IntLiteralPattern,
+    FloatLiteralPattern,
+    StringLiteralPattern,
+    WildcardPattern,
+    Ident,
+
+    Call,
+    CallArgs,
+
     // Function components
     FunBody,
     FunParam,
@@ -218,6 +232,10 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::RBracket => Self::RBracket,
             TokenKind::LParen => Self::LParen,
             TokenKind::RParen => Self::RParen,
+
+            // Placeholders
+            TokenKind::Underscore => Self::Underscore,
+            TokenKind::InvalidLeadingUnderscore => Self::InvalidLeadingUnderscore,
 
             // Separators
             TokenKind::Colon => Self::Colon,

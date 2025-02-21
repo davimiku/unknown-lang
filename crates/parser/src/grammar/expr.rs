@@ -31,6 +31,19 @@ const CALL_ARG_START: [lexer::TokenKind; 8] = [
     T::Tilde, // temporary IntoString operator
 ];
 
+/// Tokens that may be used at the start of a pattern
+const PATTERN_START: [lexer::TokenKind; 6] = [
+    T::Dot,
+    T::Ident,
+    T::IntLiteral,
+    T::FloatLiteral,
+    T::StringLiteral,
+    T::Underscore,
+    // TODO - LBracket, probably, for record destructuring
+    // type Point = [x: Float, y: Float]
+    // let [x, y] = point
+];
+
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
     expr_binding_power(p, 0)
 }
@@ -138,8 +151,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::IntLiteral => parse_int_literal(p),
         T::FloatLiteral => parse_float_literal(p),
         T::StringLiteral => parse_string_literal(p),
-        // T::False => parse_bool_literal(p),
-        // T::True => parse_bool_literal(p),
         T::Ident => parse_path_ident(p),
 
         T::Dash => parse_negation_expr(p),
@@ -210,10 +221,44 @@ fn parse_path_ident(p: &mut Parser) -> CompletedMarker {
 }
 
 pub(crate) fn parse_pattern(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at_set(&PATTERN_START);
+
     let m = p.start();
-    p.bump_if(T::Dot);
-    parse_ident(p);
-    m.complete(p, SyntaxKind::Pattern)
+    let kind: SyntaxKind;
+    match p.peek() {
+        Some(T::Dot) => {
+            kind = SyntaxKind::DotPattern;
+            p.bump();
+            parse_ident(p);
+            if p.at_set(&PATTERN_START) {
+                parse_pattern(p);
+            }
+        }
+        Some(T::Ident) => {
+            kind = SyntaxKind::IdentPattern;
+            parse_ident(p);
+        }
+        Some(T::IntLiteral) => {
+            kind = SyntaxKind::IntLiteralPattern;
+            parse_int_literal(p);
+        }
+        Some(T::FloatLiteral) => {
+            kind = SyntaxKind::FloatLiteralPattern;
+            parse_float_literal(p);
+        }
+        Some(T::StringLiteral) => {
+            kind = SyntaxKind::StringLiteralPattern;
+            parse_string_literal(p);
+        }
+        Some(T::Underscore) => {
+            kind = SyntaxKind::WildcardPattern;
+            p.bump();
+        }
+        Some(t) => todo!("TODO - matching on pattern token {t}"),
+        None => todo!(),
+    };
+
+    m.complete(p, kind)
 }
 
 pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {

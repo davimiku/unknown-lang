@@ -555,6 +555,7 @@ impl Context {
             }
             ast::expr::Pattern::StringLiteral(node) => todo!(),
             ast::expr::Pattern::IntLiteral(node) => todo!(),
+            ast::expr::Pattern::Wildcard(syntax_node) => todo!(),
         }
     }
 

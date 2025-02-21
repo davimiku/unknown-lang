@@ -1,8 +1,11 @@
+mod branches;
+mod functions;
 mod literals;
 mod logic;
 mod loops;
 mod operators;
 mod scopes;
+mod typecheck;
 mod unions;
 
 use itertools::Itertools;
@@ -69,13 +72,6 @@ fn check_type_error(input: &str, expected: Vec<(TypeDiagnosticVariant, TextRange
         let expected = std::mem::discriminant(&expected_variant);
         assert_eq!(actual, expected);
     }
-}
-
-#[test]
-fn string_concatenation() {
-    let input = r#""Hello " ++ "World!""#;
-
-    check(input, "`++`~0.8$0 (\"Hello \",\"World!\",);", &[]);
 }
 
 #[test]
@@ -232,24 +228,6 @@ fn local_wrong_type_string_literal() {
     // check_type_error(input, vec![expected]);
 }
 
-#[test]
-fn nullary_function() {
-    let input = "fun () -> {}";
-    let expected_expr = indoc! {"
-    fun () -> {};"};
-
-    check(input, expected_expr, &[]);
-}
-
-#[test]
-fn nullary_function_assignment() {
-    let input = "let f = fun () -> {}";
-    let expected_expr = indoc! {"
-    f~1.0 : () -> () = fun \"f\"() -> {};"};
-
-    check(input, expected_expr, &[("f~1.0", "() -> ()")]);
-}
-
 // #[test]
 // fn unary_function_no_param_type() {
 //     let mut interner = Interner::default();
@@ -265,123 +243,6 @@ fn nullary_function_assignment() {
 
 //     check_error(input, expected, Some(interner));
 // }
-
-#[test]
-fn unary_function() {
-    let input = "fun (a: Int) -> {}";
-    let expected_expr = indoc! {"
-    fun (a~1.0 : Int) -> {};"};
-
-    check(input, expected_expr, &[("a~1.0", "Int")]);
-}
-
-#[test]
-fn unary_function_assignment() {
-    let input = "let f = fun (a: Int) -> {}";
-
-    let expected_expr = indoc! {"
-    f~1.0 : (Int) -> () = fun \"f\"(a~1.1 : Int) -> {};"};
-    let expected_vars = &[("a~1.1", "Int"), ("f~1.0", "(Int) -> ()")];
-
-    check(input, expected_expr, expected_vars);
-}
-
-#[test]
-fn print_string() {
-    let input = "print \"Hello\"";
-
-    let expected_expr = "print~0.0$0 (\"Hello\",);";
-
-    check(input, expected_expr, &[])
-}
-
-#[test]
-fn print_int() {
-    let input = "print 16";
-
-    let expected_expr = "print~0.0$1 (16,);";
-
-    check(input, expected_expr, &[])
-}
-
-#[test]
-fn print_float() {
-    let input = "print 16.0";
-
-    let expected_expr = "print~0.0$2 (16.0,);";
-
-    check(input, expected_expr, &[])
-}
-
-#[test]
-fn print_bool() {
-    let input = "print true";
-
-    let expected_expr = "print~0.0$3 (true~0.2,);";
-
-    check(input, expected_expr, &[])
-}
-
-#[test]
-fn print_param_function() {
-    let input = "fun (a: String) -> { print a }";
-
-    let expected_expr = "fun (a~1.0 : String) -> { print~0.0$0 (a~1.0,); };";
-    let expected_vars = &[("a~1.0", "String")];
-
-    check(input, expected_expr, expected_vars);
-}
-
-#[test]
-fn print_param_function_assignment() {
-    let input = "let f = fun (a: String) -> { print a }";
-
-    let expected_expr =
-        "f~1.0 : (String) -> () = fun \"f\"(a~1.1 : String) -> { print~0.0$0 (a~1.1,); };";
-    let expected_vars = &[("a~1.1", "String"), ("f~1.0", "(String) -> ()")];
-
-    check(input, expected_expr, expected_vars);
-}
-
-#[test]
-fn print_param_with_call() {
-    let input = r#"
-let print_param = fun (a: String) -> { print a }
-print_param "Hello!"
-"#;
-
-    let expected_expr = indoc! {"
-        print_param~1.0 : (String) -> () = fun \"print_param\"(a~1.1 : String) -> { print~0.0$0 (a~1.1,); };
-        print_param~1.0$0 (\"Hello!\",);"};
-
-    let expected_vars = &[("a~1.1", "String"), ("print_param~1.0", "(String) -> ()")];
-
-    check(input, expected_expr, expected_vars);
-}
-
-#[test]
-fn function_call_function() {
-    let input = "
-let is_even = fun (a: Int) -> { a % 2 == 0 }
-
-let main = fun (a: Int) -> {
-    is_even a
-}
-";
-
-    let expected_expr = indoc! {"
-        is_even~1.0 : (Int) -> (false | true) = fun \"is_even\"(a~1.1 : Int) -> (false | true) { `==`~0.9$0 (%~0.7$0 (a~1.1,2,),0,); };
-        main~1.2 : (Int) -> (false | true) = fun \"main\"(a~1.3 : Int) -> (false | true) { is_even~1.0$0 (a~1.3,); };"};
-
-    let expected_vars = &[
-        ("a~1.1", "Int"),
-        ("a~1.3", "Int"),
-        ("is_even~1.0", "(Int) -> (false | true)"),
-        ("main~1.2", "(Int) -> (false | true)"),
-    ];
-
-    check(input, expected_expr, expected_vars);
-}
 
 #[test]
 fn let_binding_and_print() {
@@ -525,55 +386,4 @@ fn always_returns_true() {
     let expected_vars = &[("main~1.0", "() -> (false | true)")];
 
     check(input, expected, expected_vars);
-}
-
-mod typecheck_tests {
-    use util_macros::assert_matches;
-
-    use crate::{lower_script, ContextDisplay, Expr, Type};
-
-    fn check(input: &str, expected_return_type: &Type) {
-        let (root_expr, context) = lower_script(input);
-
-        if !context.diagnostics.is_empty() {
-            for diag in context.diagnostics.iter() {
-                eprintln!("{}", diag.display(&context));
-            }
-        }
-        assert_eq!(context.diagnostics, vec![]);
-
-        println!("{}", root_expr.display(&context));
-        let root_expr = context.expr(root_expr);
-        let root_func = assert_matches!(root_expr, Expr::Function);
-
-        let return_type = context.expr_type(root_func.overloads[0].body);
-        assert_eq!(return_type, expected_return_type);
-    }
-
-    #[test]
-    fn int_literal() {
-        let input = "1";
-
-        let expected_return_type = Type::IntLiteral(1);
-
-        check(input, &expected_return_type);
-    }
-
-    #[test]
-    fn int_addition() {
-        let input = "1 + 2";
-
-        let expected_return_type = Type::Int;
-
-        check(input, &expected_return_type);
-    }
-
-    #[test]
-    fn float_addition() {
-        let expected_return_type = Type::Float;
-
-        check("1.0 + 2.0", &expected_return_type);
-        check("1 + 2.0", &expected_return_type);
-        check("1.0 + 2", &expected_return_type);
-    }
 }

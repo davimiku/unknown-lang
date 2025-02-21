@@ -579,72 +579,94 @@ pub enum Pattern {
     /// ex. `ident` as used in a simple variable assignment
     ///
     /// ```ignore
-    /// let ident = 16
+    /// let ident = []
     /// //  ^^^^^
     /// ```
-    Identifier(SyntaxNode),
+    Identifier(Ident),
 
-    /// ex. `.ident` as used in a match arm
+    /// Identifier used when pattern matching on a union variant
+    ///
+    /// Possibly contains an inner pattern to match on the variant payload
     ///
     /// ```ignore
     /// match u {
-    ///     .ident -> 16
+    ///     .ident -> [],
     /// //  ^^^^^^
+    ///     .ident2 inner -> [],
+    /// //  ^^^^^^^^^^^^^
+    /// }
+    ///
+    /// // not implemented/decided yet
+    /// if let .some int = maybe_int {
+    /// //     ^^^^^^^^^
     /// }
     /// ```
-    DotIdentifier(DotIdentifier),
+    DotIdentifier(DotPattern),
 
     /// ex. literal strings
     ///
     /// ```ignore
     /// match message {
-    ///     "hello" -> 16
+    ///     "hello" -> []
     /// //  ^^^^^^^
-    ///     "world" -> 32
+    ///     "world" -> []
     /// //  ^^^^^^^
     /// }
     /// ```
-    StringLiteral(SyntaxNode),
+    StringLiteral(StringLiteral),
 
     /// ex. literal integers
     ///
     /// ```ignore
     /// match message {
-    ///     -16 -> -32
+    ///     -16 -> []
     /// //  ^^^
-    ///     16 -> 32
+    ///     16 -> []
     /// //  ^^
     /// }
     /// ```
-    IntLiteral(SyntaxNode),
+    IntLiteral(IntLiteral),
+
+    /// Underscore which matches everything but is ignored/not bound
+    ///
+    /// ```ignore
+    /// match u {
+    ///     .a -> [],
+    ///     _  -> [],
+    /// //  ^
+    /// }
+    /// ```
+    Wildcard(SyntaxNode),
 }
 
 impl Pattern {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        if node.kind() != SyntaxKind::Pattern {
-            return None;
-        };
-        match node.first_child_or_token()?.kind() {
-            SyntaxKind::Dot => Some(Self::DotIdentifier(DotIdentifier(node))),
-            SyntaxKind::Ident => Some(Self::Identifier(node)),
+        match node.kind() {
+            SyntaxKind::DotPattern => Some(Self::DotIdentifier(DotPattern(node))),
+            SyntaxKind::IdentPattern => Some(Self::Identifier(Ident(node))),
+            SyntaxKind::IntLiteralPattern => Some(Self::IntLiteral(IntLiteral(node))),
+            SyntaxKind::FloatLiteralPattern => todo!(),
+            SyntaxKind::StringLiteralPattern => Some(Self::StringLiteral(StringLiteral(node))),
+
             _ => None,
         }
     }
 
     pub fn range(&self) -> TextRange {
         match self {
-            Pattern::Identifier(node) => todo!(),
+            Pattern::Identifier(ident) => ident.range(),
             Pattern::DotIdentifier(dot_ident) => dot_ident.range(),
-            Pattern::StringLiteral(node) => todo!(),
-            Pattern::IntLiteral(node) => todo!(),
+            Pattern::StringLiteral(string_literal) => string_literal.range(),
+            Pattern::IntLiteral(int_literal) => int_literal.range(),
+            Pattern::Wildcard(node) => node.text_range(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct DotIdentifier(SyntaxNode);
+pub struct DotPattern(SyntaxNode);
 
-impl DotIdentifier {
+impl DotPattern {
     /// Returns the name of the identifier without the leading Dot
     pub fn name(&self) -> String {
         self.0
@@ -656,6 +678,27 @@ impl DotIdentifier {
             })
             .map(|token| token.text().to_string())
             .unwrap_or_default() // TODO: is this fine?
+    }
+
+    /// Return the innner pattern within this one
+    ///
+    /// ```ignore
+    /// type U = a: Int | b: String
+    ///
+    /// match discriminant {
+    ///     .a 42 -> ...,
+    /// //     ^^
+    ///     .a int -> ...,
+    /// //     ^^^
+    ///     .b "hello" -> ...,
+    /// //     ^^^^^^^
+    ///     .b _ -> ...,
+    /// //     ^
+    /// }
+    /// ```
+    pub fn inner_pattern(&self) -> Option<Pattern> {
+        dbg!(self);
+        self.0.children().find_map(Pattern::cast)
     }
 
     fn range(&self) -> TextRange {

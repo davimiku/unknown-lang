@@ -39,10 +39,55 @@ fn match_arms_one() {
 }
 
 #[test]
+fn match_arms_one_with_payload() {
+    let input = "match u {
+    .a i -> i
+}";
+
+    let parsed = parse_expr(input);
+    let match_expr = assert_matches!(parsed, Expr::Match);
+
+    let scrutinee = assert_some!(match_expr.scrutinee());
+    let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "u");
+
+    let arms = match_expr.arms();
+    assert_eq!(arms.len(), 1);
+
+    let dot_identifier = assert_matches!(assert_some!(arms[0].pattern()), Pattern::DotIdentifier);
+    let inner_ident = assert_matches!(
+        assert_some!(dot_identifier.inner_pattern()),
+        Pattern::Identifier
+    );
+    assert_eq!(inner_ident.as_string(), "i");
+}
+
+#[test]
 fn match_arms_two() {
     let input = "match u {
     .a -> 4
     .b -> 8
+}";
+
+    let parsed = parse_expr(input);
+    let match_expr = assert_matches!(parsed, Expr::Match);
+
+    let scrutinee = assert_some!(match_expr.scrutinee());
+    let scrutinee = assert_matches!(assert_some!(scrutinee.expr()), Expr::Path);
+    assert_eq!(assert_some!(scrutinee.subject_as_ident()).as_string(), "u");
+
+    let arms = match_expr.arms();
+    assert_eq!(arms.len(), 2);
+
+    assert_matches!(assert_some!(arms[0].pattern()), Pattern::DotIdentifier);
+    assert_matches!(assert_some!(arms[1].pattern()), Pattern::DotIdentifier);
+}
+
+#[test]
+fn match_arms_two_with_payloads() {
+    let input = "match u {
+    .a i -> i
+    .b i -> i
 }";
 
     let parsed = parse_expr(input);

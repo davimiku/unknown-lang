@@ -50,3 +50,10 @@ fn print_int_to_string() {
 
     check(input, "print~0.0$0 (~123,);", &[]);
 }
+
+#[test]
+fn string_concatenation() {
+    let input = r#""Hello " ++ "World!""#;
+
+    check(input, "`++`~0.8$0 (\"Hello \",\"World!\",);", &[]);
+}

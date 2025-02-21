@@ -7,7 +7,7 @@ use crate::{
     ListLiteralExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
-use super::{FunctionExprGroup, FunctionParam, LoopExpr, ReAssignment};
+use super::{FunctionExprGroup, FunctionParam, LoopExpr, MatchExpr, ReAssignment};
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -84,7 +84,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::VarDef(local_def) => fmt_var_def(s, local_def, context, indent),
         Expr::ReAssignment(reassignment) => fmt_reassignment(s, reassignment, context, indent),
 
-        Expr::Match(match_expr) => todo!(),
+        Expr::Match(match_expr) => fmt_match_expr(s, match_expr, context, &mut indent),
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(_) => todo!(),
@@ -166,6 +166,20 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
             }
         }
     }
+}
+
+fn fmt_match_expr(s: &mut String, match_expr: &MatchExpr, context: &Context, indent: &mut usize) {
+    s.push_str("match ");
+    s.push_str(&match_expr.scrutinee.display(context));
+    s.push_str("{\n");
+    *indent += DEFAULT_INDENT;
+    for arm in &match_expr.arms {
+        s.push_str(&" ".repeat(*indent));
+        // arm.pattern;
+        s.push('\n');
+    }
+    *indent -= DEFAULT_INDENT;
+    s.push_str(&format!("{}}}", " ".repeat(*indent)));
 }
 
 fn fmt_function_expr_group(

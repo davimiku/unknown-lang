@@ -562,7 +562,7 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
 
     let mut overall_ty: Option<Idx<Type>> = None;
     for arm in &match_expr.arms {
-        let arm_ty = infer_expr(arm.expr, context);
+        let arm_ty = infer_expr_widened(arm.expr, context);
         if arm_ty.is_ok() && overall_ty.is_none() {
             overall_ty = Some(arm_ty.ty);
         }
@@ -779,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn infer_union() {
+    fn infer_union_implicit_unit() {
         let mut context = Context::new(Interner::default());
         let red = context.interner.intern("red");
         let green = context.interner.intern("green");
@@ -796,6 +796,69 @@ mod tests {
             (green, context.core_types().unit),
             (blue, context.core_types().unit),
         ]);
+
+        check_with_context(input, &expected, &mut context);
+    }
+
+    #[test]
+    fn infer_union_explicit_unit() {
+        let mut context = Context::new(Interner::default());
+        let red = context.interner.intern("red");
+        let green = context.interner.intern("green");
+        let blue = context.interner.intern("blue");
+
+        let input = "{
+        type Color = (red: () | green: () | blue: ())
+
+        Color.green
+}";
+
+        let expected = Type::sum(vec![
+            (red, context.core_types().unit),
+            (green, context.core_types().unit),
+            (blue, context.core_types().unit),
+        ]);
+
+        check_with_context(input, &expected, &mut context);
+    }
+
+    #[test]
+    fn infer_union_with_payload_types() {
+        let mut context = Context::new(Interner::default());
+        let red = context.interner.intern("red");
+        let green = context.interner.intern("green");
+        let blue = context.interner.intern("blue");
+
+        let input = "{
+        type Color = (red: Int | green: () | blue: Bool)
+
+        Color.green
+}";
+
+        let expected = Type::sum(vec![
+            (red, context.core_types().int),
+            (green, context.core_types().unit),
+            (blue, context.core_types().bool),
+        ]);
+
+        check_with_context(input, &expected, &mut context);
+    }
+
+    #[test]
+    fn infer_match_arms() {
+        let mut context = Context::new(Interner::default());
+
+        let input = "{
+    type Color = (red | green | blue)
+
+    match Color.green {
+        .red -> { 8 }
+        .green -> { 16 }
+        .blue -> { 24 }
+    }        
+}";
+
+        let expected = Type::Int;
 
         check_with_context(input, &expected, &mut context);
     }
