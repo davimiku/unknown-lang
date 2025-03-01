@@ -697,7 +697,6 @@ impl DotPattern {
     /// }
     /// ```
     pub fn inner_pattern(&self) -> Option<Pattern> {
-        dbg!(self);
         self.0.children().find_map(Pattern::cast)
     }
 

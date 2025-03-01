@@ -87,7 +87,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
             return Some(lhs);
         }
         let curr = curr.unwrap();
-        let op = match make_binary_op(curr) {
+        let op = match try_make_binary_op(curr) {
             Some(op) => op,
 
             // Not at an operator, so is not a binary expression, so break
@@ -118,7 +118,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         };
 
         if rhs.is_none() {
-            // TODO: add error like "expected expression on RHS"
+            // TODO: add error like "expected expression on RHS", then recover
             break;
         }
     }
@@ -126,7 +126,11 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
     // Having just finished parsing an expression, check if the next token
     // could be the start of function arguments, thereby making this just-parsed
     // expression the callee of a Call expression.
-    if p.at_set(&CALL_ARG_START) {
+
+    // HACK - replace 16 with constant or something indicating right binding power of Path/Dot
+    // Path is equal precedence to Call with left-to-right associativity
+    // and confirm with more testing that this actually works
+    if p.at_set(&CALL_ARG_START) && minimum_binding_power < 16 {
         // Starts a new marker that "wraps" the already parsed callee, so that we
         // can have a CallExpr with callee and args
         let m = lhs.precede(p);
@@ -709,7 +713,7 @@ enum BinaryOp {
     ReAssign,
 }
 
-fn make_binary_op(token: T) -> Option<BinaryOp> {
+fn try_make_binary_op(token: T) -> Option<BinaryOp> {
     Some(match token {
         T::Plus => BinaryOp::Add,
         T::PlusPlus => BinaryOp::Concat,
