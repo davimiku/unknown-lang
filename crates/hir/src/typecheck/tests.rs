@@ -1,3 +1,8 @@
+// TODO - tests that return a Context, instead of asserting for an expected
+// some way to query the generated Context
+//
+// right now you can assert the overall type inferred, i.e. the last value of the block,
+// but it could be good to have tests that can query based on a string or something like that
 
 use la_arena::Idx;
 
@@ -29,7 +34,9 @@ fn check(input: &str, context: &mut Context) -> TypeResult {
     });
     let root = context.alloc_expr(root, None);
 
-    infer_expr(root, context)
+    let result = infer_expr(root, context);
+    assert!(result.is_ok());
+    result
 }
 
 fn check_infer_type(input: &str, expected: &Type) {
@@ -37,16 +44,16 @@ fn check_infer_type(input: &str, expected: &Type) {
 
     let result = check(input, &mut context);
 
-    assert!(result.is_ok());
     let actual = context.type_(result.ty);
 
     assert_eq!(actual, expected);
 }
 
+/// Use to check types with a context already provided, for example, intern some strings
+/// first so they can be asserted later.
 fn check_with_context(input: &str, expected: &Type, context: &mut Context) {
     let result = check(input, context);
 
-    assert!(result.is_ok());
     let actual = context.type_(result.ty);
 
     assert_eq!(actual, expected);
@@ -163,8 +170,6 @@ fn infer_union_with_payload_types() {
 
 #[test]
 fn infer_match_arms() {
-    let mut context = Context::new(Interner::default());
-
     let input = "{
     type Color = (red | green | blue)
 
@@ -177,24 +182,23 @@ fn infer_match_arms() {
 
     let expected = Type::Int;
 
-    check_with_context(input, &expected, &mut context);
+    check_infer_type(input, &expected);
 }
 
 #[test]
 fn infer_match_arms_with_data() {
-    let mut context = Context::new(Interner::default());
-
     let input = "{
     type Number = (int: Int | float: Float)
 
-    match Color.green {
-        .red -> { 8 }
-        .green -> { 16 }
-        .blue -> { 24 }
+    let n = Number.int 16
+
+    match n {
+        .int i -> { 0.0 }
+        .float f -> { f }
     }        
 }";
 
-    let expected = Type::Int;
+    let expected = Type::Float;
 
-    check_with_context(input, &expected, &mut context);
+    check_infer_type(input, &expected);
 }

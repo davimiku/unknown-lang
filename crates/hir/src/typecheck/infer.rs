@@ -95,7 +95,23 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         // TODO - this should give a function that accepts parameter(s) and gives back an instance of the union
         Expr::UnionVariant(variant) => {
-            todo!("function that takes param(s) and gives an instance of the union type")
+            let union_namespace =
+                assert_matches!(context.expr(variant.union_namespace), Expr::UnionNamespace);
+            let (.., variant_ty_expr) = union_namespace.members[variant.index as usize];
+            let union_type_expr = union_namespace.type_expr;
+            result.chain(infer_type_expr(variant_ty_expr, context));
+            let variant_ty = result.ty;
+            result.chain(infer_type_expr(union_type_expr, context));
+            let union_ty = result.ty;
+
+            let signature = FuncSignature {
+                params: Box::new([variant_ty]),
+                return_ty: union_ty,
+            };
+
+            result.ty = context
+                .type_database
+                .alloc_type(Type::func(vec![signature]));
         }
         // TODO - Does the UnionUnitVariant get the `Color` type or should that be the Path?
         // this appears to work fine but maybe that's a lie
@@ -561,7 +577,6 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
 
     // TODO - should be 'check' instead of 'infer'? scrutinee must be SumType, IntLiteral, FloatLiteral, StringLiteral, etc.
     result.chain(infer_expr(match_expr.scrutinee, context));
-
     let scrutinee_ty = result.ty;
 
     let mut overall_ty: Option<Idx<Type>> = None;
@@ -569,13 +584,14 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
         match &arm.pattern {
             Pattern::Wild { meta } => todo!(),
             Pattern::IdentBinding { meta, binding } => {
-                // find the variable and give it a type of the sum type itself
+                // TODO - `context.type_database.set_expr_type(expr_idx, scrutinee_ty);`
+                // if we need to set the type for the Idx<Expr> - probably do for LSP when someone
+                // mouses over that expression
+                // Need to store Idx<Expr> on IdentPatternBinding
 
-                // context.type_database.set_expr_type(idx, inferred);
                 context
                     .type_database
                     .insert_value_symbol(binding.symbol, scrutinee_ty);
-                //
             }
             Pattern::Variant { meta, binding } => {
                 // if there's a variable, like `.variant data`, then need to infer type for `data` by backtracking
@@ -583,11 +599,23 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
                 if let Some(inner_pattern) = &binding.inner_pattern {
                     let variant_key = binding.variant;
                     let scrutinee = context.type_(scrutinee_ty);
-                    match scrutinee {
-                        Type::Sum(sum_type) => todo!(),
+                    match (scrutinee, inner_pattern) {
+                        // TODO - handle recursive patterns and non-ident patterns
+                        // `.variant 3`, `.variant .another inner`, `.variant _` are all valid
+                        // probably need a `infer_pattern` which takes (&Pattern, scrutinee_ty or variant_ty, &mut Context)
+                        (Type::Sum(sum_type), Pattern::IdentBinding { meta, binding }) => {
+                            let variant_ty = sum_type.variant_type_of(variant_key);
+                            match variant_ty {
+                                Some(ty) => {
+                                    context
+                                        .type_database
+                                        .insert_value_symbol(binding.symbol, ty);
+                                }
+                                None => todo!("type error, this variant doesn't exist"),
+                            }
+                        }
                         t => {
-                            dbg!(t);
-                            panic!("idk")
+                            todo!("raise a type error for trying to use a variant pattern on something that's not a sum type: {:?}", t);
                         }
                     }
                 }
@@ -600,6 +628,7 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
             Pattern::FloatLiteral { meta, literal } => todo!(),
             Pattern::StringLiteral { meta, literal } => todo!(),
         }
+
         let arm_ty = infer_expr_widened(arm.expr, context);
         if arm_ty.is_ok() && overall_ty.is_none() {
             overall_ty = Some(arm_ty.ty);

@@ -116,6 +116,8 @@ impl ContextDisplay for Type {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SumType {
     /// Named variants of the sum type in the form of `key: Type`
+    // TODO - consider a different data structure allowing for access by Key, to avoid O(n)
+    // review all existing usages of direct indexes
     pub variants: Vec<(Key, Idx<Type>)>,
 
     /// Hash computed on creation for faster comparisons
@@ -124,11 +126,18 @@ pub struct SumType {
 
 impl SumType {
     pub fn index_of(&self, key: Key) -> Option<i64> {
-        // TODO: this is O(n), is that OK or...?
         self.variants
             .iter()
             .position(|(k, _)| *k == key)
             .map(|u| u as i64)
+    }
+
+    pub fn variant_type_of(&self, key: Key) -> Option<Idx<Type>> {
+        self.variants
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(.., ty)| ty)
+            .copied()
     }
 }
 
