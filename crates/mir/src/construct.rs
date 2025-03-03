@@ -596,8 +596,12 @@ impl Builder {
         let mut otherwise = None;
         for (arm_index, arm) in match_expr.arms.iter().enumerate() {
             match &arm.pattern {
-                hir::Pattern::Wild(_) => todo!(),
-                hir::Pattern::Binding { meta, binding } => {
+                hir::Pattern::Wild { meta: _ } => todo!(),
+                hir::Pattern::Variant {
+                    meta,
+                    binding: recursive_binding,
+                } => todo!(),
+                hir::Pattern::IdentBinding { meta, binding } => {
                     // need to get union variant index as int
                     let variant_index = match scrutinee_ty {
                         Type::Sum(s) => s.index_of(binding.ident),
@@ -615,8 +619,9 @@ impl Builder {
                         BlockTarget::with_empty_args(branch_blocks[arm_index]),
                     ));
                 }
-                hir::Pattern::Path(_) => todo!(),
-                hir::Pattern::Literal(_) => todo!(),
+                hir::Pattern::IntLiteral { meta, literal } => todo!(),
+                hir::Pattern::FloatLiteral { meta, literal } => todo!(),
+                hir::Pattern::StringLiteral { meta, literal } => todo!(),
             }
         }
 

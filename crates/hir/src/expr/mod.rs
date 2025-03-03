@@ -432,33 +432,78 @@ pub struct MatchArm {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Pattern {
     /// The wildcard pattern, written as `_`
-    Wild(PatternMeta),
+    ///
+    /// ```ignore
+    /// let _ = [...]
+    /// //  ^
+    /// match union {
+    ///     _ -> [...],
+    /// //  ^
+    /// }
+    /// ```
+    Wild { meta: PatternMeta },
 
     /// Pattern that creates a binding to a variable, such as
-    /// a `let` binding with a simple variable name, or (?) matching
-    /// a union variant
-    Binding {
+    /// a `let` binding with a simple variable name, or a "catch all"
+    /// binding in a match clause.
+    ///
+    /// ```ignore
+    /// let var = [...]
+    /// //  ^^^
+    /// match u {
+    ///     .a -> [...],
+    ///     .b -> [...],
+    ///     all -> [...],
+    /// //  ^^^
+    /// }
+    /// ```
+    IdentBinding {
         meta: PatternMeta,
-        binding: PatternBinding,
+        binding: IdentPatternBinding,
     },
 
-    // Record/Tuple/Struct
-    // PatA | PatB | PatC
-    // Or(Vec<Pattern>)
-    Path(PatternMeta),
+    /// Pattern that matches a variant, and may also have an inner pattern
+    /// if the variant is non-unit.
+    ///
+    /// ```ignore
+    /// match u {
+    ///     .first -> [...],
+    /// //  ^^^^^^
+    ///     .second int -> [...],
+    /// //  ^^^^^^^^^^^ Variant
+    /// //          ^^^ IdentBinding
+    /// //
+    ///     .third .inner int -> [...],
+    /// //  ^^^^^^^^^^^^^^^^^ Variant
+    /// //         ^^^^^^^^^^ Variant
+    /// //                ^^^ IdentBinding
+    /// //
+    /// }
+    /// ```
+    Variant {
+        meta: PatternMeta,
+        binding: Box<VariantPattern>, // TODO - arena allocate patterns? and use Idx here
+    },
 
-    Literal(PatternMeta),
-    // Slice
+    // TODO - Record
+    // TODO - OR patterns like `PatA | PatB | PatC`
+    IntLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
 
-    // Range
-}
+    FloatLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
 
-impl Pattern {
-    pub fn binding(ident: Key, symbol: Option<ValueSymbol>, range: TextRange) -> Self {
-        let meta = PatternMeta { range };
-        let binding = PatternBinding { ident, symbol };
-        Self::Binding { meta, binding }
-    }
+    StringLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
+    // TODO - Slice
+
+    // TODO - Range
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -467,13 +512,66 @@ pub struct PatternMeta {
     // pub id ?? some kind of HirId like rustc?
 }
 
+/// ```ignore
+/// let ident = [...]
+/// //  ^^^^^
+/// match thing {
+///     .variant1 -> [...],
+///     .variant2 data -> [...],
+/// //            ^^^^
+///     rest -> [...],
+/// //  ^^^^
+/// }
+///
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct PatternBinding {
-    // `mut` or anything else
-    // annotation: BindingAnnotation
-    // hir_id ?
+pub struct IdentPatternBinding {
+    // TODO - `mut` or anything else?
+    // TODO - type annotation: BindingAnnotation
+    /// Identifier that the value will be bound to
+    /// ```ignore
+    /// let ident = [...]
+    /// //  ^^^^^
+    /// ```
     pub ident: Key,
-    pub symbol: Option<ValueSymbol>,
+
+    /// Scoped symbol in the value namespace for the new variable
+    pub symbol: ValueSymbol,
+
+    /// Key corresponding to the variant without the dot if
+    /// this is a pattern in a `match` [or `if let`]
+    pub variant: Option<Key>,
+}
+
+/// Pattern that matches a variant of a union
+///
+/// Patterns may nested arbitrarily recursively
+///
+/// ex.
+///
+/// ```ignore
+/// type U =
+///     | first: (second: (third: Int | other) | other)
+///     | other
+///
+/// match u {
+///     .first .second .third int -> { ... }
+/// }
+/// ```
+///
+/// Since types are structural and can be anonymous, the way to unwrap
+/// the `Int` is a triple-nested pattern binding on the variants
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct VariantPattern {
+    /// Key corresponding to the variant without the dot
+    pub variant: Key,
+
+    /// Inner pattern
+    ///
+    /// ```ignore
+    /// .first .second .third int -> { ... }
+    /// //     ^^^^^^^^^^^^^^^^^^
+    /// ```
+    pub inner_pattern: Option<Pattern>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

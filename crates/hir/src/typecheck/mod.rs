@@ -8,6 +8,8 @@
 
 mod check;
 mod infer;
+#[cfg(test)]
+mod tests;
 mod traits;
 mod types;
 mod widen;

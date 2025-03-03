@@ -573,7 +573,6 @@ impl MatchArm {
     }
 }
 
-// TODO: replace each SyntaxNode here with a newtype
 #[derive(Debug, Clone)]
 pub enum Pattern {
     /// ex. `ident` as used in a simple variable assignment
@@ -636,6 +635,7 @@ pub enum Pattern {
     /// //  ^
     /// }
     /// ```
+    // TODO: replace SyntaxNode here with a newtype?
     Wildcard(SyntaxNode),
 }
 

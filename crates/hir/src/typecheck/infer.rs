@@ -18,7 +18,7 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
-use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module};
+use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -557,11 +557,49 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
 
 fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
+    let int = context.core_types().int;
 
+    // TODO - should be 'check' instead of 'infer'? scrutinee must be SumType, IntLiteral, FloatLiteral, StringLiteral, etc.
     result.chain(infer_expr(match_expr.scrutinee, context));
+
+    let scrutinee_ty = result.ty;
 
     let mut overall_ty: Option<Idx<Type>> = None;
     for arm in &match_expr.arms {
+        match &arm.pattern {
+            Pattern::Wild { meta } => todo!(),
+            Pattern::IdentBinding { meta, binding } => {
+                // find the variable and give it a type of the sum type itself
+
+                // context.type_database.set_expr_type(idx, inferred);
+                context
+                    .type_database
+                    .insert_value_symbol(binding.symbol, scrutinee_ty);
+                //
+            }
+            Pattern::Variant { meta, binding } => {
+                // if there's a variable, like `.variant data`, then need to infer type for `data` by backtracking
+                // through the scrutinee to the original union definition
+                if let Some(inner_pattern) = &binding.inner_pattern {
+                    let variant_key = binding.variant;
+                    let scrutinee = context.type_(scrutinee_ty);
+                    match scrutinee {
+                        Type::Sum(sum_type) => todo!(),
+                        t => {
+                            dbg!(t);
+                            panic!("idk")
+                        }
+                    }
+                }
+            }
+            Pattern::IntLiteral { meta, literal } => {
+                if scrutinee_ty != int {
+                    result.push_diag(TypeDiagnostic::mismatch(scrutinee_ty, int, meta.range));
+                }
+            }
+            Pattern::FloatLiteral { meta, literal } => todo!(),
+            Pattern::StringLiteral { meta, literal } => todo!(),
+        }
         let arm_ty = infer_expr_widened(arm.expr, context);
         if arm_ty.is_ok() && overall_ty.is_none() {
             overall_ty = Some(arm_ty.ty);
@@ -677,189 +715,4 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
         },
     }
     result
-}
-
-#[cfg(test)]
-mod tests {
-
-    use la_arena::Idx;
-
-    use crate::typecheck::TypeResult;
-    use crate::{BlockExpr, Context, Expr, Interner, Type};
-
-    use super::infer_expr;
-
-    fn check(input: &str, context: &mut Context) -> TypeResult {
-        let parse = parser::parse(input);
-        if !parse.errors().is_empty() {
-            dbg!(parse.errors());
-            assert!(parse.errors().is_empty());
-        }
-
-        let syntax = parse.syntax();
-        let root = ast::Root::cast(syntax).expect("valid Root node");
-
-        let exprs: Vec<Idx<Expr>> = root
-            .exprs()
-            .map(|expr| context.lower_expr_statement(Some(expr)))
-            .collect();
-
-        // wrap everything in a block
-        let root = Expr::Block(if exprs.is_empty() {
-            BlockExpr::Empty
-        } else {
-            BlockExpr::NonEmpty { exprs }
-        });
-        let root = context.alloc_expr(root, None);
-
-        infer_expr(root, context)
-    }
-
-    fn check_infer_type(input: &str, expected: &Type) {
-        let mut context = Context::new(Interner::default());
-
-        let result = check(input, &mut context);
-
-        assert!(result.is_ok());
-        let actual = context.type_(result.ty);
-
-        assert_eq!(actual, expected);
-    }
-
-    fn check_with_context(input: &str, expected: &Type, context: &mut Context) {
-        let result = check(input, context);
-
-        assert!(result.is_ok());
-        let actual = context.type_(result.ty);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn infer_int_literal() {
-        let input = "1";
-        let expected = Type::IntLiteral(1);
-
-        check_infer_type(input, &expected);
-    }
-
-    #[test]
-    fn infer_int_addition() {
-        let input = "2 + 3";
-        let expected = Type::Int;
-
-        check_infer_type(input, &expected);
-    }
-
-    #[test]
-    fn infer_unit() {
-        let input = "()";
-        let expected = Type::Unit;
-
-        check_infer_type(input, &expected);
-    }
-
-    #[test]
-    fn infer_let_binding() {
-        let input = "let a = 1";
-        let expected = Type::Unit; // the let binding itself is Unit
-
-        check_infer_type(input, &expected);
-    }
-
-    #[test]
-    fn infer_block() {
-        let input = "{
-    let a = 1
-    a
-}";
-        let expected = Type::IntLiteral(1);
-
-        check_infer_type(input, &expected);
-    }
-
-    #[test]
-    fn infer_union_implicit_unit() {
-        let mut context = Context::new(Interner::default());
-        let red = context.interner.intern("red");
-        let green = context.interner.intern("green");
-        let blue = context.interner.intern("blue");
-
-        let input = "{
-        type Color = (red | green | blue)
-
-        Color.green
-}";
-
-        let expected = Type::sum(vec![
-            (red, context.core_types().unit),
-            (green, context.core_types().unit),
-            (blue, context.core_types().unit),
-        ]);
-
-        check_with_context(input, &expected, &mut context);
-    }
-
-    #[test]
-    fn infer_union_explicit_unit() {
-        let mut context = Context::new(Interner::default());
-        let red = context.interner.intern("red");
-        let green = context.interner.intern("green");
-        let blue = context.interner.intern("blue");
-
-        let input = "{
-        type Color = (red: () | green: () | blue: ())
-
-        Color.green
-}";
-
-        let expected = Type::sum(vec![
-            (red, context.core_types().unit),
-            (green, context.core_types().unit),
-            (blue, context.core_types().unit),
-        ]);
-
-        check_with_context(input, &expected, &mut context);
-    }
-
-    #[test]
-    fn infer_union_with_payload_types() {
-        let mut context = Context::new(Interner::default());
-        let red = context.interner.intern("red");
-        let green = context.interner.intern("green");
-        let blue = context.interner.intern("blue");
-
-        let input = "{
-        type Color = (red: Int | green: () | blue: Bool)
-
-        Color.green
-}";
-
-        let expected = Type::sum(vec![
-            (red, context.core_types().int),
-            (green, context.core_types().unit),
-            (blue, context.core_types().bool),
-        ]);
-
-        check_with_context(input, &expected, &mut context);
-    }
-
-    #[test]
-    fn infer_match_arms() {
-        let mut context = Context::new(Interner::default());
-
-        let input = "{
-    type Color = (red | green | blue)
-
-    match Color.green {
-        .red -> { 8 }
-        .green -> { 16 }
-        .blue -> { 24 }
-    }        
-}";
-
-        let expected = Type::Int;
-
-        check_with_context(input, &expected, &mut context);
-    }
 }

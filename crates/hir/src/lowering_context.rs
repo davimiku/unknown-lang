@@ -10,9 +10,10 @@ use util_macros::assert_matches;
 
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
-    FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr, IntrinsicExpr,
-    ListLiteralExpr, LoopExpr, MatchArm, MatchExpr, Pattern, ReAssignment, UnaryExpr,
-    UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
+    FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IndexIntExpr,
+    IntrinsicExpr, ListLiteralExpr, LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta,
+    ReAssignment, UnaryExpr, UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
+    VariantPattern,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -295,7 +296,7 @@ impl Context {
                 E::IntLiteral(ast) => self.lower_int_literal(ast),
                 E::LetBinding(ast) => self.lower_let_binding(ast),
                 E::Loop(ast) => self.lower_loop(ast),
-                E::Match(ast) => self.lower_match(ast),
+                E::Match(ast) => self.lower_match_expr(ast),
                 E::Paren(ast) => return self.lower_expr(ast.expr()),
                 E::Path(ast) => self.lower_path(ast),
                 E::ReAssignment(ast) => self.lower_reassignment(ast),
@@ -517,7 +518,7 @@ impl Context {
         }
     }
 
-    fn lower_match(&mut self, ast: ast::expr::Match) -> Expr {
+    fn lower_match_expr(&mut self, ast: ast::expr::Match) -> Expr {
         let scrutinee = ast.scrutinee().and_then(|s| s.expr());
         let scrutinee = self.lower_expr(scrutinee);
 
@@ -532,30 +533,66 @@ impl Context {
 
     fn lower_match_arm(&mut self, ast: ast::expr::MatchArm) -> Option<MatchArm> {
         ast.pattern().map(|pattern| {
+            self.push_scope();
+
             let pattern = self.lower_pattern(pattern);
             let expr = self.lower_expr(ast.expr());
+
+            self.pop_scope();
+
             MatchArm { pattern, expr }
         })
     }
 
-    fn lower_pattern(&mut self, ast: ast::expr::Pattern) -> Pattern {
+    fn lower_pattern(&mut self, ast: ast::Pattern) -> Pattern {
         let range = ast.range();
-        match ast {
-            ast::expr::Pattern::Identifier(node) => todo!(),
-            ast::expr::Pattern::DotIdentifier(dot_ident) => {
-                let name = dot_ident.name();
-                let key = self.interner.intern(&name);
+        let meta = PatternMeta { range };
 
-                // TODO: capture the bound variable
-                // should use `self.lower_name(name)` to ensure it's added to scope
-                // between push_scope() / pop_scope()
-                // .some(example) -> { ... }
-                //       ^^^^^^^
-                Pattern::binding(key, None, range)
+        match ast {
+            ast::Pattern::Identifier(ident) => {
+                // making a new scope should be handled before this part
+                let (ident, symbol) = self.lower_value_name(ident.as_string());
+
+                Pattern::IdentBinding {
+                    meta,
+                    binding: IdentPatternBinding {
+                        ident,
+                        symbol,
+                        variant: None,
+                    },
+                }
             }
-            ast::expr::Pattern::StringLiteral(node) => todo!(),
-            ast::expr::Pattern::IntLiteral(node) => todo!(),
-            ast::expr::Pattern::Wildcard(syntax_node) => todo!(),
+            ast::Pattern::DotIdentifier(dot_pattern) => {
+                let variant = self.interner.intern(&dot_pattern.name());
+
+                let inner_pattern = match dot_pattern.inner_pattern() {
+                    Some(inner_ast_pattern) => Some(self.lower_pattern(inner_ast_pattern)),
+                    _ => None,
+                };
+
+                Pattern::Variant {
+                    meta,
+                    binding: Box::new(VariantPattern {
+                        variant,
+                        inner_pattern,
+                    }),
+                }
+            }
+            ast::Pattern::StringLiteral(string_literal) => {
+                let expr = self.lower_string_literal(string_literal);
+                Pattern::StringLiteral {
+                    meta,
+                    literal: self.alloc_expr(expr, None), // TODO - pass in the AST range
+                }
+            }
+            ast::Pattern::IntLiteral(int_literal) => {
+                let expr = self.lower_int_literal(int_literal);
+                Pattern::IntLiteral {
+                    meta,
+                    literal: self.alloc_expr(expr, None), // TODO - pass in the AST range
+                }
+            }
+            ast::Pattern::Wildcard(syntax_node) => Pattern::Wild { meta },
         }
     }
 
