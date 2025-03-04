@@ -336,7 +336,7 @@ impl Terminator {
     pub fn branch_int(
         discriminant: Operand,
         branches: Box<[(i64, BlockTarget)]>,
-        otherwise: Option<Box<BlockTarget>>,
+        otherwise: Option<BlockTarget>,
     ) -> Self {
         let targets = BranchIntTargets {
             branches,
@@ -400,7 +400,7 @@ impl Terminator {
 pub struct BranchIntTargets {
     pub branches: Box<[(i64, BlockTarget)]>,
 
-    pub otherwise: Option<Box<BlockTarget>>,
+    pub otherwise: Option<BlockTarget>,
 }
 
 #[derive(Debug, Clone)]

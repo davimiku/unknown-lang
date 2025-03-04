@@ -70,6 +70,39 @@ fun main:
 }
 
 #[test]
+fn match_with_catch_all() {
+    let input = "
+type Color = (red | green | blue)
+let main = fun (condition: Color) -> Int {
+    match condition {
+        .red -> { 8 }
+        otherwise -> { 16 }
+    }
+}";
+
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: (red | green | blue)
+    _2: Int
+    
+    BB0():
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), else -> BB2()]
+    BB1():
+        _0 := const 8
+        Jump -> BB3()
+    BB2():
+        _0 := const 16
+        Jump -> BB3()
+    BB3():
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
 fn basic_if_else() {
     let input = "
 let main = fun (condition: Bool) -> Int { 

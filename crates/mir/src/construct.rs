@@ -164,7 +164,7 @@ impl Builder {
                         .into();
                     let otherwise = targets.otherwise.map(|otherwise| {
                         let args = self.args_of(otherwise.target);
-                        Box::new(BlockTarget::with_args(otherwise.target, args))
+                        BlockTarget::with_args(otherwise.target, args)
                     });
                     Terminator::branch_int(discriminant, branches, otherwise)
                 }
@@ -597,7 +597,12 @@ impl Builder {
             match &arm.pattern {
                 hir::Pattern::Wild { meta: _ } => todo!(),
                 hir::Pattern::IdentBinding { meta, binding } => {
-                    todo!("'catch all', i.e. the 'otherwise' branch")
+                    if otherwise.is_none() {
+                        otherwise = Some(BlockTarget {
+                            target: branch_blocks[arm_index],
+                            args: vec![],
+                        });
+                    };
                 }
                 hir::Pattern::Variant { meta, pattern } => {
                     // TODO: support recursively nested pattern.inner_pattern
@@ -673,7 +678,7 @@ impl Builder {
 
         let targets = BranchIntTargets {
             branches: Box::new([(0, BlockTarget::with_empty_args(target))]),
-            otherwise: Some(Box::new(BlockTarget::with_empty_args(then_block))),
+            otherwise: Some(BlockTarget::with_empty_args(then_block)),
         };
 
         self.construct_branch_terminator(source_block, discriminant, targets);
