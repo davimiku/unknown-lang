@@ -482,7 +482,7 @@ pub enum Pattern {
     /// ```
     Variant {
         meta: PatternMeta,
-        binding: Box<VariantPattern>, // TODO - arena allocate patterns? and use Idx here
+        pattern: Box<VariantPattern>, // TODO - arena allocate patterns? and use Idx here
     },
 
     // TODO - Record

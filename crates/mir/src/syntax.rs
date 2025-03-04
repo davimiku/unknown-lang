@@ -747,7 +747,7 @@ impl From<Place> for OperandOrPlace {
 }
 
 impl OperandOrPlace {
-    pub fn into_place(self) -> Option<Place> {
+    pub fn try_into_place(self) -> Option<Place> {
         match self {
             OperandOrPlace::Operand(operand) => match operand {
                 Operand::Copy(place) => Some(place),

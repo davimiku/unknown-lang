@@ -593,7 +593,10 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
                     .type_database
                     .insert_value_symbol(binding.symbol, scrutinee_ty);
             }
-            Pattern::Variant { meta, binding } => {
+            Pattern::Variant {
+                meta,
+                pattern: binding,
+            } => {
                 // if there's a variable, like `.variant data`, then need to infer type for `data` by backtracking
                 // through the scrutinee to the original union definition
                 if let Some(inner_pattern) = &binding.inner_pattern {

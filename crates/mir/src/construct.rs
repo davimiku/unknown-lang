@@ -532,7 +532,7 @@ impl Builder {
 
         let place = self
             .construct_operand(reassignment.place, &None, context)
-            .into_place()
+            .try_into_place()
             .expect("assign place to be a valid Place");
         let assign = Statement::reassign(place, rvalue);
         self.current_block_mut().statements.push(assign);
@@ -557,20 +557,19 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) {
-        // FIXME: assumes that scrutinee is an enum. eventually will have literal patterns
+        // TODO: assumes that scrutinee is an enum. eventually will have literal patterns
         // and more complex patterns like records
-        // let scrutinee_op = self.construct_operand(match_expr.scrutinee, assign_to, context);
-        // let scrutinee_place = scrutinee_op
-        //     .as_place()
-        //     .expect("FIXME: scrutinee was not a place");
 
         let scrutinee_ty = context.expr_type(match_expr.scrutinee);
         let scrutinee = self.construct_operand(match_expr.scrutinee, &None, context);
-        let scrutinee = Operand::from_op_or_place(scrutinee, context);
+        let scrutinee_place = scrutinee.try_into_place().expect("scrutinee to be a Place");
 
-        // let discriminant = Rvalue::Discriminant(scrutinee_place);
-
-        // self.construct_assign(discriminant, context.core_types().int, None);
+        let discriminant = self.construct_assign(
+            Rvalue::Discriminant(scrutinee_place),
+            context.core_types().int,
+            None,
+        );
+        let discriminant = Operand::Copy(discriminant.into());
 
         let source_block = self.current_block;
         let branch_blocks = match_expr
@@ -597,22 +596,15 @@ impl Builder {
         for (arm_index, arm) in match_expr.arms.iter().enumerate() {
             match &arm.pattern {
                 hir::Pattern::Wild { meta: _ } => todo!(),
-                hir::Pattern::Variant {
-                    meta,
-                    binding: recursive_binding,
-                } => todo!(),
                 hir::Pattern::IdentBinding { meta, binding } => {
-                    // need to get union variant index as int
-                    let variant_index = match scrutinee_ty {
-                        Type::Sum(s) => s.index_of(binding.ident),
-                        _ => unreachable!(),
-                    };
-                    if variant_index.is_none() {
-                        let s = context.lookup(binding.ident);
-                        let ty_s = scrutinee_ty.display(context);
-                        panic!("Found '{s}' binding, expected that to exist on type {ty_s}")
-                    }
-                    let variant_index = variant_index.unwrap();
+                    todo!("'catch all', i.e. the 'otherwise' branch")
+                }
+                hir::Pattern::Variant { meta, pattern } => {
+                    // TODO: support recursively nested pattern.inner_pattern
+                    let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
+                    let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!("Internal Compiler Error: Found '{}' binding, expected that to exist on type {}",
+                        context.lookup(pattern.variant),
+                        scrutinee_ty.display(context)));
 
                     branches.push((
                         variant_index,
@@ -630,7 +622,7 @@ impl Builder {
             otherwise,
         };
 
-        self.construct_branch_terminator(source_block, scrutinee, targets);
+        self.construct_branch_terminator(source_block, discriminant, targets);
 
         self.current_block = join_block;
     }
@@ -854,6 +846,7 @@ impl Builder {
         let operand = if let Some(local_idx) = self.try_find_symbol(var_ref.symbol) {
             Operand::from_place(Place::from(local_idx), context)
         } else {
+            // TODO - remove after "false" and "true" are added to the prelude in HIR
             // check if it's a defined symbol like "false" or "true" from the Bool union
             match context.type_of_value(&var_ref.symbol) {
                 Type::Sum(sum_type) => {

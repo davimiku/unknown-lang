@@ -572,7 +572,7 @@ impl Context {
 
                 Pattern::Variant {
                     meta,
-                    binding: Box::new(VariantPattern {
+                    pattern: Box::new(VariantPattern {
                         variant,
                         inner_pattern,
                     }),

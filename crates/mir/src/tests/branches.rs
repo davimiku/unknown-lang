@@ -15,9 +15,11 @@ fun main:
     params: _1
     mut _0: Int
     _1: (false | true)
+    _2: Int
     
     BB0():
-        BranchInt(copy _1): [0 -> BB1(), 1 -> BB2()]
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), 1 -> BB2()]
     BB1():
         _0 := const 8
         Jump -> BB3()
@@ -47,9 +49,11 @@ fun main:
     params: _1
     mut _0: Int
     _1: (red | green | blue)
+    _2: Int
     
     BB0():
-        BranchInt(copy _1): [0 -> BB1(), 1 -> BB2(), 2 -> BB3()]
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), 2 -> BB3()]
     BB1():
         _0 := const 8
         Jump -> BB4()
