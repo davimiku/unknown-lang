@@ -86,6 +86,7 @@ fun main:
     mut _0: Int
     _1: (red | green | blue)
     _2: Int
+    _3: (red | green | blue)
     
     BB0():
         _2 := discriminant(_1)
@@ -94,7 +95,43 @@ fun main:
         _0 := const 8
         Jump -> BB3()
     BB2():
+        _3 := copy _1
         _0 := const 16
+        Jump -> BB3()
+    BB3():
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn match_with_otherwise_using_captured_otherwise() {
+    let input = "
+type Color = (red | green | blue)
+let main = fun (condition: Color) -> Color {
+    match condition {
+        .green -> { Color.green }
+        otherwise -> { otherwise }
+    }
+}";
+
+    let expected = "
+fun main:
+    params: _1
+    mut _0: (red | green | blue)
+    _1: (red | green | blue)
+    _2: Int
+    _3: (red | green | blue)
+    
+    BB0():
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [1 -> BB1(), else -> BB2()]
+    BB1():
+        _0 := const 1
+        Jump -> BB3()
+    BB2():
+        _3 := copy _1
+        _0 := copy _3
         Jump -> BB3()
     BB3():
         Return _0 ->";

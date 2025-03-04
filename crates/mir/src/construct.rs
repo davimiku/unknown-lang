@@ -359,6 +359,17 @@ impl Builder {
         self.current_block_mut().terminator = Some(Terminator::jump(target, Vec::default()));
     }
 
+    fn make_jump_terminator_with_source(
+        &mut self,
+        target: Idx<BasicBlock>,
+        predecessor: Idx<BasicBlock>,
+    ) -> Terminator {
+        self.current_function_mut()
+            .predecessors
+            .add(predecessor, target);
+        Terminator::jump(target, Vec::default())
+    }
+
     fn construct_branch_terminator(
         &mut self,
         predecessor: Idx<BasicBlock>,
@@ -565,46 +576,57 @@ impl Builder {
         let scrutinee_place = scrutinee.try_into_place().expect("scrutinee to be a Place");
 
         let discriminant = self.construct_assign(
-            Rvalue::Discriminant(scrutinee_place),
+            Rvalue::Discriminant(scrutinee_place.clone()),
             context.core_types().int,
             None,
         );
         let discriminant = Operand::Copy(discriminant.into());
 
         let source_block = self.current_block;
-        let branch_blocks = match_expr
-            .arms
-            .iter()
-            .map(|_| self.new_block())
-            .collect_vec();
-        let join_block = self.new_block();
+        // let branch_blocks = match_expr
+        //     .arms
+        //     .iter()
+        //     .map(|_| self.new_block())
+        //     .collect_vec();
+        // let join_block = self.new_block();
 
-        for (i, branch_block) in branch_blocks.iter().enumerate() {
-            self.current_block = *branch_block;
-            self.scopes.push();
-            self.construct_block(
-                match_expr.arms[i].expr,
-                Some(join_block),
-                assign_to,
-                context,
-            );
-            self.scopes.pop();
-        }
+        // for (i, branch_block) in branch_blocks.iter().enumerate() {
+        //     self.current_block = *branch_block;
+        //     self.scopes.push();
+        //     self.construct_block(
+        //         match_expr.arms[i].expr,
+        //         Some(join_block),
+        //         assign_to,
+        //         context,
+        //     );
+        //     self.scopes.pop();
+        // }
+
+        let mut match_arm_blocks = vec![];
 
         let mut branches = vec![];
         let mut otherwise = None;
         for (arm_index, arm) in match_expr.arms.iter().enumerate() {
+            self.current_block = self.new_block();
+            match_arm_blocks.push(self.current_block);
+            self.scopes.push();
             match &arm.pattern {
                 hir::Pattern::Wild { meta: _ } => todo!(),
-                hir::Pattern::IdentBinding { meta, binding } => {
+                hir::Pattern::IdentBinding { meta: _, binding } => {
+                    self.construct_assign(
+                        Rvalue::Use(Operand::Copy(scrutinee_place.clone())),
+                        context.type_idx_of_value(&binding.symbol),
+                        Some(binding.symbol),
+                    );
+
                     if otherwise.is_none() {
                         otherwise = Some(BlockTarget {
-                            target: branch_blocks[arm_index],
+                            target: self.current_block,
                             args: vec![],
                         });
                     };
                 }
-                hir::Pattern::Variant { meta, pattern } => {
+                hir::Pattern::Variant { meta: _, pattern } => {
                     // TODO: support recursively nested pattern.inner_pattern
                     let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
                     let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!("Internal Compiler Error: Found '{}' binding, expected that to exist on type {}",
@@ -613,13 +635,22 @@ impl Builder {
 
                     branches.push((
                         variant_index,
-                        BlockTarget::with_empty_args(branch_blocks[arm_index]),
+                        BlockTarget::with_empty_args(self.current_block),
                     ));
                 }
                 hir::Pattern::IntLiteral { meta, literal } => todo!(),
                 hir::Pattern::FloatLiteral { meta, literal } => todo!(),
                 hir::Pattern::StringLiteral { meta, literal } => todo!(),
             }
+            self.construct_block(arm.expr, None, assign_to, context);
+            self.scopes.pop();
+        }
+
+        let join_block = self.new_block();
+
+        for block_idx in match_arm_blocks {
+            self.block_mut(block_idx).terminator =
+                Some(self.make_jump_terminator_with_source(join_block, block_idx));
         }
 
         let targets = BranchIntTargets {
@@ -859,7 +890,7 @@ impl Builder {
                     let index_of = sum_type.index_of(key);
                     let index_of = index_of.unwrap_or_else(|| {
                         panic!(
-                            "expected symbol {} to have been defiend in union {}",
+                            "expected symbol {} to have been defined in union {}",
                             var_ref.symbol.display(context),
                             sum_type.display(context)
                         )
