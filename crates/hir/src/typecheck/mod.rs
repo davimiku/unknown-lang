@@ -93,10 +93,10 @@ impl TypeDatabase {
         let float = types.alloc(Type::Float);
         let int = types.alloc(Type::Int);
         let string = types.alloc(Type::String);
-        let r#bool = types.alloc(Type::sum(vec![
+        let r#bool = types.alloc(Type::sum(Box::new([
             (interner.core_keys().r#false, unit),
             (interner.core_keys().r#true, unit),
-        ]));
+        ])));
         let core = CoreTypes {
             unknown,
             error,

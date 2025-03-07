@@ -115,11 +115,11 @@ fn infer_union_implicit_unit() {
         Color.green
 }";
 
-    let expected = Type::sum(vec![
+    let expected = Type::sum(Box::new([
         (red, context.core_types().unit),
         (green, context.core_types().unit),
         (blue, context.core_types().unit),
-    ]);
+    ]));
 
     check_with_context(input, &expected, &mut context);
 }
@@ -137,11 +137,11 @@ fn infer_union_explicit_unit() {
         Color.green
 }";
 
-    let expected = Type::sum(vec![
+    let expected = Type::sum(Box::new([
         (red, context.core_types().unit),
         (green, context.core_types().unit),
         (blue, context.core_types().unit),
-    ]);
+    ]));
 
     check_with_context(input, &expected, &mut context);
 }
@@ -159,11 +159,11 @@ fn infer_union_with_payload_types() {
         Color.green
 }";
 
-    let expected = Type::sum(vec![
+    let expected = Type::sum(Box::new([
         (red, context.core_types().int),
         (green, context.core_types().unit),
         (blue, context.core_types().bool),
-    ]);
+    ]));
 
     check_with_context(input, &expected, &mut context);
 }

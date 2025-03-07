@@ -57,7 +57,7 @@ impl Type {
 }
 
 impl Type {
-    pub(crate) fn sum(variants: Vec<(Key, Idx<Type>)>) -> Self {
+    pub(crate) fn sum(variants: Box<[(Key, Idx<Type>)]>) -> Self {
         let mut s = DefaultHasher::new();
         for (key, ty) in variants.iter() {
             (*key).hash(&mut s);
@@ -118,7 +118,7 @@ pub struct SumType {
     /// Named variants of the sum type in the form of `key: Type`
     // TODO - consider a different data structure allowing for access by Key, to avoid O(n)
     // review all existing usages of direct indexes
-    pub variants: Vec<(Key, Idx<Type>)>,
+    pub variants: Box<[(Key, Idx<Type>)]>,
 
     /// Hash computed on creation for faster comparisons
     pub(crate) hash: u64,
@@ -138,6 +138,12 @@ impl SumType {
             .find(|(k, _)| *k == key)
             .map(|(.., ty)| ty)
             .copied()
+    }
+
+    pub fn is_unit(&self, context: &Context) -> bool {
+        self.variants
+            .iter()
+            .all(|(.., ty)| *ty == context.core_types().unit)
     }
 }
 

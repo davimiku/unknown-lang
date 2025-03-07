@@ -207,8 +207,6 @@ fun main:
 
 #[test]
 fn empty_then() {
-    // the `mut` makes the type inferred as `Int` instead of `0` to guard
-    // against future possible optimizations (could be optimized to "return 0")
     let input = "
 let main = fun (condition: Bool, i: Int) -> Int {
     if condition {}

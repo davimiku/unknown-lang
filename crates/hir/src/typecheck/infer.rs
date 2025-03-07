@@ -180,7 +180,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 variants.push((*key, ty));
             }
 
-            result.ty = context.type_database.alloc_type(Type::sum(variants));
+            result.ty = context.type_database.alloc_type(Type::sum(variants.into()));
 
             result
         }
@@ -341,6 +341,7 @@ fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> T
     TypeResult::from_ty(context.core_types().unit)
 }
 
+// TODO - delete?
 fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
 
@@ -355,7 +356,7 @@ fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
         })
         .collect_vec();
 
-    result.ty = context.type_database.alloc_type(Type::sum(variants));
+    result.ty = context.type_database.alloc_type(Type::sum(variants.into()));
 
     result
 }

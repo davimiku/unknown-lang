@@ -583,30 +583,11 @@ impl Builder {
         let discriminant = Operand::Copy(discriminant.into());
 
         let source_block = self.current_block;
-        // let branch_blocks = match_expr
-        //     .arms
-        //     .iter()
-        //     .map(|_| self.new_block())
-        //     .collect_vec();
-        // let join_block = self.new_block();
-
-        // for (i, branch_block) in branch_blocks.iter().enumerate() {
-        //     self.current_block = *branch_block;
-        //     self.scopes.push();
-        //     self.construct_block(
-        //         match_expr.arms[i].expr,
-        //         Some(join_block),
-        //         assign_to,
-        //         context,
-        //     );
-        //     self.scopes.pop();
-        // }
 
         let mut match_arm_blocks = vec![];
-
         let mut branches = vec![];
         let mut otherwise = None;
-        for (arm_index, arm) in match_expr.arms.iter().enumerate() {
+        for arm in match_expr.arms.iter() {
             self.current_block = self.new_block();
             match_arm_blocks.push(self.current_block);
             self.scopes.push();

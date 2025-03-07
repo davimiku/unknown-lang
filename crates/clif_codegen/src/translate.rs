@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use cranelift::codegen::ir::UserFuncName;
+use cranelift::frontend::Switch;
 use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
@@ -26,6 +27,7 @@ use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
 };
+use util_macros::assert_matches;
 
 use crate::ext::function_builder::FunctionBuilderExt;
 
@@ -317,29 +319,30 @@ impl<'a> FunctionTranslator<'a> {
         targets: &BranchIntTargets,
         block_map: &BlockMap,
     ) {
+        let mut switch = Switch::new();
+        for (i, block_target) in targets.branches.iter() {
+            let block = block_map[block_target.target];
+            switch.set_entry((*i) as u128, block);
+        }
+        // TODO - for `match` with no 'otherwise', this creates a CLIF block not tracked in block_map
+        // is that an issue?
+        // Does this "dummy block" need a terminator?
+        let mut dummy_block: Option<Block> = None;
+        let otherwise = targets
+            .otherwise
+            .as_ref()
+            .map(|b| block_map[b.target])
+            .unwrap_or_else(|| *dummy_block.insert(self.builder.create_block()));
+
         let condition = self.translate_operand(discriminant);
-        if targets.branches.len() == 1 {
-            // TODO: validate the assumption being made here when `match` expressions
-            // are added (perhaps, remove IfExpr from HIR and _only_ have `match`, and
-            // adjust MIR construction accordingly - then no assumptions here)
-
-            // then/else is flipped from MIR
-            let then_block = targets.otherwise.as_ref().unwrap();
-            let block_then_label = block_map[then_block.target];
-            let block_then_args = self.locals_to_values(&then_block.args);
-
-            let else_block = &targets.branches[0].1;
-            let block_else_label = block_map[else_block.target];
-            let block_else_args = self.locals_to_values(&else_block.args);
-            self.builder.ins().brif(
-                condition,
-                block_then_label,
-                &block_then_args,
-                block_else_label,
-                &block_else_args,
-            );
-        } else {
-            todo!("translating match expressions")
+        switch.emit(&mut self.builder, condition, otherwise);
+        if let Some(dummy_block) = dummy_block {
+            self.builder.switch_to_block(dummy_block);
+            self.builder.ins().nop();
+            // TODO - this is meant to be a "dummy" terminator, does this work?
+            // Find out how to handle exhaustive Switch in CLIF
+            self.translate_return_terminator();
+            self.builder.seal_block(dummy_block);
         }
     }
 
@@ -349,7 +352,6 @@ impl<'a> FunctionTranslator<'a> {
             self.builder.ins().return_(&[]);
         } else {
             let return_var = self.variables[&return_local_idx];
-            dbg!(return_var);
             let ret_val = self.builder.use_var(return_var);
             self.builder.ins().return_(&[ret_val]);
         }
@@ -368,7 +370,7 @@ impl<'a> FunctionTranslator<'a> {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
-            Rvalue::Discriminant(place) => todo!(),
+            Rvalue::Discriminant(place) => self.translate_discriminant(place),
         }
     }
 
@@ -453,6 +455,20 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
+    fn translate_discriminant(&mut self, place: &Place) -> Value {
+        let ty = self.place_type(place, self.context);
+        let sum_ty = assert_matches!(ty, HType::Sum);
+
+        if sum_ty.is_unit(self.context) {
+            // TODO: use projections too
+            let var = self.variables[&place.local];
+            self.builder.use_var(var)
+        } else {
+            // TODO - determine how to lower a sum type with payload
+            todo!()
+        }
+    }
+
     fn translate_type_idx(&mut self, idx: Idx<HType>) -> ClifType {
         let ty = self.context.type_(idx);
         self.translate_type(ty)
@@ -467,7 +483,7 @@ impl<'a> FunctionTranslator<'a> {
             // TODO: split tag and payload somehow (likely before this point)
             HType::Sum(sum) => self.types.int,
 
-            HType::Unit => unreachable!("unit types should be unused rather than translated"),
+            HType::Unit => unreachable!("Internal Compiler Error (CLIF): unit types should be unused rather than translated"),
             t => todo!("{t:?}"),
         }
     }
@@ -487,6 +503,11 @@ impl<'a> FunctionTranslator<'a> {
             Operand::Constant(constant) => self.constant_type_idx(constant),
             Operand::Move(_) => todo!(),
         }
+    }
+
+    fn place_type<'b>(&self, place: &Place, context: &'b hir::Context) -> &'b HType {
+        let local = &self.func.locals[place.local];
+        local.type_(context)
     }
 
     fn place_type_idx(&self, place: &Place) -> Idx<HType> {

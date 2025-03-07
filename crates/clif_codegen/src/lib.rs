@@ -30,7 +30,7 @@ pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
                 println!("{pretty}");
             }
             println!("{}", &jit.ctx.func.display());
-            panic!("temporary!")
+            panic!("Internal Compiler Error (CLIF): See codegen errors above")
         }
     };
 

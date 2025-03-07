@@ -31,7 +31,7 @@ mod tests;
 use std::collections::HashMap;
 
 pub use display::MirWrite;
-use hir::{Context, Key};
+use hir::{Context, ContextDisplay, Key};
 use la_arena::Arena;
 pub use syntax::{
     BasicBlock, BinOpKind, BlockParameters, BlockTarget, BranchIntTargets, Constant, FuncId,
@@ -42,7 +42,12 @@ use crate::{builder::Builder, optimize::optimize};
 
 pub fn construct(input: &str) -> (Module, Context) {
     let (hir_module, context) = hir::lower(input);
-    assert_eq!(context.diagnostics, vec![]);
+    if !context.diagnostics.is_empty() {
+        for diagnostic in context.diagnostics.iter() {
+            eprintln!("{}", diagnostic.display(&context));
+        }
+        assert_eq!(context.diagnostics, vec![]);
+    }
     let builder = Builder::new(hir_module.id, &context);
 
     let mut module = builder.construct_module(&hir_module, &context);
