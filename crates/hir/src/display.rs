@@ -46,8 +46,6 @@ pub(crate) fn fmt_local_types(s: &mut String, context: &Context) {
     locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
 
     for (name, ty) in locals {
-        s.push_str(&name);
-        s.push_str(" : ");
-        s.push_str(&format!("{}\n", ty.display(context)));
+        s.push_str(&format!(".    {} : {}\n", &name, ty.display(context)));
     }
 }

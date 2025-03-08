@@ -1,4 +1,5 @@
 use la_arena::Idx;
+use util_macros::assert_matches;
 
 use crate::database::Database;
 use crate::scope::ModuleScopes;
@@ -19,13 +20,19 @@ pub(crate) fn insert_core_values(
         let symbol = scopes.insert_type(key);
         database.type_names.insert(symbol, key);
         type_database.insert_type_symbol(symbol, ty);
+        symbol
     };
 
     // core types - Bool, Int, Float, String
-    insert_type(keys.bool, t.bool);
     insert_type(keys.int, t.int);
     insert_type(keys.float, t.float);
     insert_type(keys.string, t.string);
+
+    // Use mutability to resolve chicken-and-egg issue with `name` on initialization
+    let bool_symbol = insert_type(keys.bool, t.bool);
+    let bool_ty = type_database.type_mut(t.bool);
+    let bool_ty = assert_matches!(bool_ty, Type::Sum);
+    bool_ty.name = Some(bool_symbol);
 
     let mut insert_value = |key: Key, fn_type: Type| {
         let symbol = scopes.insert_value(key);

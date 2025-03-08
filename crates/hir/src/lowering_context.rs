@@ -163,7 +163,7 @@ impl Context {
     }
 
     pub fn type_idx_of_value(&self, value: &ValueSymbol) -> Idx<Type> {
-        self.type_database.get_value_symbol(value)
+        self.type_database.get_value_with_symbol(value)
     }
 
     pub fn range_of_expr(&self, idx: Idx<Expr>) -> TextRange {

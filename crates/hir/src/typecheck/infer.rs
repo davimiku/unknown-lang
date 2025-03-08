@@ -159,7 +159,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             .into(),
 
         TE::VarRef(TypeRefExpr { symbol, .. }) => {
-            context.type_database.get_type_symbol(&symbol).into()
+            context.type_database.get_type_with_symbol(&symbol).into()
         }
         TE::UnresolvedVarRef { key } => {
             println!("unresolved type key '{}'", context.lookup(key));
@@ -180,7 +180,9 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 variants.push((*key, ty));
             }
 
-            result.ty = context.type_database.alloc_type(Type::sum(variants.into()));
+            result.ty = context
+                .type_database
+                .alloc_type(Type::sum(variants.into(), union.name));
 
             result
         }
@@ -356,7 +358,9 @@ fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
         })
         .collect_vec();
 
-    result.ty = context.type_database.alloc_type(Type::sum(variants.into()));
+    result.ty = context
+        .type_database
+        .alloc_type(Type::sum(variants.into(), union.name));
 
     result
 }

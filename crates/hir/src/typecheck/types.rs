@@ -3,7 +3,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use itertools::Itertools;
 use la_arena::Idx;
 
-use crate::{Context, ContextDisplay, Key};
+use crate::{type_expr::TypeSymbol, Context, ContextDisplay, Key};
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Type {
@@ -57,7 +57,7 @@ impl Type {
 }
 
 impl Type {
-    pub(crate) fn sum(variants: Box<[(Key, Idx<Type>)]>) -> Self {
+    pub(crate) fn sum(variants: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
         let mut s = DefaultHasher::new();
         for (key, ty) in variants.iter() {
             (*key).hash(&mut s);
@@ -65,7 +65,11 @@ impl Type {
         }
         let hash = s.finish();
 
-        Self::Sum(SumType { variants, hash })
+        Self::Sum(SumType {
+            variants,
+            hash,
+            name,
+        })
     }
 
     pub(crate) fn array_of(of: Idx<Type>) -> Self {
@@ -122,6 +126,8 @@ pub struct SumType {
 
     /// Hash computed on creation for faster comparisons
     pub(crate) hash: u64,
+
+    pub(crate) name: Option<TypeSymbol>,
 }
 
 impl SumType {

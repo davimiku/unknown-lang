@@ -33,7 +33,7 @@ fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     let expected_vars = expected_vars
         .iter()
         .sorted_by(|(a, ..), (b, ..)| a.cmp(b))
-        .map(|(name, ty)| format!("{name} : {ty}"))
+        .map(|(name, ty)| format!(".    {name} : {ty}"))
         .join("\n");
 
     let (actual_content, actual_vars) = display_module(&module, &context);
@@ -51,8 +51,8 @@ fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     let expected_vars = expected_vars.trim();
     let actual_vars = actual_vars.trim();
     if actual_vars != expected_vars {
-        eprintln!("expected vars: {expected_vars}");
-        eprintln!("actual vars: {actual_vars}");
+        eprintln!("expected vars:\n{expected_vars}");
+        eprintln!("actual vars:\n{actual_vars}");
         eprintln!("diff:");
         text_diff::print_diff(expected_vars, actual_vars, "");
         panic!("Expected Vars did not match actual, see printed diff.");
@@ -91,7 +91,7 @@ fn let_binding_mut() {
 #[test]
 fn let_binding_annotation() {
     let input = "let a: Int = 10";
-    let expected = "a~1.0 : Int~0.1 = 10;";
+    let expected = "a~1.0 : Int~0.0 = 10;";
 
     check(input, expected, &[("a~1.0", "Int")]);
 }
@@ -100,7 +100,7 @@ fn let_binding_annotation() {
 fn let_binding_mut_annotation() {
     let input = "let mut a: Int = 10";
 
-    check(input, "a~1.0 : mut Int~0.1 = 10;", &[("a~1.0", "Int")]);
+    check(input, "a~1.0 : mut Int~0.0 = 10;", &[("a~1.0", "Int")]);
 }
 
 #[test]

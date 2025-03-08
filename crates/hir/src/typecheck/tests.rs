@@ -5,7 +5,9 @@
 // but it could be good to have tests that can query based on a string or something like that
 
 use la_arena::Idx;
+use util_macros::assert_matches;
 
+use crate::typecheck::check::is_subtype;
 use crate::typecheck::TypeResult;
 use crate::{BlockExpr, Context, Expr, Interner, Type};
 
@@ -43,16 +45,6 @@ fn check_infer_type(input: &str, expected: &Type) {
     let mut context = Context::new(Interner::default());
 
     let result = check(input, &mut context);
-
-    let actual = context.type_(result.ty);
-
-    assert_eq!(actual, expected);
-}
-
-/// Use to check types with a context already provided, for example, intern some strings
-/// first so they can be asserted later.
-fn check_with_context(input: &str, expected: &Type, context: &mut Context) {
-    let result = check(input, context);
 
     let actual = context.type_(result.ty);
 
@@ -115,13 +107,25 @@ fn infer_union_implicit_unit() {
         Color.green
 }";
 
-    let expected = Type::sum(Box::new([
-        (red, context.core_types().unit),
-        (green, context.core_types().unit),
-        (blue, context.core_types().unit),
-    ]));
+    let expected = Type::sum(
+        Box::new([
+            (red, context.core_types().unit),
+            (green, context.core_types().unit),
+            (blue, context.core_types().unit),
+        ]),
+        None,
+    );
+    let expected_sum = assert_matches!(expected, Type::Sum);
 
-    check_with_context(input, &expected, &mut context);
+    let result = check(input, &mut context);
+
+    let actual = context.type_(result.ty);
+    let actual = assert_matches!(actual, Type::Sum);
+    for (actual, expected) in actual.variants.iter().zip(expected_sum.variants) {
+        assert_eq!(actual.0, expected.0);
+        assert!(is_subtype(actual.1, expected.1, &context));
+        assert!(is_subtype(expected.1, actual.1, &context));
+    }
 }
 
 #[test]
@@ -137,13 +141,25 @@ fn infer_union_explicit_unit() {
         Color.green
 }";
 
-    let expected = Type::sum(Box::new([
-        (red, context.core_types().unit),
-        (green, context.core_types().unit),
-        (blue, context.core_types().unit),
-    ]));
+    let expected = Type::sum(
+        Box::new([
+            (red, context.core_types().unit),
+            (green, context.core_types().unit),
+            (blue, context.core_types().unit),
+        ]),
+        None,
+    );
+    let expected_sum = assert_matches!(expected, Type::Sum);
 
-    check_with_context(input, &expected, &mut context);
+    let result = check(input, &mut context);
+
+    let actual = context.type_(result.ty);
+    let actual = assert_matches!(actual, Type::Sum);
+    for (actual, expected) in actual.variants.iter().zip(expected_sum.variants) {
+        assert_eq!(actual.0, expected.0);
+        assert!(is_subtype(actual.1, expected.1, &context));
+        assert!(is_subtype(expected.1, actual.1, &context));
+    }
 }
 
 #[test]
@@ -159,13 +175,25 @@ fn infer_union_with_payload_types() {
         Color.green
 }";
 
-    let expected = Type::sum(Box::new([
-        (red, context.core_types().int),
-        (green, context.core_types().unit),
-        (blue, context.core_types().bool),
-    ]));
+    let expected = Type::sum(
+        Box::new([
+            (red, context.core_types().int),
+            (green, context.core_types().unit),
+            (blue, context.core_types().bool),
+        ]),
+        None,
+    );
+    let expected_sum = assert_matches!(expected, Type::Sum);
 
-    check_with_context(input, &expected, &mut context);
+    let result = check(input, &mut context);
+
+    let actual = context.type_(result.ty);
+    let actual = assert_matches!(actual, Type::Sum);
+    for (actual, expected) in actual.variants.iter().zip(expected_sum.variants) {
+        assert_eq!(actual.0, expected.0);
+        assert!(is_subtype(actual.1, expected.1, &context));
+        assert!(is_subtype(expected.1, actual.1, &context));
+    }
 }
 
 #[test]

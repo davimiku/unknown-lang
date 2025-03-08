@@ -93,10 +93,13 @@ impl TypeDatabase {
         let float = types.alloc(Type::Float);
         let int = types.alloc(Type::Int);
         let string = types.alloc(Type::String);
-        let r#bool = types.alloc(Type::sum(Box::new([
-            (interner.core_keys().r#false, unit),
-            (interner.core_keys().r#true, unit),
-        ])));
+        let r#bool = types.alloc(Type::sum(
+            Box::new([
+                (interner.core_keys().r#false, unit),
+                (interner.core_keys().r#true, unit),
+            ]),
+            None, // mutated / re-assigned later in `intrinsics`
+        ));
         let core = CoreTypes {
             unknown,
             error,
@@ -168,6 +171,10 @@ impl TypeDatabase {
         &self.types[idx]
     }
 
+    pub(crate) fn type_mut(&mut self, idx: Idx<Type>) -> &mut Type {
+        &mut self.types[idx]
+    }
+
     pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Idx<Type> {
         self.expr_types[idx]
     }
@@ -185,8 +192,8 @@ impl TypeDatabase {
     }
 
     // todo - panics if called before type checking, move to another module?
-    pub(super) fn get_value_symbol(&self, key: &ValueSymbol) -> Idx<Type> {
-        self.value_symbols[key]
+    pub(super) fn get_value_with_symbol(&self, symbol: &ValueSymbol) -> Idx<Type> {
+        self.value_symbols[symbol]
     }
 
     pub(super) fn insert_value_symbol(&mut self, key: ValueSymbol, ty: Idx<Type>) {
@@ -194,8 +201,8 @@ impl TypeDatabase {
     }
 
     // todo - panics if called before type checking, move to another module?
-    pub(super) fn get_type_symbol(&self, key: &TypeSymbol) -> Idx<Type> {
-        self.type_symbols[key]
+    pub(super) fn get_type_with_symbol(&self, symbol: &TypeSymbol) -> Idx<Type> {
+        self.type_symbols[symbol]
     }
 
     pub(super) fn insert_type_symbol(&mut self, key: TypeSymbol, ty: Idx<Type>) {
