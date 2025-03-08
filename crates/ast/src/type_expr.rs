@@ -15,7 +15,6 @@ pub enum TypeExpr {
     IntLiteral(IntLiteral),
     Paren(ParenExpr),
     StringLiteral(StringLiteral),
-    Union__Old(Union__Old),
     Union(Union),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
@@ -42,7 +41,6 @@ impl TypeExpr {
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
-            SyntaxKind::UnionTypeExpr => Self::Union__Old(Union__Old(node)),
 
             _ => return None,
         })
@@ -61,7 +59,6 @@ impl TypeExpr {
             // If(e) => e.range(),
             T::Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),
-            T::Union__Old(e) => e.range(),
             T::Union(e) => e.range(),
             // Unary(e) => e.range(),
         }
@@ -121,36 +118,6 @@ impl PathExpr {
             .take_while(|p| p.kind() == SyntaxKind::Dot)
             .next()
             .and_then(TypeExpr::cast)
-    }
-
-    pub fn range(&self) -> TextRange {
-        self.0.text_range()
-    }
-}
-
-/// Union with the current syntax
-///
-/// ```ignore
-/// type Bool = union ( false, true )
-/// type Status = union (
-///     pending,
-///     active,
-///     complete: Int,
-///     failed: String,
-/// )
-/// ```
-#[derive(Debug, Clone)]
-pub struct Union__Old(SyntaxNode);
-
-impl Union__Old {
-    pub fn variants(&self) -> Vec<CompoundTypeItem> {
-        self.compound_type_block()
-            .map(|block| block.items())
-            .unwrap_or_default()
-    }
-
-    pub fn compound_type_block(&self) -> Option<CompoundTypeBlock> {
-        self.0.children().find_map(CompoundTypeBlock::cast)
     }
 
     pub fn range(&self) -> TextRange {

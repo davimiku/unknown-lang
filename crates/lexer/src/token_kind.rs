@@ -95,10 +95,6 @@ pub enum TokenKind {
     #[token("type")]
     Type,
 
-    /// `union`
-    #[token("union")]
-    Union,
-
     /// `while`
     #[token("while")]
     While,
@@ -291,7 +287,6 @@ impl fmt::Display for TokenKind {
             Self::Struct => "‘struct’",
             Self::Try => "‘try’",
             Self::Type => "‘type’",
-            Self::Union => "‘union’",
             Self::While => "‘while’",
 
             // Literals

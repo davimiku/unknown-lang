@@ -26,7 +26,6 @@ pub enum SyntaxKind {
     StructKw,
     TryKw,
     TypeKw,
-    UnionKw,
     WhileKw,
 
     // Literals
@@ -214,7 +213,6 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Struct => Self::StructKw,
             TokenKind::Try => Self::TryKw,
             TokenKind::Type => Self::TypeKw,
-            TokenKind::Union => Self::UnionKw,
             TokenKind::While => Self::WhileKw,
 
             // Literals

@@ -36,26 +36,6 @@ fn type_binding_alias_unit() {
 }
 
 #[test]
-fn union_type__old() {
-    let input = "type U = union ( a, b: B )";
-
-    let parsed = parse_expr(input);
-
-    let type_binding = assert_matches!(parsed, Expr::TypeBinding);
-
-    let name = assert_some!(type_binding.name()).to_string();
-    assert_eq!("U", name);
-
-    let type_expr = assert_some!(type_binding.type_expr());
-    let union = assert_matches!(type_expr, TypeExpr::Union__Old);
-    let variants = union.variants();
-
-    assert_eq!(variants.len(), 2);
-    assert_eq!(variants[0].ident_as_string(), "a");
-    assert_eq!(variants[1].ident_as_string(), "b");
-}
-
-#[test]
 fn union_type_two() {
     let input = "type U = a | b";
 

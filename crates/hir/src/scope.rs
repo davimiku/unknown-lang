@@ -80,17 +80,15 @@ pub(crate) struct ModuleScopes {
     /// Running total of the values defined in this scope
     value_count: u32,
 
-    /// Current id for defined value variables for the purpose
-    /// of assigning a unique id to each type variable
+    // Current id for defined value variables for the purpose
+    // of assigning a unique id to each type variable
     // value_ids: SymbolMap,
-
     /// Running total of the types defined in this scope
     type_count: u32,
 
-    /// Current id for defined type variables for the purpose
-    /// of assigning a unique id to each type variable
+    // Current id for defined type variables for the purpose
+    // of assigning a unique id to each type variable
     // type_ids: SymbolMap,
-
     /// Unique id of the current module being compiled
     module_id: u32,
 }

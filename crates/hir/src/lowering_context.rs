@@ -909,7 +909,6 @@ impl Context {
                 }
                 TE::Path(ast) => self.lower_type_path(ast),
                 TE::StringLiteral(ast) => self.lower_type_string_literal(ast),
-                TE::Union__Old(ast) => self.lower_union__old(ast),
                 TE::Union(ast) => self.lower_union(ast, name),
             };
             self.alloc_type_expr(type_expr, range)
@@ -988,28 +987,6 @@ impl Context {
         TypeExpr::Union(UnionTypeExpr { name, variants })
     }
 
-    fn lower_union__old(&mut self, ast: ast::Union__Old) -> TypeExpr {
-        let variants = ast
-            .variants()
-            .iter()
-            .map(|item| {
-                let key = self.interner.intern(&item.ident_as_string());
-                let type_expr = item
-                    .type_expr()
-                    .map(|t| self.lower_type_expr(Some(t), None))
-                    .unwrap_or_else(|| self.alloc_type_expr(TypeExpr::Unit, item.range()));
-
-                (key, type_expr)
-            })
-            .collect_vec();
-
-        TypeExpr::Union(UnionTypeExpr {
-            name: None,
-            variants,
-        })
-    }
-
-    ///
     fn lower_type_call(&mut self, ast: ast::expr::CallExpr) -> TypeExpr {
         // let path = ast.path().unwrap();
         // let mut idents = path.ident_strings();

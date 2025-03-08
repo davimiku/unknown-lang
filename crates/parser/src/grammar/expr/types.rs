@@ -92,8 +92,6 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_string_literal(p)
     } else if p.at(T::Ident) {
         parse_compound_type_item(p)
-    } else if p.at(T::Union) {
-        parse_union__old(p)
     } else if p.at(T::Struct) {
         parse_struct(p)
     } else if p.at(T::LParen) {
@@ -165,15 +163,6 @@ fn parse_array_type(p: &mut Parser) -> CompletedMarker {
     parse_lhs(p);
 
     m.complete(p, SyntaxKind::ArrayType)
-}
-
-fn parse_union__old(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::Union);
-
-    let m = p.start();
-    p.bump();
-    parse_compound_type_block(p);
-    m.complete(p, SyntaxKind::UnionTypeExpr)
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {
