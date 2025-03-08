@@ -91,6 +91,59 @@ fn union_with_variant_types() {
 #[test]
 fn create_unit_union_instance() {
     let input = "{
+  type Color = red | green | blue
+
+  Color.green
+}";
+
+    check_expr(
+        input,
+        expect![[r#"
+        BlockExpr@0..52
+          LBrace@0..1 "{"
+          Newline@1..2 "\n"
+          Emptyspace@2..4 "  "
+          TypeBinding@4..35
+            TypeKw@4..8 "type"
+            Emptyspace@8..9 " "
+            Ident@9..15
+              Ident@9..14 "Color"
+              Emptyspace@14..15 " "
+            Equals@15..16 "="
+            Emptyspace@16..17 " "
+            TypeExpr@17..35
+              InfixExpr@17..35
+                Ident@17..21
+                  Ident@17..20 "red"
+                  Emptyspace@20..21 " "
+                Bar@21..22 "|"
+                Emptyspace@22..23 " "
+                InfixExpr@23..35
+                  Ident@23..29
+                    Ident@23..28 "green"
+                    Emptyspace@28..29 " "
+                  Bar@29..30 "|"
+                  Emptyspace@30..31 " "
+                  Ident@31..35
+                    Ident@31..35 "blue"
+          Newline@35..36 "\n"
+          Newline@36..37 "\n"
+          Emptyspace@37..39 "  "
+          PathExpr@39..50
+            Ident@39..44
+              Ident@39..44 "Color"
+            Dot@44..45 "."
+            PathExpr@45..50
+              Ident@45..50
+                Ident@45..50 "green"
+          Newline@50..51 "\n"
+          RBrace@51..52 "}""#]],
+    );
+}
+
+#[test]
+fn create_unit_union_instance_with_variable() {
+    let input = "{
   type Color = (red | green | blue)
 
   let c = Color.green

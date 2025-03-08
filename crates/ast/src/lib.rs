@@ -1,6 +1,5 @@
 pub mod expr;
 mod type_expr;
-mod validation;
 
 #[cfg(test)]
 mod tests;

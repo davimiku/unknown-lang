@@ -62,13 +62,12 @@ let main = fun (condition: Color) -> Int {
 }
 
 #[test]
-#[ignore = "FIXME"]
 fn match_with_otherwise_using_bound_otherwise() {
     let input = "
 type Color = (red | green | blue)
 let main = fun (condition: Color) -> Color {
     match condition {
-        .green -> { 8 }
+        .green -> { Color.red }
         otherwise -> { otherwise }
     }
 }";
@@ -77,7 +76,7 @@ let main = fun (condition: Color) -> Color {
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
     assert_eq!(code_fn((0,)), 0); // .red
-    assert_eq!(code_fn((1,)), 8); // .green
+    assert_eq!(code_fn((1,)), 0); // .green
     assert_eq!(code_fn((2,)), 2); // .blue
 }
 

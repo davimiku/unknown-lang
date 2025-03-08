@@ -63,7 +63,7 @@ impl<'t, 'input> Source<'t, 'input> {
         self.tokens.get(self.cursor).map(|Token { kind, .. }| *kind)
     }
 
-    fn peek_token_raw(&self) -> Option<&Token> {
+    pub(super) fn peek_token_raw(&self) -> Option<&Token> {
         self.tokens.get(self.cursor)
     }
 }

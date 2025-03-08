@@ -127,10 +127,7 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
     // could be the start of function arguments, thereby making this just-parsed
     // expression the callee of a Call expression.
 
-    // HACK - replace 16 with constant or something indicating right binding power of Path/Dot
-    // Path is equal precedence to Call with left-to-right associativity
-    // and confirm with more testing that this actually works
-    if p.at_set(&CALL_ARG_START) && minimum_binding_power < 16 {
+    if p.at_set(&CALL_ARG_START) && minimum_binding_power < PATH_RIGHT_BINDING_POWER {
         // Starts a new marker that "wraps" the already parsed callee, so that we
         // can have a CallExpr with callee and args
         let m = lhs.precede(p);
@@ -737,6 +734,8 @@ fn try_make_binary_op(token: T) -> Option<BinaryOp> {
     })
 }
 
+const PATH_RIGHT_BINDING_POWER: u8 = 16;
+
 impl BinaryOp {
     fn binding_power(self) -> (u8, u8) {
         match self {
@@ -749,7 +748,7 @@ impl BinaryOp {
             Self::Add | Self::Sub | Self::Concat => (9, 10),
             Self::Mul | Self::Div | Self::Rem => (11, 12),
             Self::Exp => (14, 13),
-            Self::Path => (15, 16),
+            Self::Path => (15, PATH_RIGHT_BINDING_POWER),
         }
     }
 }

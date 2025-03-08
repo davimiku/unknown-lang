@@ -219,9 +219,14 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.source.peek_kind()
     }
 
+    /// Peeks the next token and consumes trivia
     pub(crate) fn peek_token(&mut self) -> Option<&Token> {
-        // self. source.peek_next()
         self.source.peek_token()
+    }
+
+    /// Peeks the next token, including trivia
+    pub(crate) fn peek_token_raw(&mut self) -> Option<&Token> {
+        self.source.peek_token_raw()
     }
 }
 

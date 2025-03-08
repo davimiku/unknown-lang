@@ -6,7 +6,7 @@ use crate::SyntaxKind;
 
 use super::{
     parse_call_arguments, parse_ident, parse_int_literal, parse_string_literal, BinaryOp,
-    CALL_ARG_START,
+    CALL_ARG_START, PATH_RIGHT_BINDING_POWER,
 };
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -72,7 +72,7 @@ fn type_expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<
     // Having just finished parsing an expression, check if the next token
     // could be the start of function arguments, thereby making this just-parsed
     // expression the callee of a Call expression.
-    if p.at_set(&CALL_ARG_START) {
+    if p.at_set(&CALL_ARG_START) && minimum_binding_power < PATH_RIGHT_BINDING_POWER {
         // Starts a new marker that "wraps" the already parsed callee, so that we
         // can have a CallExpr with callee and args
         let m = lhs.precede(p);
@@ -109,7 +109,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 /// Parses a type expression beginning with a LParen
 ///
 /// This expression could be any one of a "regular" parenthesized expression,
-/// a unit type, tuple type, or
+/// a unit type, tuple type
 ///
 /// ```text
 /// (Texpr + Texpr) * Texpr // paren type expr
@@ -121,6 +121,8 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 /// (Texpr, Texpr, Texpr) // tuple type
 /// ^^^^^^^^^^^^^^^^^^^^^
 /// ```
+/// TODO - may not have tuples
+/// TODO - unit might be `[]` if records are `[ ... ]`
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LParen);
 
@@ -232,7 +234,18 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
 
     let ident_marker = parse_ident(p);
 
-    if p.bump_if(T::Colon) {
+    // TODO - Parser::bump_if also bumps newlines, which causes an issue for non-delimited
+    // compound expressions such as unions
+    //
+    // ```
+    // type Color = red | green | blue
+    //                                ^ HERE
+    // x
+    // ```
+    // consuming the newline there made it parse like a Call, i.e. `blue x`
+    if p.at(T::Colon) {
+        p.bump();
+
         let compound_marker = ident_marker.precede(p);
 
         let type_marker = p.start();
