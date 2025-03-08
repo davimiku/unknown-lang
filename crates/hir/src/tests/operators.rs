@@ -29,10 +29,10 @@ fn not_variable_ref() {
     let b = !a
 "#;
     let expected_expr = indoc! {"
-        a~1.0 : (false | true) = true~0.2;
-        b~1.1 : (false | true) = !a~1.0;"};
+        a~1.0 : Bool~0.3 = true~0.2;
+        b~1.1 : Bool~0.3 = !a~1.0;"};
 
-    let expected_vars = &[("a~1.0", "(false | true)"), ("b~1.1", "(false | true)")];
+    let expected_vars = &[("a~1.0", "Bool~0.3"), ("b~1.1", "Bool~0.3")];
 
     check(input, expected_expr, expected_vars);
 }

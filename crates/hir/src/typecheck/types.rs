@@ -155,6 +155,9 @@ impl SumType {
 
 impl ContextDisplay for SumType {
     fn display(&self, context: &Context) -> String {
+        if let Some(name) = self.name {
+            return name.display(context);
+        }
         let mut s = String::new();
         s.push('(');
         let mut variants = self.variants.iter().peekable();
@@ -170,7 +173,6 @@ impl ContextDisplay for SumType {
         }
         s.push(')');
 
-        s.truncate(s.trim_end().len());
         s
     }
 }

@@ -33,19 +33,6 @@ impl ContextDisplay for TypeExpr {
                 s
             }
             TypeExpr::Union(union_type_expr) => {
-                // TODO - would be nice to be able to show the user-given name in some cases
-                // needs to *not* be shown as part of the type binding itself
-                // i.e.
-                // test~1.1 : ((red | green | blue)) -> (red | green | blue) = fun "test"(...)
-                //             ^^^^^^^^^^^^^^^^^^^^     ^^^^^^^^^^^^^^^^^^^^
-                // would be nice to use the user-given name here
-                // Color~1.0 := Color;
-                //              ^^^^^ but not here, needs to be `red | green | blue`
-                //
-
-                // if let Some(name) = union_type_expr.name {
-                //     context.lookup(name).to_owned()
-                // } else {
                 let mut s = String::new();
                 let len = union_type_expr.variants.len();
                 for (i, variant) in union_type_expr.variants.iter().enumerate() {
@@ -57,7 +44,6 @@ impl ContextDisplay for TypeExpr {
                     }
                 }
                 s
-                // }
             }
             TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),

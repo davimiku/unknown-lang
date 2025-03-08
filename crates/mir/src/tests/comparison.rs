@@ -6,7 +6,7 @@ fn int_equals() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -24,7 +24,7 @@ fn int_not_equals() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -42,7 +42,7 @@ fn int_less_than() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -60,7 +60,7 @@ fn int_less_than_or_equal() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -78,7 +78,7 @@ fn int_greater_than() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -96,7 +96,7 @@ fn int_greater_than_or_equal() {
     let expected = "
 fun main:
     params: _1, _2
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     
@@ -115,7 +115,7 @@ fn is_even() {
     let expected = "
 fun main:
     params: _1
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     _1: Int
     _2: Int
     

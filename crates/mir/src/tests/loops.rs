@@ -44,11 +44,6 @@ fun main:
     check_module(input, expected);
 }
 
-// TO FIX:
-// duplicated reassignment
-// last block taking parameter _0 but never uses it
-// do block params have to be threaded through all the way explicitly?
-
 #[test]
 fn loop_from_param() {
     let input = "
@@ -64,7 +59,7 @@ fun main:
     params: _1
     mut _0: ()
     _1: Int
-    _2: (false | true)
+    _2: Bool~0.3
     _3: Int
     
     BB0():
@@ -102,7 +97,7 @@ fun main:
     params: _1
     mut _0: ()
     _1: Int
-    _2: (false | true)
+    _2: Bool~0.3
     _3: Int
     
     BB0():
@@ -141,7 +136,7 @@ fun main:
     params: {none}
     mut _0: Int
     mut _1: Int
-    _2: (false | true)
+    _2: Bool~0.3
     _3: Int
     
     BB0():

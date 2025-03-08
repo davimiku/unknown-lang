@@ -32,10 +32,10 @@ type Color = red | green | blue
 let main = fun (c: Color) -> { c }";
 
     let expected_content = "Color~1.0 := red: () | green: () | blue: ()
-main~1.1 : ((red | green | blue)) -> (red | green | blue) = fun \"main\"(c~1.2 : (red | green | blue)) -> (red | green | blue) { c~1.2; };";
+main~1.1 : (Color~1.0) -> Color~1.0 = fun \"main\"(c~1.2 : Color~1.0) -> Color~1.0 { c~1.2; };";
     let expected_vars = &[
-        ("c~1.2", "(red | green | blue)"),
-        ("main~1.1", "((red | green | blue)) -> (red | green | blue)"),
+        ("c~1.2", "Color~1.0"),
+        ("main~1.1", "(Color~1.0) -> Color~1.0"),
     ];
 
     check(input, expected_content, expected_vars);

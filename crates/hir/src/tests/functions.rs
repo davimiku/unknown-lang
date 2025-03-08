@@ -124,14 +124,14 @@ let main = fun (a: Int) -> {
 ";
 
     let expected_expr = indoc! {"
-        is_even~1.0 : (Int) -> (false | true) = fun \"is_even\"(a~1.1 : Int) -> (false | true) { `==`~0.9$0 (%~0.7$0 (a~1.1,2,),0,); };
-        main~1.2 : (Int) -> (false | true) = fun \"main\"(a~1.3 : Int) -> (false | true) { is_even~1.0$0 (a~1.3,); };"};
+        is_even~1.0 : (Int) -> Bool~0.3 = fun \"is_even\"(a~1.1 : Int) -> Bool~0.3 { `==`~0.9$0 (%~0.7$0 (a~1.1,2,),0,); };
+        main~1.2 : (Int) -> Bool~0.3 = fun \"main\"(a~1.3 : Int) -> Bool~0.3 { is_even~1.0$0 (a~1.3,); };"};
 
     let expected_vars = &[
         ("a~1.1", "Int"),
         ("a~1.3", "Int"),
-        ("is_even~1.0", "(Int) -> (false | true)"),
-        ("main~1.2", "(Int) -> (false | true)"),
+        ("is_even~1.0", "(Int) -> Bool~0.3"),
+        ("main~1.2", "(Int) -> Bool~0.3"),
     ];
 
     check(input, expected_expr, expected_vars);

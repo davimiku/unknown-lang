@@ -344,10 +344,10 @@ if res {
 }"#;
 
     let expected = indoc! {"
-res~1.0 : (false | true) = true~0.2;
+res~1.0 : Bool~0.3 = true~0.2;
 if (res~1.0) { return 1; };"};
 
-    let expected_vars = &[("res~1.0", "(false | true)")];
+    let expected_vars = &[("res~1.0", "Bool~0.3")];
 
     check(input, expected, expected_vars);
 }
@@ -380,10 +380,9 @@ fn list_literal_string() {
 fn always_returns_true() {
     let input = "let main = fun () -> { true }";
 
-    let expected =
-        "main~1.0 : () -> (false | true) = fun \"main\"() -> (false | true) { true~0.2; };";
+    let expected = "main~1.0 : () -> Bool~0.3 = fun \"main\"() -> Bool~0.3 { true~0.2; };";
 
-    let expected_vars = &[("main~1.0", "() -> (false | true)")];
+    let expected_vars = &[("main~1.0", "() -> Bool~0.3")];
 
     check(input, expected, expected_vars);
 }

@@ -14,7 +14,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: (false | true)
+    _1: Bool~0.3
     _2: Int
     
     BB0():
@@ -48,7 +48,7 @@ let main = fun (condition: Color) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: (red | green | blue)
+    _1: Color~1.0
     _2: Int
     
     BB0():
@@ -84,9 +84,9 @@ let main = fun (condition: Color) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: (red | green | blue)
+    _1: Color~1.0
     _2: Int
-    _3: (red | green | blue)
+    _3: Color~1.0
     
     BB0():
         _2 := discriminant(_1)
@@ -105,7 +105,6 @@ fun main:
 }
 
 #[test]
-#[ignore = "FIXME"]
 fn match_with_otherwise_using_bound_otherwise() {
     let input = "
 type Color = (red | green | blue)
@@ -119,10 +118,10 @@ let main = fun (condition: Color) -> Color {
     let expected = "
 fun main:
     params: _1
-    mut _0: (red | green | blue)
-    _1: (red | green | blue)
+    mut _0: Color~1.0
+    _1: Color~1.0
     _2: Int
-    _3: (red | green | blue)
+    _3: Color~1.0
     
     BB0():
         _2 := discriminant(_1)
@@ -154,7 +153,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: (false | true)
+    _1: Bool~0.3
     
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
@@ -187,7 +186,7 @@ let main = fun (condition: Bool, b: Float) -> Float {
 fun main:
     params: _1, _2
     mut _0: Float
-    _1: (false | true)
+    _1: Bool~0.3
     _2: Float
     _3: Float
     
@@ -218,7 +217,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: (false | true)
+    _1: Bool~0.3
     _2: Int
     
     BB0():
@@ -243,7 +242,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: (false | true)
+    _1: Bool~0.3
     _2: Int
     _3: 1
     

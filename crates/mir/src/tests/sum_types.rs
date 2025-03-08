@@ -6,7 +6,7 @@ fn always_returns_true() {
     let expected = "
 fun main:
     params: {none}
-    mut _0: (false | true)
+    mut _0: Bool~0.3
     
     BB0():
         _0 := const 1
@@ -25,8 +25,8 @@ let main = fun (c: Color) -> { c }";
     let expected = "
 fun main:
     params: _1
-    mut _0: (red | green | blue)
-    _1: (red | green | blue)
+    mut _0: Color~1.0
+    _1: Color~1.0
     
     BB0():
         _0 := copy _1
@@ -45,7 +45,7 @@ let main = fun () -> { Color.green }";
     let expected = "
 fun main:
     params: {none}
-    mut _0: (red | green | blue)
+    mut _0: Color~1.0
     
     BB0():
         _0 := const 1
