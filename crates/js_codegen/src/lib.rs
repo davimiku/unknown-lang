@@ -1,71 +1,92 @@
+// TODO: are there any libraries that can codegen JavaScript?
+// SWC? something called Oxc Lint or something like that?
+
+mod function;
 #[cfg(test)]
 mod tests;
 
 use hir::{
-    ArrayLiteralExpr, BlockExpr, CallExpr, Context, Expr, FunctionExpr, IfExpr, Type, VarDefExpr,
-    VarRefExpr,
+    ListLiteralExpr, BlockExpr, CallExpr, Context, Expr, IfExpr, Type, VarDefExpr, VarRefExpr,
 };
 
-pub fn codegen(expr: &Expr, context: &Context) -> String {
-    let mut code = Code::default();
-    code.write_expr(expr, None, context);
+const INDENT_SIZE: usize = 4;
+
+pub fn codegen(module: &hir::Module, context: &Context) -> String {
+    let mut code = Codegen::default();
+
+    for expr in module.exprs.iter() {
+        let expr = context.expr(*expr);
+        code.write_expr(expr, None, context);
+    }
 
     code.into()
 }
 
 #[derive(Debug, Default)]
-struct Code(String);
+struct Codegen {
+    code: String,
+    indent: usize,
+}
 
-impl From<Code> for String {
-    fn from(val: Code) -> Self {
-        val.0
+impl From<Codegen> for String {
+    fn from(val: Codegen) -> Self {
+        val.code
     }
 }
 
-impl Code {
+impl Codegen {
     #[inline(always)]
-    fn push(&mut self, s: &str) {
-        self.0.push_str(s);
+    fn push<S: AsRef<str>>(&mut self, s: S) {
+        self.code.push_str(s.as_ref());
     }
 
     #[inline(always)]
     fn push_ch(&mut self, ch: char) {
-        self.0.push(ch);
+        self.code.push(ch);
+    }
+
+    fn write_indent(&mut self) {
+        // TODO: pre-compute strings for 1, 2, 3 indents to cover most cases
+        // and avoid allocation?
+        self.push(" ".repeat(self.indent * INDENT_SIZE));
     }
 
     fn write_expr(&mut self, expr: &Expr, assign_to: Option<&str>, context: &Context) {
         match expr {
             Expr::Empty => todo!(),
-            Expr::BoolLiteral(b) => self.push(&b.to_string()),
-            Expr::FloatLiteral(f) => self.push(&f.to_string()),
-            Expr::IntLiteral(i) => self.push(&i.to_string()),
-            Expr::StringLiteral(key) => self.push(&format!("\"{}\"", context.lookup(*key))),
-            Expr::ArrayLiteral(arr) => self.write_array_literal(arr, context),
+            Expr::FloatLiteral(f) => self.push(f.to_string()),
+            Expr::IntLiteral(i) => self.push(i.to_string()),
+            Expr::StringLiteral(key) => self.push(format!("\"{}\"", context.lookup(*key))),
+            Expr::ListLiteral(arr) => self.write_array_literal(arr, context),
             Expr::Unary(_) => unreachable!("will be removed, in favor of Call"),
-            Expr::Block(block) => self.write_block(block, None, context),
+            Expr::Block(block) => self.write_block(block, assign_to, context),
             Expr::Call(call) => self.write_call_expr(call, context),
             Expr::VarRef(var_ref) => self.write_var_ref(var_ref, context),
             Expr::UnresolvedVarRef { .. } => unreachable!(),
             Expr::Path(_) => todo!(),
+            Expr::UnionNamespace(namespace) => todo!("object literal, maybe"),
+            Expr::UnionVariant(variant) => todo!("object literal with Symbol.tag or w/e"),
+            Expr::UnionUnitVariant(variant) => todo!("string literal (maybe)"),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(func) => self.write_function_literal(func, context),
             Expr::VarDef(var_def) => self.write_var_def(var_def, context),
+            Expr::ReAssignment(reassignment) => todo!(),
+            Expr::Match(match_expr) => todo!(),
             Expr::If(if_expr) => self.write_if_expr(if_expr, assign_to, context),
+            Expr::Loop(loop_expr) => todo!(),
             Expr::Statement(inner) => {
+                self.write_indent();
                 let inner = context.expr(*inner);
                 self.write_expr(inner, None, context);
                 self.push(";\n");
             }
+            Expr::BreakStatement(value) => todo!(),
             Expr::ReturnStatement(inner) => todo!(),
-            Expr::Module(exprs) => {
-                for idx in exprs {
-                    self.write_expr(context.expr(*idx), None, context);
-                }
-            }
+            Expr::TypeStatement(idx) => {}
         };
     }
 
-    fn write_array_literal(&mut self, arr: &ArrayLiteralExpr, context: &Context) {
+    fn write_array_literal(&mut self, arr: &ListLiteralExpr, context: &Context) {
         self.push_ch('[');
         for element in arr.elements() {
             let expr = context.expr(*element);
@@ -76,21 +97,26 @@ impl Code {
     }
 
     fn write_block(&mut self, block: &BlockExpr, assign_to: Option<&str>, context: &Context) {
-        self.push_ch('{');
-        let last_idx = block.exprs().len() - 1;
+        self.push("{\n");
+        self.indent += 1;
+        let last_idx = block.exprs().len().saturating_sub(1);
         for (i, expr) in block.exprs().iter().enumerate() {
+            let is_last = last_idx == i;
             let expr = context.expr(*expr);
 
-            if last_idx == i {
-                // TODO: Rust issue tracker #53667
+            if is_last {
+                // TODO: use if-let chain #53667
                 if let Some(assign_to) = assign_to {
+                    self.write_indent();
                     self.push(assign_to);
                     self.push(" = ");
                 }
             }
+            // FIXME: this writes the indent, which is 2x indent when there
+            // is an assign_to
             self.write_expr(expr, None, context);
-            self.push(";\n");
         }
+        self.indent -= 1;
         self.push_ch('}');
     }
 
@@ -99,17 +125,35 @@ impl Code {
 
         let callee = context.expr(*callee);
         if let Expr::VarRef(var_ref) = callee {
-            match context.lookup_value_symbol(var_ref.symbol) {
-                mut op @ ("+" | "++" | "-" | "*" | "/") => {
-                    let arg_type = context.expr_type(args[0]);
+            match context.value_symbol_str(var_ref.symbol) {
+                op @ ("+" | "-" | "*" | "/") => {
                     let args: Vec<&Expr> = args.iter().map(|arg| context.expr(*arg)).collect();
 
-                    if op == "++" && matches!(arg_type, Type::String | Type::StringLiteral(_)) {
-                        // JS uses `+` for string concatenation
-                        op = "+";
-                    }
                     // TODO: check for Array type and call write_concat
                     self.write_binary(op, &args, context)
+                }
+
+                "++" => {
+                    let lhs_type = context.expr_type(args[0]);
+                    let args: Vec<_> = args.iter().map(|arg| context.expr(*arg)).collect();
+
+                    match lhs_type {
+                        Type::StringLiteral(_) | Type::String => {
+                            self.write_binary("+", &args, context)
+                        }
+                        Type::Array(_) => {
+                            let subject = args[0];
+                            self.write_method_call(
+                                subject,
+                                "concat",
+                                args.into_iter().skip(1),
+                                context,
+                            )
+                        }
+                        _ => panic!(
+                            "compiler error! expected String or Array types for concat operator"
+                        ),
+                    }
                 }
 
                 _ => {
@@ -130,6 +174,23 @@ impl Code {
         context: &Context,
     ) {
         self.write_expr(callee, None, context);
+        self.write_args(args, context);
+    }
+
+    fn write_method_call<'a>(
+        &mut self,
+        subject: &Expr,
+        method: &str, // TODO ? could method be a variable/expression?
+        args: impl Iterator<Item = &'a Expr>,
+        context: &Context,
+    ) {
+        self.write_expr(subject, None, context);
+        self.push_ch('.');
+        self.push(method);
+        self.write_args(args, context);
+    }
+
+    fn write_args<'a>(&mut self, args: impl Iterator<Item = &'a Expr>, context: &Context) {
         self.push_ch('(');
         for arg in args {
             self.write_expr(arg, None, context);
@@ -165,70 +226,8 @@ impl Code {
 
     /// Writes a variable reference to the code, which is just the variable name
     fn write_var_ref(&mut self, var_ref: &VarRefExpr, context: &Context) {
-        let name = context.lookup_value_symbol(var_ref.symbol);
-        self.push_ch(' ');
+        let name = context.value_symbol_str(var_ref.symbol);
         self.push(name);
-        self.push_ch(' ');
-    }
-
-    /// Writes a function literal expression
-    ///
-    /// Often this is called via the "variable definition" procedure but function expressions
-    /// can also exist on their own (can be immediately invoked - IIFE)
-    fn write_function_literal(&mut self, func: &FunctionExpr, context: &Context) {
-        let FunctionExpr { params, body, name } = func;
-        self.push("(function ");
-        if let Some(key) = name {
-            let name = context.lookup(*key);
-            self.push(name);
-        }
-
-        // params
-        self.push_ch('(');
-        for param in params {
-            let name = context.lookup(param.name);
-            self.push(name);
-            self.push_ch(',');
-        }
-        self.push_ch(')');
-
-        // body
-        self.write_function_body(context.expr(*body), context);
-        self.push_ch('\n');
-    }
-
-    fn write_function_body(&mut self, body: &Expr, context: &Context) {
-        match body {
-            Expr::Empty => self.push("{}"), // unreachable?
-            Expr::UnresolvedVarRef { .. } => unreachable!(),
-            Expr::Block(block) => self.write_function_body_block(block, context),
-            Expr::ReturnStatement(ret) => self.write_return_stmt(context.expr(*ret), context),
-            Expr::VarDef(_) => self.push("{}"), // "optimization" TODO: should we write this out anyways?
-            Expr::Unary(_) => unreachable!("replacing with Call"),
-
-            expr => {
-                self.push("return ");
-                self.write_expr(body, None, context);
-            }
-            Expr::IndexInt(_) => todo!(),
-            Expr::If(_) => todo!(),
-            Expr::Statement(_) => todo!(),
-        }
-    }
-
-    fn write_function_body_block(&mut self, block: &BlockExpr, context: &Context) {
-        self.push_ch('{');
-        let last = block.exprs().len() - 1;
-        for (i, expr) in block.exprs().iter().enumerate() {
-            if i == last {
-                self.push("return ");
-            }
-
-            let expr = context.expr(*expr);
-            self.write_expr(expr, None, context);
-            self.push(";\n");
-        }
-        self.push_ch('}');
     }
 
     /// Writes a variable declaration, used often to declare a variable
@@ -242,13 +241,34 @@ impl Code {
     /// Writes a variable definition, which includes both the declaration and
     /// the initial assignment
     fn write_var_def(&mut self, var_def: &VarDefExpr, context: &Context) {
-        let name = context.lookup_value_symbol(var_def.symbol);
+        let name = context.value_symbol_str(var_def.symbol);
         self.push("let ");
         self.push(name);
-        self.push(" = ");
 
         let value = context.expr(var_def.value);
-        self.write_expr(value, Some(name), context);
+
+        // if the value is something that is not an expression in JS, need
+        // to do the dance of declaring a variable first, then assigning it
+        match value {
+            // TODO: is Empty possible?
+            Expr::Empty => todo!(),
+
+            // TODO: needs to be parenthesized?
+            // TODO: could have overloads
+            Expr::Function(_) => todo!(),
+
+            // TODO: need to check
+            // Expr::VarDef(_) => todo!(),
+            Expr::Block(_) | Expr::If(_) => {
+                self.push(";\n");
+                self.write_expr(value, Some(name), context);
+            }
+
+            _ => {
+                self.push(" = ");
+                self.write_expr(value, None, context);
+            }
+        }
         self.push(";\n");
     }
 
@@ -262,14 +282,14 @@ impl Code {
         // condition
         self.push("if (");
         self.write_expr(context.expr(*condition), None, context);
-        self.push_ch(')');
+        self.push(") ");
 
-        // then
-        // TODO: pass through "assign_to"
+        // then Block
         self.write_expr(context.expr(*then_branch), assign_to, context);
 
-        // else
+        // else Block
         if let Some(else_branch) = else_branch {
+            self.push(" else ");
             self.write_expr(context.expr(*else_branch), assign_to, context)
         }
     }

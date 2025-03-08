@@ -1,4 +1,4 @@
-mod args;
+mod cli_args;
 
 use std::{
     env, fs,
@@ -7,17 +7,19 @@ use std::{
 };
 
 use clap::Parser;
+use cli_args::{BuildArgs, CheckArgs, CliArgs, OutputTarget, RunArgs};
 use exitcode::ExitCode;
 use path_clean::PathClean;
 
-use crate::args::{Args, Commands, EntryPath};
+use crate::cli_args::{Commands, EntryPath};
 
 fn main() -> io::Result<()> {
-    let cli = Args::parse();
+    let cli = CliArgs::parse();
+    println!("{cli:?}");
     let diagnostics = match cli.command {
-        Commands::Check { path } => check(path),
-        Commands::Build { path } => build(path),
-        Commands::Run { path } => run(path),
+        Commands::Check(CheckArgs { path }) => check(path),
+        Commands::Build(BuildArgs { path, target }) => build(path, target),
+        Commands::Run(RunArgs { path }) => run(path),
     }?;
 
     for d in diagnostics {
@@ -35,7 +37,7 @@ fn main() -> io::Result<()> {
 // TODO: lower, do not codegen
 // TODO: replace with LSPDiagnostic
 // fn check(path: Option<EntryPath>) -> io::Result<Vec<LSPDiagnostic>> {
-fn check(path: Option<EntryPath>) -> io::Result<Vec<()>> {
+fn check(path: EntryPath) -> io::Result<Vec<()>> {
     todo!();
     // let program = get_program_input(path)?;
     // Ok(match compiler::compile(&program, true) {
@@ -51,16 +53,21 @@ fn check(path: Option<EntryPath>) -> io::Result<Vec<()>> {
     // Ok(diagnostics)
 }
 
-fn build(path: Option<EntryPath>) -> io::Result<Vec<()>> {
-    todo!();
-    // let program = get_program_input(path)?;
+fn build(path: EntryPath, target: OutputTarget) -> io::Result<Vec<()>> {
+    let program = get_program_input(path)?;
+
+    match target {
+        OutputTarget::Jit => Ok(vec![]),
+        OutputTarget::Aot => Ok(vec![]),
+        OutputTarget::JS => todo!(),
+    }
     // Ok(match compiler::compile(&program, true) {
     //     Ok(_) => Vec::new(),
     //     Err(diagnostics) => diagnostics,
     // })
 }
 
-fn run(path: Option<EntryPath>) -> io::Result<Vec<()>> {
+fn run(path: EntryPath) -> io::Result<Vec<()>> {
     todo!();
     // let program = get_program_input(path)?;
 
@@ -92,7 +99,7 @@ fn test_main() -> io::Result<()> {
     // when "Run Test", the cwd is crates/cli (the level of the Cargo.toml of this crate)
     // when "Debug", the cwd is the root level of this workspace
     let path = String::from("test.prog");
-    let diagnostics = run(Some(path))?;
+    let diagnostics = run(path)?;
 
     for d in diagnostics {
         eprintln!("{d:?}");
@@ -119,18 +126,9 @@ fn absolute_path(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     Ok(absolute_path)
 }
 
-fn get_program_input(entry_path: Option<EntryPath>) -> io::Result<String> {
-    if let Some(path) = entry_path {
-        let abs = absolute_path(path)?;
-        let contents = fs::read_to_string(abs)?;
+fn get_program_input(path: EntryPath) -> io::Result<String> {
+    let abs = absolute_path(path)?;
+    let contents = fs::read_to_string(abs)?;
 
-        Ok(contents)
-    } else {
-        let mut buf = String::new();
-        let stdin = io::stdin();
-        let mut handle = stdin.lock();
-        handle.read_to_string(&mut buf)?;
-
-        Ok(buf)
-    }
+    Ok(contents)
 }

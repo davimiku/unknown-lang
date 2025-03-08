@@ -17,12 +17,18 @@ impl JITBuilderExt for JITBuilder {
         });
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
-            .unwrap();
+            .unwrap_or_else(|error| panic!("ISA error: {error}"));
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
-        builder.symbol(builtins::PRINT_INT, builtins::print_int as *const u8);
-        builder.symbol(builtins::PRINT_FLOAT, builtins::print_float as *const u8);
-        builder.symbol(builtins::PRINT_BOOL, builtins::print_bool as *const u8);
+        let builtins = [
+            (builtins::PRINT_STRING, builtins::print_string as *const u8),
+            (builtins::PRINT_INT, builtins::print_int as *const u8),
+            (builtins::PRINT_FLOAT, builtins::print_float as *const u8),
+            (builtins::PRINT_BOOL, builtins::print_bool as *const u8),
+        ];
+        for (name, ptr) in builtins {
+            builder.symbol(name, ptr);
+        }
 
         builder
     }

@@ -1,6 +1,6 @@
 use expect_test::expect;
 
-use crate::check_expr;
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_negation() {
@@ -21,8 +21,9 @@ fn parse_not_false() {
         expect![[r#"
 NotExpr@0..6
   Bang@0..1 "!"
-  BoolLiteralExpr@1..6
-    FalseLiteral@1..6 "false""#]],
+  PathExpr@1..6
+    Ident@1..6
+      Ident@1..6 "false""#]],
     );
 }
 
@@ -33,8 +34,9 @@ fn parse_not_true() {
         expect![[r#"
 NotExpr@0..5
   Bang@0..1 "!"
-  BoolLiteralExpr@1..5
-    TrueLiteral@1..5 "true""#]],
+  PathExpr@1..5
+    Ident@1..5
+      Ident@1..5 "true""#]],
     );
 }
 

@@ -1,0 +1,46 @@
+fn test() -> f64 {
+    let dontcare = 2.25 * 2.25;
+    let a = {
+        let b = 4.0 + 9.0;
+        let c = b - 90.0;
+        c + 1.0
+    };
+    let dontcare2 = 1.5 * 1.5;
+    a
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn test() -> f64 {
+    let mut _0: f64;
+    let _1: f64;
+    scope 1 {
+        debug dontcare => _1;
+        let _2: f64;
+        scope 2 {
+            debug a => _0;
+            let _4: f64;
+            scope 5 {
+                debug dontcare2 => _4;
+            }
+        }
+        scope 3 {
+            debug b => _2;
+            let _3: f64;
+            scope 4 {
+                debug c => _3;
+            }
+        }
+    }
+
+    bb0: {
+        _1 = Mul(const 2.25f64, const 2.25f64);
+        _2 = Add(const 4f64, const 9f64);
+        _3 = Sub(_2, const 90f64);
+        _0 = Add(_3, const 1f64);
+        _4 = Mul(const 1.5f64, const 1.5f64);
+        return;
+    }
+}

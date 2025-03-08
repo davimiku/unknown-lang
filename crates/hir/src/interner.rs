@@ -37,37 +37,82 @@ impl Interner {
 
 #[derive(Debug, Default)]
 pub struct CoreKeys {
-    pub bool: Key,
+    /// `Int`
     pub int: Key,
+    /// `Float`
     pub float: Key,
+    /// `String`
     pub string: Key,
 
-    pub print: Key,
-    pub args: Key,
+    /// `Bool`
+    pub bool: Key,
+    /// `false`
+    pub r#false: Key,
+    /// `true`
+    pub r#true: Key,
 
+    /// `print`
+    pub print: Key,
+    /// `args`
+    pub args: Key,
+    /// `main`
+    pub main: Key,
+
+    /// `+`
     pub add: Key,
+    /// `++`
     pub concat: Key,
+    /// `-`
     pub sub: Key,
+    /// `*`
     pub mul: Key,
+    /// `/`
     pub div: Key,
+    /// `%`
+    pub rem: Key,
+
+    /// `==`
+    pub eq: Key,
+    /// `!=`
+    pub ne: Key,
+    /// `<`
+    pub lt: Key,
+    /// `<=`
+    pub le: Key,
+    /// `>`
+    pub gt: Key,
+    /// `>=`
+    pub ge: Key,
 }
 
 impl CoreKeys {
     fn new(interner: &mut Interner) -> Self {
         Self {
-            bool: interner.intern("Bool"),
             int: interner.intern("Int"),
             float: interner.intern("Float"),
             string: interner.intern("String"),
 
+            bool: interner.intern("Bool"),
+            r#false: interner.intern("false"),
+            r#true: interner.intern("true"),
+
             print: interner.intern("print"),
             args: interner.intern("args"),
+            main: interner.intern("main"),
 
             add: interner.intern("+"),
             concat: interner.intern("++"),
             sub: interner.intern("-"),
             mul: interner.intern("*"),
             div: interner.intern("/"),
+            rem: interner.intern("%"),
+
+            eq: interner.intern("=="),
+            ne: interner.intern("!="),
+            lt: interner.intern("<"),
+            le: interner.intern("<="),
+            gt: interner.intern(">"),
+            ge: interner.intern(">="),
         }
     }
 }

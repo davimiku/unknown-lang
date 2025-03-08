@@ -54,7 +54,18 @@ Integers may be compared for equality.
 
 ## Float
 
-The
+The Floating Point number is written as `Float` and is a 64-bit IEEE-754 binary64 number, sometimes known as a "double precision" floating point number.
+
+### Float - Equality
+
+Float may be compared for equality.
+
+```rs
+// These statements are true
+
+111.1 == 111.1    // ✅
+-3.3 != -9.9      // ✅
+```
 
 ### Integer and Float - Equality
 
@@ -77,8 +88,6 @@ let message = "Hello, world!"
 let message_jp = "こんにちは"
 ```
 
-Strings do not allow for random access at a byte index unless the string is known to only contain ASCII characters, see the [Type Narrowing](../type-system/type-narrowing) section for more detail.
-
 ### String - Interpolation
 
 [String interpolation](https://en.wikipedia.org/wiki/String_interpolation) is achieved by placing expressions inside the `{` and `}` characters as delimiters.
@@ -93,22 +102,22 @@ let high_score = "High score: {scores.max}"
 The expression inside of the `{` and `}` delimiters can be any valid expression, including a [block](). However, carefully consider code readability and prefer to only use simple expressions in string interpolation.
 
 ```rs
-// Hard to read
+// Hard to read, don't do this 👎
 let total_score_message = "Total score: {{
     let mut total = 0
     for score in scores {
         total += score
     }
-    score
+    total
 }}"
 
-// Instead, consider separating complex expressions to a separate variable
+// Instead, consider separating complex expressions to a separate variable 👍
 let total_score = {
     let mut total = 0
     for score in scores {
         total += score
     }
-    score
+    total
 }
 let total_score_message = "Total score: {total_score}"
 ```

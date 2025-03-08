@@ -8,26 +8,25 @@ pub enum SyntaxKind {
     Hash,
     At,
 
-    Ident,
-    Call,
-    CallArgs,
-
     // Keywords
-    And,
-    Else,
-    For,
-    If,
-    In,
-    Let,
-    Loop,
-    Module,
-    Or,
-    Return,
-    Struct,
-    Try,
-    Type,
-    Union,
-    While,
+    AndKw,
+    BreakKw,
+    ElseKw,
+    ForKw,
+    FunKw,
+    IfKw,
+    InKw,
+    LetKw,
+    LoopKw,
+    MatchKw,
+    ModuleKw,
+    MutKw,
+    OrKw,
+    ReturnKw,
+    StructKw,
+    TryKw,
+    TypeKw,
+    WhileKw,
 
     // Literals
     FalseLiteral,
@@ -36,54 +35,91 @@ pub enum SyntaxKind {
     FloatLiteral,
     StringLiteral,
 
-    ArrayLiteral,
+    ListLiteral,
     ArrayType,
 
     // Delimiters
+    /// `{`
     LBrace,
+    /// `}`
     RBrace,
+    /// `[`
     LBracket,
+    /// `]`
     RBracket,
+    /// `(`
     LParen,
+    /// `)`
     RParen,
 
     // Separators
+    /// `:`
     Colon,
+    /// `;`
     SemiColon,
+    /// `,`
     Comma,
 
+    // Placeholders
+    /// `_`
+    Underscore,
+    /// `_ident` - identifiers with leading underscores
+    /// (parse successfully for robustness, produces error at lowering)
+    InvalidLeadingUnderscore,
+
     // Operators
+    /// `+`
     Plus,
+    /// `++`
     PlusPlus,
+    /// `-`
     Dash,
+    /// `*`
     Star,
+    /// `/`
     Slash,
+    /// `^`
     Caret,
+    /// `%`
     Percent,
+    /// `|`
+    Bar,
+    /// `!`
     Bang,
+    /// `~`
     Tilde,
 
+    /// `<`
     LAngle,
+    /// `<=`
     LAngleEquals,
+    /// `>`
     RAngle,
+    /// `>=`
     RAngleEquals,
+    /// `==`
     EqualsEquals,
+    /// `!=`
     BangEquals,
+    /// `=`
     Equals,
+    /// `..`
     DotDot,
+    /// `.`
     Dot,
+    /// `?`
     Question,
 
     // Expr
     AssignmentExpr,
     BlockExpr,
-    BoolLiteralExpr,
     FloatLiteralExpr,
     FunExpr,
     IfExpr,
     InfixExpr,
     IntLiteralExpr,
     LoopExpr,
+    MatchExpr,
     NegationExpr,
     NotExpr,
     ParenExpr,
@@ -98,7 +134,12 @@ pub enum SyntaxKind {
     // Supplemental
     ParenExprItem,
 
-    // IfExpr
+    // related to MatchExpr
+    ScrutineeExpr,
+    MatchBlock,
+    MatchArm,
+
+    // related to IfExpr
     ConditionExpr,
     ThenBranchExpr,
     ElseBranchExpr,
@@ -108,15 +149,31 @@ pub enum SyntaxKind {
     LetBinding,
     TypeBinding,
     ForInLoop,
+    BreakStatement,
     ReturnStatement,
 
     // Type components
     CompoundTypeBlock,
     CompoundTypeItem,
+    CompoundTypeItemIdent,
+    CompoundTypeItemType,
+    CompoundTypeItemDefault,
+
+    // Related to patterns
+    IdentPattern,
+    DotPattern,
+    IntLiteralPattern,
+    FloatLiteralPattern,
+    StringLiteralPattern,
+    WildcardPattern,
+    Ident,
+
+    Call,
+    CallArgs,
 
     // Function components
     FunBody,
-    // FunParam,
+    FunParam,
     FunParamList,
     Arrow,
     FunReturnType,
@@ -124,6 +181,7 @@ pub enum SyntaxKind {
     Root,
     Comment,
     Emptyspace,
+    /// Captured separately from Emptyspace because the grammar *is* newline-sensitive
     Newline,
     Error,
 }
@@ -138,26 +196,29 @@ impl From<TokenKind> for SyntaxKind {
     fn from(token_kind: TokenKind) -> Self {
         match token_kind {
             // Keywords
-            TokenKind::And => Self::And,
-            TokenKind::Else => Self::Else,
-            TokenKind::For => Self::For,
-            TokenKind::If => Self::If,
-            TokenKind::In => Self::In,
-            TokenKind::Let => Self::Let,
-            TokenKind::Loop => Self::Loop,
-            TokenKind::Module => Self::Module,
-            TokenKind::Or => Self::Or,
-            TokenKind::Return => Self::Return,
-            TokenKind::Struct => Self::Struct,
-            TokenKind::Try => Self::Try,
-            TokenKind::Type => Self::Type,
-            TokenKind::Union => Self::Union,
-            TokenKind::While => Self::While,
+            TokenKind::And => Self::AndKw,
+            TokenKind::Break => Self::BreakKw,
+            TokenKind::Else => Self::ElseKw,
+            TokenKind::For => Self::ForKw,
+            TokenKind::Fun => Self::FunKw,
+            TokenKind::If => Self::IfKw,
+            TokenKind::In => Self::InKw,
+            TokenKind::Let => Self::LetKw,
+            TokenKind::Loop => Self::LoopKw,
+            TokenKind::Match => Self::MatchKw,
+            TokenKind::Module => Self::ModuleKw,
+            TokenKind::Mut => Self::MutKw,
+            TokenKind::Or => Self::OrKw,
+            TokenKind::Return => Self::ReturnKw,
+            TokenKind::Struct => Self::StructKw,
+            TokenKind::Try => Self::TryKw,
+            TokenKind::Type => Self::TypeKw,
+            TokenKind::While => Self::WhileKw,
 
             // Literals
             TokenKind::Ident => Self::Ident,
-            TokenKind::False => Self::FalseLiteral,
-            TokenKind::True => Self::TrueLiteral,
+            // TokenKind::False => Self::FalseLiteral,
+            // TokenKind::True => Self::TrueLiteral,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
             TokenKind::StringLiteral => Self::StringLiteralExpr,
@@ -169,6 +230,10 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::RBracket => Self::RBracket,
             TokenKind::LParen => Self::LParen,
             TokenKind::RParen => Self::RParen,
+
+            // Placeholders
+            TokenKind::Underscore => Self::Underscore,
+            TokenKind::InvalidLeadingUnderscore => Self::InvalidLeadingUnderscore,
 
             // Separators
             TokenKind::Colon => Self::Colon,
@@ -183,6 +248,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Slash => Self::Slash,
             TokenKind::Caret => Self::Caret,
             TokenKind::Percent => Self::Percent,
+            TokenKind::Bar => Self::Bar,
             TokenKind::Bang => Self::Bang,
             TokenKind::Tilde => Self::Tilde,
 
@@ -208,7 +274,7 @@ impl From<TokenKind> for SyntaxKind {
 }
 
 impl fmt::Display for SyntaxKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             // Keywords
             // Literals

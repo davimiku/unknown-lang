@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use crate::{
-    interner::Key, lowering_context::ContextDisplay, type_expr::TypeSymbol, Context, Expr,
-    TypeExpr, ValueSymbol,
-};
+use crate::interner::Key;
+use crate::type_expr::TypeSymbol;
+use crate::{Context, ContextDisplay, Expr, IntrinsicExpr, TypeExpr, ValueSymbol};
+use ast::Mutability;
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
 
 // TODO: remove pub(crate) ?
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Default)]
 pub struct Database {
     /// Allocated expressions
     pub(crate) exprs: Arena<Expr>,
@@ -20,9 +20,17 @@ pub struct Database {
     /// Allocated type expressions
     pub(crate) type_exprs: Arena<TypeExpr>,
 
+    /// Type expressions defined in a type binding (i.e. alias), so these
+    /// have a name in the type namespace
+    pub(crate) named_type_exprs: HashMap<TypeSymbol, Idx<TypeExpr>>,
+
     /// Text ranges of the expressions from `type_exprs`
     /// Invariant: The indexes must be kept in sync
     pub(crate) type_expr_ranges: ArenaMap<Idx<TypeExpr>, TextRange>,
+
+    /// Maps between the resolved symbols for `+`, `*`, etc. to the
+    /// intrinsic operation that they represent.
+    pub(crate) operators: HashMap<ValueSymbol, IntrinsicExpr>,
 
     /// Reverse mapping between every symbol defining a value (i.e. variable)
     /// and its original (interned) name.
@@ -31,6 +39,16 @@ pub struct Database {
     /// Reverse mapping between every symbol defining a type (i.e. type variable)
     /// and its interned string name.
     pub(crate) type_names: HashMap<TypeSymbol, Key>,
+
+    /// Tracks the mutability of all ValueSymbols in this module
+    pub(crate) mutabilities: HashMap<ValueSymbol, Mutability>,
+
+    /// Mapping between symbols defining a type and symbols defining a value
+    /// for cases where the symbol exists in both namespaces (like unions)
+    /// `type Color = red | green | blue`
+    /// `let myColor = Color.green`
+    ///                ^^^^^
+    pub(crate) type_value_symbols: HashMap<ValueSymbol, TypeSymbol>,
 }
 
 impl ContextDisplay for Database {
@@ -63,10 +81,6 @@ impl Database {
         (&self.exprs[idx], &self.expr_ranges[idx])
     }
 
-    pub(crate) fn expr_cloned(&self, idx: Idx<Expr>) -> (Expr, TextRange) {
-        (self.exprs[idx].clone(), self.expr_ranges[idx])
-    }
-
     /// Returns the type expression at the given index.
     ///
     /// Panics if the index doesn't exist. An invalid index indicates
@@ -90,10 +104,16 @@ impl Database {
     pub(crate) fn range_of_type_expr(&self, idx: Idx<TypeExpr>) -> TextRange {
         self.type_expr_ranges[idx]
     }
+
+    pub(crate) fn lookup_operator(&self, symbol: ValueSymbol) -> Option<IntrinsicExpr> {
+        self.operators.get(&symbol).copied()
+    }
 }
 
 // Mutating functions
 impl Database {
+    /// Allocates a term expression into the database, returning an index to store
+    /// for later use.
     pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
 
@@ -103,6 +123,8 @@ impl Database {
         idx
     }
 
+    /// Allocates a type expression into the database, returning an index to store
+    /// for later use.
     pub(crate) fn alloc_type_expr(&mut self, expr: TypeExpr, range: TextRange) -> Idx<TypeExpr> {
         let idx = self.type_exprs.alloc(expr);
         self.type_expr_ranges.insert(idx, range);

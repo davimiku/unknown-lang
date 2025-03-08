@@ -47,17 +47,17 @@ impl CompletedMarker {
     /// Returns a `Marker` representing the wrapping node
     /// that can be completed with a different syntax kind.
     pub(crate) fn precede(self, p: &mut Parser) -> Marker {
-        let new_m = p.start();
+        let new_marker = p.start();
 
         match p.events[self.pos] {
             Event::StartNode {
                 ref mut forward_parent,
                 ..
-            } => *forward_parent = Some(new_m.pos - self.pos),
+            } => *forward_parent = Some(new_marker.pos - self.pos),
 
             _ => unreachable!(),
         }
 
-        new_m
+        new_marker
     }
 }

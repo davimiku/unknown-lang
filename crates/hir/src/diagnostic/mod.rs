@@ -13,6 +13,15 @@ pub enum Diagnostic {
     Type(TypeDiagnostic),
 }
 
+impl Diagnostic {
+    pub fn range(&self) -> TextRange {
+        match self {
+            Diagnostic::Lowering(diag) => diag.range,
+            Diagnostic::Type(diag) => diag.range,
+        }
+    }
+}
+
 impl From<TypeDiagnostic> for LSPDiagnostic {
     fn from(value: TypeDiagnostic) -> Self {
         Self {
@@ -49,9 +58,33 @@ impl From<&Diagnostic> for LSPDiagnostic {
     }
 }
 
-/// Diagnostics found while lowering the AST to HIR
+/// Diagnostics found while lowering the AST to HIR not related to type checking
 #[derive(Debug, PartialEq)]
-pub struct LoweringDiagnostic;
+pub struct LoweringDiagnostic {
+    pub variant: LoweringDiagnosticVariant,
+    pub range: TextRange,
+}
+
+impl From<LoweringDiagnostic> for Diagnostic {
+    fn from(diagnostic: LoweringDiagnostic) -> Self {
+        Diagnostic::Lowering(diagnostic)
+    }
+}
+
+impl LoweringDiagnostic {
+    pub fn break_outside_loop(range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::BreakOutsideLoop,
+            range,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LoweringDiagnosticVariant {
+    BreakOutsideLoop,
+    // ReturnOutsideFunction
+}
 
 /// Diagnostics found during type checking and type inference
 #[derive(Debug, PartialEq)]
@@ -61,8 +94,8 @@ pub struct TypeDiagnostic {
 }
 
 impl From<TypeDiagnostic> for Diagnostic {
-    fn from(value: TypeDiagnostic) -> Self {
-        Diagnostic::Type(value)
+    fn from(diagnostic: TypeDiagnostic) -> Self {
+        Diagnostic::Type(diagnostic)
     }
 }
 
@@ -100,6 +133,13 @@ impl TypeDiagnostic {
             range,
         }
     }
+
+    pub fn no_matching_signature(range: TextRange) -> Self {
+        Self {
+            variant: TypeDiagnosticVariant::NoMatchingSignature {},
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -128,13 +168,18 @@ pub enum TypeDiagnosticVariant {
     Empty {
         expr: Idx<Expr>,
     },
+    Immutable {
+        /// Expression that is trying to do the mutation
+        expr: Idx<Expr>,
+        // The original definition of the immutable symbol
+        // symbol: ValueSymbol,
+    },
     Incompatible {
         a: Idx<Type>,
         b: Idx<Type>,
     },
-    NoOverloadFound {
-        // TODO: use interned key?
-        name: String,
+    NoMatchingSignature {
+        // TODO: decide what information is needed in this diagnostic
     },
     TypeMismatch {
         expected: Idx<Type>,

@@ -1,8 +1,8 @@
 use la_arena::Idx;
 
-use crate::{lowering_context::ContextDisplay, Context, COMPILER_BRAND};
+use crate::{Context, ContextDisplay, COMPILER_BRAND};
 
-use super::{TypeExpr, TypeRefExpr, TypeSymbol};
+use super::{TypeExpr, TypeRefExpr, TypeSymbol, TypeVarDefExpr};
 
 impl ContextDisplay for Idx<TypeExpr> {
     fn display(&self, context: &Context) -> String {
@@ -16,15 +16,36 @@ impl ContextDisplay for TypeExpr {
         match self {
             TypeExpr::Empty => "{{empty}}".to_owned(),
 
-            TypeExpr::BoolLiteral(b) => b.to_string(),
             TypeExpr::FloatLiteral(f) => f.to_string(),
             TypeExpr::IntLiteral(i) => i.to_string(),
             TypeExpr::StringLiteral(key) => format!(r#""{}""#, context.lookup(*key)),
-            TypeExpr::Call(_) => todo!(),
 
-            TypeExpr::LocalDef(_) => todo!(),
+            TypeExpr::Unit => "()".to_string(),
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
             TypeExpr::UnresolvedVarRef { .. } => todo!(),
+
+            TypeExpr::VarDef(type_var_def) => {
+                let mut s = String::new();
+                let TypeVarDefExpr { symbol, type_expr } = type_var_def;
+                s.push_str(&symbol.display(context).to_string());
+                s.push_str(" := ");
+                s.push_str(&type_expr.display(context).to_string());
+                s
+            }
+            TypeExpr::Union(union_type_expr) => {
+                let mut s = String::new();
+                let len = union_type_expr.variants.len();
+                for (i, variant) in union_type_expr.variants.iter().enumerate() {
+                    s.push_str(context.lookup(variant.0));
+                    s.push_str(": ");
+                    s.push_str(&variant.1.display(context));
+                    if i < len - 1 {
+                        s.push_str(" | ");
+                    }
+                }
+                s
+            }
+            TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),
             TypeExpr::Unary(_) => todo!(),
         }

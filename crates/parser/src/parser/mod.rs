@@ -7,7 +7,7 @@ use crate::event::Event;
 use crate::grammar;
 use crate::source::Source;
 use crate::syntax::SyntaxKind;
-use lexer::TokenKind;
+use lexer::{Token, TokenKind};
 use marker::Marker;
 use std::mem;
 
@@ -75,6 +75,16 @@ impl<'t, 'input> Parser<'t, 'input> {
         }
     }
 
+    pub(crate) fn expect_one_of<const N: usize>(&mut self, kinds: [TokenKind; N]) {
+        for kind in kinds {
+            if self.at(kind) {
+                self.bump();
+                return;
+            }
+        }
+        self.error();
+    }
+
     pub(crate) fn expect_no_skip(&mut self, kind: TokenKind) {
         if self.at(kind) {
             self.bump();
@@ -125,12 +135,15 @@ impl<'t, 'input> Parser<'t, 'input> {
         self.events.push(Event::AddToken);
     }
 
-    /// Bumps the parser if it's at the given token
+    /// Bumps the parser if it's at the given token.
     /// Useful for optional tokens, such as trailing commas
-    pub(crate) fn bump_if(&mut self, kind: TokenKind) {
+    pub(crate) fn bump_if(&mut self, kind: TokenKind) -> bool {
         self.bump_all_space();
         if self.at(kind) {
             self.bump();
+            true
+        } else {
+            false
         }
     }
 
@@ -184,20 +197,36 @@ impl<'t, 'input> Parser<'t, 'input> {
     /// Checks if the parser is at a certain kind of valid token
     ///
     /// Does not add to the list of expected tokens.
-    pub(crate) fn debug_at(&mut self, kind: TokenKind) -> bool {
-        self.peek() == Some(kind)
+    pub(crate) fn debug_assert_at(&mut self, kind: TokenKind) {
+        debug_assert_eq!(self.peek(), Some(kind));
     }
 
     pub(crate) fn at_set(&mut self, set: &[TokenKind]) -> bool {
-        self.peek().map_or(false, |k| set.contains(&k))
+        // TODO - push into self.expected_kinds ?
+        self.peek().is_some_and(|k| set.contains(&k))
+    }
+
+    pub(crate) fn debug_assert_at_set(&mut self, set: &[TokenKind]) {
+        debug_assert!(self.peek().is_some_and(|k| set.contains(&k)));
     }
 
     pub(crate) fn at_end(&mut self) -> bool {
         self.peek().is_none()
     }
 
+    /// Peeks for the next TokenKind, also eats trivia
     pub(crate) fn peek(&mut self) -> Option<TokenKind> {
         self.source.peek_kind()
+    }
+
+    /// Peeks the next token and consumes trivia
+    pub(crate) fn peek_token(&mut self) -> Option<&Token> {
+        self.source.peek_token()
+    }
+
+    /// Peeks the next token, including trivia
+    pub(crate) fn peek_token_raw(&mut self) -> Option<&Token> {
+        self.source.peek_token_raw()
     }
 }
 

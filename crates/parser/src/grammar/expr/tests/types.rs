@@ -31,9 +31,8 @@ fn path_type() {
                 Ident@0..1
                   Ident@0..1 "A"
                 Dot@1..2 "."
-                PathExpr@2..3
-                  Ident@2..3
-                    Ident@2..3 "B""#]],
+                Ident@2..3
+                  Ident@2..3 "B""#]],
     )
 }
 
@@ -84,9 +83,8 @@ fn type_function_no_params() {
                   Emptyspace@2..3 " "
                 Arrow@3..5 "->"
                 Emptyspace@5..6 " "
-                PathExpr@6..7
-                  Ident@6..7
-                    Ident@6..7 "A""#]],
+                Ident@6..7
+                  Ident@6..7 "A""#]],
     );
 }
 
@@ -103,9 +101,8 @@ fn type_function_one_param() {
                   Emptyspace@1..2 " "
                 Arrow@2..4 "->"
                 Emptyspace@4..5 " "
-                PathExpr@5..6
-                  Ident@5..6
-                    Ident@5..6 "B""#]],
+                Ident@5..6
+                  Ident@5..6 "B""#]],
     );
 }
 
@@ -125,9 +122,8 @@ fn type_function_one_param_with_paren() {
                   Emptyspace@3..4 " "
                 Arrow@4..6 "->"
                 Emptyspace@6..7 " "
-                PathExpr@7..8
-                  Ident@7..8
-                    Ident@7..8 "B""#]],
+                Ident@7..8
+                  Ident@7..8 "B""#]],
     );
 }
 
@@ -151,76 +147,7 @@ fn type_function_two_params() {
                   Emptyspace@6..7 " "
                 Arrow@7..9 "->"
                 Emptyspace@9..10 " "
-                PathExpr@10..11
-                  Ident@10..11
-                    Ident@10..11 "C""#]],
+                Ident@10..11
+                  Ident@10..11 "C""#]],
     );
-}
-
-#[test]
-fn type_union() {
-    let input = "union { a: A, b: B }";
-    check(
-        input,
-        expect![[r#"
-TypeExpr@0..20
-  UnionTypeExpr@0..20
-    Union@0..5 "union"
-    Emptyspace@5..6 " "
-    CompoundTypeBlock@6..20
-      LBrace@6..7 "{"
-      Emptyspace@7..8 " "
-      CompoundTypeItem@8..12
-        Ident@8..9
-          Ident@8..9 "a"
-        Colon@9..10 ":"
-        Emptyspace@10..11 " "
-        Ident@11..12
-          Ident@11..12 "A"
-      Comma@12..13 ","
-      Emptyspace@13..14 " "
-      CompoundTypeItem@14..19
-        Ident@14..15
-          Ident@14..15 "b"
-        Colon@15..16 ":"
-        Emptyspace@16..17 " "
-        Ident@17..19
-          Ident@17..18 "B"
-          Emptyspace@18..19 " "
-      RBrace@19..20 "}""#]],
-    )
-}
-
-#[test]
-fn type_struct() {
-    let input = "struct { a: A, b: B }";
-    check(
-        input,
-        expect![[r#"
-TypeExpr@0..21
-  StructTypeExpr@0..21
-    Struct@0..6 "struct"
-    Emptyspace@6..7 " "
-    CompoundTypeBlock@7..21
-      LBrace@7..8 "{"
-      Emptyspace@8..9 " "
-      CompoundTypeItem@9..13
-        Ident@9..10
-          Ident@9..10 "a"
-        Colon@10..11 ":"
-        Emptyspace@11..12 " "
-        Ident@12..13
-          Ident@12..13 "A"
-      Comma@13..14 ","
-      Emptyspace@14..15 " "
-      CompoundTypeItem@15..20
-        Ident@15..16
-          Ident@15..16 "b"
-        Colon@16..17 ":"
-        Emptyspace@17..18 " "
-        Ident@18..20
-          Ident@18..19 "B"
-          Emptyspace@19..20 " "
-      RBrace@20..21 "}""#]],
-    )
 }

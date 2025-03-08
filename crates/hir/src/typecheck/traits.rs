@@ -1,5 +1,6 @@
-use crate::{lowering_context::ContextDisplay, Expr, FunctionType, Type};
+//! This module is not used
 
+use crate::{ContextDisplay, Expr, Type};
 pub(crate) struct Trait {
     // type parameters
     /// functions that need to be implemented

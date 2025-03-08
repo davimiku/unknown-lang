@@ -9,13 +9,13 @@ A function is defined by defining the input parameters, then an arrow `->`, and 
 Below is a function that takes zero inputs and prints the string "Hello".
 
 ```rs
-() -> print "Hello"
+() -> { print "Hello" }
 ```
 
 That function is syntactically valid, but not useful because it can't be called. Binding this function to a variable will allow it to be called later.
 
 ```rs
-let print_hello = () -> print "Hello"
+let print_hello = () -> { print "Hello" }
 ```
 
 ### Function Types
@@ -29,7 +29,7 @@ Similar to elsewhere in the language, the type for parameters is defined after a
 ```rs
 // `num` has a type of `Int`
 // `square` has an output type of `Int`
-let square = (num: Int): Int -> num * num
+let square = (num: Int): Int -> { num * num }
 ```
 
 The terminology used for the example above is:
@@ -42,7 +42,7 @@ When a function outputs the unit type, the output type can be omitted.
 
 ```rs
 /// `shout_name` has a type of `String -> ()`
-let shout_name = (name: String) -> print (name ++ "!!!")
+let shout_name = (name: String) -> { print (name ++ "!!!") }
 ```
 
 The `print` function outputs the unit type, so the `shout_name` function also outputs the unit type.
@@ -54,7 +54,7 @@ The `print` function outputs the unit type, so the `shout_name` function also ou
 Functions can also be explicitly typed on the left-hand side of the variable binding to remove the need for type annotations on the right-hand side.
 
 ```rs
-let square: Int -> Int = num -> num^2
+let square: Int -> Int = num -> { num^2 }
 ```
 
 ## Function Application
@@ -75,8 +75,8 @@ squared_again == 81 // ✅ true
 Function application is right-associative.
 
 ```rs
-let double: Int -> Int = num -> num * 2
-let square: Int -> Int = num -> num^2
+let double: Int -> Int = num -> { num * 2 }
+let square: Int -> Int = num -> { num^2 }
 
 let result = double square 3   // result == 18
 
@@ -106,18 +106,6 @@ The terminology used for the example above is:
 - `pythagorean` has two **input parameters** of type `Float` and `Float`
 - `pythagorean` has an **output type** of `Float`
 - The type of the `pythagorean` function is `(Float, Float) -> Float`
-
-### Function Bodies with Curly Braces
-
-Some function examples have been shown with curly braces (`{` and `}`) and some without. This is not a special syntax or a special rule, the function body must always be a single expression. Curly braces are the delimiters for a [Block Expression](TODO), so this block expression is the function body.
-
-```rs
-// Function body is a multiplication expression
-let square = (n: Int): Int -> n * n
-
-// Function body is a block expression
-let square = (n: Int): Int -> { n * n }
-```
 
 ### Multiple Output Values with a Tuple
 

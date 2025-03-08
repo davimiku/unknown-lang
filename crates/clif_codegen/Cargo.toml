@@ -7,11 +7,14 @@ edition = "2021"
 
 [dependencies]
 hir = { path = "../hir" }
+mir = { path = "../mir" }
+util_macros = { path = "../util_macros" }
 
-cranelift = "0.99.1"
-cranelift-module = "0.99.1"
-cranelift-jit = "0.99.1"
-cranelift-native = "0.99.1"
-la-arena = "0.3.0"
-text-size = "1.1.1"
+cranelift = "0.115.1"
+cranelift-module = "0.115.1"
+cranelift-jit = "0.115.1"
+cranelift-native = "0.115.1"
+la-arena = "0.3.1"
+ryu = "1.0"
 proc-macro2 = "1.0.43"
+text-size = "1.1.1"

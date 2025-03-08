@@ -1,0 +1,14 @@
+type Int = intrinsic
+type Float = intrinsic
+type String = intrinsic
+// TODO
+type List 'A = intrinsic
+
+type Bool = false | true
+
+let false = Bool.false
+let true = Bool.true
+
+// TODO
+type Option 'A = none | some 'A
+type Result ('A, 'Err) = error: 'Err | ok: 'A

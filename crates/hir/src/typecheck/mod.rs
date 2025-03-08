@@ -8,6 +8,8 @@
 
 mod check;
 mod infer;
+#[cfg(test)]
+mod tests;
 mod traits;
 mod types;
 mod widen;
@@ -15,15 +17,14 @@ mod widen;
 use std::collections::HashMap;
 
 use la_arena::{Arena, ArenaMap, Idx};
-pub use types::{ArrayType, FunctionType, Type};
+pub use types::{ArrayType, FuncSignature, FunctionType, Type};
 
 use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};
-use crate::lowering_context::ContextDisplay;
 use crate::type_expr::{TypeExpr, TypeSymbol};
-use crate::{Context, Expr, ValueSymbol};
+use crate::{Context, ContextDisplay, Expr, Interner, ValueSymbol};
 
 pub(crate) use self::check::check_expr;
-pub(crate) use self::infer::infer_expr;
+pub(crate) use self::infer::{infer_expr, infer_module};
 
 #[derive(Debug)]
 pub struct TypeDatabase {
@@ -40,14 +41,14 @@ pub struct TypeDatabase {
     /// ```ignore
     /// let square = (a: Int) -> a * a
     /// //               ^^^
-    /// type Point = struct { x: Float, y: Float }
-    /// //           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// type Point = ( x: Float, y: Float )
+    /// //           ^^^^^^^^^^^^^^^^^^^^^^
     /// ```
     /// The `Int` is a type expression that would be mapped to
     /// `Type::Int`.
     ///
-    /// The `struct ...` is a type expression that is mapped to
-    /// `Type::Struct { ... }`
+    /// The RHS of `Point` is a type expression that is mapped to
+    /// `Type::Record { ... }`
     type_expr_types: ArenaMap<Idx<TypeExpr>, Idx<Type>>,
 
     /// Types that have been inferred for local variables
@@ -76,21 +77,39 @@ pub struct TypeDatabase {
 
     /// Core types that are builtin to all programs
     pub(crate) core: CoreTypes,
+    // TODO - keep a map/list of core symbols, like "false" and "true"?
+    // pub(crate) core_symbols:
 }
 
-impl Default for TypeDatabase {
-    fn default() -> Self {
+impl TypeDatabase {
+    pub(crate) fn new(interner: &Interner) -> Self {
         let mut types = Arena::new();
+
+        let unknown = types.alloc(Type::Unknown);
+        let error = types.alloc(Type::Error);
+        let top = types.alloc(Type::Top);
+        let bottom = types.alloc(Type::Bottom);
+        let unit = types.alloc(Type::Unit);
+        let float = types.alloc(Type::Float);
+        let int = types.alloc(Type::Int);
+        let string = types.alloc(Type::String);
+        let r#bool = types.alloc(Type::sum(
+            Box::new([
+                (interner.core_keys().r#false, unit),
+                (interner.core_keys().r#true, unit),
+            ]),
+            None, // mutated / re-assigned later in `intrinsics`
+        ));
         let core = CoreTypes {
-            unknown: types.alloc(Type::Unknown),
-            error: types.alloc(Type::Error),
-            top: types.alloc(Type::Top),
-            bottom: types.alloc(Type::Bottom),
-            unit: types.alloc(Type::Unit),
-            bool: types.alloc(Type::Bool),
-            float: types.alloc(Type::Float),
-            int: types.alloc(Type::Int),
-            string: types.alloc(Type::String),
+            unknown,
+            error,
+            top,
+            bottom,
+            unit,
+            float,
+            int,
+            string,
+            bool,
         };
         Self {
             types,
@@ -148,63 +167,12 @@ impl ContextDisplay for TypeDatabase {
 }
 
 impl TypeDatabase {
-    /// Convenience getter to return the index for the core Int type
-    pub(crate) fn int(&self) -> Idx<Type> {
-        self.core.int
-    }
-
-    /// Convenience getter to return the index for the core Float type
-    pub(crate) fn float(&self) -> Idx<Type> {
-        self.core.float
-    }
-
-    /// Convenience getter to return the index for the core Bool type
-    pub(crate) fn bool(&self) -> Idx<Type> {
-        self.core.bool
-    }
-
-    /// Convenience getter to return the index for the core String type
-    pub(crate) fn string(&self) -> Idx<Type> {
-        self.core.string
-    }
-
-    /// Convenience getter to return the index for the core Unit type
-    pub(crate) fn unit(&self) -> Idx<Type> {
-        self.core.unit
-    }
-
-    /// Convenience getter to return the index for the core Top type
-    pub(crate) fn top(&self) -> Idx<Type> {
-        self.core.top
-    }
-
-    /// Convenience getter to return the index for the core Bottom type
-    pub(crate) fn bottom(&self) -> Idx<Type> {
-        self.core.bottom
-    }
-
-    /// Convenience getter to return the index for the core Unknown type
-    pub(crate) fn unknown(&self) -> Idx<Type> {
-        self.core.unknown
-    }
-
-    /// Convenience getter to return the index for a sentinel error
-    pub(crate) fn error(&self) -> Idx<Type> {
-        self.core.error
-    }
-}
-
-impl TypeDatabase {
-    /// Returns the Type at the given index via cloning from the database.
-    ///
-    /// Panics if the index doesn't exist. An invalid index indicates
-    /// a bug in the compiler.
-    pub(crate) fn type_(&self, idx: Idx<Type>) -> Type {
-        self.types[idx].clone()
-    }
-
-    pub(crate) fn borrow_type(&self, idx: Idx<Type>) -> &Type {
+    pub(crate) fn type_(&self, idx: Idx<Type>) -> &Type {
         &self.types[idx]
+    }
+
+    pub(crate) fn type_mut(&mut self, idx: Idx<Type>) -> &mut Type {
+        &mut self.types[idx]
     }
 
     pub(super) fn get_expr_type(&self, idx: Idx<Expr>) -> Idx<Type> {
@@ -223,25 +191,24 @@ impl TypeDatabase {
         self.type_expr_types.insert(idx, ty);
     }
 
-    pub(super) fn get_value_symbol(&self, key: &ValueSymbol) -> Idx<Type> {
-        self.value_symbols[key]
+    // todo - panics if called before type checking, move to another module?
+    pub(super) fn get_value_with_symbol(&self, symbol: &ValueSymbol) -> Idx<Type> {
+        self.value_symbols[symbol]
     }
 
     pub(super) fn insert_value_symbol(&mut self, key: ValueSymbol, ty: Idx<Type>) {
         self.value_symbols.insert(key, ty);
     }
 
-    pub(super) fn get_type_symbol(&self, key: &TypeSymbol) -> Idx<Type> {
-        self.type_symbols[key]
+    // todo - panics if called before type checking, move to another module?
+    pub(super) fn get_type_with_symbol(&self, symbol: &TypeSymbol) -> Idx<Type> {
+        self.type_symbols[symbol]
     }
 
     pub(super) fn insert_type_symbol(&mut self, key: TypeSymbol, ty: Idx<Type>) {
         self.type_symbols.insert(key, ty);
     }
-}
 
-// mutating functions
-impl TypeDatabase {
     pub(super) fn alloc_type(&mut self, ty: Type) -> Idx<Type> {
         self.types.alloc(ty)
     }
@@ -272,10 +239,16 @@ impl From<Idx<Type>> for TypeResult {
     }
 }
 
+impl From<&Idx<Type>> for TypeResult {
+    fn from(ty: &Idx<Type>) -> Self {
+        (*ty).into()
+    }
+}
+
 impl TypeResult {
     fn new(type_database: &TypeDatabase) -> Self {
         Self {
-            ty: type_database.unknown(),
+            ty: type_database.core.unknown,
             diagnostics: vec![],
         }
     }
@@ -284,6 +257,13 @@ impl TypeResult {
         Self {
             ty: error_ty,
             diagnostics: vec![diagnostic],
+        }
+    }
+
+    fn from_ty(ty: Idx<Type>) -> Self {
+        Self {
+            ty,
+            diagnostics: vec![],
         }
     }
 
@@ -311,7 +291,7 @@ impl TypeResult {
     /// Chains two results together, applying the newer inferred type,
     /// or accumulating the diagnostics if these exist.
     pub fn chain(&mut self, mut other: TypeResult) {
-        if other.diagnostics.is_empty() {
+        if other.is_ok() {
             self.ty = other.ty;
         } else {
             self.diagnostics.append(&mut other.diagnostics);
@@ -324,31 +304,31 @@ impl TypeResult {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CoreTypes {
+pub struct CoreTypes {
     /// Sentinel for type has not yet been inferred
-    pub(crate) unknown: Idx<Type>,
+    pub unknown: Idx<Type>,
 
     /// Sentinel for error occurred during type inference
-    pub(crate) error: Idx<Type>,
+    pub error: Idx<Type>,
 
     /// Top type, all values are inhabitants
-    pub(crate) top: Idx<Type>,
+    pub top: Idx<Type>,
 
-    /// Bottom type, has no inhabitants
-    pub(crate) bottom: Idx<Type>,
+    /// Bottom type, has no inhabitants. Also known as `Never`
+    pub bottom: Idx<Type>,
 
     /// Unit type, has only one inhabitant
-    pub(crate) unit: Idx<Type>,
+    pub unit: Idx<Type>,
 
-    /// Boolean, true or false
-    pub(crate) bool: Idx<Type>,
+    /// Bool, union with variants `false | true`
+    pub bool: Idx<Type>,
 
     /// Floating point number
-    pub(crate) float: Idx<Type>,
+    pub float: Idx<Type>,
 
     /// Integer number
-    pub(crate) int: Idx<Type>,
+    pub int: Idx<Type>,
 
     /// UTF-8 encoded string
-    pub(crate) string: Idx<Type>,
+    pub string: Idx<Type>,
 }

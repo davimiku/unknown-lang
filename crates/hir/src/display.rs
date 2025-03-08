@@ -1,7 +1,25 @@
 use la_arena::Idx;
 
-use crate::lowering_context::{ContextDisplay, CORE_MODULE_ID};
-use crate::{Context, Expr, Type};
+use crate::{Context, Expr, Module, Type};
+
+/// Types implementing this trait can be processed into string messages
+/// with the information available in a Context
+pub trait ContextDisplay {
+    /// Display `self` with the information available in a `Context`
+    #[must_use]
+    fn display(&self, context: &Context) -> String;
+}
+
+pub fn display_module(module: &Module, context: &Context) -> (String, String) {
+    let mut content = String::new();
+    for expr in module.exprs.iter() {
+        content.push_str(&expr.display(context));
+        content.push('\n');
+    }
+    let mut locals = String::new();
+    fmt_local_types(&mut locals, context);
+    (content, locals)
+}
 
 /// Formats an expression into a String representation
 ///
@@ -22,15 +40,12 @@ pub(crate) fn fmt_local_types(s: &mut String, context: &Context) {
         .type_database
         .value_symbols
         .iter()
-        .filter_map(|(key, ty)| {
-            (key.module_id != CORE_MODULE_ID).then(|| (key.display(context), *ty))
-        })
+        .filter(|(symbol, _)| !symbol.in_core_module())
+        .map(|(symbol, ty)| (symbol.display(context), *ty))
         .collect();
     locals.sort_by(|(a, ..), (b, ..)| a.cmp(b));
 
     for (name, ty) in locals {
-        s.push_str(&name);
-        s.push_str(" : ");
-        s.push_str(&format!("{}\n", ty.display(context)));
+        s.push_str(&format!(".    {} : {}\n", &name, ty.display(context)));
     }
 }

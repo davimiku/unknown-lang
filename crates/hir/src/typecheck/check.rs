@@ -5,12 +5,13 @@
 use la_arena::Idx;
 
 use super::infer::infer_expr;
+use super::types::{FuncSignature, SumType};
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType};
 
-/// Checks whether the provided expression is a subtype of the expected expression
+/// Checks whether the provided expression is a subtype of the expected expression.
 ///
-/// Calls, and is called by `infer_expr` (mutual recursion) as an implementation of
+/// Calls and is called by `infer_expr` (mutual recursion) as an implementation of
 /// bidirectional type checking.
 pub(crate) fn check_expr(
     expr: Idx<Expr>,
@@ -40,8 +41,8 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         return true;
     }
 
-    let a = context.type_database.type_(a);
-    let b = context.type_database.type_(b);
+    let a = context.type_(a);
+    let b = context.type_(b);
     if a == b {
         return true;
     }
@@ -51,9 +52,6 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
     match (a, b) {
         (_, Type::Top) => true,
         (_, Type::Bottom) => false,
-
-        (Type::BoolLiteral(_), Type::Bool) => true,
-        (Type::BoolLiteral(a), Type::BoolLiteral(b)) => a == b,
 
         (Type::FloatLiteral(_), Type::Float) => true,
         (Type::FloatLiteral(a), Type::FloatLiteral(b)) => a == b,
@@ -66,7 +64,9 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 
         (Type::Array(a), Type::Array(b)) => is_subtype(a.of, b.of, context),
 
-        (Type::Function(a), Type::Function(b)) => is_function_subtype(&a, &b, context),
+        (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
+
+        (Type::Sum(a), Type::Sum(b)) => is_sumtype_subtype(a, b, context),
 
         _ => false,
     }
@@ -86,9 +86,20 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 /// }
 ///
 /// // OK because `"hello"` is a subtype of String and return types are covariant
-/// let return_covariance: Int -> String = (a: Int) -> "hello"
+/// let return_covariance: Int -> String = (a: Int) -> { "hello" }
 /// ```
 fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) -> bool {
+    for a_signature in &a.signatures {
+        for b_signature in &b.signatures {
+            if is_signature_subtype(a_signature, b_signature, context) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_signature_subtype(a: &FuncSignature, b: &FuncSignature, context: &Context) -> bool {
     let params_check = a
         .params
         .iter()
@@ -98,4 +109,25 @@ fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) ->
     let return_check = is_subtype(a.return_ty, b.return_ty, context);
 
     params_check && return_check
+}
+
+fn is_sumtype_subtype(a: &SumType, b: &SumType, context: &Context) -> bool {
+    if a.hash == b.hash {
+        return true;
+    }
+
+    if a.variants.len() != b.variants.len() {
+        return false;
+    }
+
+    for ((a_key, a_type), (b_key, b_type)) in a.variants.iter().zip(b.variants.iter()) {
+        if *a_key != *b_key {
+            return false;
+        }
+        if !is_subtype(*a_type, *b_type, context) {
+            return false;
+        }
+    }
+
+    true
 }

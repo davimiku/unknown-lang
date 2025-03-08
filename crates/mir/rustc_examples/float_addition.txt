@@ -1,0 +1,32 @@
+fn main() {
+    let a = 1.0;
+    let b = 2.0;
+    let c = a + b;
+}
+
+=======================================================
+
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn main() -> () {
+    let mut _0: ();
+    let _1: f64;
+    scope 1 {
+        debug a => const 1f64;
+        let _2: f64;
+        scope 2 {
+            debug b => const 2f64;
+            let _3: f64;
+            scope 3 {
+                debug c => _3;
+            }
+        }
+    }
+
+    bb0: {
+        _1 = const 1f64;
+        _2 = const 2f64;
+        _3 = Add(_1, _2);
+        return;
+    }
+}

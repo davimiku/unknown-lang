@@ -1,16 +1,44 @@
-use std::collections::HashMap;
+//! Translation of the mid-level intermediate representation (MIR) to the
+//! Cranelift intermediate format (CLIF).
+//!
+//! https://github.com/bytecodealliance/wasmtime/blob/main/cranelift/docs/ir.md
+//!
+//! Uses the cranelift_frontend Builder and Context to walk the control flow graph of
+//! the MIR and translate it into the CLIF instructions. This is a "translation" rather
+//! than a lowering because it's between two representations at roughly the same level of
+//! abstraction.
 
-use cranelift::codegen::print_errors::pretty_error;
+mod arithmetic;
+
+use std::collections::HashMap;
+use std::ops::Deref;
+
+use cranelift::codegen::ir::UserFuncName;
+use cranelift::frontend::Switch;
+use cranelift::prelude::Block as ClifBlock;
+use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
-use hir::Expr;
-use la_arena::Idx;
+use cranelift_module::{FuncId, Module};
+use hir::Type as HType;
+use la_arena::Entry;
+use la_arena::{ArenaMap, Idx};
+use mir::{
+    BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
+    Terminator,
+};
+use util_macros::assert_matches;
+
+use crate::ext::function_builder::FunctionBuilderExt;
+
+// TODO: decide on nomenclature for "Type"
+// currently "ClifType" means "Cranelift Type" and
+// "HType" means "HIR Type"
 
 pub(crate) struct CommonTypes {
-    int: types::Type,
-    float: types::Type,
-    bool: types::Type,
-    ptr: types::Type,
+    int: ClifType,
+    float: ClifType,
+    ptr: ClifType,
 }
 
 impl Default for CommonTypes {
@@ -18,11 +46,16 @@ impl Default for CommonTypes {
         Self {
             int: types::I64,
             float: types::F64,
-            bool: types::I64,
-            ptr: types::R64,
+
+            // TODO - cranelift got rid of the R64 type
+            // https://github.com/bytecodealliance/wasmtime/pull/9164
+            // https://github.com/bytecodealliance/wasmtime/pull/8728
+            ptr: types::I64, // types::R64
         }
     }
 }
+
+type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
@@ -30,79 +63,138 @@ pub(crate) struct FunctionTranslator<'a> {
     /// Convenience shortcut for common types
     pub(crate) types: CommonTypes,
 
+    pub(crate) func: &'a mir::Function,
+
     /// The builder for the function that is currently being constructed
     builder: FunctionBuilder<'a>,
-
-    /// Currently defined variables in this function
-    ///
-    /// Maps between the HIR and CLIF identifiers for variables
-    variables: HashMap<hir::ValueSymbol, Variable>,
 
     /// Reference to the module that this function is being constructed inside of
     module: &'a mut JITModule,
 
     /// Lowered and typechecked HIR context
     context: &'a hir::Context,
+
+    /// map from our MIR FuncId to CLIF FuncId
+    func_map: &'a HashMap<mir::FuncId, FuncId>,
+
+    /// Map from MIR local definitions to CLIF variables
+    ///
+    /// TODO: Cranelift uses SSA, so should the mapping be reversed?
+    ///
+    /// TODO: swap HashMap for FxMap or similar, doesn't need the security of the default hasher
+    variables: HashMap<Idx<Local>, Variable>,
+
+    status: TranslateStatus,
 }
 
 impl<'a> FunctionTranslator<'a> {
     pub(crate) fn new(
         builder: FunctionBuilder<'a>,
         module: &'a mut JITModule,
+        func: &'a mir::Function,
+        func_map: &'a HashMap<mir::FuncId, FuncId>,
         context: &'a hir::Context,
     ) -> Self {
         Self {
-            types: CommonTypes::default(),
-            variables: HashMap::default(),
+            func,
             builder,
             module,
             context,
+            func_map,
+            types: Default::default(),
+            variables: Default::default(),
+            status: Default::default(),
         }
     }
 }
 
 impl<'a> FunctionTranslator<'a> {
-    pub(crate) fn translate_expr(&mut self, expr: Idx<Expr>) -> Value {
-        match self.context.expr(expr) {
-            Expr::Empty => todo!(), // self.builder.ins().nop(),
+    pub(crate) fn translate_function(mut self) {
+        let mir::Function {
+            blocks,
+            locals,
+            predecessors,
+            ..
+        } = self.func;
 
-            Expr::BoolLiteral(b) => self.builder.ins().iconst(self.types.int, (*b) as i64),
-            Expr::FloatLiteral(f) => self.builder.ins().f64const(*f),
-            Expr::IntLiteral(i) => self.builder.ins().iconst(self.types.int, *i),
-            Expr::StringLiteral(_) => todo!(),
-            Expr::ArrayLiteral(_) => todo!(),
+        self.translate_signature();
 
-            Expr::Binary(expr) => self.translate_binary(expr),
-            Expr::Unary(_) => todo!(),
-            Expr::Block(expr) => self.translate_block(expr),
-            Expr::EmptyBlock => todo!(),
-            Expr::Call(_) => todo!(),
-            Expr::VarRef(_) => todo!(),
-            Expr::UnresolvedVarRef { .. } => unreachable!(),
-            Expr::Path(_) => todo!(),
-            Expr::IndexInt(_) => todo!(),
-            // will not need this hack after implementing MIR (control flow graph)
-            Expr::Function(f) => unreachable!("function would have already been translated"),
-            Expr::VarDef(_) => todo!(),
-            Expr::If(_) => todo!(),
-            Expr::Statement(expr) => self.translate_expr(*expr),
-            Expr::ReturnStatement(_) => todo!(),
+        let mut block_map: BlockMap = ArenaMap::with_capacity(blocks.len());
+
+        // create all reachable blocks (empty/default)
+        for (idx, _) in blocks.iter() {
+            if predecessors.has_predecessors(idx) {
+                block_map.insert(idx, self.builder.create_block());
+                self.status.insert(idx, Status::Empty);
+            }
         }
+
+        // declare all locals with type. value is defined later with def_var
+        // params will def_var shortly, other locals are def_var when the block is translated
+        for (local_idx, local) in locals.iter() {
+            let local_ty = local.type_(self.context);
+            if !local_ty.is_unit() {
+                let var_index = local_idx.into_raw().into_u32() as usize;
+                let var = Variable::new(var_index);
+                let var_ty = self.translate_type(local.type_(self.context));
+                self.builder.declare_var(var, var_ty);
+                self.variables.insert(local_idx, var);
+            }
+        }
+
+        let entry_block = {
+            let entry_block_idx = self.func.entry_block();
+            let entry_block = block_map[entry_block_idx];
+            self.builder
+                .append_block_params_for_function_params(entry_block);
+            self.builder.switch_to_block(entry_block);
+            self.safe_seal_block(entry_block_idx, entry_block);
+            entry_block
+        };
+
+        // def_var the values for parameter locals: _1, _2, _3, ..., _n
+        let param_locals = self.func.param_locals().enumerate();
+        for (i, (local_idx, _)) in param_locals {
+            let val = self.builder.block_params(entry_block)[i];
+            let var = self.variables[&local_idx];
+            self.builder.def_var(var, val);
+        }
+
+        // translate the rest of the blocks after the entry block
+        for (idx, block) in block_map.iter() {
+            self.builder.switch_to_block(*block);
+            // cranelift recommends sealing blocks as soon as possible
+            // self.seal_block(idx, *block);
+
+            self.translate_basic_block(idx, &block_map);
+            self.status
+                .entry(idx)
+                .and_modify(|entry| *entry = entry.finish());
+
+            // this block's successors might be able to be sealed as well
+            let successors = self.func.blocks[idx]
+                .terminator
+                .as_ref()
+                .expect("terminator exists")
+                .targets();
+            for successor in successors {
+                let successor_block = block_map[successor];
+                // self.seal_block(successor, successor_block);
+            }
+        }
+
+        self.builder.seal_all_blocks();
+        self.builder.finalize();
     }
 
-    pub(crate) fn translate_function(&mut self, func: &hir::FunctionExpr) {
-        let hir::FunctionExpr { params, body, name } = func;
-        for param in params {
-            let name = param.name;
-            let ty = self.context.borrow_type_of_value(&name);
-            let clif_ty = match ty {
-                hir::Type::BoolLiteral(_) | hir::Type::Bool => self.types.bool,
-                hir::Type::FloatLiteral(_) | hir::Type::Float => self.types.float,
-                hir::Type::IntLiteral(_) | hir::Type::Int => self.types.int,
-                hir::Type::StringLiteral(_) | hir::Type::String => todo!(),
+    fn translate_signature(&mut self) {
+        let (module_id, symbol_id) = self.func.id.into();
+        self.builder.func.name = UserFuncName::user(module_id, symbol_id);
 
-                _ => todo!(),
-            };
+        // TODO: this level of abstraction may not work once we have compound types (unions, records)
+        // how do those types get translated for a signature?
+        for ty in &self.func.params {
+            let clif_ty = self.translate_type_idx(*ty);
             self.builder
                 .func
                 .signature
@@ -110,332 +202,431 @@ impl<'a> FunctionTranslator<'a> {
                 .push(AbiParam::new(clif_ty));
         }
 
-        // TEMP: hard-coded for a test
-        self.builder
-            .func
-            .signature
-            .returns
-            .push(AbiParam::new(self.types.int));
-
-        let entry_block = self.builder.create_block();
-        self.builder
-            .append_block_params_for_function_params(entry_block);
-        self.builder.switch_to_block(entry_block);
-        self.builder.seal_block(entry_block);
-
-        let ret_val = self.translate_expr(*body);
-
-        self.builder.ins().return_(&[ret_val]);
+        let return_ty = self.context.type_(self.func.return_ty());
+        if !return_ty.is_unit() {
+            let return_ty = self.translate_type(return_ty);
+            self.builder
+                .func
+                .signature
+                .returns
+                .push(AbiParam::new(return_ty));
+        }
     }
 
-    fn translate_block(&mut self, block: &hir::BlockExpr) -> Value {
-        let hir::BlockExpr { exprs } = block;
-        assert!(!exprs.is_empty());
-
-        let values = exprs
-            .iter()
-            .map(|expr| self.translate_expr(*expr))
-            .collect::<Vec<_>>();
-
-        *values.last().unwrap()
+    fn translate_basic_block(&mut self, block_idx: Idx<mir::BasicBlock>, block_map: &BlockMap) {
+        let block: &mir::BasicBlock = &self.func.blocks[block_idx];
+        for statement in &block.statements {
+            self.translate_statement(statement);
+        }
+        let terminator = block
+            .terminator
+            .as_ref()
+            .expect("Compiler Error: Missing mir::BasicBlock::Terminator");
+        self.translate_terminator(terminator, block_map);
     }
 
-    fn translate_binary(&mut self, binary: &hir::BinaryExpr) -> Value {
-        let hir::BinaryExpr { op, lhs, rhs } = binary;
-        let lhs_type = self.context.borrow_expr_type(*lhs);
-        let lhs = self.translate_expr(*lhs);
+    fn translate_statement(&mut self, statement: &Statement) {
+        match statement {
+            Statement::Assign(assign) | Statement::ReAssign(assign) => {
+                let (place, rvalue) = assign.deref();
 
-        let rhs_type = self.context.expr_type_idx(*rhs);
-        let rhs = self.translate_expr(*rhs);
+                let val = self.translate_rvalue(rvalue);
+                let var = self.variables[&place.local];
+                self.builder.def_var(var, val);
+            }
+            Statement::SetDiscriminant {
+                place,
+                variant_index,
+            } => todo!(),
+            Statement::StorageLive(_) => todo!(),
+            Statement::StorageDead(_) => todo!(),
+            Statement::Intrinsic(_) => todo!(),
+        }
+    }
 
-        match op {
-            hir::BinaryOp::Add => match lhs_type {
-                hir::Type::FloatLiteral(_) | hir::Type::Float => self.builder.ins().fadd(lhs, rhs),
-                hir::Type::IntLiteral(_) | hir::Type::Int => self.builder.ins().iadd(lhs, rhs),
+    fn translate_terminator(&mut self, terminator: &Terminator, block_map: &BlockMap) {
+        match terminator {
+            Terminator::Jump(BlockTarget { target, .. }) => {
+                self.translate_jump_terminator(block_map[*target])
+            }
+
+            Terminator::Return => self.translate_return_terminator(),
+            Terminator::Call {
+                func,
+                args,
+                destination,
+                target,
+            } => {
+                let target = target
+                    .as_ref()
+                    .map(|block_target| (block_map[block_target.target], &block_target.args));
+                self.translate_call_terminator(func, args, destination, target)
+            }
+            Terminator::BranchInt {
+                discriminant,
+                targets,
+            } => self.translate_branch_terminator(discriminant, targets, block_map),
+            Terminator::Drop { place, target } => todo!(),
+            Terminator::Unreachable => todo!(),
+        }
+    }
+
+    fn translate_jump_terminator(&mut self, target: ClifBlock) {
+        self.builder.ins().jump(target, &[]);
+    }
+
+    fn translate_call_terminator(
+        &mut self,
+        func: &Operand,
+        args: &[Operand],
+        destination: &Place,
+        target: Option<(ClifBlock, &Vec<Idx<Local>>)>,
+    ) {
+        let args: Vec<Value> = args.iter().map(|arg| self.translate_operand(arg)).collect();
+
+        let returns = match func {
+            Operand::Constant(constant) => match constant {
+                Constant::Func(func_id) => {
+                    let func_id = self.func_map[func_id];
+                    let func_ref = self.module.declare_func_in_func(func_id, self.builder.func);
+                    self.builder.ins().call(func_ref, &args)
+                }
+
                 _ => unreachable!(),
             },
-            hir::BinaryOp::Sub => todo!(),
-            hir::BinaryOp::Mul => todo!(),
-            hir::BinaryOp::Div => todo!(),
-            hir::BinaryOp::Concat => todo!(),
-            hir::BinaryOp::Rem => todo!(),
-            hir::BinaryOp::Exp => todo!(),
-            hir::BinaryOp::Path => todo!(),
-            hir::BinaryOp::Eq => todo!(),
-            hir::BinaryOp::Ne => todo!(),
+            Operand::Copy(place) => todo!("func_addr and indirect call"),
+            Operand::Move(place) => todo!("closures that capture resources might become Move?"),
+        };
+        let returns = self.builder.inst_results(returns);
+        match returns.len() {
+            0 => {}
+            1 => {
+                // FIXME: use projections
+                let var = self.variables[&destination.local];
+                self.builder.def_var(var, returns[0]);
+            }
+            _ => unreachable!("multiple returns not implemented yet"),
+        }
+
+        // FIXME: remove unwrap when panics are implemented
+        let block_call_args = self.locals_to_values(target.unwrap().1);
+        self.builder.ins().jump(target.unwrap().0, &block_call_args);
+    }
+
+    fn translate_branch_terminator(
+        &mut self,
+        discriminant: &Operand,
+        targets: &BranchIntTargets,
+        block_map: &BlockMap,
+    ) {
+        let mut switch = Switch::new();
+        for (i, block_target) in targets.branches.iter() {
+            let block = block_map[block_target.target];
+            switch.set_entry((*i) as u128, block);
+        }
+        // TODO - for `match` with no 'otherwise', this creates a CLIF block not tracked in block_map
+        // is that an issue?
+        // Does this "dummy block" need a terminator?
+        let mut dummy_block: Option<Block> = None;
+        let otherwise = targets
+            .otherwise
+            .as_ref()
+            .map(|b| block_map[b.target])
+            .unwrap_or_else(|| *dummy_block.insert(self.builder.create_block()));
+
+        let condition = self.translate_operand(discriminant);
+        switch.emit(&mut self.builder, condition, otherwise);
+        if let Some(dummy_block) = dummy_block {
+            self.builder.switch_to_block(dummy_block);
+            self.builder.ins().nop();
+            // TODO - this is meant to be a "dummy" terminator, does this work?
+            // Find out how to handle exhaustive Switch in CLIF
+            self.translate_return_terminator();
+            self.builder.seal_block(dummy_block);
+        }
+    }
+
+    fn translate_return_terminator(&mut self) {
+        let (return_local_idx, return_local) = self.func.return_local();
+        if return_local.type_(self.context).is_unit() {
+            self.builder.ins().return_(&[]);
+        } else {
+            let return_var = self.variables[&return_local_idx];
+            let ret_val = self.builder.use_var(return_var);
+            self.builder.ins().return_(&[ret_val]);
+        }
+    }
+
+    fn locals_to_values(&mut self, locals: &[Idx<Local>]) -> Vec<Value> {
+        locals
+            .iter()
+            .map(|local| self.variables[local])
+            .map(|var| self.builder.use_var(var))
+            .collect()
+    }
+
+    fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
+        match rvalue {
+            Rvalue::Use(op) => self.translate_operand(op),
+            Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
+            Rvalue::UnaryOp(unop, op) => todo!(),
+            Rvalue::Discriminant(place) => self.translate_discriminant(place),
+        }
+    }
+
+    fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> Value {
+        let (lhs, rhs) = ops;
+
+        match binop {
+            BinOpKind::Add => self.emit_add(lhs, rhs),
+            BinOpKind::Sub => self.emit_sub(lhs, rhs),
+            BinOpKind::Mul => self.emit_mul(lhs, rhs),
+            BinOpKind::Div => self.emit_div(lhs, rhs),
+            BinOpKind::Rem => self.emit_rem(lhs, rhs),
+            BinOpKind::Concat => todo!(),
+            BinOpKind::Eq => self.emit_comparison(lhs, rhs, Cmp::Equal),
+            BinOpKind::Ne => self.emit_comparison(lhs, rhs, Cmp::NotEqual),
+            BinOpKind::Lt => self.emit_comparison(lhs, rhs, Cmp::LessThan),
+            BinOpKind::Le => self.emit_comparison(lhs, rhs, Cmp::LessThanOrEqual),
+            BinOpKind::Gt => self.emit_comparison(lhs, rhs, Cmp::GreaterThan),
+            BinOpKind::Ge => self.emit_comparison(lhs, rhs, Cmp::GreaterThanOrEqual),
+        }
+    }
+
+    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: Cmp) -> Value {
+        let lhs_ty = self.op_type(lhs);
+        let rhs_ty = self.op_type(rhs);
+
+        if lhs_ty.is_float() {
+            let lhs_val = self.translate_operand(lhs);
+            let rhs_val = self.translate_operand(rhs);
+            self.builder
+                .ins()
+                .fcmp(comparison.as_float_cc(), lhs_val, rhs_val)
+        } else if lhs_ty.is_int() {
+            self.emit_int_comparison(lhs, rhs, comparison.as_int_cc())
+        } else {
+            unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
+        }
+    }
+
+    fn emit_int_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: IntCC) -> Value {
+        // TODO: check for constants
+        //  - if lhs and rhs are constant, fold to a bool_const
+        //  - if rhs is a constant, emit icmp_imm
+        //  - if lhs is a constant, invert the condition (IntCC::complement)? and emit icmp_imm
+        //  - otherwise emit icmp
+        let lhs_val = self.translate_operand(lhs);
+        let rhs_val = self.translate_operand(rhs);
+
+        let val_i8 = self.builder.ins().icmp(comparison, lhs_val, rhs_val);
+        self.builder.ins().sextend(self.types.int, val_i8)
+    }
+
+    fn emit_int_constant_comparison(&mut self, lhs: i64, rhs: i64, comparison: IntCC) -> Value {
+        self.builder.bool_const(match comparison {
+            IntCC::Equal => lhs == rhs,
+            IntCC::NotEqual => lhs != rhs,
+            IntCC::SignedLessThan => lhs < rhs,
+            IntCC::SignedLessThanOrEqual => lhs <= rhs,
+            IntCC::SignedGreaterThan => lhs > rhs,
+            IntCC::SignedGreaterThanOrEqual => lhs >= rhs,
+            _ => unreachable!(),
+        })
+    }
+
+    // TODO: better way to use the return type here or determine this earlier?
+    fn translate_operand(&mut self, op: &Operand) -> Value {
+        match op {
+            Operand::Copy(p) => {
+                let local = p.local;
+                // TODO: use projections too
+                let var = self.variables[&local];
+                // TODO: is this sharing or copying?
+                self.builder.use_var(var)
+            }
+            Operand::Constant(c) => match c {
+                Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
+                Constant::Float(f) => self.builder.ins().f64const(*f),
+                Constant::String(_) => todo!(),
+                Constant::Func(..) => unreachable!("TODO"),
+            },
+            Operand::Move(_) => todo!(),
+        }
+    }
+
+    fn translate_discriminant(&mut self, place: &Place) -> Value {
+        let ty = self.place_type(place, self.context);
+        let sum_ty = assert_matches!(ty, HType::Sum);
+
+        if sum_ty.is_unit(self.context) {
+            // TODO: use projections too
+            let var = self.variables[&place.local];
+            self.builder.use_var(var)
+        } else {
+            // TODO - determine how to lower a sum type with payload
+            todo!()
+        }
+    }
+
+    fn translate_type_idx(&mut self, idx: Idx<HType>) -> ClifType {
+        let ty = self.context.type_(idx);
+        self.translate_type(ty)
+    }
+
+    fn translate_type(&mut self, ty: &HType) -> ClifType {
+        match ty {
+            HType::FloatLiteral(_) | HType::Float => self.types.float,
+            HType::IntLiteral(_) | HType::Int => self.types.int,
+            HType::StringLiteral(_) | HType::String => todo!(),
+
+            // TODO: split tag and payload somehow (likely before this point)
+            HType::Sum(sum) => self.types.int,
+
+            HType::Unit => unreachable!("Internal Compiler Error (CLIF): unit types should be unused rather than translated"),
+            t => todo!("{t:?}"),
+        }
+    }
+
+    fn op_type(&self, op: &Operand) -> &HType {
+        match self.context.type_(self.op_type_idx(op)) {
+            HType::FloatLiteral(_) => &HType::Float,
+            HType::IntLiteral(_) => &HType::Int,
+            HType::StringLiteral(_) => &HType::String,
+            t => t,
+        }
+    }
+
+    fn op_type_idx(&self, op: &Operand) -> Idx<HType> {
+        match op {
+            Operand::Copy(place) => self.place_type_idx(place),
+            Operand::Constant(constant) => self.constant_type_idx(constant),
+            Operand::Move(_) => todo!(),
+        }
+    }
+
+    fn place_type<'b>(&self, place: &Place, context: &'b hir::Context) -> &'b HType {
+        let local = &self.func.locals[place.local];
+        local.type_(context)
+    }
+
+    fn place_type_idx(&self, place: &Place) -> Idx<HType> {
+        // TODO: use projections...
+        let local = &self.func.locals[place.local];
+        local.type_idx_of()
+    }
+
+    fn constant_type(&self, constant: &Constant) -> &HType {
+        self.context.type_(self.constant_type_idx(constant))
+    }
+
+    fn constant_type_idx(&self, constant: &Constant) -> Idx<HType> {
+        match constant {
+            Constant::Int(_) => self.context.core_types().int,
+            Constant::Float(_) => self.context.core_types().float,
+            Constant::String(_) => todo!(),
+            Constant::Func(..) => unreachable!("TODO"),
+        }
+    }
+
+    /// Seals the given block if:
+    /// 1. The block is not sealed
+    /// 2. All of the predecessors are finished
+    fn safe_seal_block(&mut self, idx: Idx<mir::BasicBlock>, block: ClifBlock) {
+        let status = self.status.get(idx);
+        if matches!(status, Status::Empty | Status::Finished)
+            && self.status.all_finished(self.func.predecessors.get(idx))
+        {
+            self.builder.seal_block(block);
+            self.status.insert(idx, status.seal());
         }
     }
 }
-//     /// When you write out instructions in Cranelift, you get back `Value`s. You
-//     /// can then use these references in other instructions.
-//     fn translate_expr(&mut self, expr: Expr) -> Value {
-//         match expr {
-//             Expr::Literal(literal) => {
-//                 let imm: i32 = literal.parse().unwrap();
-//                 self.builder.ins().iconst(self.int, i64::from(imm))
-//             }
 
-//             Expr::Add(lhs, rhs) => {
-//                 let lhs = self.translate_expr(*lhs);
-//                 let rhs = self.translate_expr(*rhs);
-//                 self.builder.ins().iadd(lhs, rhs)
-//             }
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Status {
+    Empty,
+    EmptySealed,
+    Finished,
+    FinishedSealed,
+}
 
-//             Expr::Sub(lhs, rhs) => {
-//                 let lhs = self.translate_expr(*lhs);
-//                 let rhs = self.translate_expr(*rhs);
-//                 self.builder.ins().isub(lhs, rhs)
-//             }
+impl Status {
+    fn seal(self) -> Self {
+        match self {
+            Self::Empty | Self::EmptySealed => Self::EmptySealed,
+            Self::Finished | Self::FinishedSealed => Self::FinishedSealed,
+        }
+    }
 
-//             Expr::Mul(lhs, rhs) => {
-//                 let lhs = self.translate_expr(*lhs);
-//                 let rhs = self.translate_expr(*rhs);
-//                 self.builder.ins().imul(lhs, rhs)
-//             }
+    fn is_sealed(&self) -> bool {
+        matches!(self, Self::EmptySealed | Self::FinishedSealed)
+    }
 
-//             Expr::Div(lhs, rhs) => {
-//                 let lhs = self.translate_expr(*lhs);
-//                 let rhs = self.translate_expr(*rhs);
-//                 self.builder.ins().udiv(lhs, rhs)
-//             }
+    fn finish(self) -> Self {
+        match self {
+            Self::Empty => Self::Finished,
+            Self::EmptySealed => Self::FinishedSealed,
 
-//             Expr::Eq(lhs, rhs) => self.translate_icmp(IntCC::Equal, *lhs, *rhs),
-//             Expr::Ne(lhs, rhs) => self.translate_icmp(IntCC::NotEqual, *lhs, *rhs),
-//             Expr::Lt(lhs, rhs) => self.translate_icmp(IntCC::SignedLessThan, *lhs, *rhs),
-//             Expr::Le(lhs, rhs) => self.translate_icmp(IntCC::SignedLessThanOrEqual, *lhs, *rhs),
-//             Expr::Gt(lhs, rhs) => self.translate_icmp(IntCC::SignedGreaterThan, *lhs, *rhs),
-//             Expr::Ge(lhs, rhs) => self.translate_icmp(IntCC::SignedGreaterThanOrEqual, *lhs, *rhs),
-//             Expr::Call(name, args) => self.translate_call(name, args),
-//             Expr::GlobalDataAddr(name) => self.translate_global_data_addr(name),
-//             Expr::Identifier(name) => {
-//                 // `use_var` is used to read the value of a variable.
-//                 let variable = self.variables.get(&name).expect("variable not defined");
-//                 self.builder.use_var(*variable)
-//             }
-//             Expr::Assign(name, expr) => self.translate_assign(name, *expr),
-//             Expr::IfElse(condition, then_body, else_body) => {
-//                 self.translate_if_else(*condition, then_body, else_body)
-//             }
-//             Expr::WhileLoop(condition, loop_body) => {
-//                 self.translate_while_loop(*condition, loop_body)
-//             }
-//         }
-//     }
+            s => s,
+        }
+    }
 
-//     fn translate_assign(&mut self, name: String, expr: Expr) -> Value {
-//         // `def_var` is used to write the value of a variable. Note that
-//         // variables can have multiple definitions. Cranelift will
-//         // convert them into SSA form for itself automatically.
-//         let new_value = self.translate_expr(expr);
-//         let variable = self.variables.get(&name).unwrap();
-//         self.builder.def_var(*variable, new_value);
-//         new_value
-//     }
+    fn is_finished(&self) -> bool {
+        matches!(self, Self::Finished | Self::FinishedSealed)
+    }
+}
 
-//     fn translate_icmp(&mut self, cmp: IntCC, lhs: Expr, rhs: Expr) -> Value {
-//         let lhs = self.translate_expr(lhs);
-//         let rhs = self.translate_expr(rhs);
-//         self.builder.ins().icmp(cmp, lhs, rhs)
-//     }
+#[derive(Default)]
+struct TranslateStatus(ArenaMap<Idx<mir::BasicBlock>, Status>);
 
-//     fn translate_if_else(
-//         &mut self,
-//         condition: Expr,
-//         then_body: Vec<Expr>,
-//         else_body: Vec<Expr>,
-//     ) -> Value {
-//         let condition_value = self.translate_expr(condition);
+impl TranslateStatus {
+    fn get(&self, idx: Idx<mir::BasicBlock>) -> Status {
+        self.0[idx]
+    }
 
-//         let then_block = self.builder.create_block();
-//         let else_block = self.builder.create_block();
-//         let merge_block = self.builder.create_block();
+    fn all_finished(&self, ids: &[Idx<mir::BasicBlock>]) -> bool {
+        ids.iter().all(|idx| self.0[*idx].is_finished())
+    }
 
-//         // If-else constructs in the toy language have a return value.
-//         // In traditional SSA form, this would produce a PHI between
-//         // the then and else bodies. Cranelift uses block parameters,
-//         // so set up a parameter in the merge block, and we'll pass
-//         // the return values to it from the branches.
-//         self.builder.append_block_param(merge_block, self.int);
+    fn insert(&mut self, idx: Idx<mir::BasicBlock>, status: Status) {
+        self.0.insert(idx, status);
+    }
 
-//         // Test the if condition and conditionally branch.
-//         self.builder
-//             .ins()
-//             .brif(condition_value, then_block, &[], else_block, &[]);
+    fn entry(&mut self, idx: Idx<mir::BasicBlock>) -> Entry<'_, Idx<mir::BasicBlock>, Status> {
+        self.0.entry(idx)
+    }
+}
 
-//         self.builder.switch_to_block(then_block);
-//         self.builder.seal_block(then_block);
-//         let mut then_return = self.builder.ins().iconst(self.int, 0);
-//         for expr in then_body {
-//             then_return = self.translate_expr(expr);
-//         }
+enum Cmp {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+}
 
-//         // Jump to the merge block, passing it the block return value.
-//         self.builder.ins().jump(merge_block, &[then_return]);
+impl Cmp {
+    fn as_int_cc(&self) -> IntCC {
+        match self {
+            Cmp::Equal => IntCC::Equal,
+            Cmp::NotEqual => IntCC::NotEqual,
+            Cmp::LessThan => IntCC::SignedLessThan,
+            Cmp::LessThanOrEqual => IntCC::SignedLessThanOrEqual,
+            Cmp::GreaterThan => IntCC::SignedGreaterThan,
+            Cmp::GreaterThanOrEqual => IntCC::SignedGreaterThanOrEqual,
+        }
+    }
 
-//         self.builder.switch_to_block(else_block);
-//         self.builder.seal_block(else_block);
-//         let mut else_return = self.builder.ins().iconst(self.int, 0);
-//         for expr in else_body {
-//             else_return = self.translate_expr(expr);
-//         }
-
-//         // Jump to the merge block, passing it the block return value.
-//         self.builder.ins().jump(merge_block, &[else_return]);
-
-//         // Switch to the merge block for subsequent statements.
-//         self.builder.switch_to_block(merge_block);
-
-//         // We've now seen all the predecessors of the merge block.
-//         self.builder.seal_block(merge_block);
-
-//         // Read the value of the if-else by reading the merge block
-//         // parameter.
-//         let phi = self.builder.block_params(merge_block)[0];
-
-//         phi
-//     }
-
-//     fn translate_while_loop(&mut self, condition: Expr, loop_body: Vec<Expr>) -> Value {
-//         let header_block = self.builder.create_block();
-//         let body_block = self.builder.create_block();
-//         let exit_block = self.builder.create_block();
-
-//         self.builder.ins().jump(header_block, &[]);
-//         self.builder.switch_to_block(header_block);
-
-//         let condition_value = self.translate_expr(condition);
-//         self.builder
-//             .ins()
-//             .brif(condition_value, body_block, &[], exit_block, &[]);
-
-//         self.builder.switch_to_block(body_block);
-//         self.builder.seal_block(body_block);
-
-//         for expr in loop_body {
-//             self.translate_expr(expr);
-//         }
-//         self.builder.ins().jump(header_block, &[]);
-
-//         self.builder.switch_to_block(exit_block);
-
-//         // We've reached the bottom of the loop, so there will be no
-//         // more backedges to the header to exits to the bottom.
-//         self.builder.seal_block(header_block);
-//         self.builder.seal_block(exit_block);
-
-//         // Just return 0 for now.
-//         self.builder.ins().iconst(self.int, 0)
-//     }
-
-//     fn translate_call(&mut self, name: String, args: Vec<Expr>) -> Value {
-//         let mut sig = self.module.make_signature();
-
-//         // Add a parameter for each argument.
-//         for _arg in &args {
-//             sig.params.push(AbiParam::new(self.int));
-//         }
-
-//         // For simplicity for now, just make all calls return a single I64.
-//         sig.returns.push(AbiParam::new(self.int));
-
-//         // TODO: Streamline the API here?
-//         let callee = self
-//             .module
-//             .declare_function(&name, Linkage::Import, &sig)
-//             .expect("problem declaring function");
-//         let local_callee = self.module.declare_func_in_func(callee, self.builder.func);
-
-//         let mut arg_values = Vec::new();
-//         for arg in args {
-//             arg_values.push(self.translate_expr(arg))
-//         }
-//         let call = self.builder.ins().call(local_callee, &arg_values);
-//         self.builder.inst_results(call)[0]
-//     }
-
-//     fn translate_global_data_addr(&mut self, name: String) -> Value {
-//         let sym = self
-//             .module
-//             .declare_data(&name, Linkage::Export, true, false)
-//             .expect("problem declaring data object");
-//         let local_id = self.module.declare_data_in_func(sym, self.builder.func);
-
-//         let pointer = self.module.target_config().pointer_type();
-//         self.builder.ins().symbol_value(pointer, local_id)
-//     }
-// }
-
-// fn declare_variables(
-//     int: types::Type,
-//     builder: &mut FunctionBuilder,
-//     params: &[String],
-//     the_return: &str,
-//     stmts: &[Expr],
-//     entry_block: Block,
-// ) -> HashMap<String, Variable> {
-//     let mut variables = HashMap::new();
-//     let mut index = 0;
-
-//     for (i, name) in params.iter().enumerate() {
-//         // TODO: cranelift_frontend should really have an API to make it easy to set
-//         // up param variables.
-//         let val = builder.block_params(entry_block)[i];
-//         let var = declare_variable(int, builder, &mut variables, &mut index, name);
-//         builder.def_var(var, val);
-//     }
-//     let zero = builder.ins().iconst(int, 0);
-//     let return_variable = declare_variable(int, builder, &mut variables, &mut index, the_return);
-//     builder.def_var(return_variable, zero);
-//     for expr in stmts {
-//         declare_variables_in_stmt(int, builder, &mut variables, &mut index, expr);
-//     }
-
-//     variables
-// }
-
-// /// Recursively descend through the AST, translating all implicit
-// /// variable declarations.
-// fn declare_variables_in_stmt(
-//     int: types::Type,
-//     builder: &mut FunctionBuilder,
-//     variables: &mut HashMap<String, Variable>,
-//     index: &mut usize,
-//     expr: &Expr,
-// ) {
-//     match *expr {
-//         Expr::Assign(ref name, _) => {
-//             declare_variable(int, builder, variables, index, name);
-//         }
-//         Expr::IfElse(ref _condition, ref then_body, ref else_body) => {
-//             for stmt in then_body {
-//                 declare_variables_in_stmt(int, builder, variables, index, stmt);
-//             }
-//             for stmt in else_body {
-//                 declare_variables_in_stmt(int, builder, variables, index, stmt);
-//             }
-//         }
-//         Expr::WhileLoop(ref _condition, ref loop_body) => {
-//             for stmt in loop_body {
-//                 declare_variables_in_stmt(int, builder, variables, index, stmt);
-//             }
-//         }
-//         _ => (),
-//     }
-// }
-
-// /// Declare a single variable declaration.
-// fn declare_variable(
-//     int: types::Type,
-//     builder: &mut FunctionBuilder,
-//     variables: &mut HashMap<String, Variable>,
-//     index: &mut usize,
-//     name: &str,
-// ) -> Variable {
-//     let var = Variable::new(*index);
-//     if !variables.contains_key(name) {
-//         variables.insert(name.into(), var);
-//         builder.declare_var(var, int);
-//         *index += 1;
-//     }
-//     var
-// }
+    fn as_float_cc(&self) -> FloatCC {
+        match self {
+            Cmp::Equal => FloatCC::Equal,
+            Cmp::NotEqual => FloatCC::NotEqual,
+            Cmp::LessThan => FloatCC::LessThan,
+            Cmp::LessThanOrEqual => FloatCC::LessThanOrEqual,
+            Cmp::GreaterThan => FloatCC::GreaterThan,
+            Cmp::GreaterThanOrEqual => FloatCC::GreaterThanOrEqual,
+        }
+    }
+}

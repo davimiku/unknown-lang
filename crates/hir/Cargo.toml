@@ -8,14 +8,16 @@ edition = "2021"
 [dependencies]
 ast = { path = "../ast" }
 id_tree = "1.8.0"
-itertools = "0.10.5"
-la-arena = "0.3.0"
-lasso = "0.6.0"
+itertools = "0.12.1"
+la-arena = "0.3.1"
+lasso = "0.7.2"
 lsp_diagnostic = { path = "../lsp_diagnostic" }
 parser = { path = "../parser" }
+ryu = "1.0"
 text-size = "1.1.1"
+util_macros = { path = "../util_macros" }
 
 [dev-dependencies]
-expect-test = "1.4.0"
+expect-test = "1.4.1"
 indoc = "2"
 text-diff = "0.4.0"

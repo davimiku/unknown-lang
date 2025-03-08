@@ -1,6 +1,6 @@
 use expect_test::expect;
 
-use crate::check_expr;
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_simple_infix_expression() {
@@ -179,13 +179,15 @@ fn logical_and() {
         "true and false",
         expect![[r#"
 InfixExpr@0..14
-  BoolLiteralExpr@0..5
-    TrueLiteral@0..4 "true"
-    Emptyspace@4..5 " "
-  And@5..8 "and"
+  PathExpr@0..5
+    Ident@0..5
+      Ident@0..4 "true"
+      Emptyspace@4..5 " "
+  AndKw@5..8 "and"
   Emptyspace@8..9 " "
-  BoolLiteralExpr@9..14
-    FalseLiteral@9..14 "false""#]],
+  PathExpr@9..14
+    Ident@9..14
+      Ident@9..14 "false""#]],
     )
 }
 
@@ -195,13 +197,15 @@ fn logical_or() {
         "true or false",
         expect![[r#"
 InfixExpr@0..13
-  BoolLiteralExpr@0..5
-    TrueLiteral@0..4 "true"
-    Emptyspace@4..5 " "
-  Or@5..7 "or"
+  PathExpr@0..5
+    Ident@0..5
+      Ident@0..4 "true"
+      Emptyspace@4..5 " "
+  OrKw@5..7 "or"
   Emptyspace@7..8 " "
-  BoolLiteralExpr@8..13
-    FalseLiteral@8..13 "false""#]],
+  PathExpr@8..13
+    Ident@8..13
+      Ident@8..13 "false""#]],
     )
 }
 
@@ -231,6 +235,70 @@ InfixExpr@0..6
     IntLiteral@0..1 "1"
     Emptyspace@1..2 " "
   BangEquals@2..4 "!="
+  Emptyspace@4..5 " "
+  IntLiteralExpr@5..6
+    IntLiteral@5..6 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_less_than() {
+    check_expr(
+        "1 < 1",
+        expect![[r#"
+InfixExpr@0..5
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  LAngle@2..3 "<"
+  Emptyspace@3..4 " "
+  IntLiteralExpr@4..5
+    IntLiteral@4..5 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_less_than_or_equal() {
+    check_expr(
+        "1 <= 1",
+        expect![[r#"
+InfixExpr@0..6
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  LAngleEquals@2..4 "<="
+  Emptyspace@4..5 " "
+  IntLiteralExpr@5..6
+    IntLiteral@5..6 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_greater_than() {
+    check_expr(
+        "1 > 1",
+        expect![[r#"
+InfixExpr@0..5
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  RAngle@2..3 ">"
+  Emptyspace@3..4 " "
+  IntLiteralExpr@4..5
+    IntLiteral@4..5 "1""#]],
+    );
+}
+
+#[test]
+fn parse_int_greater_than_or_equal() {
+    check_expr(
+        "1 >= 1",
+        expect![[r#"
+InfixExpr@0..6
+  IntLiteralExpr@0..2
+    IntLiteral@0..1 "1"
+    Emptyspace@1..2 " "
+  RAngleEquals@2..4 ">="
   Emptyspace@4..5 " "
   IntLiteralExpr@5..6
     IntLiteral@5..6 "1""#]],

@@ -2,19 +2,22 @@ mod display;
 
 use std::fmt;
 
+use ast::Mutability;
 use la_arena::Idx;
+use text_size::TextRange;
+use util_macros::assert_matches;
 
 use crate::interner::Key;
+use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
+use crate::{Context, Type};
 
+/// HIR Expression
 #[derive(Default, Debug, PartialEq, Clone)]
 pub enum Expr {
     /// A missing expression from the parse tree
     #[default]
     Empty,
-
-    /// Boolean literal value, `true` or `false`
-    BoolLiteral(bool),
 
     /// 64-bit Floating point literal value, ex. `1.0`, `-7654.321`
     FloatLiteral(f64),
@@ -26,7 +29,7 @@ pub enum Expr {
     StringLiteral(Key),
 
     /// Array literal value, ex. `[1, 2, 3]`
-    ArrayLiteral(ArrayLiteralExpr),
+    ListLiteral(ListLiteralExpr),
 
     /// Unary expression, ex. `-a`, `!b`
     // TODO: remove and use a Call instead (unary function call)
@@ -49,34 +52,60 @@ pub enum Expr {
 
     Path(PathExpr),
 
+    /// The value representation of a union type
+    ///
+    /// ```ignore
+    /// type Color = red | green | blue
+    /// let g = Color.green
+    /// //      ^^^^^
+    /// ```
+    UnionNamespace(UnionNamespace),
+
+    UnionVariant(UnionVariant),
+
+    UnionUnitVariant(UnionUnitVariant),
+
     IndexInt(IndexIntExpr),
-    // IndexString(IndexStringExpr), // string literals, ex. for named tuples
-    // Index(IndexExpr), // arbitrary expressions
-    /// Function definition, including parameters and body.
+
+    /// Function definition, including parameters and body for each overload.
     ///
     /// A function is inherently anonymous, but if created inside of a VarDef
     /// the variable name is captured.
-    Function(FunctionExpr),
+    Function(FunctionExprGroup),
 
     /// Variable definition
     VarDef(VarDefExpr),
 
+    ReAssignment(ReAssignment),
+
+    /// Branch based on the value of a "scrutinee", usually a union type
+    Match(MatchExpr),
+
     /// Branch based on boolean condition, with possible "else" branch
     If(IfExpr),
+
+    /// Loop expression
+    Loop(LoopExpr),
 
     /// "Expression statement", an expression that the return value is unused
     Statement(Idx<Expr>),
 
+    /// Breaks from the current loop
+    BreakStatement(Idx<Expr>),
+
     /// Returns the expression from the current function
     ReturnStatement(Idx<Expr>),
 
-    /// Represents the container around a module
-    Module(Vec<Idx<Expr>>),
+    /// The whole "statement" at the type level
+    ///
+    /// i.e. `type Color = red | green | blue`
+    TypeStatement(Idx<TypeExpr>),
 }
 
 // convenience constructors
 // rustfmt has a habit of splitting struct initialization across multiple lines,
 // even with property shorthand notation. I think often a single line is more readable
+// especially when there's a bunch of other code to consider
 impl Expr {
     pub(crate) fn variable_def(
         symbol: ValueSymbol,
@@ -90,11 +119,16 @@ impl Expr {
         })
     }
 
-    pub(crate) fn call(callee: Idx<Expr>, callee_path: String, args: Vec<Idx<Expr>>) -> Self {
+    pub(crate) fn call(
+        callee: Idx<Expr>,
+        args: Box<[Idx<Expr>]>,
+        symbol: Option<ValueSymbol>,
+    ) -> Self {
         Self::Call(CallExpr {
             callee,
-            callee_path,
             args,
+            symbol,
+            signature_index: None, // gets set later in type checking
         })
     }
 }
@@ -114,18 +148,39 @@ pub struct VarDefExpr {
     pub type_annotation: Option<Idx<TypeExpr>>,
 }
 
+impl VarDefExpr {
+    pub fn is_mutable(&self, context: &Context) -> bool {
+        let mutability = context.mutability_of(&self.symbol);
+
+        mutability == Mutability::Mut
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ReAssignment {
+    /// Place being reassigned, such as `a`, `a.b`, or `a.b()`
+    pub place: Idx<Expr>,
+
+    /// Expression value of the RHS of the reassignment
+    pub value: Idx<Expr>,
+}
+
 /// Unique identifier for a symbol that lives in the "value" universe
 ///
 /// Examples of symbols are variable names, function parameter names, etc.
 ///
-/// See also [TypeSymbol] for the analog that lives in the "type" universe
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// See also [TypeSymbol](crate::type_expr::TypeSymbol) for the analog that lives in the "type" universe
+///
+/// Get the original string content of this symbol using [Database](crate::database::Database).value_names
+/// which gives a `Key` to lookup from the interner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueSymbol {
     /// Unique id of the module where this symbol resides
-    pub module_id: u32,
+    module_id: u32,
 
     /// Unique id of this symbol within this module
-    pub symbol_id: u32,
+    symbol_id: u32,
+    // TODO: package id? or have a separate map between module_id and package_id ?
 }
 
 impl ValueSymbol {
@@ -134,6 +189,28 @@ impl ValueSymbol {
             module_id,
             symbol_id,
         }
+    }
+
+    /// Symbol to represent the "main" function if it is synthetically generated,
+    /// such as in "script mode".
+    pub fn synthetic_main() -> Self {
+        Self {
+            module_id: 0,
+            symbol_id: u32::MAX,
+        }
+    }
+
+    // TODO: create a convenience constructor for anonymous functions?
+    // pub fn synthetic_anonymous() -> Self { ... }
+
+    pub fn in_core_module(&self) -> bool {
+        self.module_id == CORE_MODULE_ID
+    }
+}
+
+impl From<ValueSymbol> for (u32, u32) {
+    fn from(value: ValueSymbol) -> Self {
+        (value.module_id, value.symbol_id)
     }
 }
 
@@ -145,12 +222,12 @@ pub struct VarRefExpr {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ArrayLiteralExpr {
+pub enum ListLiteralExpr {
     Empty,
     NonEmpty { elements: Vec<Idx<Expr>> },
 }
 
-impl ArrayLiteralExpr {
+impl ListLiteralExpr {
     pub fn elements(&self) -> &[Idx<Expr>] {
         match self {
             Self::Empty => &[],
@@ -183,25 +260,57 @@ impl BlockExpr {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CallExpr {
     /// Expression that is being called as a function
+    ///
+    /// This could be many different kinds of Expr, such as a variable, path,
+    /// function literal, another CallExpr, etc.
     pub callee: Idx<Expr>,
 
-    // FIXME: this is temporary until builtins are applied like other functions
-    pub callee_path: String,
-
     /// Arguments that the function are applied to
-    pub args: Vec<Idx<Expr>>,
+    pub args: Box<[Idx<Expr>]>,
+
+    /// Symbol being called, if any. This would be None for anonymous function calls
+    pub symbol: Option<ValueSymbol>,
+
+    pub signature_index: Option<u32>,
+}
+
+impl CallExpr {
+    pub fn return_ty_idx(&self, context: &Context) -> Idx<Type> {
+        let func_ty = context.expr_type(self.callee);
+        let func_ty = assert_matches!(func_ty, Type::Function);
+        if let Some(sig_index) = self.signature_index {
+            let sig = &func_ty.signatures[sig_index as usize];
+            sig.return_ty
+        } else {
+            context.core_types().error
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionExprGroup {
+    /// Function expression for each overload
+    pub overloads: Box<[FunctionExpr]>,
+
+    /// Name of the function, if available
+    pub name: Option<(Key, ValueSymbol)>,
+
+    pub entry_point: Option<Key>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionExpr {
     /// Parameters to the function
-    pub params: Vec<FunctionParam>,
+    pub params: Box<[FunctionParam]>,
 
     /// Body of the function
     pub body: Idx<Expr>,
 
-    /// Name of the function, if available
-    pub name: Option<Key>,
+    /// Explicit return type annotation, if provided
+    pub return_type_annotation: Option<Idx<TypeExpr>>,
+
+    /// Symbols captured from an outer scopes
+    pub captures: Box<[ValueSymbol]>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -214,6 +323,64 @@ pub struct FunctionParam {
 
     /// Type annotation if provided
     pub annotation: Option<Idx<TypeExpr>>,
+}
+
+#[derive(Debug)]
+// TODO: temporary / placeholder name as its still being discovered what
+// this needs to be
+// TODO: this could be done in the MIR, or better here in HIR?
+pub enum FunctionKind {
+    /// Host function defined in Rust
+    ///
+    /// Limitations: arguments must be passed by copy?
+    /// can arguments be moved once resources are implemented?
+    /// what about shared / RC types like String?
+    Host,
+
+    /// Function being called is statically known
+    ///
+    /// ```ignore
+    /// let f = fun () -> { ... }
+    /// f ()
+    /// ```
+    ///
+    /// The call to `f` can be substituted as a direct call and doesn't
+    /// need to be tracked as a runtime variable.
+    Direct,
+
+    /// Function being called is statically known, and
+    /// closes over values in an outer scope
+    ///
+    /// ```ignore
+    /// let make_adder = fun (a: Int) -> {
+    ///     let f = fun (b: Int) -> { a + b }
+    ///     f
+    /// }
+    ///
+    /// let add_four = make_adder 4
+    /// add_four 8
+    /// ```
+    ///
+    /// Calls to this would need to include the captured environment. The "Direct"
+    /// variant can be seen as a specialization of this variant where the captured
+    /// environment is zero-sized (no captures).
+    DirectClosure,
+
+    /// Function is being called without knowing which function until
+    /// runtime.
+    ///
+    /// ```ignore
+    /// let f = if condition { a } else { b }
+    /// f ()
+    /// ```
+    ///
+    /// This call can't be done by directly substituting a static call, the function
+    /// being called needs to be a variable at runtime.
+    ///
+    /// TODO: perhaps "dynamic" is better than "indirect" (and "static" vs. "direct")
+    Indirect,
+    // TODO:
+    // IndirectClosure,
 }
 
 #[derive(Debug, PartialEq)]
@@ -238,10 +405,218 @@ pub struct IfExpr {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LoopExpr {
+    /// The body of the loop expression, which is a `BlockExpr`
+    pub body: Idx<Expr>,
+
+    /// The `break` expressions within this loop
+    pub breaks: Vec<Idx<Expr>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MatchExpr {
+    /// The scrutinee of the match expression is the value being tested
+    pub scrutinee: Idx<Expr>,
+
+    /// The arms of the match expression
+    pub arms: Vec<MatchArm>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+
+    pub expr: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Pattern {
+    /// The wildcard pattern, written as `_`
+    ///
+    /// ```ignore
+    /// let _ = [...]
+    /// //  ^
+    /// match union {
+    ///     _ -> [...],
+    /// //  ^
+    /// }
+    /// ```
+    Wild { meta: PatternMeta },
+
+    /// Pattern that creates a binding to a variable, such as
+    /// a `let` binding with a simple variable name, or a "catch all"
+    /// binding in a match clause.
+    ///
+    /// ```ignore
+    /// let var = [...]
+    /// //  ^^^
+    /// match u {
+    ///     .a -> [...],
+    ///     .b -> [...],
+    ///     all -> [...],
+    /// //  ^^^
+    /// }
+    /// ```
+    IdentBinding {
+        meta: PatternMeta,
+        binding: IdentPatternBinding,
+    },
+
+    /// Pattern that matches a variant, and may also have an inner pattern
+    /// if the variant is non-unit.
+    ///
+    /// ```ignore
+    /// match u {
+    ///     .first -> [...],
+    /// //  ^^^^^^
+    ///     .second int -> [...],
+    /// //  ^^^^^^^^^^^ Variant
+    /// //          ^^^ IdentBinding
+    /// //
+    ///     .third .inner int -> [...],
+    /// //  ^^^^^^^^^^^^^^^^^ Variant
+    /// //         ^^^^^^^^^^ Variant
+    /// //                ^^^ IdentBinding
+    /// //
+    /// }
+    /// ```
+    Variant {
+        meta: PatternMeta,
+        pattern: Box<VariantPattern>, // TODO - arena allocate patterns? and use Idx here
+    },
+
+    // TODO - Record
+    // TODO - OR patterns like `PatA | PatB | PatC`
+    IntLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
+
+    FloatLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
+
+    StringLiteral {
+        meta: PatternMeta,
+        literal: Idx<Expr>,
+    },
+    // TODO - Slice
+
+    // TODO - Range
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PatternMeta {
+    pub range: TextRange,
+    // pub id ?? some kind of HirId like rustc?
+}
+
+/// ```ignore
+/// let ident = [...]
+/// //  ^^^^^
+/// match thing {
+///     .variant1 -> [...],
+///     .variant2 data -> [...],
+/// //            ^^^^
+///     rest -> [...],
+/// //  ^^^^
+/// }
+///
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IdentPatternBinding {
+    // TODO - `mut` or anything else?
+    // TODO - type annotation: BindingAnnotation
+    /// Identifier that the value will be bound to
+    /// ```ignore
+    /// let ident = [...]
+    /// //  ^^^^^
+    /// ```
+    pub ident: Key,
+
+    /// Scoped symbol in the value namespace for the new variable
+    pub symbol: ValueSymbol,
+
+    /// Key corresponding to the variant without the dot if
+    /// this is a pattern in a `match` [or `if let`]
+    pub variant: Option<Key>,
+}
+
+/// Pattern that matches a variant of a union
+///
+/// Patterns may nested arbitrarily recursively
+///
+/// ex.
+///
+/// ```ignore
+/// type U =
+///     | first: (second: (third: Int | other) | other)
+///     | other
+///
+/// match u {
+///     .first .second .third int -> { ... }
+/// }
+/// ```
+///
+/// Since types are structural and can be anonymous, the way to unwrap
+/// the `Int` is a triple-nested pattern binding on the variants
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct VariantPattern {
+    /// Key corresponding to the variant without the dot
+    pub variant: Key,
+
+    /// Inner pattern
+    ///
+    /// ```ignore
+    /// .first .second .third int -> { ... }
+    /// //     ^^^^^^^^^^^^^^^^^^
+    /// ```
+    pub inner_pattern: Option<Pattern>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PathExpr {
     pub subject: Idx<Expr>,
 
     pub member: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionNamespace {
+    /// Name of the union in the value namespace
+    pub name: ValueSymbol,
+
+    /// The original type expression defined for this union
+    /// i.e. `type Color = red | green | blue`
+    ///                    ^^^^^^^^^^^^^^^^^^
+    pub type_expr: Idx<TypeExpr>,
+
+    /// Names of the variants (value namespace) with their type annotations
+    pub members: Vec<(Key, Idx<TypeExpr>)>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionVariant {
+    /// Name of the variant
+    pub name: Key,
+
+    /// Index of this variant in the union
+    pub index: u32,
+
+    /// Value expression for the union namespace
+    pub union_namespace: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnionUnitVariant {
+    /// Name of the variant
+    pub name: Key,
+
+    /// Index of this variant in the union
+    pub index: u32,
+
+    /// Value expression for the union namespace
+    pub union_namespace: Idx<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -249,6 +624,45 @@ pub struct IndexIntExpr {
     pub subject: Idx<Expr>,
 
     pub index: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum IntrinsicExpr {
+    /// Addition `+`
+    Add,
+
+    /// Subtraction `-`
+    Sub,
+
+    /// Multiplication `*`
+    Mul,
+
+    /// Division `/`
+    Div,
+
+    /// Remainder `%`
+    Rem,
+
+    /// Concatenation `++`
+    Concat,
+
+    /// Equality `==`
+    Eq,
+
+    /// Not Equality `!=`
+    Ne,
+
+    /// Less Than `<`
+    Lt,
+
+    /// Less Than Or Equal `<=`
+    Le,
+
+    /// Greater Than `>`
+    Gt,
+
+    /// Greater Than Or Equal `>=`
+    Ge,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

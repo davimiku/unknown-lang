@@ -9,7 +9,7 @@ For a guide/tutorial style of documentation, see [User Guides](../user-guides/RE
 1. [Core Types](core-types.md)
 2. [Variables](variables.md)
 3. [Functions](functions.md)
-4. [Keywords]()
+4. [Keywords](keywords.md)
 5. [Operators]()
 6. [Expressions]()
 7. [Type Expressions]()

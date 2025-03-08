@@ -1,13 +1,13 @@
 use expect_test::expect;
 
-use crate::check_expr;
+use crate::grammar::check_expr;
 
 #[test]
 fn parse_array_literal() {
     check_expr(
         "[0, 1]",
         expect![[r#"
-ArrayLiteral@0..6
+ListLiteral@0..6
   LBracket@0..1 "["
   IntLiteralExpr@1..2
     IntLiteral@1..2 "0"
@@ -25,7 +25,7 @@ fn parse_array_index() {
         "[0, 1].0",
         expect![[r#"
 PathExpr@0..8
-  ArrayLiteral@0..6
+  ListLiteral@0..6
     LBracket@0..1 "["
     IntLiteralExpr@1..2
       IntLiteral@1..2 "0"
