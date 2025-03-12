@@ -357,6 +357,8 @@ fn parse_tostring_expr(p: &mut Parser) -> CompletedMarker {
 /// (a=expr, b=expr, c=expr) // record
 /// ^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
+/// TODO - no tuples?
+/// TODO - brackets for records?
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LParen);
 
@@ -394,12 +396,12 @@ fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
     p.bump();
 
     loop {
-        if p.bump_if(T::RBracket) {
+        if p.bump_all_if_at(T::RBracket) {
             break;
         }
         parse_expr(p);
 
-        if p.bump_if(T::RBracket) {
+        if p.bump_all_if_at(T::RBracket) {
             break;
         }
         p.expect(T::Comma); // TODO: recover at next comma if possible? `["ok", -}.?*, "ok"]
@@ -557,7 +559,7 @@ fn parse_function_param(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     parse_ident(p);
 
-    if p.bump_if(T::Colon) {
+    if p.bump_all_if_at(T::Colon) {
         parse_type_expr(p);
     }
 
@@ -608,7 +610,7 @@ fn parse_match_block(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
 
     p.expect(T::LBrace);
-    if p.bump_if(T::RBrace) {
+    if p.bump_all_if_at(T::RBrace) {
         return m.complete(p, SyntaxKind::MatchBlock);
     }
     loop {
@@ -618,7 +620,7 @@ fn parse_match_block(p: &mut Parser) -> CompletedMarker {
         parse_expr(p);
         p.expect_one_of([T::Comma, T::Newline]);
         arm_marker.complete(p, SyntaxKind::MatchArm);
-        if p.bump_if(T::RBrace) {
+        if p.bump_all_if_at(T::RBrace) {
             return m.complete(p, SyntaxKind::MatchBlock);
         }
     }

@@ -137,7 +137,21 @@ impl<'t, 'input> Parser<'t, 'input> {
 
     /// Bumps the parser if it's at the given token.
     /// Useful for optional tokens, such as trailing commas
-    pub(crate) fn bump_if(&mut self, kind: TokenKind) -> bool {
+    pub(crate) fn bump_if_at(&mut self, kind: TokenKind) -> bool {
+        if self.at(kind) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Bumps the parser if it's at the given token.
+    /// Useful for optional tokens, such as trailing commas
+    ///
+    /// Consumes newlines in addition to trivia. Use for checking end
+    /// delimiter tokens, such as RParen or RBracket
+    pub(crate) fn bump_all_if_at(&mut self, kind: TokenKind) -> bool {
         self.bump_all_space();
         if self.at(kind) {
             self.bump();
@@ -187,8 +201,8 @@ impl<'t, 'input> Parser<'t, 'input> {
 
     /// Checks if the parser is at a certain kind of valid token
     ///
-    /// Side effect: adds this token to the current list of expected tokens
-    /// in case of a future parse error
+    /// Side effect: consumes trivia, and adds this token to the
+    /// current list of expected tokens in case of a future parse error
     pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
         self.expected_kinds.push(kind);
         self.peek() == Some(kind)

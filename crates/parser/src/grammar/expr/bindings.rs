@@ -26,7 +26,7 @@ pub(super) fn parse_let_binding(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.bump();
 
-    p.bump_if(TokenKind::Mut);
+    p.bump_all_if_at(TokenKind::Mut);
 
     if !p.at(TokenKind::Equals) {
         parse_pattern(p);

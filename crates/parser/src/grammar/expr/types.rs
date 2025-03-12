@@ -212,13 +212,13 @@ fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.bump();
     loop {
-        if p.bump_if(T::RParen) {
+        if p.bump_all_if_at(T::RParen) {
             break;
         }
 
         parse_compound_type_item(p);
 
-        if p.bump_if(T::RParen) {
+        if p.bump_all_if_at(T::RParen) {
             break;
         }
 
@@ -234,24 +234,13 @@ fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
 
     let ident_marker = parse_ident(p);
 
-    // TODO - Parser::bump_if also bumps newlines, which causes an issue for non-delimited
-    // compound expressions such as unions
-    //
-    // ```
-    // type Color = red | green | blue
-    //                                ^ HERE
-    // x
-    // ```
-    // consuming the newline there made it parse like a Call, i.e. `blue x`
-    if p.at(T::Colon) {
-        p.bump();
-
+    if p.bump_if_at(T::Colon) {
         let compound_marker = ident_marker.precede(p);
 
         let type_marker = p.start();
         type_expr_binding_power(p, 2);
         type_marker.complete(p, SyntaxKind::CompoundTypeItemType);
-        if p.bump_if(T::Equals) {
+        if p.bump_all_if_at(T::Equals) {
             let default_marker = p.start();
             type_expr_binding_power(p, 0);
             default_marker.complete(p, SyntaxKind::CompoundTypeItemDefault);
