@@ -1,15 +1,17 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
+use std::env::var;
+
 use hir::{
     CallExpr, Context, ContextDisplay, Expr, FunctionParam, IfExpr, LoopExpr, MatchExpr,
-    Mutability, ReAssignment, Type, ValueSymbol, VarDefExpr,
+    Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
 };
 use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BasicBlock, BinOp, BlockTarget, BranchIntTargets, Callee, Constant, FuncId, Local, Operand,
-    OperandOrPlace, Place, Rvalue, Statement, Terminator,
+    BasicBlock, BinOp, BlockTarget, BranchIntTargets, BranchTarget, Callee, Constant, FuncId,
+    Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, Statement, Terminator,
 };
 use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
@@ -288,8 +290,27 @@ impl Builder {
 
             Expr::Call(call) => {
                 if let Some(binop) = try_get_binop(call, context) {
-                    // TODO: handle side-effects in non-assigned statement binops
                     let rvalue = self.construct_binop(&binop, context);
+                    if let Some(assign_place) = assign_to {
+                        let assign = Statement::assign(assign_place.clone(), rvalue);
+                        self.current_block_mut().statements.push(assign);
+                    };
+                } else if let Some((variant_ty, variant_idx)) = call.is_union_variant(context) {
+                    // TODO - indexing is probably wrong here, when there could be multiple "args"
+                    let operand = self.construct_operand(call.args[0], &None, context);
+                    let place = operand
+                        .try_into_place()
+                        .expect("TODO - handle Operand::Constant?");
+                    let new_place =
+                        place.with_projection(ProjectionElem::UpcastVariant(None, variant_idx));
+                    let symbol = context.find_symbol_of_expr(call.callee);
+                    let local = self.construct_local(variant_ty, symbol, Mutability::Not);
+                    dbg!("call", local.into_raw());
+                    let new_place = todo!();
+                    // FIXME - it's not copy local!
+                    // instead create a Place from the call.arg
+                    let operand = Operand::Copy(local.into());
+                    let rvalue = Rvalue::Use(operand);
                     if let Some(assign_place) = assign_to {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
                         self.current_block_mut().statements.push(assign);
@@ -398,7 +419,7 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Place {
-        let ty = call.return_ty_idx(context);
+        let ty = call.return_ty(context);
         let destination = match assign_to {
             Some(assign_place) => assign_place.clone(),
             None => self
@@ -461,6 +482,13 @@ impl Builder {
             self.current_block_mut().statements.push(assign);
 
             assign_place
+        } else if let Some(variant_ty) = call.is_union_variant(context) {
+            let assign_place = match assign_to {
+                Some(assign_place) => assign_place.clone(),
+                // New / temp local to hold the Rvalue
+                None => self.construct_local(ty, None, Mutability::Not).into(),
+            };
+            todo!()
         } else {
             self.construct_call_terminator(call, assign_to, context)
         };
@@ -483,7 +511,17 @@ impl Builder {
                 .map(Callee::from)
                 .unwrap_or_else(|| todo!("grab a local (indirect call)")),
 
-            _ => todo!("come up with a better abstraction to not duplicate all this code"),
+            Expr::UnionVariant(variant) => {
+                todo!("should never be hit?")
+            }
+
+            e => {
+                dbg!(e);
+                todo!(
+                    "Internal Compiler Error (MIR): Unexpected 'callee_expr': {}",
+                    e.display(context)
+                )
+            }
         }
     }
 
@@ -522,7 +560,6 @@ impl Builder {
     /// temporary/synthetic variable this would be `None`.
     ///
     /// See also `Statement::assign` for a lower-level function.
-    // TODO: review all current uses of Statement::assign and replace with this, or delete this
     fn construct_assign(
         &mut self,
         rvalue: Rvalue,
@@ -571,7 +608,6 @@ impl Builder {
         // TODO: assumes that scrutinee is an enum. eventually will have literal patterns
         // and more complex patterns like records
 
-        let scrutinee_ty = context.expr_type(match_expr.scrutinee);
         let scrutinee = self.construct_operand(match_expr.scrutinee, &None, context);
         let scrutinee_place = scrutinee.try_into_place().expect("scrutinee to be a Place");
 
@@ -586,43 +622,20 @@ impl Builder {
 
         let mut match_arm_blocks = vec![];
         let mut branches = vec![];
+        // TODO - rustc always generates an 'otherwise' block
+        // if the match is exhaustive, it puts an "unreachable" no-op
         let mut otherwise = None;
         for arm in match_expr.arms.iter() {
             self.current_block = self.new_block();
             match_arm_blocks.push(self.current_block);
             self.scopes.push();
-            match &arm.pattern {
-                hir::Pattern::Wild { meta: _ } => todo!(),
-                hir::Pattern::IdentBinding { meta: _, binding } => {
-                    self.construct_assign(
-                        Rvalue::Use(Operand::Copy(scrutinee_place.clone())),
-                        context.type_idx_of_value(&binding.symbol),
-                        Some(binding.symbol),
-                    );
-
-                    if otherwise.is_none() {
-                        otherwise = Some(BlockTarget {
-                            target: self.current_block,
-                            args: vec![],
-                        });
-                    };
-                }
-                hir::Pattern::Variant { meta: _, pattern } => {
-                    // TODO: support recursively nested pattern.inner_pattern
-                    let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
-                    let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!("Internal Compiler Error: Found '{}' binding, expected that to exist on type {}",
-                        context.lookup(pattern.variant),
-                        scrutinee_ty.display(context)));
-
-                    branches.push((
-                        variant_index,
-                        BlockTarget::with_empty_args(self.current_block),
-                    ));
-                }
-                hir::Pattern::IntLiteral { meta, literal } => todo!(),
-                hir::Pattern::FloatLiteral { meta, literal } => todo!(),
-                hir::Pattern::StringLiteral { meta, literal } => todo!(),
-            }
+            self.construct_match_pattern(
+                arm.pattern,
+                &scrutinee_place,
+                &mut branches,
+                &mut otherwise,
+                context,
+            );
             self.construct_block(arm.expr, None, assign_to, context);
             self.scopes.pop();
         }
@@ -642,6 +655,74 @@ impl Builder {
         self.construct_branch_terminator(source_block, discriminant, targets);
 
         self.current_block = join_block;
+    }
+
+    // TODO - can't decide whether to inline this again
+    // TODO - should the Variant branch have a `loop` rather than recursion?
+    fn construct_match_pattern(
+        &mut self,
+        pattern: Idx<Pattern>,
+        scrutinee_place: &Place,
+        branches: &mut Vec<BranchTarget>,
+        otherwise: &mut Option<BlockTarget>,
+        context: &Context,
+    ) {
+        let scrutinee_ty = scrutinee_place.type_idx_of(self.current_function(), context);
+        let scrutinee_ty = context.type_(scrutinee_ty);
+        let pattern = context.pattern(pattern);
+        match pattern {
+            hir::Pattern::Wild { meta: _ } => todo!(),
+            hir::Pattern::IdentBinding { meta: _, binding } => {
+                let new_place = match binding.variant {
+                    Some(key) => {
+                        let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
+                        let idx = sum_type.index_of(key);
+                        let idx = idx.unwrap_or_else(|| panic!("Internal Compiler Error (MIR): Found '{}' binding, expected that to exist on type {}",
+                        context.lookup(key),
+                        scrutinee_ty.display(context)));
+
+                        scrutinee_place
+                            .with_projection(ProjectionElem::DowncastVariant(Some(key), idx.into()))
+                    }
+                    None => scrutinee_place.clone(),
+                };
+
+                self.construct_assign(
+                    Rvalue::Use(Operand::Copy(new_place)),
+                    context.type_idx_of_value(&binding.symbol),
+                    Some(binding.symbol),
+                );
+
+                otherwise.get_or_insert(BlockTarget {
+                    target: self.current_block,
+                    args: vec![],
+                });
+            }
+            hir::Pattern::Variant { meta: _, pattern } => {
+                // TODO: support recursively nested pattern.inner_pattern
+                let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
+                let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!("Internal Compiler Error (MIR): Found '{}' binding, expected that to exist on type {}",
+                        context.lookup(pattern.variant),
+                        scrutinee_ty.display(context)));
+
+                branches.push((
+                    variant_index as i64,
+                    BlockTarget::with_empty_args(self.current_block),
+                ));
+                if let Some(inner) = pattern.inner_pattern {
+                    self.construct_match_pattern(
+                        inner,
+                        scrutinee_place,
+                        branches,
+                        otherwise,
+                        context,
+                    );
+                }
+            }
+            hir::Pattern::IntLiteral { meta, literal } => todo!(),
+            hir::Pattern::FloatLiteral { meta, literal } => todo!(),
+            hir::Pattern::StringLiteral { meta, literal } => todo!(),
+        }
     }
 
     fn construct_if_expr(
@@ -735,7 +816,7 @@ impl Builder {
             .locals_map
             .iter()
             .find(|(_, s)| **s == Some(symbol))
-            .map(|i| i.0)
+            .map(|(i, ..)| i)
     }
 
     fn find_symbol(&self, symbol: ValueSymbol, context: &Context) -> Idx<Local> {
@@ -802,58 +883,6 @@ impl Builder {
         }
     }
 
-    // fn construct_callee_operand(&mut self, expr: Idx<Expr>, context: &Context) -> Operand {
-    //     loop {}
-    // }
-
-    // fn construct_callee_operand_inner(&mut self, expr: Idx<Expr>, context: &Context) -> Operand {
-    //     let ty = context.expr_type_idx(expr);
-
-    //     match context.expr(expr) {
-    //         Expr::Unary(_) => unreachable!("this should be folded into Call"),
-    //         Expr::Block(_) => {
-    //             // {
-    //             //    expr
-    //             //    expr
-    //             //    f
-    //             // } arg
-    //             // in this case, find the tail expression of the block
-    //             // and recursively find until the Expr::Function is found
-    //             todo!()
-    //         }
-    //         Expr::Call(_) => {
-    //             // (g arg1) arg2
-    //             // ^^^^^^ this callee, is itself a Call
-    //             todo!()
-    //         }
-    //         Expr::VarRef(_) => {
-    //             // find the expression that was bound to this variable
-    //             // recursively
-    //             // until the Function::Expr is found OR
-    //             // a builtin is found
-    //             // in either case it should produce a Callee (?)
-    //             todo!()
-    //         }
-    //         Expr::Path(_) => {
-    //             // eventually VarRef would be folded into here
-    //             todo!()
-    //         }
-    //         Expr::Function(_) => {
-    //             // IIFE
-    //             // should be able to return a Constant::Function here
-    //             todo!()
-    //         }
-    //         Expr::If(_) => {
-    //             // same as Block, it is possible for an If/Else to resolve to
-    //             // a callable function
-    //             // but since this is a branch, the function needs to be a runtime value
-    //             todo!()
-    //         }
-
-    //         _ => unreachable!(),
-    //     }
-    // }
-
     fn construct_var_ref_operand(
         &mut self,
         var_ref: &hir::VarRefExpr,
@@ -876,9 +905,12 @@ impl Builder {
                             sum_type.display(context)
                         )
                     });
-                    Operand::Constant(Constant::Int(index_of))
+                    Operand::Constant(Constant::Int(index_of as i64))
                 }
-                _ => todo!("is this possible?"),
+                ty => todo!(
+                    "Internal Compiler Error (MIR): Expected Type::Sum, found {}",
+                    ty.display(context)
+                ),
             }
         };
 
@@ -922,6 +954,7 @@ impl Builder {
             func.locals_map.insert(local, symbol);
             local
         };
+        dbg!(local.into_raw());
 
         self.def_local(local);
 

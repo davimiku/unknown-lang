@@ -22,7 +22,7 @@ pub use expr::{
     UnaryExpr, UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
-pub use typecheck::{ArrayType, FuncSignature, FunctionType, Type};
+pub use typecheck::{ArrayType, FuncSignature, FunctionType, Type, VariantIdx};
 
 use database::Database;
 

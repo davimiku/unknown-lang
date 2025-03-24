@@ -53,3 +53,16 @@ fun main:
 
     check_module(input, expected);
 }
+
+#[test]
+fn sum_type_with_data() {
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun (i: Int) -> { Number.int i }
+";
+
+    let expected = "";
+
+    check_module(input, expected);
+}

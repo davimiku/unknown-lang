@@ -22,9 +22,9 @@ fn check_module(input: &str, expected: &str) {
     let (module, context) = hir::lower(input);
     if !context.diagnostics.is_empty() {
         for diagnostic in &context.diagnostics {
-            println!("{}", diagnostic.display(&context));
             let range = diagnostic.range();
-            println!("{}", &input[range]);
+            println!("expr: `{}`", &input[range]);
+            println!("error: '{}'", diagnostic.display(&context));
         }
         assert_eq!(context.diagnostics, vec![]);
     }

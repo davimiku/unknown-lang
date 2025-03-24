@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::interner::Key;
 use crate::type_expr::TypeSymbol;
-use crate::{Context, ContextDisplay, Expr, IntrinsicExpr, TypeExpr, ValueSymbol};
+use crate::{Context, ContextDisplay, Expr, IntrinsicExpr, Pattern, TypeExpr, ValueSymbol};
 use ast::Mutability;
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
@@ -49,6 +49,8 @@ pub struct Database {
     /// `let myColor = Color.green`
     ///                ^^^^^
     pub(crate) type_value_symbols: HashMap<ValueSymbol, TypeSymbol>,
+
+    pub(crate) patterns: Arena<Pattern>,
 }
 
 impl ContextDisplay for Database {
@@ -129,6 +131,15 @@ impl Database {
         let idx = self.type_exprs.alloc(expr);
         self.type_expr_ranges.insert(idx, range);
 
+        idx
+    }
+
+    /// Allocates a pattern into the database, returning an index to store
+    /// for later use.
+    pub(crate) fn alloc_pattern(&mut self, pattern: Pattern, range: TextRange) -> Idx<Pattern> {
+        let idx = self.patterns.alloc(pattern);
+        // TODO - store TextRange too?
+        // self.pattern_ranges.insert(idx, range)
         idx
     }
 }

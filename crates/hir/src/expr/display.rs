@@ -91,7 +91,13 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
         Expr::UnionNamespace(union_namespace) => {
             s.push_str(&union_namespace.name.display(context).to_string())
         }
-        Expr::UnionVariant(_) => todo!(),
+        Expr::UnionVariant(variant) => {
+            s.push_str(&format!(
+                "{}.{}",
+                variant.union_namespace.display(context),
+                context.lookup(variant.name)
+            ));
+        }
         Expr::UnionUnitVariant(unit_variant) => s.push_str(&format!(
             "{}.{}",
             unit_variant.union_namespace.display(context),

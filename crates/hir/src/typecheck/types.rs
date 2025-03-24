@@ -1,9 +1,11 @@
+use std::fmt::{self, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use la_arena::Idx;
 
-use crate::{type_expr::TypeSymbol, Context, ContextDisplay, Key};
+use crate::type_expr::TypeSymbol;
+use crate::{Context, ContextDisplay, Key};
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Type {
@@ -30,8 +32,6 @@ pub enum Type {
 
     // Product
     // Product(ProductType)
-
-    // Exponential
     Function(FunctionType),
     Array(ArrayType),
     // TODO: consider arena allocating larger variants
@@ -77,7 +77,34 @@ impl Type {
     }
 
     pub(crate) fn func(signatures: Vec<FuncSignature>) -> Self {
-        Self::Function(FunctionType { signatures })
+        Self::Function(FunctionType {
+            signatures,
+            variant: None,
+        })
+    }
+
+    pub(crate) fn union_variant_func(signature: FuncSignature, variant: (Idx<Type>, u32)) -> Self {
+        Self::Function(FunctionType {
+            signatures: vec![signature],
+            variant: Some((variant.0, variant.1.into())),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VariantIdx {
+    value: u32,
+}
+
+impl fmt::Display for VariantIdx {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.value.to_string())
+    }
+}
+
+impl From<u32> for VariantIdx {
+    fn from(value: u32) -> Self {
+        Self { value }
     }
 }
 
@@ -131,11 +158,11 @@ pub struct SumType {
 }
 
 impl SumType {
-    pub fn index_of(&self, key: Key) -> Option<i64> {
+    pub fn index_of(&self, key: Key) -> Option<u32> {
         self.variants
             .iter()
             .position(|(k, _)| *k == key)
-            .map(|u| u as i64)
+            .map(|u| u as u32)
     }
 
     pub fn variant_type_of(&self, key: Key) -> Option<Idx<Type>> {
@@ -182,6 +209,11 @@ pub struct FunctionType {
     // TODO: use a SmallVec or something like that because
     // most functions probably have a single signature
     pub signatures: Vec<FuncSignature>,
+
+    /// Non-unit variants are type checked as a function returning an instance of that union
+    ///
+    // TODO - use opaque type VariantIdx (move from MIR to HIR?)
+    pub variant: Option<(Idx<Type>, VariantIdx)>,
 }
 
 impl ContextDisplay for FunctionType {

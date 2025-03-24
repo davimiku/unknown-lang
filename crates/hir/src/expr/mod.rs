@@ -10,7 +10,8 @@ use util_macros::assert_matches;
 use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
-use crate::{Context, Type};
+use crate::typecheck::VariantIdx;
+use crate::{Context, ContextDisplay, Type};
 
 /// HIR Expression
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -275,7 +276,7 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn return_ty_idx(&self, context: &Context) -> Idx<Type> {
+    pub fn return_ty(&self, context: &Context) -> Idx<Type> {
         let func_ty = context.expr_type(self.callee);
         let func_ty = assert_matches!(func_ty, Type::Function);
         if let Some(sig_index) = self.signature_index {
@@ -283,6 +284,15 @@ impl CallExpr {
             sig.return_ty
         } else {
             context.core_types().error
+        }
+    }
+
+    pub fn is_union_variant(&self, context: &Context) -> Option<(Idx<Type>, VariantIdx)> {
+        let func_ty = context.expr_type(self.callee);
+        if let Type::Function(func) = func_ty {
+            func.variant
+        } else {
+            None
         }
     }
 }
@@ -424,7 +434,7 @@ pub struct MatchExpr {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatchArm {
-    pub pattern: Pattern,
+    pub pattern: Idx<Pattern>,
 
     pub expr: Idx<Expr>,
 }
@@ -452,11 +462,13 @@ pub enum Pattern {
     /// //  ^^^
     /// match u {
     ///     .a -> [...],
-    ///     .b -> [...],
+    ///     .b data -> [...],
+    /// //     ^^^^
     ///     all -> [...],
     /// //  ^^^
     /// }
     /// ```
+    // TODO - split out ident that are within a variant pattern to a different kind?
     IdentBinding {
         meta: PatternMeta,
         binding: IdentPatternBinding,
@@ -482,7 +494,7 @@ pub enum Pattern {
     /// ```
     Variant {
         meta: PatternMeta,
-        pattern: Box<VariantPattern>, // TODO - arena allocate patterns? and use Idx here
+        pattern: VariantPattern,
     },
 
     // TODO - Record
@@ -509,7 +521,17 @@ pub enum Pattern {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PatternMeta {
     pub range: TextRange,
-    // pub id ?? some kind of HirId like rustc?
+
+    /// Direct parent pattern, for example when nested inside a VariantPattern
+    ///
+    /// ```ignore
+    /// match thing {
+    ///     .variant1 ident -> [...],
+    /// //            ^^^^^ self
+    /// //  ^^^^^^^^^^^^^^^ parent
+    /// }
+    /// ```
+    pub parent: Option<Idx<Pattern>>,
 }
 
 /// ```ignore
@@ -538,7 +560,7 @@ pub struct IdentPatternBinding {
     pub symbol: ValueSymbol,
 
     /// Key corresponding to the variant without the dot if
-    /// this is a pattern in a `match` [or `if let`]
+    /// this is a pattern in a `match` (or `if let`?)
     pub variant: Option<Key>,
 }
 
@@ -555,6 +577,7 @@ pub struct IdentPatternBinding {
 ///
 /// match u {
 ///     .first .second .third int -> { ... }
+/// //  ^^^^^^^^^^^^^^^^^^^^^^^^^
 /// }
 /// ```
 ///
@@ -571,7 +594,7 @@ pub struct VariantPattern {
     /// .first .second .third int -> { ... }
     /// //     ^^^^^^^^^^^^^^^^^^
     /// ```
-    pub inner_pattern: Option<Pattern>,
+    pub inner_pattern: Option<Idx<Pattern>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

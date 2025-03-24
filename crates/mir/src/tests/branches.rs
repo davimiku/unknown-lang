@@ -140,6 +140,60 @@ fun main:
 }
 
 #[test]
+fn match_unpack() {
+    let input = "
+type TwoInts = (int_a: Int | int_b: Int)
+let main = fun (ti: TwoInts) -> Int {
+    match ti {
+        .int_a ia -> { ia }
+        .int_b ib -> { ib }
+    }
+}";
+
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: TwoInts~1.0
+    _2: Int
+    _3: Int
+    _4: Int
+    
+    BB0():
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), else -> BB1()]
+    BB1():
+        _3 := copy _1.int_a
+        _0 := copy _3
+        Jump -> BB3()
+    BB2():
+        _4 := copy _1.int_b
+        _0 := copy _4
+        Jump -> BB3()
+    BB3():
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+// FIXME not working yet - need to fix the construction of the union value
+#[test]
+fn match_unpack_and_repack() {
+    let input = "
+type Number = (int: Int | float: Float)
+let main = fun (n: Number) -> Number {
+    match n {
+        .int i -> { Number.int i }
+        .float f -> { Number.float f }
+    }
+}";
+
+    let expected = "";
+
+    check_module(input, expected);
+}
+
+#[test]
 fn basic_if_else() {
     let input = "
 let main = fun (condition: Bool) -> Int { 

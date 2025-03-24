@@ -10,10 +10,9 @@ use util_macros::assert_matches;
 
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
-    FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IndexIntExpr,
-    IntrinsicExpr, ListLiteralExpr, LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta,
-    ReAssignment, UnaryExpr, UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
-    VariantPattern,
+    FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IntrinsicExpr,
+    ListLiteralExpr, LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta, ReAssignment, UnaryExpr,
+    UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr, VariantPattern,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -201,6 +200,14 @@ impl Context {
         self.lookup(key)
     }
 
+    pub fn pattern(&self, idx: Idx<Pattern>) -> &Pattern {
+        &self.database.patterns[idx]
+    }
+
+    pub fn pattern_mut(&mut self, idx: Idx<Pattern>) -> &mut Pattern {
+        &mut self.database.patterns[idx]
+    }
+
     pub fn lookup_operator(&self, symbol: ValueSymbol) -> Option<IntrinsicExpr> {
         self.database.lookup_operator(symbol)
     }
@@ -231,6 +238,13 @@ impl Context {
             .or_else(|| self.core_scopes().find_type(name))
     }
 
+    pub fn find_symbol_of_expr(&self, expr: Idx<Expr>) -> Option<ValueSymbol> {
+        match self.expr(expr) {
+            Expr::VarRef(var_ref_expr) => Some(var_ref_expr.symbol),
+            _ => None,
+        }
+    }
+
     fn current_scopes(&self) -> &ModuleScopes {
         &self.module_scopes[self.current_module_id as usize]
     }
@@ -249,9 +263,15 @@ impl Context {
         self.database.alloc_expr(expr, ast)
     }
 
+    // TODO - function that allocates Idx<Expr> using Expr and directly using TextRange (not ast::Expr)
+    // look for corresponding TODOs where this is useful
+
     pub(crate) fn alloc_type_expr(&mut self, expr: TypeExpr, range: TextRange) -> Idx<TypeExpr> {
-        // self.type_database.insert_type_symbol(key, ty);
         self.database.alloc_type_expr(expr, range)
+    }
+
+    pub(crate) fn alloc_pattern(&mut self, pattern: Pattern, range: TextRange) -> Idx<Pattern> {
+        self.database.alloc_pattern(pattern, range)
     }
 
     pub(crate) fn push_scope(&mut self) {
@@ -535,7 +555,7 @@ impl Context {
         ast.pattern().map(|pattern| {
             self.push_scope();
 
-            let pattern = self.lower_pattern(pattern);
+            let pattern = self.lower_pattern(pattern, None);
             let expr = self.lower_expr(ast.expr());
 
             self.pop_scope();
@@ -544,55 +564,68 @@ impl Context {
         })
     }
 
-    fn lower_pattern(&mut self, ast: ast::Pattern) -> Pattern {
+    fn lower_pattern(&mut self, ast: ast::Pattern, parent: Option<Idx<Pattern>>) -> Idx<Pattern> {
         let range = ast.range();
-        let meta = PatternMeta { range };
+        let meta = PatternMeta { range, parent };
 
         match ast {
             ast::Pattern::Identifier(ident) => {
-                // making a new scope should be handled before this part
+                // new scope has already been created to lower this ident
                 let (ident, symbol) = self.lower_value_name(ident.as_string());
 
-                Pattern::IdentBinding {
-                    meta,
-                    binding: IdentPatternBinding {
-                        ident,
-                        symbol,
-                        variant: None,
-                    },
-                }
+                let variant = parent.map(|idx| {
+                    let parent = self.pattern(idx);
+                    if let Pattern::Variant { pattern, .. } = parent {
+                        pattern.variant
+                    } else {
+                        unreachable!()
+                    }
+                });
+
+                let binding = IdentPatternBinding {
+                    ident,
+                    symbol,
+                    variant,
+                };
+                self.alloc_pattern(Pattern::IdentBinding { meta, binding }, range)
             }
             ast::Pattern::DotIdentifier(dot_pattern) => {
                 let variant = self.interner.intern(&dot_pattern.name());
 
-                let inner_pattern = match dot_pattern.inner_pattern() {
-                    Some(inner_ast_pattern) => Some(self.lower_pattern(inner_ast_pattern)),
-                    _ => None,
-                };
-
-                Pattern::Variant {
+                let variant_pattern = Pattern::Variant {
                     meta,
-                    pattern: Box::new(VariantPattern {
+                    pattern: VariantPattern {
                         variant,
-                        inner_pattern,
-                    }),
+                        inner_pattern: None,
+                    },
+                };
+                let parent = self.alloc_pattern(variant_pattern, range);
+
+                let inner_pattern = dot_pattern
+                    .inner_pattern()
+                    .map(|inner_ast_pattern| self.lower_pattern(inner_ast_pattern, Some(parent)));
+                let variant_pattern = self.pattern_mut(parent);
+                if let Pattern::Variant { pattern, .. } = variant_pattern {
+                    pattern.inner_pattern = inner_pattern
+                } else {
+                    unreachable!("just allocated this Pattern::Variant")
                 }
+
+                parent
             }
             ast::Pattern::StringLiteral(string_literal) => {
                 let expr = self.lower_string_literal(string_literal);
-                Pattern::StringLiteral {
-                    meta,
-                    literal: self.alloc_expr(expr, None), // TODO - pass in the AST range
-                }
+                let literal = self.alloc_expr(expr, None); // TODO - pass in the range
+                self.alloc_pattern(Pattern::StringLiteral { meta, literal }, range)
             }
             ast::Pattern::IntLiteral(int_literal) => {
                 let expr = self.lower_int_literal(int_literal);
-                Pattern::IntLiteral {
-                    meta,
-                    literal: self.alloc_expr(expr, None), // TODO - pass in the AST range
-                }
+                let literal = self.alloc_expr(expr, None); // TODO - pass in the range
+                self.alloc_pattern(Pattern::IntLiteral { meta, literal }, range)
             }
-            ast::Pattern::Wildcard(syntax_node) => Pattern::Wild { meta },
+            ast::Pattern::Wildcard(syntax_node) => {
+                self.alloc_pattern(Pattern::Wild { meta }, range)
+            }
         }
     }
 
@@ -715,7 +748,7 @@ impl Context {
 
             match self.expr(member) {
                 Expr::UnresolvedVarRef { key } => panic!(
-                    "Internal Compiler Error: Unresolved variable '{}'",
+                    "Internal Compiler Error (HIR): Unresolved variable '{}'",
                     self.lookup(*key)
                 ),
 

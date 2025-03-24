@@ -4,6 +4,8 @@
 //! the expression and recursively calls infer when necessary. Base cases are
 //! for value literals and types that have already been inferred.
 
+use std::env::var;
+
 use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
@@ -18,7 +20,7 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
-use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern};
+use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module, Pattern};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -93,7 +95,6 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         // Or treat it as a record of `( red: Color, green: Color, blue: Color )` when records are implemented?
         Expr::UnionNamespace(_) => todo!(),
 
-        // TODO - this should give a function that accepts parameter(s) and gives back an instance of the union
         Expr::UnionVariant(variant) => {
             let union_namespace =
                 assert_matches!(context.expr(variant.union_namespace), Expr::UnionNamespace);
@@ -109,12 +110,11 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
                 return_ty: union_ty,
             };
 
-            result.ty = context
-                .type_database
-                .alloc_type(Type::func(vec![signature]));
+            result.ty = context.type_database.alloc_type(Type::union_variant_func(
+                signature,
+                (variant_ty, variant.index),
+            ));
         }
-        // TODO - Does the UnionUnitVariant get the `Color` type or should that be the Path?
-        // this appears to work fine but maybe that's a lie
         Expr::UnionUnitVariant(unit_variant) => {
             let union_namespace = context.expr(unit_variant.union_namespace);
             let union_namespace = assert_matches!(union_namespace, Expr::UnionNamespace);
@@ -423,7 +423,7 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
     result.chain(infer_expr(*callee, context));
 
     let result_type = context.type_(result.ty).clone();
-    if let Type::Function(FunctionType { signatures }) = result_type {
+    if let Type::Function(FunctionType { signatures, .. }) = result_type {
         if signatures.len() == 1 {
             let FuncSignature { params, return_ty } = &signatures[0];
             if args.len() != params.len() {
@@ -578,64 +578,20 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
 
 fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
-    let int = context.core_types().int;
 
     // TODO - should be 'check' instead of 'infer'? scrutinee must be SumType, IntLiteral, FloatLiteral, StringLiteral, etc.
     result.chain(infer_expr(match_expr.scrutinee, context));
     let scrutinee_ty = result.ty;
 
     let mut overall_ty: Option<Idx<Type>> = None;
+    let mut saw_catch_all = false;
     for arm in &match_expr.arms {
-        match &arm.pattern {
-            Pattern::Wild { meta } => todo!(),
-            Pattern::IdentBinding { meta, binding } => {
-                // TODO - `context.type_database.set_expr_type(expr_idx, scrutinee_ty);`
-                // if we need to set the type for the Idx<Expr> - probably do for LSP when someone
-                // mouses over that expression
-                // Need to store Idx<Expr> on IdentPatternBinding
-
-                context
-                    .type_database
-                    .insert_value_symbol(binding.symbol, scrutinee_ty);
-            }
-            Pattern::Variant {
-                meta,
-                pattern: binding,
-            } => {
-                // if there's a variable, like `.variant data`, then need to infer type for `data` by backtracking
-                // through the scrutinee to the original union definition
-                if let Some(inner_pattern) = &binding.inner_pattern {
-                    let variant_key = binding.variant;
-                    let scrutinee = context.type_(scrutinee_ty);
-                    match (scrutinee, inner_pattern) {
-                        // TODO - handle recursive patterns and non-ident patterns
-                        // `.variant 3`, `.variant .another inner`, `.variant _` are all valid
-                        // probably need a `infer_pattern` which takes (&Pattern, scrutinee_ty or variant_ty, &mut Context)
-                        (Type::Sum(sum_type), Pattern::IdentBinding { meta, binding }) => {
-                            let variant_ty = sum_type.variant_type_of(variant_key);
-                            match variant_ty {
-                                Some(ty) => {
-                                    context
-                                        .type_database
-                                        .insert_value_symbol(binding.symbol, ty);
-                                }
-                                None => todo!("type error, this variant doesn't exist"),
-                            }
-                        }
-                        t => {
-                            todo!("raise a type error for trying to use a variant pattern on something that's not a sum type: {:?}", t);
-                        }
-                    }
-                }
-            }
-            Pattern::IntLiteral { meta, literal } => {
-                if scrutinee_ty != int {
-                    result.push_diag(TypeDiagnostic::mismatch(scrutinee_ty, int, meta.range));
-                }
-            }
-            Pattern::FloatLiteral { meta, literal } => todo!(),
-            Pattern::StringLiteral { meta, literal } => todo!(),
-        }
+        result.chain(infer_pattern(
+            arm.pattern,
+            scrutinee_ty,
+            &mut saw_catch_all,
+            context,
+        ));
 
         let arm_ty = infer_expr_widened(arm.expr, context);
         if arm_ty.is_ok() && overall_ty.is_none() {
@@ -647,6 +603,106 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
     match overall_ty {
         Some(ty) => result.ty = ty,
         None => result.ty = context.core_types().error,
+    }
+
+    result
+}
+
+fn infer_pattern(
+    pattern: Idx<Pattern>,
+    scrutinee_ty: Idx<Type>,
+    saw_catch_all: &mut bool,
+    context: &mut Context,
+) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+    let int_ty = context.core_types().int;
+    let bottom_ty = context.core_types().bottom;
+    let unknown_ty = context.core_types().unknown;
+
+    let pattern = context.pattern(pattern);
+    match pattern {
+        Pattern::Wild { meta } => {
+            // TODO - store a Key/ValueSymbol for the '_' itself and associate a type for LSP
+            if *saw_catch_all {
+                result.ty = context.core_types().bottom;
+            } else {
+                *saw_catch_all = true;
+                result.ty = scrutinee_ty;
+            }
+        }
+        Pattern::IdentBinding { meta, binding } => {
+            // TODO - `context.type_database.set_expr_type(expr_idx, scrutinee_ty);`
+            // if we need to set the type for the Idx<Expr> - probably do for LSP when someone
+            // mouses over that expression
+            // Need to store Idx<Expr> on IdentPatternBinding
+
+            let pattern_ty = if *saw_catch_all {
+                bottom_ty
+            } else {
+                *saw_catch_all = true;
+                if let Some(parent) = meta.parent {
+                    let parent = context.pattern(parent);
+                    match parent {
+                        Pattern::Wild { meta } => todo!("compiler error: can't do `_ ident`"),
+                        Pattern::IdentBinding { meta, binding } => {
+                            todo!("compiler error: can't do `ident ident`")
+                        }
+                        Pattern::Variant { meta, pattern } => {
+                            let scrutinee_ty =
+                                assert_matches!(context.type_(scrutinee_ty), Type::Sum);
+
+                            scrutinee_ty
+                                .variant_type_of(pattern.variant)
+                                .unwrap_or(unknown_ty)
+                        }
+                        Pattern::IntLiteral { meta, literal } => {
+                            todo!("compiler error: can't do `16 ident`")
+                        }
+                        Pattern::FloatLiteral { meta, literal } => {
+                            todo!("compiler error: can't do `1.2 ident`")
+                        }
+                        Pattern::StringLiteral { meta, literal } => {
+                            todo!("compiler error: can't do `\"s\" ident`")
+                        }
+                    }
+                } else {
+                    scrutinee_ty
+                }
+            };
+            result.ty = pattern_ty;
+            context
+                .type_database
+                .insert_value_symbol(binding.symbol, pattern_ty);
+        }
+        Pattern::Variant { meta, pattern } => {
+            // TODO - this needs to check for a parent pattern as well, because nested variants are valid
+            // i.e. `.variant .inner_variant ident` is valid
+            let scrutinee = context.type_(scrutinee_ty);
+            match scrutinee {
+                Type::Sum(sum_type) => {
+                    // TODO - check variant key against sum type here? Or should be done prior in lowering?
+                }
+                t => todo!("type diagnostic for only can use variant patterns on sum types"),
+            }
+
+            // if there's a variable, like `.variant data`, then need to infer type for `data` by backtracking
+            // through the scrutinee to the original union definition
+            if let Some(inner_pattern) = &pattern.inner_pattern {
+                result.chain(infer_pattern(
+                    *inner_pattern,
+                    scrutinee_ty,
+                    &mut false,
+                    context,
+                ));
+            }
+        }
+        Pattern::IntLiteral { meta, literal } => {
+            if scrutinee_ty != int_ty {
+                result.push_diag(TypeDiagnostic::mismatch(scrutinee_ty, int_ty, meta.range));
+            }
+        }
+        Pattern::FloatLiteral { meta, literal } => todo!(),
+        Pattern::StringLiteral { meta, literal } => todo!(),
     }
 
     result

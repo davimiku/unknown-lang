@@ -7,8 +7,8 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BinOpKind, BlockTarget, BranchIntTargets, Constant, Operand, Place, Rvalue, Statement,
-    Terminator, UnOp,
+    BinOpKind, BlockTarget, BranchIntTargets, Constant, Operand, Place, ProjectionElem, Rvalue,
+    Statement, Terminator, UnOp,
 };
 use crate::{BasicBlock, Function, Local, Module};
 
@@ -25,6 +25,7 @@ pub trait MirWrite {
     ) -> io::Result<()>;
 }
 
+#[cfg(test)]
 pub fn write_module<W: io::Write>(
     module: &Module,
     buf: &mut W,
@@ -328,13 +329,46 @@ impl MirWrite for Place {
     fn write<W: io::Write>(
         &self,
         buf: &mut W,
+        module: &Module,
+        context: &Context,
+        indent: &mut Indent,
+    ) -> io::Result<()> {
+        write!(buf, "{}", idx_local_to_string(&self.local))?;
+        for projection in &self.projections {
+            projection.write(buf, module, context, indent)?;
+        }
+        Ok(())
+    }
+}
+
+impl MirWrite for ProjectionElem {
+    fn write<W: io::Write>(
+        &self,
+        buf: &mut W,
         _: &Module,
-        _: &Context,
+        context: &Context,
         _: &mut Indent,
     ) -> io::Result<()> {
-        write!(buf, "{}", idx_local_to_string(&self.local))
-        // TODO: write projections, such as _1.2
-        //                                    ^^ (field projection)
+        match self {
+            ProjectionElem::Deref => todo!(),
+            ProjectionElem::Field(field_idx, ty) => todo!(),
+            ProjectionElem::Index(idx) => todo!(),
+            ProjectionElem::ConstantIndex {
+                offset,
+                min_length,
+                from_end,
+            } => todo!(),
+            ProjectionElem::Subslice { from, to, from_end } => todo!(),
+            ProjectionElem::DowncastVariant(key, idx) => match key {
+                Some(key) => write!(buf, ".{}", context.lookup(*key)),
+                None => write!(buf, "{}", idx),
+            },
+            ProjectionElem::UpcastVariant(key, idx) => match key {
+                Some(key) => write!(buf, ".^{}", context.lookup(*key)),
+                None => write!(buf, ".^{}", idx),
+            },
+            ProjectionElem::OpaqueCast(ty) => todo!(),
+        }
     }
 }
 
