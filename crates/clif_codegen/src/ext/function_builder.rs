@@ -1,4 +1,4 @@
-use cranelift::{codegen::ir::types::I64, prelude::*};
+use cranelift::prelude::*;
 use mir::Operand;
 
 type IsConstant = bool;

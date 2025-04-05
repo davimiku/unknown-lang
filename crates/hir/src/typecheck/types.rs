@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::{Index, IndexMut};
 
 use itertools::Itertools;
 use la_arena::Idx;
@@ -83,17 +84,26 @@ impl Type {
         })
     }
 
-    pub(crate) fn union_variant_func(signature: FuncSignature, variant: (Idx<Type>, u32)) -> Self {
+    pub(crate) fn union_variant_func(
+        signature: FuncSignature,
+        variant: (Idx<Type>, u32, Key),
+    ) -> Self {
         Self::Function(FunctionType {
             signatures: vec![signature],
-            variant: Some((variant.0, variant.1.into())),
+            variant: Some((variant.0, variant.1.into(), variant.2)),
         })
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct VariantIdx {
     value: u32,
+}
+
+impl VariantIdx {
+    pub fn into_raw(self) -> u32 {
+        self.value
+    }
 }
 
 impl fmt::Display for VariantIdx {
@@ -105,6 +115,41 @@ impl fmt::Display for VariantIdx {
 impl From<u32> for VariantIdx {
     fn from(value: u32) -> Self {
         Self { value }
+    }
+}
+
+impl From<usize> for VariantIdx {
+    fn from(value: usize) -> Self {
+        Self {
+            value: value as u32,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VecVariantIdx<T> {
+    inner: Vec<T>,
+}
+
+impl<T> Default for VecVariantIdx<T> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
+impl<T> Index<VariantIdx> for VecVariantIdx<T> {
+    type Output = T;
+
+    fn index(&self, index: VariantIdx) -> &Self::Output {
+        &self.inner[index.into_raw() as usize]
+    }
+}
+
+impl<T> IndexMut<VariantIdx> for VecVariantIdx<T> {
+    fn index_mut(&mut self, index: VariantIdx) -> &mut Self::Output {
+        &mut self.inner[index.into_raw() as usize]
     }
 }
 
@@ -158,19 +203,23 @@ pub struct SumType {
 }
 
 impl SumType {
-    pub fn index_of(&self, key: Key) -> Option<u32> {
+    pub fn index_of(&self, key: Key) -> Option<VariantIdx> {
         self.variants
             .iter()
             .position(|(k, _)| *k == key)
-            .map(|u| u as u32)
+            .map(VariantIdx::from)
     }
 
-    pub fn variant_type_of(&self, key: Key) -> Option<Idx<Type>> {
+    pub fn type_of_key(&self, key: Key) -> Option<Idx<Type>> {
         self.variants
             .iter()
             .find(|(k, _)| *k == key)
             .map(|(.., ty)| ty)
             .copied()
+    }
+
+    pub fn type_of_idx(&self, idx: VariantIdx) -> Idx<Type> {
+        self.variants[idx.into_raw() as usize].1
     }
 
     pub fn is_unit(&self, context: &Context) -> bool {
@@ -211,9 +260,7 @@ pub struct FunctionType {
     pub signatures: Vec<FuncSignature>,
 
     /// Non-unit variants are type checked as a function returning an instance of that union
-    ///
-    // TODO - use opaque type VariantIdx (move from MIR to HIR?)
-    pub variant: Option<(Idx<Type>, VariantIdx)>,
+    pub variant: Option<(Idx<Type>, VariantIdx, Key)>,
 }
 
 impl ContextDisplay for FunctionType {

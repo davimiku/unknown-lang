@@ -62,7 +62,33 @@ type Number = (int: Int | float: Float)
 let main = fun (i: Int) -> { Number.int i }
 ";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Number~1.0
+    _1: Int
+    
+    BB0():
+        _0 := Number.int$0(copy _1)
+        Return _0 ->";
+
+    check_module(input, expected);
+
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun (f: Float) -> { Number.float f }
+";
+
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Number~1.0
+    _1: Float
+    
+    BB0():
+        _0 := Number.float$1(copy _1)
+        Return _0 ->";
 
     check_module(input, expected);
 }

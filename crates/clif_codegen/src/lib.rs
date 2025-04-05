@@ -7,11 +7,15 @@ use jit::JIT;
 mod builtins;
 mod ext;
 mod jit;
+mod layout;
+mod macros;
+mod place;
 #[cfg(test)]
 mod sandbox;
 #[cfg(test)]
 mod tests;
 mod translate;
+mod variable_map;
 
 type EntryPoints = HashMap<String, *const u8>;
 

@@ -176,7 +176,6 @@ fun main:
     check_module(input, expected);
 }
 
-// FIXME not working yet - need to fix the construction of the union value
 #[test]
 fn match_unpack_and_repack() {
     let input = "
@@ -188,7 +187,28 @@ let main = fun (n: Number) -> Number {
     }
 }";
 
-    let expected = "";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Number~1.0
+    _1: Number~1.0
+    _2: Int
+    _3: Int
+    _4: Float
+    
+    BB0():
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), else -> BB1()]
+    BB1():
+        _3 := copy _1.int
+        _0 := Number.int$0(copy _3)
+        Jump -> BB3()
+    BB2():
+        _4 := copy _1.float
+        _0 := Number.float$1(copy _4)
+        Jump -> BB3()
+    BB3():
+        Return _0 ->";
 
     check_module(input, expected);
 }

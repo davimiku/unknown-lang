@@ -18,7 +18,7 @@ pub(crate) type XInt = i64;
 /// Language `Float` is a Rust `f64`
 pub(crate) type XFloat = f64;
 
-/// Language `Bool` is a Rust `i64`
+/// Language `Bool` is a unit union type which is represented as a Rust `i64`
 ///
 /// repr(transparent) is mandatory for FFI through "extern "C"" functions
 /// once repr(crabi) is stabilized, we would use that and implement that repr
@@ -70,10 +70,11 @@ pub(crate) extern "C" fn print_string(s: XString) {
 
 /// Prints an integer to stdout with a newline
 pub(crate) extern "C" fn print_int(i: XInt) {
-    let mut s = i.to_string();
-    s.push('\n');
+    let s = i.to_string();
+    let buf = s.as_bytes();
     let stdout = &mut std::io::stdout().lock();
-    let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
+    let _ = stdout.write(buf).expect("succeeded writing bytes");
+    let _ = stdout.write(b"\n").expect("succeeded writing newline");
     let _ = stdout.flush();
 }
 
@@ -84,7 +85,7 @@ pub(crate) extern "C" fn print_float(f: XFloat) {
 
     let stdout = &mut std::io::stdout().lock();
     let _ = stdout.write(s.as_bytes()).expect("succeeded writing bytes");
-    let _ = stdout.write(&[b'\n']).expect("succeeded writing newline");
+    let _ = stdout.write(b"\n").expect("succeeded writing newline");
     let _ = stdout.flush();
 }
 

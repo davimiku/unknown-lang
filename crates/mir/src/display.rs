@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Write};
 use std::io;
 use std::ops::Deref;
 
-use hir::{Context, ContextDisplay};
+use hir::{Context, ContextDisplay, Key};
 use itertools::Itertools;
 use la_arena::Idx;
 
@@ -363,10 +363,6 @@ impl MirWrite for ProjectionElem {
                 Some(key) => write!(buf, ".{}", context.lookup(*key)),
                 None => write!(buf, "{}", idx),
             },
-            ProjectionElem::UpcastVariant(key, idx) => match key {
-                Some(key) => write!(buf, ".^{}", context.lookup(*key)),
-                None => write!(buf, ".^{}", idx),
-            },
             ProjectionElem::OpaqueCast(ty) => todo!(),
         }
     }
@@ -398,6 +394,11 @@ impl MirWrite for Rvalue {
             Rvalue::Discriminant(place) => {
                 write!(buf, "discriminant(")?;
                 place.write(buf, module, context, indent)?;
+                write!(buf, ")")
+            }
+            Rvalue::UnionVariant(variant_idx, key, operand) => {
+                write!(buf, "{}${}(", context.lookup(*key), variant_idx.into_raw())?;
+                operand.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }
         }

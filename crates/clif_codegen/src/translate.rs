@@ -4,25 +4,26 @@
 //! https://github.com/bytecodealliance/wasmtime/blob/main/cranelift/docs/ir.md
 //!
 //! Uses the cranelift_frontend Builder and Context to walk the control flow graph of
-//! the MIR and translate it into the CLIF instructions. This is a "translation" rather
-//! than a lowering because it's between two representations at roughly the same level of
-//! abstraction.
+//! the MIR and translate it into the CLIF instructions.
 
 mod arithmetic;
 
 use std::collections::HashMap;
 use std::ops::Deref;
 
+use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::frontend::Switch;
+use cranelift::prelude::types::{F64, I64};
 use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Module};
-use hir::Type as HType;
+use hir::{Type as HType, VariantIdx};
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
+use mir::ProjectionElem;
 use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
@@ -30,43 +31,27 @@ use mir::{
 use util_macros::assert_matches;
 
 use crate::ext::function_builder::FunctionBuilderExt;
+use crate::layout::BackendRepr;
+use crate::layout::Layouts;
+use crate::layout::Scalar;
+use crate::macros::assert_byval;
+use crate::place::to_vec_values;
+use crate::place::CPlace;
+use crate::place::CValue;
 
-// TODO: decide on nomenclature for "Type"
-// currently "ClifType" means "Cranelift Type" and
-// "HType" means "HIR Type"
-
-pub(crate) struct CommonTypes {
-    int: ClifType,
-    float: ClifType,
-    ptr: ClifType,
-}
-
-impl Default for CommonTypes {
-    fn default() -> Self {
-        Self {
-            int: types::I64,
-            float: types::F64,
-
-            // TODO - cranelift got rid of the R64 type
-            // https://github.com/bytecodealliance/wasmtime/pull/9164
-            // https://github.com/bytecodealliance/wasmtime/pull/8728
-            ptr: types::I64, // types::R64
-        }
-    }
-}
+const WORD_BYTE_SIZE: u32 = 8;
+// power-of-2: 2^3=8
+const WORD_ALIGNMENT: u8 = 3;
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
 pub(crate) struct FunctionTranslator<'a> {
-    /// Convenience shortcut for common types
-    pub(crate) types: CommonTypes,
-
     pub(crate) func: &'a mir::Function,
 
     /// The builder for the function that is currently being constructed
-    builder: FunctionBuilder<'a>,
+    pub(crate) builder: FunctionBuilder<'a>,
 
     /// Reference to the module that this function is being constructed inside of
     module: &'a mut JITModule,
@@ -77,14 +62,13 @@ pub(crate) struct FunctionTranslator<'a> {
     /// map from our MIR FuncId to CLIF FuncId
     func_map: &'a HashMap<mir::FuncId, FuncId>,
 
-    /// Map from MIR local definitions to CLIF variables
-    ///
-    /// TODO: Cranelift uses SSA, so should the mapping be reversed?
-    ///
-    /// TODO: swap HashMap for FxMap or similar, doesn't need the security of the default hasher
-    variables: HashMap<Idx<Local>, Variable>,
+    places: ArenaMap<Idx<Local>, CPlace>,
 
-    status: TranslateStatus,
+    layouts: Layouts,
+
+    statuses: TranslateStatus,
+
+    next_var_idx: usize,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -101,14 +85,15 @@ impl<'a> FunctionTranslator<'a> {
             module,
             context,
             func_map,
-            types: Default::default(),
-            variables: Default::default(),
-            status: Default::default(),
+            places: Default::default(),
+            layouts: Layouts::new(context.core_types()),
+            statuses: Default::default(),
+            next_var_idx: 0,
         }
     }
 }
 
-impl<'a> FunctionTranslator<'a> {
+impl FunctionTranslator<'_> {
     pub(crate) fn translate_function(mut self) {
         let mir::Function {
             blocks,
@@ -117,7 +102,7 @@ impl<'a> FunctionTranslator<'a> {
             ..
         } = self.func;
 
-        self.translate_signature();
+        self.translate_signature_abi_params();
 
         let mut block_map: BlockMap = ArenaMap::with_capacity(blocks.len());
 
@@ -125,21 +110,14 @@ impl<'a> FunctionTranslator<'a> {
         for (idx, _) in blocks.iter() {
             if predecessors.has_predecessors(idx) {
                 block_map.insert(idx, self.builder.create_block());
-                self.status.insert(idx, Status::Empty);
+                self.statuses.insert(idx, Status::Empty);
             }
         }
 
         // declare all locals with type. value is defined later with def_var
         // params will def_var shortly, other locals are def_var when the block is translated
         for (local_idx, local) in locals.iter() {
-            let local_ty = local.type_(self.context);
-            if !local_ty.is_unit() {
-                let var_index = local_idx.into_raw().into_u32() as usize;
-                let var = Variable::new(var_index);
-                let var_ty = self.translate_type(local.type_(self.context));
-                self.builder.declare_var(var, var_ty);
-                self.variables.insert(local_idx, var);
-            }
+            self.declare_local(local_idx, *local);
         }
 
         let entry_block = {
@@ -153,21 +131,36 @@ impl<'a> FunctionTranslator<'a> {
         };
 
         // def_var the values for parameter locals: _1, _2, _3, ..., _n
-        let param_locals = self.func.param_locals().enumerate();
-        for (i, (local_idx, _)) in param_locals {
-            let val = self.builder.block_params(entry_block)[i];
-            let var = self.variables[&local_idx];
-            self.builder.def_var(var, val);
+        let param_locals = self.func.param_locals();
+        let mut i = 0;
+        for (local_idx, _) in param_locals {
+            match self.places[local_idx] {
+                CPlace::Var { variable, .. } => {
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(variable, val);
+                }
+                CPlace::VarPair { first, second, .. } => {
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(first, val);
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(second, val);
+                }
+                CPlace::Address { pointer, layout } => todo!(),
+            }
         }
 
         // translate the rest of the blocks after the entry block
         for (idx, block) in block_map.iter() {
             self.builder.switch_to_block(*block);
-            // cranelift recommends sealing blocks as soon as possible
+            // TODO - cranelift recommends sealing blocks as soon as possible
+            // uncomment and run all tests after more of the language is implemented
             // self.seal_block(idx, *block);
 
             self.translate_basic_block(idx, &block_map);
-            self.status
+            self.statuses
                 .entry(idx)
                 .and_modify(|entry| *entry = entry.finish());
 
@@ -187,29 +180,113 @@ impl<'a> FunctionTranslator<'a> {
         self.builder.finalize();
     }
 
-    fn translate_signature(&mut self) {
+    fn declare_local(&mut self, local_idx: Idx<Local>, local: Local) {
+        if self.places.contains_idx(local_idx) {
+            panic!("already declared local {:?}, {:?}", local_idx, local);
+        }
+
+        let layout_idx = self.layouts.for_type(local.type_idx(), self.context);
+        let layout = &self.layouts[layout_idx];
+        match layout.backend_repr {
+            BackendRepr::None => {}
+            BackendRepr::Scalar(scalar) => {
+                let var = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                let ty = self.translate_scalar_to_cliftype(scalar);
+                self.builder.declare_var(var, ty);
+                let place = CPlace::Var {
+                    local,
+                    variable: var,
+                    layout: layout_idx,
+                };
+                self.places.insert(local_idx, place);
+            }
+            BackendRepr::ScalarPair(first, second) => {
+                let var_first = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                let ty = self.translate_scalar_to_cliftype(first);
+                self.builder.declare_var(var_first, ty);
+
+                let var_second = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                let ty = self.translate_scalar_to_cliftype(second);
+                self.builder.declare_var(var_second, ty);
+
+                let place = CPlace::VarPair {
+                    local,
+                    first: var_first,
+                    second: var_second,
+                    layout: layout_idx,
+                };
+                self.places.insert(local_idx, place);
+            }
+            BackendRepr::Memory => todo!(),
+        }
+    }
+
+    fn translate_signature_abi_params(&mut self) {
         let (module_id, symbol_id) = self.func.id.into();
         self.builder.func.name = UserFuncName::user(module_id, symbol_id);
 
-        // TODO: this level of abstraction may not work once we have compound types (unions, records)
-        // how do those types get translated for a signature?
-        for ty in &self.func.params {
-            let clif_ty = self.translate_type_idx(*ty);
-            self.builder
-                .func
-                .signature
-                .params
-                .push(AbiParam::new(clif_ty));
+        for ty_idx in &self.func.params {
+            let layout_idx = self.layouts.for_type(*ty_idx, self.context);
+            let layout = &self.layouts[layout_idx];
+            match layout.backend_repr {
+                BackendRepr::None => {}
+                BackendRepr::Scalar(scalar) => {
+                    let abi_param = self.translate_scalar_to_abi_param(scalar);
+                    self.builder.func.signature.params.push(abi_param);
+                }
+                BackendRepr::ScalarPair(first, second) => {
+                    let first_abi_param = self.translate_scalar_to_abi_param(first);
+                    self.builder.func.signature.params.push(first_abi_param);
+                    let second_abi_param = self.translate_scalar_to_abi_param(second);
+                    self.builder.func.signature.params.push(second_abi_param);
+                }
+                BackendRepr::Memory => {
+                    todo!("abi param for struct argument, or a heap pointer (int)")
+                }
+            }
         }
 
-        let return_ty = self.context.type_(self.func.return_ty());
-        if !return_ty.is_unit() {
-            let return_ty = self.translate_type(return_ty);
-            self.builder
-                .func
-                .signature
-                .returns
-                .push(AbiParam::new(return_ty));
+        {
+            // return type
+            let return_ty = self.func.return_ty();
+
+            let layout_idx = self.layouts.for_type(return_ty, self.context);
+            let layout = &self.layouts[layout_idx];
+            match layout.backend_repr {
+                BackendRepr::None => {}
+                BackendRepr::Scalar(scalar) => {
+                    let abi_param = self.translate_scalar_to_abi_param(scalar);
+                    self.builder.func.signature.returns.push(abi_param);
+                }
+                BackendRepr::ScalarPair(first, second) => {
+                    let first_abi_param = self.translate_scalar_to_abi_param(first);
+                    self.builder.func.signature.returns.push(first_abi_param);
+                    let second_abi_param = self.translate_scalar_to_abi_param(second);
+                    self.builder.func.signature.returns.push(second_abi_param);
+                }
+                BackendRepr::Memory => {
+                    todo!("abi param for struct return, or a heap pointer (int)")
+                }
+            }
+        }
+    }
+
+    fn translate_scalar_to_abi_param(&self, scalar: Scalar) -> AbiParam {
+        match scalar {
+            Scalar::Int => AbiParam::new(I64),
+            Scalar::Float => AbiParam::new(F64),
+            Scalar::Pointer(ptr) => todo!(),
+        }
+    }
+
+    fn translate_scalar_to_cliftype(&self, scalar: Scalar) -> ClifType {
+        match scalar {
+            Scalar::Int => I64,
+            Scalar::Float => F64,
+            Scalar::Pointer(pointer) => todo!(),
         }
     }
 
@@ -230,9 +307,7 @@ impl<'a> FunctionTranslator<'a> {
             Statement::Assign(assign) | Statement::ReAssign(assign) => {
                 let (place, rvalue) = assign.deref();
 
-                let val = self.translate_rvalue(rvalue);
-                let var = self.variables[&place.local];
-                self.builder.def_var(var, val);
+                self.translate_rvalue(place, rvalue);
             }
             Statement::SetDiscriminant {
                 place,
@@ -282,7 +357,8 @@ impl<'a> FunctionTranslator<'a> {
         destination: &Place,
         target: Option<(ClifBlock, &Vec<Idx<Local>>)>,
     ) {
-        let args: Vec<Value> = args.iter().map(|arg| self.translate_operand(arg)).collect();
+        let args: Vec<CValue> = args.iter().map(|arg| self.translate_operand(arg)).collect();
+        let args = to_vec_values(args);
 
         let returns = match func {
             Operand::Constant(constant) => match constant {
@@ -302,10 +378,18 @@ impl<'a> FunctionTranslator<'a> {
             0 => {}
             1 => {
                 // FIXME: use projections
-                let var = self.variables[&destination.local];
-                self.builder.def_var(var, returns[0]);
+                let cplace = &self.places[destination.local];
+                if let CPlace::Var {
+                    local,
+                    variable,
+                    layout,
+                } = cplace
+                {
+                    self.builder.def_var(*variable, returns[0]);
+                };
             }
-            _ => unreachable!("multiple returns not implemented yet"),
+            2 => {}
+            _ => unreachable!("3+ returns?"),
         }
 
         // FIXME: remove unwrap when panics are implemented
@@ -335,6 +419,8 @@ impl<'a> FunctionTranslator<'a> {
             .unwrap_or_else(|| *dummy_block.insert(self.builder.create_block()));
 
         let condition = self.translate_operand(discriminant);
+        let condition = condition.as_val().expect("a single value");
+
         switch.emit(&mut self.builder, condition, otherwise);
         if let Some(dummy_block) = dummy_block {
             self.builder.switch_to_block(dummy_block);
@@ -351,30 +437,106 @@ impl<'a> FunctionTranslator<'a> {
         if return_local.type_(self.context).is_unit() {
             self.builder.ins().return_(&[]);
         } else {
-            let return_var = self.variables[&return_local_idx];
-            let ret_val = self.builder.use_var(return_var);
-            self.builder.ins().return_(&[ret_val]);
+            let rvals: &[Value] = match self.places[return_local_idx] {
+                CPlace::Var { variable, .. } => &[self.builder.use_var(variable)],
+                CPlace::VarPair { first, second, .. } => {
+                    &[self.builder.use_var(first), self.builder.use_var(second)]
+                }
+                CPlace::Address { pointer, layout } => todo!("stack slots for structs?"),
+            };
+            self.builder.ins().return_(rvals);
         }
     }
 
     fn locals_to_values(&mut self, locals: &[Idx<Local>]) -> Vec<Value> {
         locals
             .iter()
-            .map(|local| self.variables[local])
+            .flat_map(|local| self.places[*local].variables())
             .map(|var| self.builder.use_var(var))
             .collect()
     }
 
-    fn translate_rvalue(&mut self, rvalue: &Rvalue) -> Value {
-        match rvalue {
+    fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
+        let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
+            Rvalue::UnionVariant(variant_idx, _, operand) => {
+                self.translate_union_variant(*variant_idx, operand, place.type_idx_of(self.func))
+            }
+        };
+        let cplace = &self.places[place.local];
+        match (cplace, cval) {
+            (
+                CPlace::Var {
+                    local,
+                    variable,
+                    layout,
+                },
+                CValue::ByRef { ptr, val, .. },
+            ) => todo!(),
+            (
+                CPlace::Var {
+                    local,
+                    variable,
+                    layout,
+                },
+                CValue::ByVal { val, .. },
+            ) => {
+                self.builder.def_var(*variable, val);
+            }
+            (
+                CPlace::Var {
+                    local,
+                    variable,
+                    layout,
+                },
+                CValue::ByValPair { first, second, .. },
+            ) => todo!(),
+            (
+                CPlace::VarPair {
+                    local,
+                    first,
+                    second,
+                    layout,
+                },
+                CValue::ByRef { ptr, val, .. },
+            ) => todo!(),
+            (
+                CPlace::VarPair {
+                    local,
+                    first,
+                    second,
+                    layout,
+                },
+                CValue::ByVal { val, .. },
+            ) => todo!(),
+            (
+                CPlace::VarPair {
+                    local,
+                    first: first_var,
+                    second: second_var,
+                    layout,
+                },
+                CValue::ByValPair {
+                    first: first_val,
+                    second: second_val,
+                    ..
+                },
+            ) => {
+                self.builder.def_var(*first_var, first_val);
+                self.builder.def_var(*second_var, second_val);
+            }
+            (CPlace::Address { pointer, layout }, CValue::ByRef { ptr, val, .. }) => todo!(),
+            (CPlace::Address { pointer, layout }, CValue::ByVal { val, .. }) => todo!(),
+            (CPlace::Address { pointer, layout }, CValue::ByValPair { first, second, .. }) => {
+                todo!()
+            }
         }
     }
 
-    fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> Value {
+    fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> CValue {
         let (lhs, rhs) = ops;
 
         match binop {
@@ -393,34 +555,35 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: Cmp) -> Value {
+    fn emit_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: Cmp) -> CValue {
         let lhs_ty = self.op_type(lhs);
         let rhs_ty = self.op_type(rhs);
 
-        if lhs_ty.is_float() {
-            let lhs_val = self.translate_operand(lhs);
-            let rhs_val = self.translate_operand(rhs);
+        let lhs_val = self.translate_operand(lhs);
+        let lhs_val = lhs_val.as_val().expect("to be a single value");
+        let rhs_val = self.translate_operand(rhs);
+        let rhs_val = rhs_val.as_val().expect("to be a single value");
+
+        let val = if self.context.type_(lhs_ty).is_float() {
             self.builder
                 .ins()
                 .fcmp(comparison.as_float_cc(), lhs_val, rhs_val)
-        } else if lhs_ty.is_int() {
-            self.emit_int_comparison(lhs, rhs, comparison.as_int_cc())
+        } else if self.context.type_(lhs_ty).is_int() {
+            self.emit_int_comparison(lhs_val, rhs_val, comparison.as_int_cc())
         } else {
             unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
+        };
+        CValue::ByVal {
+            val,
+            layout: self
+                .layouts
+                .for_type(self.context.core_types().bool, self.context),
         }
     }
 
-    fn emit_int_comparison(&mut self, lhs: &Operand, rhs: &Operand, comparison: IntCC) -> Value {
-        // TODO: check for constants
-        //  - if lhs and rhs are constant, fold to a bool_const
-        //  - if rhs is a constant, emit icmp_imm
-        //  - if lhs is a constant, invert the condition (IntCC::complement)? and emit icmp_imm
-        //  - otherwise emit icmp
-        let lhs_val = self.translate_operand(lhs);
-        let rhs_val = self.translate_operand(rhs);
-
+    fn emit_int_comparison(&mut self, lhs_val: Value, rhs_val: Value, comparison: IntCC) -> Value {
         let val_i8 = self.builder.ins().icmp(comparison, lhs_val, rhs_val);
-        self.builder.ins().sextend(self.types.int, val_i8)
+        self.builder.ins().sextend(I64, val_i8)
     }
 
     fn emit_int_constant_comparison(&mut self, lhs: i64, rhs: i64, comparison: IntCC) -> Value {
@@ -435,19 +598,51 @@ impl<'a> FunctionTranslator<'a> {
         })
     }
 
-    // TODO: better way to use the return type here or determine this earlier?
-    fn translate_operand(&mut self, op: &Operand) -> Value {
+    fn translate_operand(&mut self, op: &Operand) -> CValue {
         match op {
-            Operand::Copy(p) => {
-                let local = p.local;
-                // TODO: use projections too
-                let var = self.variables[&local];
-                // TODO: is this sharing or copying?
-                self.builder.use_var(var)
+            Operand::Copy(place) => {
+                let local = place.local;
+                let mut hir_ty = self.func.locals[local].type_idx();
+
+                // TODO: use projections too?
+                let cplace = &self.places[place.local];
+                match cplace {
+                    CPlace::Var {
+                        variable, layout, ..
+                    } => CValue::ByVal {
+                        val: self.builder.use_var(*variable),
+                        layout: *layout,
+                    },
+                    CPlace::VarPair {
+                        first,
+                        second,
+                        layout,
+                        ..
+                    } => CValue::ByValPair {
+                        first: self.builder.use_var(*first),
+                        second: self.builder.use_var(*second),
+                        layout: *layout,
+                    },
+                    CPlace::Address { pointer, layout } => CValue::ByRef {
+                        ptr: *pointer,
+                        val: None,
+                        layout: *layout,
+                    },
+                }
             }
             Operand::Constant(c) => match c {
-                Constant::Int(i) => self.builder.ins().iconst(self.types.int, *i),
-                Constant::Float(f) => self.builder.ins().f64const(*f),
+                Constant::Int(i) => CValue::ByVal {
+                    val: self.builder.ins().iconst(I64, *i),
+                    layout: self
+                        .layouts
+                        .for_type(self.context.core_types().int, self.context),
+                },
+                Constant::Float(f) => CValue::ByVal {
+                    val: self.builder.ins().f64const(*f),
+                    layout: self
+                        .layouts
+                        .for_type(self.context.core_types().float, self.context),
+                },
                 Constant::String(_) => todo!(),
                 Constant::Func(..) => unreachable!("TODO"),
             },
@@ -455,53 +650,65 @@ impl<'a> FunctionTranslator<'a> {
         }
     }
 
-    fn translate_discriminant(&mut self, place: &Place) -> Value {
-        let ty = self.place_type(place, self.context);
-        let sum_ty = assert_matches!(ty, HType::Sum);
-
-        if sum_ty.is_unit(self.context) {
-            // TODO: use projections too
-            let var = self.variables[&place.local];
-            self.builder.use_var(var)
-        } else {
-            // TODO - determine how to lower a sum type with payload
-            todo!()
+    fn translate_discriminant(&mut self, place: &Place) -> CValue {
+        let cplace = &self.places[place.local];
+        match cplace {
+            // single var means it's a unit sum type, so the variable just is the discrinimant
+            CPlace::Var { variable, .. } => CValue::ByVal {
+                val: self.builder.use_var(*variable),
+                layout: self.layouts.int,
+            },
+            // pair means there's at least one variant with data. The first Variable is the discriminant
+            CPlace::VarPair { first, .. } => CValue::ByVal {
+                val: self.builder.use_var(*first),
+                layout: self.layouts.int,
+            },
+            // shouldn't be possible because even a heap allocated union variant would still be a VarPair where
+            // the second Variable was the pointer (and the first is still the discriminant)
+            CPlace::Address { pointer, layout } => unreachable!(
+                "Internal Compiler Error (CLIF): Tried to get the Discriminant of a pointer"
+            ),
         }
     }
 
-    fn translate_type_idx(&mut self, idx: Idx<HType>) -> ClifType {
-        let ty = self.context.type_(idx);
-        self.translate_type(ty)
-    }
+    fn translate_union_variant(
+        &mut self,
+        variant_idx: VariantIdx,
+        operand: &Operand,
+        ty: Idx<HType>,
+    ) -> CValue {
+        // operand is the "arg", like the 16 in `Number.int 16` or the `f` in `Number.float f`
+        // variant_idx is the numeric index
 
-    fn translate_type(&mut self, ty: &HType) -> ClifType {
-        match ty {
-            HType::FloatLiteral(_) | HType::Float => self.types.float,
-            HType::IntLiteral(_) | HType::Int => self.types.int,
-            HType::StringLiteral(_) | HType::String => todo!(),
+        let first = self
+            .builder
+            .ins()
+            .iconst(I64, variant_idx.into_raw() as i64);
 
-            // TODO: split tag and payload somehow (likely before this point)
-            HType::Sum(sum) => self.types.int,
+        let second = self.translate_operand(operand);
+        // FIXME - this ain't right
+        let second = assert_byval!(second);
 
-            HType::Unit => unreachable!("Internal Compiler Error (CLIF): unit types should be unused rather than translated"),
-            t => todo!("{t:?}"),
+        CValue::ByValPair {
+            first,
+            second,
+            layout: self.layouts.for_type(ty, self.context),
         }
     }
 
-    fn op_type(&self, op: &Operand) -> &HType {
-        match self.context.type_(self.op_type_idx(op)) {
-            HType::FloatLiteral(_) => &HType::Float,
-            HType::IntLiteral(_) => &HType::Int,
-            HType::StringLiteral(_) => &HType::String,
-            t => t,
-        }
-    }
-
-    fn op_type_idx(&self, op: &Operand) -> Idx<HType> {
-        match op {
+    fn op_type(&self, op: &Operand) -> Idx<HType> {
+        let core_types = self.context.core_types();
+        let ty_idx = match op {
             Operand::Copy(place) => self.place_type_idx(place),
             Operand::Constant(constant) => self.constant_type_idx(constant),
             Operand::Move(_) => todo!(),
+        };
+        // widen literal types -- TODO should add a helper in HIR crate?
+        match self.context.type_(ty_idx) {
+            HType::FloatLiteral(_) => core_types.float,
+            HType::IntLiteral(_) => core_types.int,
+            HType::StringLiteral(_) => core_types.string,
+            _ => ty_idx,
         }
     }
 
@@ -513,7 +720,7 @@ impl<'a> FunctionTranslator<'a> {
     fn place_type_idx(&self, place: &Place) -> Idx<HType> {
         // TODO: use projections...
         let local = &self.func.locals[place.local];
-        local.type_idx_of()
+        local.type_idx()
     }
 
     fn constant_type(&self, constant: &Constant) -> &HType {
@@ -533,12 +740,12 @@ impl<'a> FunctionTranslator<'a> {
     /// 1. The block is not sealed
     /// 2. All of the predecessors are finished
     fn safe_seal_block(&mut self, idx: Idx<mir::BasicBlock>, block: ClifBlock) {
-        let status = self.status.get(idx);
+        let status = self.statuses.get(idx);
         if matches!(status, Status::Empty | Status::Finished)
-            && self.status.all_finished(self.func.predecessors.get(idx))
+            && self.statuses.all_finished(self.func.predecessors.get(idx))
         {
             self.builder.seal_block(block);
-            self.status.insert(idx, status.seal());
+            self.statuses.insert(idx, status.seal());
         }
     }
 }

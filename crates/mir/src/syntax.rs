@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::slice::Iter;
 
@@ -62,7 +63,8 @@ pub struct Function {
     // TODO: does this need to track Place too?
     pub locals: Arena<Local>,
 
-    pub locals_map: ArenaMap<Idx<Local>, Option<ValueSymbol>>,
+    /// Lookup for locals originating from a ValueSymbol
+    pub local_symbols: HashMap<ValueSymbol, Idx<Local>>,
 
     /// Maps between each BasicBlock and all of its predecessors
     pub predecessors: Predecessors,
@@ -81,7 +83,7 @@ impl Function {
             name: None,
             params: Default::default(),
             locals: Default::default(),
-            locals_map: Default::default(),
+            local_symbols: Default::default(),
             predecessors: Default::default(),
         }
     }
@@ -125,7 +127,7 @@ impl Function {
 
     pub fn return_ty(&self) -> Idx<Type> {
         let (_, return_local) = self.return_local();
-        return_local.type_idx_of()
+        return_local.type_idx()
     }
 }
 
@@ -433,17 +435,17 @@ impl From<Idx<Local>> for Place {
 }
 
 impl Place {
-    pub fn type_idx_of(&self, func: &Function, _: &hir::Context) -> Idx<Type> {
+    pub fn type_idx_of(&self, func: &Function) -> Idx<Type> {
         // TODO: include projections
         let local = &func.locals[self.local];
-        local.type_idx_of()
+        local.type_idx()
     }
 
     pub fn is_return(&self) -> bool {
         is_return(self.local)
     }
 
-    pub fn with_projection(&self, projection: ProjectionElem) -> Self {
+    pub(crate) fn with_projection(&self, projection: ProjectionElem) -> Self {
         let local = self.local;
         let mut projections = self.projections.clone().into_vec();
         projections.push(projection);
@@ -504,7 +506,8 @@ pub enum ProjectionElem {
     /// to the data
     ///
     /// The included Key is the name of the variant, used for printing MIR
-    UpcastVariant(Option<Key>, VariantIdx),
+    // TODO - changed this to a Rvalue instead
+    // UpcastVariant(Option<Key>, VariantIdx),
 
     /// Like an explicit cast from an opaque type to a concrete type,
     /// but without requiring an intermediate variable.
@@ -518,7 +521,7 @@ pub struct Local {
 }
 
 impl Local {
-    pub fn type_idx_of(&self) -> Idx<Type> {
+    pub fn type_idx(&self) -> Idx<Type> {
         self.ty
     }
 
@@ -536,6 +539,9 @@ pub struct FieldIdx {
 pub enum Rvalue {
     /// Yields the operand unchanged
     Use(Operand),
+
+    ///
+    UnionVariant(VariantIdx, Key, Operand),
 
     // Creates an array where each element is the value of the operand.
     // in rustc Const is struct { ty: Ty, kind: ConstKind }
@@ -763,6 +769,14 @@ impl OperandOrPlace {
                 Operand::Move(place) => Some(place),
             },
             OperandOrPlace::Place(place) => Some(place),
+        }
+    }
+
+    pub fn as_operand(self) -> Operand {
+        match self {
+            OperandOrPlace::Operand(operand) => operand,
+            // TODO - determine Copy or Move based on type?
+            OperandOrPlace::Place(place) => Operand::Copy(place),
         }
     }
 }

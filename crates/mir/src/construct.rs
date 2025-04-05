@@ -115,8 +115,8 @@ impl Builder {
         let ty_idx = context.type_idx_of_value(&param.symbol);
         self.current_function_mut().params.push(ty_idx);
         let ty = context.type_idx_of_value(&param.symbol);
-        let local = self.construct_local(ty, Some(param.symbol), Mutability::Not);
-        // TODO: depends on the param
+        // TODO: mutability
+        self.construct_local(ty, Some(param.symbol), Mutability::Not);
     }
 
     /// Creates a new block in the current function
@@ -295,22 +295,15 @@ impl Builder {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
                         self.current_block_mut().statements.push(assign);
                     };
-                } else if let Some((variant_ty, variant_idx)) = call.is_union_variant(context) {
+                } else if let Some((variant_ty, variant_idx, key)) = call.is_union_variant(context)
+                {
                     // TODO - indexing is probably wrong here, when there could be multiple "args"
-                    let operand = self.construct_operand(call.args[0], &None, context);
-                    let place = operand
-                        .try_into_place()
-                        .expect("TODO - handle Operand::Constant?");
-                    let new_place =
-                        place.with_projection(ProjectionElem::UpcastVariant(None, variant_idx));
-                    let symbol = context.find_symbol_of_expr(call.callee);
-                    let local = self.construct_local(variant_ty, symbol, Mutability::Not);
-                    dbg!("call", local.into_raw());
-                    let new_place = todo!();
-                    // FIXME - it's not copy local!
-                    // instead create a Place from the call.arg
-                    let operand = Operand::Copy(local.into());
-                    let rvalue = Rvalue::Use(operand);
+                    let operand = self
+                        .construct_operand(call.args[0], &None, context)
+                        .as_operand();
+
+                    let rvalue = Rvalue::UnionVariant(variant_idx, key, operand);
+
                     if let Some(assign_place) = assign_to {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
                         self.current_block_mut().statements.push(assign);
@@ -667,7 +660,7 @@ impl Builder {
         otherwise: &mut Option<BlockTarget>,
         context: &Context,
     ) {
-        let scrutinee_ty = scrutinee_place.type_idx_of(self.current_function(), context);
+        let scrutinee_ty = scrutinee_place.type_idx_of(self.current_function());
         let scrutinee_ty = context.type_(scrutinee_ty);
         let pattern = context.pattern(pattern);
         match pattern {
@@ -682,7 +675,7 @@ impl Builder {
                         scrutinee_ty.display(context)));
 
                         scrutinee_place
-                            .with_projection(ProjectionElem::DowncastVariant(Some(key), idx.into()))
+                            .with_projection(ProjectionElem::DowncastVariant(Some(key), idx))
                     }
                     None => scrutinee_place.clone(),
                 };
@@ -706,7 +699,7 @@ impl Builder {
                         scrutinee_ty.display(context)));
 
                 branches.push((
-                    variant_index as i64,
+                    variant_index.into_raw() as i64,
                     BlockTarget::with_empty_args(self.current_block),
                 ));
                 if let Some(inner) = pattern.inner_pattern {
@@ -812,11 +805,7 @@ impl Builder {
     }
 
     fn try_find_symbol(&self, symbol: ValueSymbol) -> Option<Idx<Local>> {
-        self.current_function()
-            .locals_map
-            .iter()
-            .find(|(_, s)| **s == Some(symbol))
-            .map(|(i, ..)| i)
+        self.current_function().local_symbols.get(&symbol).copied()
     }
 
     fn find_symbol(&self, symbol: ValueSymbol, context: &Context) -> Idx<Local> {
@@ -905,7 +894,7 @@ impl Builder {
                             sum_type.display(context)
                         )
                     });
-                    Operand::Constant(Constant::Int(index_of as i64))
+                    Operand::Constant(Constant::Int(index_of.into_raw() as i64))
                 }
                 ty => todo!(
                     "Internal Compiler Error (MIR): Expected Type::Sum, found {}",
@@ -951,10 +940,11 @@ impl Builder {
         let local = {
             let func = self.current_function_mut();
             let local = func.locals.alloc(Local { mutability, ty });
-            func.locals_map.insert(local, symbol);
+            if let Some(symbol) = symbol {
+                func.local_symbols.insert(symbol, local);
+            }
             local
         };
-        dbg!(local.into_raw());
 
         self.def_local(local);
 

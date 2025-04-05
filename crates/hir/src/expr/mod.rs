@@ -287,7 +287,7 @@ impl CallExpr {
         }
     }
 
-    pub fn is_union_variant(&self, context: &Context) -> Option<(Idx<Type>, VariantIdx)> {
+    pub fn is_union_variant(&self, context: &Context) -> Option<(Idx<Type>, VariantIdx, Key)> {
         let func_ty = context.expr_type(self.callee);
         if let Type::Function(func) = func_ty {
             func.variant

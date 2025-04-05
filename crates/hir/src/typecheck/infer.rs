@@ -97,8 +97,17 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         Expr::UnionVariant(variant) => {
             let union_namespace =
-                assert_matches!(context.expr(variant.union_namespace), Expr::UnionNamespace);
-            let (.., variant_ty_expr) = union_namespace.members[variant.index as usize];
+                assert_matches!(context.expr(variant.union_namespace), Expr::UnionNamespace)
+                    .clone();
+            let (variant_key, variant_ty_expr) = union_namespace.members[variant.index as usize];
+            let variant_key = {
+                let union_namespace_key = context.database.value_names[&union_namespace.name];
+                let union_name = context.lookup(union_namespace_key);
+                let variant_name = context.lookup(variant_key);
+                context
+                    .interner
+                    .intern(&format!("{union_name}.{variant_name}"))
+            };
             let union_type_expr = union_namespace.type_expr;
             result.chain(infer_type_expr(variant_ty_expr, context));
             let variant_ty = result.ty;
@@ -112,7 +121,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
             result.ty = context.type_database.alloc_type(Type::union_variant_func(
                 signature,
-                (variant_ty, variant.index),
+                (variant_ty, variant.index, variant_key),
             ));
         }
         Expr::UnionUnitVariant(unit_variant) => {
@@ -652,7 +661,7 @@ fn infer_pattern(
                                 assert_matches!(context.type_(scrutinee_ty), Type::Sum);
 
                             scrutinee_ty
-                                .variant_type_of(pattern.variant)
+                                .type_of_key(pattern.variant)
                                 .unwrap_or(unknown_ty)
                         }
                         Pattern::IntLiteral { meta, literal } => {

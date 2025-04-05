@@ -6,7 +6,7 @@ use cranelift::codegen::write_function;
 use cranelift::prelude::types::*;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleError, ModuleResult};
+use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleResult};
 
 use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;

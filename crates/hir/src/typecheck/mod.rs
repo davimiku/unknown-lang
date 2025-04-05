@@ -17,7 +17,7 @@ mod widen;
 use std::collections::HashMap;
 
 use la_arena::{Arena, ArenaMap, Idx};
-pub use types::{ArrayType, FuncSignature, FunctionType, Type, VariantIdx};
+pub use types::{ArrayType, FuncSignature, FunctionType, SumType, Type, VariantIdx, VecVariantIdx};
 
 use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::type_expr::{TypeExpr, TypeSymbol};

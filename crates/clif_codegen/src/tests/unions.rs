@@ -30,3 +30,18 @@ let main = fun () -> { Color.green }";
 
     assert_eq!(code_fn(()), 1);
 }
+
+#[test]
+fn construct_union_with_data() {
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun (i: Int) -> { Number.int i }
+";
+
+    let code_ptr = compile_main(input);
+
+    // let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+
+    // assert_eq!(1, 1);
+}

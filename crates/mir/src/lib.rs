@@ -35,7 +35,7 @@ use hir::{Context, ContextDisplay, Key};
 use la_arena::Arena;
 pub use syntax::{
     BasicBlock, BinOpKind, BlockParameters, BlockTarget, BranchIntTargets, Constant, FuncId,
-    Function, Local, Operand, Place, Rvalue, Statement, Terminator, UnOp,
+    Function, Local, Operand, Place, ProjectionElem, Rvalue, Statement, Terminator, UnOp,
 };
 
 use crate::{builder::Builder, optimize::optimize};
