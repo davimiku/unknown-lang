@@ -15,7 +15,6 @@ mod sandbox;
 #[cfg(test)]
 mod tests;
 mod translate;
-mod variable_map;
 
 type EntryPoints = HashMap<String, *const u8>;
 

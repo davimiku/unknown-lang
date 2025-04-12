@@ -1,7 +1,7 @@
-macro_rules! assert_byval {
+macro_rules! assert_val {
     ($cvalue:expr) => {
         match $cvalue {
-            CValue::ByVal { val, .. } => val,
+            CValue::Val { val, .. } => val,
             _ => unreachable!(
                 "Internal Compiler Error (CLIF): Expected CValue::ByVal, got {:?}",
                 $cvalue
@@ -10,4 +10,4 @@ macro_rules! assert_byval {
     };
 }
 
-pub(crate) use assert_byval;
+pub(crate) use assert_val;

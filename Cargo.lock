@@ -248,6 +248,7 @@ dependencies = [
  "cranelift-jit",
  "cranelift-module",
  "cranelift-native",
+ "cranelift-reader",
  "hir",
  "la-arena",
  "mir",
@@ -410,6 +411,18 @@ checksum = "bb2e75d1bd43dfec10924798f15e6474f1dbf63b0024506551aa19394dbe72ab"
 dependencies = [
  "cranelift-codegen",
  "libc",
+ "target-lexicon",
+]
+
+[[package]]
+name = "cranelift-reader"
+version = "0.115.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd3aebda2a013ef6f2e4f7fe4305dc04ca248a85152baafc65237ee9a7d4d19b"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen",
+ "smallvec",
  "target-lexicon",
 ]
 

@@ -1,13 +1,14 @@
-use std::{
-    cmp,
-    ops::{self, Index},
-};
+use std::ops;
 
-use cranelift::prelude::{types, Type as CType};
-use hir::{Context, ContextDisplay, CoreTypes, Type as HType, VariantIdx, VecVariantIdx};
+use cranelift::codegen::ir::immediates::Offset32;
+use cranelift::prelude::{types, StackSlotData, StackSlotKind, Type as CType};
+use hir::{Context, ContextDisplay, CoreTypes, Type as HType, VariantIdx};
 use la_arena::{Arena, ArenaMap, Idx};
+use mir::Operand;
 
-use crate::place::Pointer;
+use crate::{place::Pointer, translate::FunctionTranslator};
+
+const ALIGN_SHIFT: u8 = 3;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Layouts {
@@ -58,48 +59,94 @@ impl Layouts {
         }
     }
 
-    pub(crate) fn for_type(&mut self, ty: Idx<HType>, context: &Context) -> Idx<Layout> {
+    pub(crate) fn alloc(&mut self, layout: Layout, ty: Idx<HType>) -> Idx<Layout> {
+        let layout_idx = self.cache.alloc(layout);
+        self.map.insert(ty, layout_idx);
+        layout_idx
+    }
+
+    pub(crate) fn get_cached_idx(&self, ty: Idx<HType>) -> Option<Idx<Layout>> {
+        self.map.get(ty).copied()
+    }
+
+    pub(crate) fn get_cached(&self, ty: Idx<HType>) -> Option<&Layout> {
+        self.map.get(ty).map(|idx| &self.cache[*idx])
+    }
+}
+
+impl FunctionTranslator<'_> {
+    pub(crate) fn layout_for_type(&mut self, ty: Idx<HType>) -> Idx<Layout> {
         // widen literal types -- TODO should add a helper in HIR crate?
-        let ty = match context.type_(ty) {
-            HType::FloatLiteral(_) => context.core_types().float,
-            HType::IntLiteral(_) => context.core_types().int,
-            HType::StringLiteral(key) => todo!(),
+        let ty = match self.context.type_(ty) {
+            HType::FloatLiteral(_) => self.context.core_types().float,
+            HType::IntLiteral(_) => self.context.core_types().int,
+            // TODO - string literals might have a different layout (embedded or ptr to data section of binary)
+            // HType::StringLiteral(key) => todo!(),
             _ => ty,
         };
-        let cached = self.map.get(ty).copied();
+        let cached = self.layouts.get_cached_idx(ty);
         if let Some(layout) = cached {
             return layout;
         }
 
-        let layout = match context.type_(ty) {
+        let layout = match self.context.type_(ty) {
             HType::Int | HType::IntLiteral(_) | HType::Float | HType::FloatLiteral(_) => {
                 unreachable!(
                     "Internal Compiler Error (CLIF): Layout for {} was not cached",
-                    ty.display(context)
+                    ty.display(self.context)
                 )
             }
             HType::String | HType::StringLiteral(_) => todo!(),
             HType::Sum(sum_type) => {
-                let mut max_size: Size = Size::ZERO;
+                let mut max_size = Size::default();
                 let mut variant_layouts: Vec<Idx<Layout>> = vec![];
+                let mut has_intlike = false;
+                let mut has_float = false;
+                let mut has_stack_slot = false;
                 for (_, variant_ty) in &sum_type.variants {
-                    let layout = self.for_type(*variant_ty, context);
+                    let layout = self.layout_for_type(*variant_ty);
                     variant_layouts.push(layout);
-                    let layout = &self.cache[layout];
+                    let layout = self.layouts.get_cached(*variant_ty).unwrap();
                     if layout.size > max_size {
                         max_size = layout.size;
                     }
+                    match layout.backend_repr {
+                        BackendRepr::None => {}
+                        BackendRepr::Scalar(Scalar::Int) => has_intlike = true,
+                        BackendRepr::Scalar(Scalar::Float) => has_float = true,
+                        BackendRepr::Scalar(Scalar::Pointer(_)) => has_intlike = true,
+                        BackendRepr::ScalarPair(..) => has_stack_slot = true,
+                        BackendRepr::ScalarTriple(..) => has_stack_slot = true,
+                    };
                 }
+                let backend_repr = match (has_stack_slot, has_intlike, has_float) {
+                    (true, _, _) => {
+                        let size = (Size::ONE_WORD + max_size).num_bytes as u32;
+                        let data =
+                            StackSlotData::new(StackSlotKind::ExplicitSlot, size, ALIGN_SHIFT);
+                        let slot = self.builder.create_sized_stack_slot(data);
+
+                        BackendRepr::Scalar(Scalar::Pointer(Pointer::Stack {
+                            slot,
+                            offset: Offset32::new(0),
+                        }))
+                    }
+                    (false, true, true) => {
+                        // Float always 2nd by convention
+                        BackendRepr::ScalarTriple(Scalar::Int, Scalar::Int, Scalar::Float)
+                    }
+                    (false, true, false) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Int),
+                    (false, false, true) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Float),
+                    (false, false, false) => BackendRepr::Scalar(Scalar::Int),
+                };
 
                 Layout {
                     fields: FieldsShape::Scalar,
                     variants: VariantsShape::Multiple {
-                        tag: Scalar::Int,
                         tag_encoding: TagEncoding::Direct,
-                        tag_field: 0,
                         layouts: variant_layouts,
                     },
-                    backend_repr: BackendRepr::Scalar(Scalar::Int),
+                    backend_repr,
                     size: Size::ONE_WORD + max_size, // one word for the tag
                 }
             }
@@ -111,17 +158,15 @@ impl Layouts {
             HType::Bottom | HType::Top | HType::Error | HType::Unknown => {
                 unreachable!(
                     "Internal Compiler Error (CLIF): Attempted to compute layout for {}",
-                    ty.display(context)
+                    ty.display(self.context)
                 )
             }
         };
-        let layout_idx = self.cache.alloc(layout);
-        self.map.insert(ty, layout_idx);
-        layout_idx
+        self.layouts.alloc(layout, ty)
     }
 }
 
-impl Index<Idx<Layout>> for Layouts {
+impl ops::Index<Idx<Layout>> for Layouts {
     type Output = Layout;
 
     fn index(&self, index: Idx<Layout>) -> &Self::Output {
@@ -146,12 +191,18 @@ pub(crate) struct Size {
     num_bytes: u64,
 }
 
+impl Default for Size {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 impl Size {
-    const ZERO: Size = Size { num_bytes: 0 };
+    pub(crate) const ZERO: Size = Size { num_bytes: 0 };
 
-    const ONE_WORD: Size = Size { num_bytes: 8 };
+    pub(crate) const ONE_WORD: Size = Size { num_bytes: 8 };
 
-    const TWO_WORDS: Size = Size { num_bytes: 16 };
+    pub(crate) const TWO_WORDS: Size = Size { num_bytes: 16 };
 }
 
 impl ops::Add for Size {
@@ -169,7 +220,7 @@ pub(crate) enum FieldsShape {
     Scalar,
 
     Fields {
-        // index is FieldIdx - todo make newtype
+        // index of Vec is FieldIdx - todo make newtype
         offsets: Vec<Size>,
         // memory_offsets: Vec<u32>,
     },
@@ -180,8 +231,10 @@ pub(crate) enum BackendRepr {
     None, // for unit or ZST (maybe?)
     Scalar(Scalar),
     ScalarPair(Scalar, Scalar),
+    ScalarTriple(Scalar, Scalar, Scalar),
+    // TODO - ScalarMemory(Scalar, Memory) ??? for unions with tag and large struct data
     // SimdVector
-    Memory, // todo - pointer, or wide pointer
+    // todo - wide pointer (data+vtable or closure data+fnptr)
 }
 
 #[derive(Debug, Clone)]
@@ -193,9 +246,8 @@ pub(crate) enum VariantsShape {
     },
 
     Multiple {
-        tag: Scalar,
+        // tag: Scalar, // TODO - tag is always Int scalar? remove?
         tag_encoding: TagEncoding,
-        tag_field: usize, // TODO - this was shamelessly copied from rustc_codegen_clif, find out if we need it
         layouts: Vec<Idx<Layout>>,
     },
 }

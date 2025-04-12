@@ -1,10 +1,154 @@
+use std::error::Error;
+
 use cranelift::codegen::entity::EntityRef;
 use cranelift::codegen::ir::types::*;
 use cranelift::codegen::ir::{AbiParam, Function, InstBuilder, Signature, UserFuncName};
 use cranelift::codegen::isa::CallConv;
-use cranelift::codegen::settings;
 use cranelift::codegen::verifier::verify_function;
+use cranelift::codegen::{settings, write_function};
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift::prelude::Configurable;
+use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::{Linkage, Module};
+use util_macros::assert_matches;
+
+use crate::ext::jit_builder::JITBuilderExt;
+
+#[test]
+fn multiple_returns() -> Result<(), Box<dyn Error>> {
+    let mut flag_builder = settings::builder();
+    flag_builder.set("use_colocated_libcalls", "false").unwrap();
+    flag_builder.set("is_pic", "false").unwrap();
+    let isa_builder = cranelift_native::builder()?;
+    let isa = isa_builder.finish(settings::Flags::new(flag_builder))?;
+    let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let mut module = JITModule::new(jit_builder);
+    let mut ctx = module.make_context();
+
+    let mut fn_builder_ctx = FunctionBuilderContext::new();
+    let mut sig = Signature::new(CallConv::AppleAarch64);
+    sig.params.push(AbiParam::new(F64));
+    sig.returns.push(AbiParam::new(I64));
+    sig.returns.push(AbiParam::new(I64));
+    sig.returns.push(AbiParam::new(F64));
+    let mut func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
+    let func_id = module
+        .declare_function("test", Linkage::Export, &func.signature)
+        .unwrap();
+
+    let mut builder = FunctionBuilder::new(&mut func, &mut fn_builder_ctx);
+
+    {
+        let block0_entry = builder.create_block();
+        builder.append_block_params_for_function_params(block0_entry);
+        builder.switch_to_block(block0_entry);
+        builder.seal_block(block0_entry);
+
+        let return_var = Variable::new(0);
+        let first_var = Variable::new(1);
+        let second_var = Variable::new(2);
+
+        builder.declare_var(return_var, F64);
+        builder.declare_var(first_var, I64);
+        builder.declare_var(second_var, I64);
+
+        let first_val = builder.ins().iconst(I64, 20);
+        builder.def_var(first_var, first_val);
+        let second_val = builder.ins().iconst(I64, 30);
+        builder.def_var(second_var, second_val);
+        let return_val = builder.block_params(block0_entry)[0];
+        builder.def_var(return_var, return_val);
+
+        let first_val = builder.use_var(first_var);
+        let second_val = builder.use_var(second_var);
+        let return_val = builder.use_var(return_var);
+        builder.ins().return_(&[first_val, second_val, return_val]);
+    }
+
+    builder.finalize();
+    // let flags = settings::Flags::new(settings::builder());
+    // verify_function(&func, &flags)?;
+    // println!("{}", func.display());
+
+    module.define_function(func_id, &mut ctx)?;
+
+    {
+        let mut s = String::new();
+        write_function(&mut s, &func).unwrap_or_else(|err| {
+            dbg!(err);
+        });
+        println!("{s}");
+    }
+    module.finalize_definitions()?;
+    let code_ptr = module.get_finalized_function(func_id);
+
+    let fn_ptr = unsafe { std::mem::transmute::<*const u8, fn(f64) -> (i64, i64, f64)>(code_ptr) };
+
+    let result = fn_ptr(1.23);
+
+    Ok(())
+}
+
+#[test]
+fn from_text_format() -> Result<(), Box<dyn Error>> {
+    let parse_result = cranelift_reader::parse_functions(
+        "function u1:0(f64) -> i64, i64, f64 apple_aarch64 {
+block0(v0: f64):
+    v1 = iconst.i64 1
+    v2 = iconst.i64 0
+    return v1, v2, v0  ; v1 = 1, v2 = 0
+}",
+    );
+
+    // self.module.define_function(func_id, &mut self.ctx)?;
+    // let mut jit = JIT::with_builtins();
+    let mut fn_builder_ctx = FunctionBuilderContext::new();
+    let mut flag_builder = settings::builder();
+    flag_builder.set("use_colocated_libcalls", "false").unwrap();
+    flag_builder.set("is_pic", "false").unwrap();
+    let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+        panic!("host machine is not supported: {msg}");
+    });
+    let isa = isa_builder
+        .finish(settings::Flags::new(flag_builder))
+        .unwrap_or_else(|error| panic!("ISA error: {error}"));
+    let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+
+    let mut module = JITModule::new(jit_builder);
+    let mut ctx = module.make_context();
+
+    let mut functions = assert_matches!(parse_result, Result::Ok);
+    let mut func = functions.pop().unwrap();
+    let mut builder = FunctionBuilder::new(&mut func, &mut fn_builder_ctx);
+    builder.finalize();
+    let res = verify_function(&func, &settings::Flags::new(settings::builder()));
+    println!("{}", func.display());
+    if let Err(errors) = res {
+        panic!("{}", errors);
+    }
+
+    let func_id = module
+        .declare_function("test", Linkage::Export, &func.signature)
+        .unwrap();
+
+    module.define_function(func_id, &mut ctx)?;
+
+    {
+        let mut s = String::new();
+        write_function(&mut s, &func).unwrap_or_else(|err| {
+            dbg!(err);
+        });
+        println!("{s}");
+    }
+    module.finalize_definitions()?;
+    let code_ptr = module.get_finalized_function(func_id);
+
+    let fn_ptr = unsafe { std::mem::transmute::<*const u8, fn(f64) -> (i64, i64, f64)>(code_ptr) };
+
+    let result = fn_ptr(1.23);
+    println!("{result:?}");
+    Ok(())
+}
 
 #[test]
 fn test_branch_block_param() {

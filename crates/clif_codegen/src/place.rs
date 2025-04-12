@@ -31,6 +31,17 @@ pub(crate) enum CPlace {
         second: Variable,
         layout: Idx<Layout>,
     },
+    /// A MIR local that has been split into three CLIF variables
+    ///
+    /// Some examples could include:
+    /// - union with both Int and Float payloads, since it requires separate CLIF variables
+    VarTriple {
+        local: Local,
+        first: Variable,
+        second: Variable,
+        third: Variable,
+        layout: Idx<Layout>,
+    },
     /// Place representing an address to another location, such as a stack slot or heap allocation
     Address {
         pointer: Pointer,
@@ -39,19 +50,17 @@ pub(crate) enum CPlace {
 }
 
 impl CPlace {
-    fn layout(&self) -> Idx<Layout> {
-        match self {
-            CPlace::Var { layout, .. } => *layout,
-            CPlace::VarPair { layout, .. } => *layout,
-            CPlace::Address { layout, .. } => *layout,
-        }
-    }
-
     // TODO - smallvec optimization
     pub(crate) fn variables(&self) -> Vec<Variable> {
         match self {
             CPlace::Var { variable, .. } => vec![*variable],
             CPlace::VarPair { first, second, .. } => vec![*first, *second],
+            CPlace::VarTriple {
+                first,
+                second,
+                third,
+                ..
+            } => vec![*first, *second, *third],
             CPlace::Address { .. } => vec![],
         }
     }
@@ -59,18 +68,24 @@ impl CPlace {
 
 #[derive(Debug, Clone)]
 pub(crate) enum CValue {
-    ByRef {
+    Ref {
         ptr: Pointer,
         val: Option<Value>,
         layout: Idx<Layout>,
     },
-    ByVal {
+    Val {
         val: Value,
         layout: Idx<Layout>,
     },
-    ByValPair {
+    ValPair {
         first: Value,
         second: Value,
+        layout: Idx<Layout>,
+    },
+    ValTriple {
+        first: Value,
+        second: Value,
+        third: Value,
         layout: Idx<Layout>,
     },
 }
@@ -78,17 +93,10 @@ pub(crate) enum CValue {
 impl CValue {
     pub(crate) fn as_val(&self) -> Option<Value> {
         match self {
-            CValue::ByRef { .. } => None,
-            CValue::ByVal { val, .. } => Some(*val),
-            CValue::ByValPair { .. } => None,
-        }
-    }
-
-    pub(crate) fn as_valpair(&self) -> Option<(Value, Value)> {
-        match self {
-            CValue::ByRef { .. } => None,
-            CValue::ByVal { .. } => None,
-            CValue::ByValPair { first, second, .. } => Some((*first, *second)),
+            CValue::Ref { .. } => None,
+            CValue::Val { val, .. } => Some(*val),
+            CValue::ValPair { .. } => None,
+            CValue::ValTriple { .. } => None,
         }
     }
 }
@@ -97,15 +105,25 @@ pub(crate) fn to_vec_values(cvalues: Vec<CValue>) -> Vec<Value> {
     let mut values = Vec::with_capacity(cvalues.len());
     for cvalue in cvalues {
         match cvalue {
-            CValue::ByRef { val, .. } => {
+            CValue::Ref { val, .. } => {
                 if let Some(val) = val {
                     values.push(val);
                 }
             }
-            CValue::ByVal { val, .. } => values.push(val),
-            CValue::ByValPair { first, second, .. } => {
+            CValue::Val { val, .. } => values.push(val),
+            CValue::ValPair { first, second, .. } => {
                 values.push(first);
                 values.push(second);
+            }
+            CValue::ValTriple {
+                first,
+                second,
+                third,
+                ..
+            } => {
+                values.push(first);
+                values.push(second);
+                values.push(third);
             }
         }
     }

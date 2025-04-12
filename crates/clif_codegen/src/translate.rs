@@ -15,9 +15,8 @@ use cranelift::codegen::ir::ArgumentPurpose;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::frontend::Switch;
 use cranelift::prelude::types::{F64, I64};
-use cranelift::prelude::Block as ClifBlock;
-use cranelift::prelude::Type as ClifType;
 use cranelift::prelude::*;
+use cranelift::prelude::{Block as ClifBlock, Type as ClifType};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Module};
 use hir::{Type as HType, VariantIdx};
@@ -28,20 +27,15 @@ use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
 };
-use util_macros::assert_matches;
 
 use crate::ext::function_builder::FunctionBuilderExt;
-use crate::layout::BackendRepr;
-use crate::layout::Layouts;
-use crate::layout::Scalar;
-use crate::macros::assert_byval;
-use crate::place::to_vec_values;
-use crate::place::CPlace;
-use crate::place::CValue;
+use crate::layout::{BackendRepr, Layouts, Scalar};
+use crate::macros::assert_val;
+use crate::place::Pointer;
+use crate::place::{to_vec_values, CPlace, CValue};
 
 const WORD_BYTE_SIZE: u32 = 8;
 // power-of-2: 2^3=8
-const WORD_ALIGNMENT: u8 = 3;
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
@@ -54,21 +48,21 @@ pub(crate) struct FunctionTranslator<'a> {
     pub(crate) builder: FunctionBuilder<'a>,
 
     /// Reference to the module that this function is being constructed inside of
-    module: &'a mut JITModule,
+    pub(crate) module: &'a mut JITModule,
 
     /// Lowered and typechecked HIR context
-    context: &'a hir::Context,
+    pub(crate) context: &'a hir::Context,
 
     /// map from our MIR FuncId to CLIF FuncId
-    func_map: &'a HashMap<mir::FuncId, FuncId>,
+    pub(crate) func_map: &'a HashMap<mir::FuncId, FuncId>,
 
-    places: ArenaMap<Idx<Local>, CPlace>,
+    pub(crate) places: ArenaMap<Idx<Local>, CPlace>,
 
-    layouts: Layouts,
+    pub(crate) layouts: Layouts,
 
-    statuses: TranslateStatus,
+    pub(crate) statuses: TranslateStatus,
 
-    next_var_idx: usize,
+    pub(crate) next_var_idx: usize,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -144,9 +138,28 @@ impl FunctionTranslator<'_> {
                     let val = self.builder.block_params(entry_block)[i];
                     i += 1;
                     self.builder.def_var(first, val);
+
                     let val = self.builder.block_params(entry_block)[i];
                     i += 1;
                     self.builder.def_var(second, val);
+                }
+                CPlace::VarTriple {
+                    first,
+                    second,
+                    third,
+                    ..
+                } => {
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(first, val);
+
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(second, val);
+
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(third, val);
                 }
                 CPlace::Address { pointer, layout } => todo!(),
             }
@@ -185,15 +198,14 @@ impl FunctionTranslator<'_> {
             panic!("already declared local {:?}, {:?}", local_idx, local);
         }
 
-        let layout_idx = self.layouts.for_type(local.type_idx(), self.context);
+        let layout_idx = self.layout_for_type(local.type_idx());
         let layout = &self.layouts[layout_idx];
         match layout.backend_repr {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
                 let var = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                let ty = self.translate_scalar_to_cliftype(scalar);
-                self.builder.declare_var(var, ty);
+                self.builder.declare_var(var, scalar.into());
                 let place = CPlace::Var {
                     local,
                     variable: var,
@@ -204,13 +216,11 @@ impl FunctionTranslator<'_> {
             BackendRepr::ScalarPair(first, second) => {
                 let var_first = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                let ty = self.translate_scalar_to_cliftype(first);
-                self.builder.declare_var(var_first, ty);
+                self.builder.declare_var(var_first, first.into());
 
                 let var_second = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                let ty = self.translate_scalar_to_cliftype(second);
-                self.builder.declare_var(var_second, ty);
+                self.builder.declare_var(var_second, second.into());
 
                 let place = CPlace::VarPair {
                     local,
@@ -220,7 +230,30 @@ impl FunctionTranslator<'_> {
                 };
                 self.places.insert(local_idx, place);
             }
-            BackendRepr::Memory => todo!(),
+            BackendRepr::ScalarTriple(first, second, third) => {
+                let var_first = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                self.builder.declare_var(var_first, first.into());
+
+                let var_second = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                self.builder.declare_var(var_second, second.into());
+
+                let var_third = Variable::new(self.next_var_idx);
+                self.next_var_idx += 1;
+                self.builder.declare_var(var_third, third.into());
+
+                dbg!(first, second, third);
+
+                let place = CPlace::VarTriple {
+                    local,
+                    first: var_first,
+                    second: var_second,
+                    third: var_third,
+                    layout: layout_idx,
+                };
+                self.places.insert(local_idx, place);
+            }
         }
     }
 
@@ -229,22 +262,30 @@ impl FunctionTranslator<'_> {
         self.builder.func.name = UserFuncName::user(module_id, symbol_id);
 
         for ty_idx in &self.func.params {
-            let layout_idx = self.layouts.for_type(*ty_idx, self.context);
+            let layout_idx = self.layout_for_type(*ty_idx);
             let layout = &self.layouts[layout_idx];
             match layout.backend_repr {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar);
+                    let abi_param = self.translate_scalar_to_abi_param(scalar, true);
                     self.builder.func.signature.params.push(abi_param);
                 }
                 BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first);
+                    let first_abi_param = self.translate_scalar_to_abi_param(first, true);
                     self.builder.func.signature.params.push(first_abi_param);
-                    let second_abi_param = self.translate_scalar_to_abi_param(second);
+
+                    let second_abi_param = self.translate_scalar_to_abi_param(second, true);
                     self.builder.func.signature.params.push(second_abi_param);
                 }
-                BackendRepr::Memory => {
-                    todo!("abi param for struct argument, or a heap pointer (int)")
+                BackendRepr::ScalarTriple(first, second, third) => {
+                    let first_abi_param = self.translate_scalar_to_abi_param(first, true);
+                    self.builder.func.signature.params.push(first_abi_param);
+
+                    let second_abi_param = self.translate_scalar_to_abi_param(second, true);
+                    self.builder.func.signature.params.push(second_abi_param);
+
+                    let third_abi_param = self.translate_scalar_to_abi_param(third, true);
+                    self.builder.func.signature.params.push(third_abi_param);
                 }
             }
         }
@@ -253,40 +294,49 @@ impl FunctionTranslator<'_> {
             // return type
             let return_ty = self.func.return_ty();
 
-            let layout_idx = self.layouts.for_type(return_ty, self.context);
+            let layout_idx = self.layout_for_type(return_ty);
             let layout = &self.layouts[layout_idx];
             match layout.backend_repr {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar);
+                    let abi_param = self.translate_scalar_to_abi_param(scalar, false);
                     self.builder.func.signature.returns.push(abi_param);
                 }
                 BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first);
+                    let first_abi_param = self.translate_scalar_to_abi_param(first, false);
                     self.builder.func.signature.returns.push(first_abi_param);
-                    let second_abi_param = self.translate_scalar_to_abi_param(second);
+
+                    let second_abi_param = self.translate_scalar_to_abi_param(second, false);
                     self.builder.func.signature.returns.push(second_abi_param);
                 }
-                BackendRepr::Memory => {
-                    todo!("abi param for struct return, or a heap pointer (int)")
+                BackendRepr::ScalarTriple(first, second, third) => {
+                    let first_abi_param = self.translate_scalar_to_abi_param(first, false);
+                    self.builder.func.signature.returns.push(first_abi_param);
+
+                    let second_abi_param = self.translate_scalar_to_abi_param(second, false);
+                    self.builder.func.signature.returns.push(second_abi_param);
+
+                    let third_abi_param = self.translate_scalar_to_abi_param(third, false);
+                    self.builder.func.signature.returns.push(third_abi_param);
                 }
             }
         }
     }
 
-    fn translate_scalar_to_abi_param(&self, scalar: Scalar) -> AbiParam {
+    fn translate_scalar_to_abi_param(&self, scalar: Scalar, is_arg: bool) -> AbiParam {
         match scalar {
             Scalar::Int => AbiParam::new(I64),
             Scalar::Float => AbiParam::new(F64),
-            Scalar::Pointer(ptr) => todo!(),
-        }
-    }
-
-    fn translate_scalar_to_cliftype(&self, scalar: Scalar) -> ClifType {
-        match scalar {
-            Scalar::Int => I64,
-            Scalar::Float => F64,
-            Scalar::Pointer(pointer) => todo!(),
+            Scalar::Pointer(Pointer::Addr { .. }) => AbiParam::new(I64),
+            Scalar::Pointer(Pointer::Stack { slot, offset }) => {
+                let size = todo!("store a map of StackSlot to size");
+                let purpose = if is_arg {
+                    ArgumentPurpose::StructArgument(size)
+                } else {
+                    ArgumentPurpose::StructReturn
+                };
+                AbiParam::special(I64, purpose)
+            }
         }
     }
 
@@ -442,6 +492,16 @@ impl FunctionTranslator<'_> {
                 CPlace::VarPair { first, second, .. } => {
                     &[self.builder.use_var(first), self.builder.use_var(second)]
                 }
+                CPlace::VarTriple {
+                    first,
+                    second,
+                    third,
+                    ..
+                } => &[
+                    self.builder.use_var(first),
+                    self.builder.use_var(second),
+                    self.builder.use_var(third),
+                ],
                 CPlace::Address { pointer, layout } => todo!("stack slots for structs?"),
             };
             self.builder.ins().return_(rvals);
@@ -457,7 +517,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
-        let cval = match rvalue {
+        let cval = &match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(unop, op) => todo!(),
@@ -468,71 +528,51 @@ impl FunctionTranslator<'_> {
         };
         let cplace = &self.places[place.local];
         match (cplace, cval) {
-            (
-                CPlace::Var {
-                    local,
-                    variable,
-                    layout,
-                },
-                CValue::ByRef { ptr, val, .. },
-            ) => todo!(),
-            (
-                CPlace::Var {
-                    local,
-                    variable,
-                    layout,
-                },
-                CValue::ByVal { val, .. },
-            ) => {
-                self.builder.def_var(*variable, val);
+            (CPlace::Var { variable, .. }, CValue::Val { val, .. }) => {
+                self.builder.def_var(*variable, *val);
             }
             (
-                CPlace::Var {
-                    local,
-                    variable,
-                    layout,
-                },
-                CValue::ByValPair { first, second, .. },
-            ) => todo!(),
-            (
                 CPlace::VarPair {
-                    local,
-                    first,
-                    second,
-                    layout,
-                },
-                CValue::ByRef { ptr, val, .. },
-            ) => todo!(),
-            (
-                CPlace::VarPair {
-                    local,
-                    first,
-                    second,
-                    layout,
-                },
-                CValue::ByVal { val, .. },
-            ) => todo!(),
-            (
-                CPlace::VarPair {
-                    local,
                     first: first_var,
                     second: second_var,
-                    layout,
+                    ..
                 },
-                CValue::ByValPair {
+                CValue::ValPair {
                     first: first_val,
                     second: second_val,
                     ..
                 },
             ) => {
-                self.builder.def_var(*first_var, first_val);
-                self.builder.def_var(*second_var, second_val);
+                self.builder.def_var(*first_var, *first_val);
+                self.builder.def_var(*second_var, *second_val);
             }
-            (CPlace::Address { pointer, layout }, CValue::ByRef { ptr, val, .. }) => todo!(),
-            (CPlace::Address { pointer, layout }, CValue::ByVal { val, .. }) => todo!(),
-            (CPlace::Address { pointer, layout }, CValue::ByValPair { first, second, .. }) => {
+            (
+                CPlace::VarTriple {
+                    first: first_var,
+                    second: second_var,
+                    third: third_var,
+                    ..
+                },
+                CValue::ValTriple {
+                    first: first_val,
+                    second: second_val,
+                    third: third_val,
+                    ..
+                },
+            ) => {
+                self.builder.def_var(*first_var, *first_val);
+                self.builder.def_var(*second_var, *second_val);
+                self.builder.def_var(*third_var, *third_val);
+            }
+            (CPlace::Address { pointer, layout }, CValue::Ref { ptr, val, .. }) => todo!(),
+            (CPlace::Address { pointer, layout }, CValue::Val { val, .. }) => todo!(),
+            (CPlace::Address { pointer, layout }, CValue::ValPair { first, second, .. }) => {
                 todo!()
             }
+            (_, _) => unreachable!(
+                "Internal Compiler Error (CLIF): Unexpected Place/Value combination: {:?}/{:?}",
+                cplace, cval
+            ),
         }
     }
 
@@ -573,12 +613,8 @@ impl FunctionTranslator<'_> {
         } else {
             unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
         };
-        CValue::ByVal {
-            val,
-            layout: self
-                .layouts
-                .for_type(self.context.core_types().bool, self.context),
-        }
+        let layout = self.layout_for_type(self.context.core_types().bool);
+        CValue::Val { val, layout }
     }
 
     fn emit_int_comparison(&mut self, lhs_val: Value, rhs_val: Value, comparison: IntCC) -> Value {
@@ -601,15 +637,12 @@ impl FunctionTranslator<'_> {
     fn translate_operand(&mut self, op: &Operand) -> CValue {
         match op {
             Operand::Copy(place) => {
-                let local = place.local;
-                let mut hir_ty = self.func.locals[local].type_idx();
-
                 // TODO: use projections too?
                 let cplace = &self.places[place.local];
                 match cplace {
                     CPlace::Var {
                         variable, layout, ..
-                    } => CValue::ByVal {
+                    } => CValue::Val {
                         val: self.builder.use_var(*variable),
                         layout: *layout,
                     },
@@ -618,12 +651,24 @@ impl FunctionTranslator<'_> {
                         second,
                         layout,
                         ..
-                    } => CValue::ByValPair {
+                    } => CValue::ValPair {
                         first: self.builder.use_var(*first),
                         second: self.builder.use_var(*second),
                         layout: *layout,
                     },
-                    CPlace::Address { pointer, layout } => CValue::ByRef {
+                    CPlace::VarTriple {
+                        first,
+                        second,
+                        third,
+                        layout,
+                        ..
+                    } => CValue::ValTriple {
+                        first: self.builder.use_var(*first),
+                        second: self.builder.use_var(*second),
+                        third: self.builder.use_var(*third),
+                        layout: *layout,
+                    },
+                    CPlace::Address { pointer, layout } => CValue::Ref {
                         ptr: *pointer,
                         val: None,
                         layout: *layout,
@@ -631,17 +676,13 @@ impl FunctionTranslator<'_> {
                 }
             }
             Operand::Constant(c) => match c {
-                Constant::Int(i) => CValue::ByVal {
+                Constant::Int(i) => CValue::Val {
                     val: self.builder.ins().iconst(I64, *i),
-                    layout: self
-                        .layouts
-                        .for_type(self.context.core_types().int, self.context),
+                    layout: self.layout_for_type(self.context.core_types().int),
                 },
-                Constant::Float(f) => CValue::ByVal {
+                Constant::Float(f) => CValue::Val {
                     val: self.builder.ins().f64const(*f),
-                    layout: self
-                        .layouts
-                        .for_type(self.context.core_types().float, self.context),
+                    layout: self.layout_for_type(self.context.core_types().float),
                 },
                 Constant::String(_) => todo!(),
                 Constant::Func(..) => unreachable!("TODO"),
@@ -654,18 +695,29 @@ impl FunctionTranslator<'_> {
         let cplace = &self.places[place.local];
         match cplace {
             // single var means it's a unit sum type, so the variable just is the discrinimant
-            CPlace::Var { variable, .. } => CValue::ByVal {
+            CPlace::Var { variable, .. } => CValue::Val {
                 val: self.builder.use_var(*variable),
                 layout: self.layouts.int,
             },
-            // pair means there's at least one variant with data. The first Variable is the discriminant
-            CPlace::VarPair { first, .. } => CValue::ByVal {
+            // pair/triple means there's at least one variant with data. The first Variable is the discriminant
+            CPlace::VarPair { first, .. } => CValue::Val {
                 val: self.builder.use_var(*first),
                 layout: self.layouts.int,
             },
+            CPlace::VarTriple { first, .. } => CValue::Val {
+                val: self.builder.use_var(*first),
+                layout: self.layouts.int,
+            },
+            CPlace::Address {
+                pointer: Pointer::Stack { .. },
+                ..
+            } => todo!(),
             // shouldn't be possible because even a heap allocated union variant would still be a VarPair where
             // the second Variable was the pointer (and the first is still the discriminant)
-            CPlace::Address { pointer, layout } => unreachable!(
+            CPlace::Address {
+                pointer: Pointer::Addr { .. },
+                ..
+            } => unreachable!(
                 "Internal Compiler Error (CLIF): Tried to get the Discriminant of a pointer"
             ),
         }
@@ -680,19 +732,58 @@ impl FunctionTranslator<'_> {
         // operand is the "arg", like the 16 in `Number.int 16` or the `f` in `Number.float f`
         // variant_idx is the numeric index
 
-        let first = self
+        let layout_idx = self.layout_for_type(ty);
+        let layout = self.layouts.get_cached(ty).unwrap();
+
+        let discriminant = self
             .builder
             .ins()
             .iconst(I64, variant_idx.into_raw() as i64);
 
-        let second = self.translate_operand(operand);
-        // FIXME - this ain't right
-        let second = assert_byval!(second);
+        // if layout is VarPair - translate that operand right into it
+        // if layout is VarTriple -
+        //     if operand is Float - stick it in the last spot and zero-int the middle
+        //     if operand is Int/Ptr - put it in the middle and zero-float the end
+        // if layout is Stack -
+        //     ???
 
-        CValue::ByValPair {
-            first,
-            second,
-            layout: self.layouts.for_type(ty, self.context),
+        match layout.backend_repr {
+            BackendRepr::None => unreachable!(),
+            BackendRepr::Scalar(..) => unreachable!(),
+            BackendRepr::ScalarPair(..) => {
+                let variant_val = self.translate_operand(operand);
+                let variant_val = assert_val!(variant_val);
+
+                CValue::ValPair {
+                    first: discriminant,
+                    second: variant_val,
+                    layout: layout_idx,
+                }
+            }
+            BackendRepr::ScalarTriple(..) => {
+                let variant_val_ty = self.op_type(operand);
+                let variant_val = self.translate_operand(operand);
+                let variant_val = assert_val!(variant_val);
+                if variant_val_ty == self.context.core_types().float {
+                    let zero = self.builder.ins().iconst(I64, 0);
+                    CValue::ValTriple {
+                        first: discriminant,
+                        second: zero,
+                        // by convention floats go last in this scenario
+                        third: variant_val,
+                        layout: layout_idx,
+                    }
+                } else {
+                    let zero = self.builder.ins().f64const(0.00);
+                    CValue::ValTriple {
+                        first: discriminant,
+                        // by convention Int/Ptr go middle in this scenario
+                        second: variant_val,
+                        third: zero,
+                        layout: layout_idx,
+                    }
+                }
+            }
         }
     }
 
