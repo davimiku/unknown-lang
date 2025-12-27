@@ -10,6 +10,7 @@ pub trait ContextDisplay {
     fn display(&self, context: &Context) -> String;
 }
 
+#[cfg(test)]
 pub fn display_module(module: &Module, context: &Context) -> (String, String) {
     let mut content = String::new();
     for expr in module.exprs.iter() {

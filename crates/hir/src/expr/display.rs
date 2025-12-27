@@ -4,7 +4,7 @@ use util_macros::assert_matches;
 use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{
     BlockExpr, CallExpr, Context, ContextDisplay, Expr, FunctionExpr, IfExpr, IndexIntExpr,
-    ListLiteralExpr, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
+    ListLiteralExpr, Pattern, Type, UnaryExpr, ValueSymbol, VarDefExpr, VarRefExpr, COMPILER_BRAND,
 };
 
 use super::{FunctionExprGroup, FunctionParam, LoopExpr, MatchExpr, ReAssignment};
@@ -14,8 +14,8 @@ const DEFAULT_INDENT: usize = 4;
 impl ContextDisplay for Idx<Expr> {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        let indent = 0;
-        fmt_idx_expr(&mut s, *self, context, indent);
+        let mut indent = 0;
+        fmt_idx_expr(&mut s, *self, context, &mut indent);
 
         s
     }
@@ -24,14 +24,14 @@ impl ContextDisplay for Idx<Expr> {
 impl ContextDisplay for Expr {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        let indent = 0;
-        fmt_expr(&mut s, self, context, indent);
+        let mut indent = 0;
+        fmt_expr(&mut s, self, context, &mut indent);
 
         s
     }
 }
 
-fn fmt_idx_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize) {
+fn fmt_idx_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: &mut usize) {
     let expr = context.expr(idx);
     fmt_expr(s, expr, context, indent);
 }
@@ -42,7 +42,7 @@ fn fmt_idx_expr(s: &mut String, idx: Idx<Expr>, context: &Context, indent: usize
 /// meant to be read and understood by humans, and may be used in some internal test cases.
 ///
 /// This function is often called recursively for expressions that nest other expressions.
-fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
+fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) {
     let mut indent = indent;
     match expr {
         Expr::Empty => {}
@@ -110,7 +110,39 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: usize) {
     }
 }
 
-fn fmt_array_literal(s: &mut String, array: &ListLiteralExpr, context: &Context, indent: usize) {
+fn fmt_idx_pattern(s: &mut String, pattern: Idx<Pattern>, context: &Context, indent: &mut usize) {
+    let pattern = context.pattern(pattern);
+    fmt_pattern(s, pattern, context, indent);
+}
+
+fn fmt_pattern(s: &mut String, pattern: &Pattern, context: &Context, indent: &mut usize) {
+    match pattern {
+        Pattern::Wild { .. } => s.push_str("_ "),
+        Pattern::IdentBinding { binding, .. } => {
+            s.push_str(context.lookup(binding.ident));
+            s.push(' ');
+        }
+        Pattern::Variant { pattern, .. } => {
+            s.push('.');
+            s.push_str(context.lookup(pattern.variant));
+            s.push(' ');
+            if let Some(inner_pattern) = pattern.inner_pattern {
+                let inner_pattern = context.pattern(inner_pattern);
+                fmt_pattern(s, inner_pattern, context, indent);
+            }
+        }
+        Pattern::IntLiteral { literal, .. } => fmt_idx_expr(s, *literal, context, indent),
+        Pattern::FloatLiteral { literal, .. } => fmt_idx_expr(s, *literal, context, indent),
+        Pattern::StringLiteral { literal, .. } => fmt_idx_expr(s, *literal, context, indent),
+    }
+}
+
+fn fmt_array_literal(
+    s: &mut String,
+    array: &ListLiteralExpr,
+    context: &Context,
+    indent: &mut usize,
+) {
     match array {
         ListLiteralExpr::Empty => s.push_str("[]"),
         ListLiteralExpr::NonEmpty { elements } => {
@@ -124,7 +156,7 @@ fn fmt_array_literal(s: &mut String, array: &ListLiteralExpr, context: &Context,
     }
 }
 
-fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usize) {
+fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: &mut usize) {
     let CallExpr {
         callee,
         args,
@@ -145,7 +177,7 @@ fn fmt_call_expr(s: &mut String, call: &CallExpr, context: &Context, indent: usi
     s.push(')');
 }
 
-fn fmt_unary_expr(s: &mut String, unary: &UnaryExpr, context: &Context, indent: usize) {
+fn fmt_unary_expr(s: &mut String, unary: &UnaryExpr, context: &Context, indent: &mut usize) {
     let UnaryExpr { op, expr, .. } = unary;
     s.push_str(&format!("{op}"));
     fmt_idx_expr(s, *expr, context, indent)
@@ -157,14 +189,14 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
         BlockExpr::NonEmpty { exprs } => {
             if exprs.len() == 1 {
                 s.push_str("{ ");
-                fmt_idx_expr(s, exprs[0], context, *indent);
+                fmt_idx_expr(s, exprs[0], context, indent);
                 s.push_str(" }");
             } else {
                 s.push_str("{\n");
                 *indent += DEFAULT_INDENT;
                 for idx in exprs {
                     s.push_str(&" ".repeat(*indent));
-                    fmt_idx_expr(s, *idx, context, *indent);
+                    fmt_idx_expr(s, *idx, context, indent);
                     s.push('\n');
                 }
                 *indent -= DEFAULT_INDENT;
@@ -177,11 +209,13 @@ fn fmt_block_expr(s: &mut String, block: &BlockExpr, context: &Context, indent: 
 fn fmt_match_expr(s: &mut String, match_expr: &MatchExpr, context: &Context, indent: &mut usize) {
     s.push_str("match ");
     s.push_str(&match_expr.scrutinee.display(context));
-    s.push_str("{\n");
+    s.push_str(" {\n");
     *indent += DEFAULT_INDENT;
     for arm in &match_expr.arms {
         s.push_str(&" ".repeat(*indent));
-        // arm.pattern;
+        fmt_idx_pattern(s, arm.pattern, context, indent);
+        s.push_str("-> ");
+        fmt_idx_expr(s, arm.expr, context, indent);
         s.push('\n');
     }
     *indent -= DEFAULT_INDENT;
@@ -192,7 +226,7 @@ fn fmt_function_expr_group(
     s: &mut String,
     function_group: &FunctionExprGroup,
     context: &Context,
-    _: usize,
+    _: &mut usize,
 ) {
     let FunctionExprGroup {
         overloads,
@@ -219,7 +253,12 @@ fn fmt_function_expr_group(
     }
 }
 
-fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context, indent: usize) {
+fn fmt_function_expr(
+    s: &mut String,
+    function: &FunctionExpr,
+    context: &Context,
+    indent: &mut usize,
+) {
     let FunctionExpr { params, body, .. } = function;
 
     s.push('(');
@@ -246,7 +285,7 @@ fn fmt_function_expr(s: &mut String, function: &FunctionExpr, context: &Context,
     fmt_idx_expr(s, *body, context, indent);
 }
 
-fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent: usize) {
+fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent: &mut usize) {
     let VarDefExpr {
         symbol,
         value,
@@ -268,13 +307,18 @@ fn fmt_var_def(s: &mut String, local_def: &VarDefExpr, context: &Context, indent
     s.push(';');
 }
 
-fn fmt_reassignment(s: &mut String, reassignment: &ReAssignment, context: &Context, indent: usize) {
+fn fmt_reassignment(
+    s: &mut String,
+    reassignment: &ReAssignment,
+    context: &Context,
+    indent: &mut usize,
+) {
     fmt_idx_expr(s, reassignment.place, context, indent);
     s.push_str(" <- ");
     fmt_idx_expr(s, reassignment.value, context, indent);
 }
 
-fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: usize) {
+fn fmt_if_expr(s: &mut String, if_expr: &IfExpr, context: &Context, indent: &mut usize) {
     let IfExpr {
         condition,
         then_branch,
@@ -298,7 +342,12 @@ fn fmt_loop_expr(s: &mut String, loop_expr: &LoopExpr, context: &Context, indent
     fmt_block_expr(s, block, context, indent);
 }
 
-fn fmt_index_int_expr(s: &mut String, index_expr: &IndexIntExpr, context: &Context, indent: usize) {
+fn fmt_index_int_expr(
+    s: &mut String,
+    index_expr: &IndexIntExpr,
+    context: &Context,
+    indent: &mut usize,
+) {
     let IndexIntExpr { subject, index } = index_expr;
     fmt_idx_expr(s, *subject, context, indent);
     s.push('.');
@@ -310,7 +359,7 @@ fn fmt_type_statement(
     symbol: TypeSymbol,
     type_expr: Idx<TypeExpr>,
     context: &Context,
-    indent: usize,
+    indent: &mut usize,
 ) {
     s.push_str(&type_expr.display(context).to_string());
 }
@@ -351,7 +400,7 @@ impl ContextDisplay for VarRefExpr {
 impl ContextDisplay for FunctionExprGroup {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        fmt_function_expr_group(&mut s, self, context, 0);
+        fmt_function_expr_group(&mut s, self, context, &mut 0);
         s
     }
 }
@@ -359,7 +408,7 @@ impl ContextDisplay for FunctionExprGroup {
 impl ContextDisplay for FunctionExpr {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        fmt_function_expr(&mut s, self, context, 0);
+        fmt_function_expr(&mut s, self, context, &mut 0);
         s
     }
 }
