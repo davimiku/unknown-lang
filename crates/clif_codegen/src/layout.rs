@@ -97,60 +97,7 @@ impl FunctionTranslator<'_> {
             }
             HType::String | HType::StringLiteral(_) => todo!(),
             HType::Sum(sum_type) => {
-                let mut max_size = Size::default();
-                let mut variant_layouts: Vec<Idx<Layout>> = vec![];
-                let mut has_intlike = false;
-                let mut has_float = false;
-                let mut has_stack_slot = false;
-                let mut mixed_int_float = false;
-                for (_, variant_ty) in &sum_type.variants {
-                    let layout = self.layout_for_type(*variant_ty);
-                    variant_layouts.push(layout);
-                    let layout = self.layouts.get_cached(*variant_ty).unwrap();
-                    if layout.size > max_size {
-                        max_size = layout.size;
-                    }
-                    match layout.backend_repr {
-                        BackendRepr::None => {}
-                        BackendRepr::Scalar(Scalar::Int) => has_intlike = true,
-                        BackendRepr::Scalar(Scalar::Float) => has_float = true,
-                        BackendRepr::Scalar(Scalar::Pointer(_)) => has_intlike = true,
-                        BackendRepr::ScalarPair(..) => has_stack_slot = true,
-                        BackendRepr::ScalarTriple(..) => has_stack_slot = true,
-                        BackendRepr::ScalarMemory(scalar, memory) => todo!(),
-                    };
-                }
-                let backend_repr = match (has_stack_slot, has_intlike, has_float) {
-                    (true, _, _) => {
-                        let size = (Size::ONE_WORD + max_size).num_bytes as u32;
-                        let data =
-                            StackSlotData::new(StackSlotKind::ExplicitSlot, size, ALIGN_SHIFT);
-                        let slot = self.builder.create_sized_stack_slot(data);
-
-                        BackendRepr::Scalar(Scalar::Pointer(Pointer::Stack {
-                            slot,
-                            offset: Offset32::new(0),
-                        }))
-                    }
-                    (false, false, false) => BackendRepr::Scalar(Scalar::Int),
-                    (false, true, false) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Int),
-                    (false, false, true) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Float),
-                    (false, true, true) => {
-                        mixed_int_float = true;
-                        BackendRepr::ScalarPair(Scalar::Int, Scalar::Int)
-                    }
-                };
-
-                Layout {
-                    fields: FieldsShape::Scalar,
-                    variants: VariantsShape::Multiple {
-                        tag_encoding: TagEncoding::Direct,
-                        mixed_int_float,
-                        layouts: variant_layouts,
-                    },
-                    backend_repr,
-                    size: Size::ONE_WORD + max_size, // one word for the tag
-                }
+                todo!()
             }
             HType::Function(function_type) => todo!(),
             HType::Array(array_type) => todo!(),
@@ -232,16 +179,16 @@ pub(crate) enum FieldsShape {
 pub(crate) enum BackendRepr {
     None, // for unit or ZST (maybe?)
     Scalar(Scalar),
-    ScalarPair(Scalar, Scalar),
-    ScalarTriple(Scalar, Scalar, Scalar),
-    ScalarMemory(Scalar, Memory),
-    // SimdVector
-    // todo - wide pointer (data+vtable or closure data+fnptr)
+    ScalarPair(Scalar, Scalar), // tag + scalar in sum type or 2 field product type
+    ScalarTriple(Scalar, Scalar, Scalar), // tag + 2 field product type in sum type, 3 field product type, etc.
+    ScalarMemory(Scalar, Memory),         // tag + pointer
+                                          // SimdVector?
+                                          // todo - wide pointer (data+vtable or closure data+fnptr)
 }
 
 /// Representation
 #[derive(Debug, Clone)]
-enum Memory {
+pub(crate) enum Memory {
     Inline,
     Allocated,
 }

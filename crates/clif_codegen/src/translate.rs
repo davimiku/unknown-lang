@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use cranelift::codegen::ir::ArgumentPurpose;
+use cranelift::codegen::ir::BlockArg;
 use cranelift::codegen::ir::Endianness;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::frontend::Switch;
@@ -201,12 +202,14 @@ impl FunctionTranslator<'_> {
 
         let layout_idx = self.layout_for_type(local.type_idx());
         let layout = &self.layouts[layout_idx];
-        match layout.backend_repr {
+        match layout.backend_repr.clone() {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
                 let var = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var, scalar.into());
+                // TODO - in recent cranelift version you can't specify the var index anymore?
+                // // need to figure out how to do this
+                let var = self.builder.declare_var(scalar.into());
                 let place = CPlace::Var {
                     local,
                     variable: var,
@@ -215,13 +218,11 @@ impl FunctionTranslator<'_> {
                 self.places.insert(local_idx, place);
             }
             BackendRepr::ScalarPair(first, second) => {
-                let var_first = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var_first, first.into());
+                let var_first = self.builder.declare_var(first.into());
 
-                let var_second = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var_second, second.into());
+                let var_second = self.builder.declare_var(second.into());
 
                 let place = CPlace::VarPair {
                     local,
@@ -232,17 +233,14 @@ impl FunctionTranslator<'_> {
                 self.places.insert(local_idx, place);
             }
             BackendRepr::ScalarTriple(first, second, third) => {
-                let var_first = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var_first, first.into());
+                let var_first = self.builder.declare_var(first.into());
 
-                let var_second = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var_second, second.into());
+                let var_second = self.builder.declare_var(second.into());
 
-                let var_third = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
-                self.builder.declare_var(var_third, third.into());
+                let var_third = self.builder.declare_var(third.into());
 
                 let place = CPlace::VarTriple {
                     local,
@@ -253,6 +251,7 @@ impl FunctionTranslator<'_> {
                 };
                 self.places.insert(local_idx, place);
             }
+            BackendRepr::ScalarMemory(scalar, memory) => todo!(),
         }
     }
 
@@ -263,7 +262,7 @@ impl FunctionTranslator<'_> {
         for ty_idx in &self.func.params {
             let layout_idx = self.layout_for_type(*ty_idx);
             let layout = &self.layouts[layout_idx];
-            match layout.backend_repr {
+            match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
                     let abi_param = self.translate_scalar_to_abi_param(scalar, true);
@@ -286,6 +285,7 @@ impl FunctionTranslator<'_> {
                     let third_abi_param = self.translate_scalar_to_abi_param(third, true);
                     self.builder.func.signature.params.push(third_abi_param);
                 }
+                BackendRepr::ScalarMemory(scalar, memory) => todo!(),
             }
         }
 
@@ -295,7 +295,7 @@ impl FunctionTranslator<'_> {
 
             let layout_idx = self.layout_for_type(return_ty);
             let layout = &self.layouts[layout_idx];
-            match layout.backend_repr {
+            match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
                     let abi_param = self.translate_scalar_to_abi_param(scalar, false);
@@ -318,6 +318,7 @@ impl FunctionTranslator<'_> {
                     let third_abi_param = self.translate_scalar_to_abi_param(third, false);
                     self.builder.func.signature.returns.push(third_abi_param);
                 }
+                BackendRepr::ScalarMemory(scalar, memory) => todo!(),
             }
         }
     }
@@ -442,7 +443,11 @@ impl FunctionTranslator<'_> {
         }
 
         // FIXME: remove unwrap when panics are implemented
-        let block_call_args = self.locals_to_values(target.unwrap().1);
+        let block_call_args: Vec<BlockArg> = self
+            .locals_to_values(target.unwrap().1)
+            .into_iter()
+            .map(|value| BlockArg::Value(value))
+            .collect();
         self.builder.ins().jump(target.unwrap().0, &block_call_args);
     }
 
@@ -745,7 +750,7 @@ impl FunctionTranslator<'_> {
         // if layout is Stack -
         //     ???
 
-        match layout.backend_repr {
+        match layout.backend_repr.clone() {
             BackendRepr::None => unreachable!(),
             BackendRepr::Scalar(..) => unreachable!(),
             BackendRepr::ScalarPair(_, payload) => {
@@ -791,6 +796,7 @@ impl FunctionTranslator<'_> {
                     }
                 }
             }
+            BackendRepr::ScalarMemory(scalar, memory) => todo!(),
         }
     }
 

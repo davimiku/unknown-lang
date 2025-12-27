@@ -44,13 +44,9 @@ fn multiple_returns() -> Result<(), Box<dyn Error>> {
         builder.switch_to_block(block0_entry);
         builder.seal_block(block0_entry);
 
-        let return_var = Variable::new(0);
-        let first_var = Variable::new(1);
-        let second_var = Variable::new(2);
-
-        builder.declare_var(return_var, F64);
-        builder.declare_var(first_var, I64);
-        builder.declare_var(second_var, I64);
+        let return_var = builder.declare_var(F64);
+        let first_var = builder.declare_var(I64);
+        let second_var = builder.declare_var(I64);
 
         let first_val = builder.ins().iconst(I64, 20);
         builder.def_var(first_var, first_val);
@@ -167,11 +163,8 @@ fn test_branch_block_param() {
         let block2_else = builder.create_block();
         let block3_join = builder.create_block();
 
-        let return_var = Variable::new(0);
-        let condition = Variable::new(1);
-
-        builder.declare_var(return_var, I64);
-        builder.declare_var(condition, I64);
+        let return_var = builder.declare_var(I64);
+        let condition = builder.declare_var(I64);
 
         builder.append_block_params_for_function_params(block0_entry);
 
@@ -228,12 +221,9 @@ fn from_documentation() {
         let block1 = builder.create_block();
         let block2 = builder.create_block();
         let block3 = builder.create_block();
-        let x = Variable::new(0);
-        let y = Variable::new(1);
-        let z = Variable::new(2);
-        builder.declare_var(x, I32);
-        builder.declare_var(y, I32);
-        builder.declare_var(z, I32);
+        let x = builder.declare_var(I32);
+        let y = builder.declare_var(I32);
+        let z = builder.declare_var(I32);
         builder.append_block_params_for_function_params(block0);
 
         builder.switch_to_block(block0);
