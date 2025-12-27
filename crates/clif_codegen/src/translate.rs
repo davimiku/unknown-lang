@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use cranelift::codegen::ir::ArgumentPurpose;
+use cranelift::codegen::ir::Endianness;
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::frontend::Switch;
 use cranelift::prelude::types::{F64, I64};
@@ -242,8 +243,6 @@ impl FunctionTranslator<'_> {
                 let var_third = Variable::new(self.next_var_idx);
                 self.next_var_idx += 1;
                 self.builder.declare_var(var_third, third.into());
-
-                dbg!(first, second, third);
 
                 let place = CPlace::VarTriple {
                     local,
@@ -741,18 +740,26 @@ impl FunctionTranslator<'_> {
             .iconst(I64, variant_idx.into_raw() as i64);
 
         // if layout is VarPair - translate that operand right into it
-        // if layout is VarTriple -
-        //     if operand is Float - stick it in the last spot and zero-int the middle
-        //     if operand is Int/Ptr - put it in the middle and zero-float the end
+        //     if operand is Float - interpret the int var like a float
+        //     if operand is Int/Ptr - n/a
         // if layout is Stack -
         //     ???
 
         match layout.backend_repr {
             BackendRepr::None => unreachable!(),
             BackendRepr::Scalar(..) => unreachable!(),
-            BackendRepr::ScalarPair(..) => {
+            BackendRepr::ScalarPair(_, payload) => {
                 let variant_val = self.translate_operand(operand);
-                let variant_val = assert_val!(variant_val);
+                let mut variant_val = assert_val!(variant_val);
+                // FIXME - at compile-time (now), check if
+                //  1. the VarPair is "mixed" (store this on the layout?)
+                //  2. the tag corresponds to a Float variant.
+                // if let Scalar::Float = payload {
+                variant_val = self
+                    .builder
+                    .ins()
+                    .bitcast(I64, MemFlags::new(), variant_val);
+                // }
 
                 CValue::ValPair {
                     first: discriminant,

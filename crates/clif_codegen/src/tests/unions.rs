@@ -74,6 +74,26 @@ let main = fun (f: Float) -> { CoolFloat.float_c f }
 }
 
 #[test]
+fn construct_union_with_int_float_data_literal() {
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun () -> { Number.float 1.23 }
+";
+
+    let code_ptr = compile_main(input);
+
+    let code_fn = unsafe { to_fn::<(), (XInt, XInt)>(code_ptr) };
+
+    let result = code_fn(());
+    println!("{result:?}");
+    println!("{}", result.0);
+    println!("{}", bytemuck::cast::<i64, f64>(result.1));
+
+    // assert_eq!(code_fn((1.23,)), (1, 0, 1.23));
+}
+
+#[test]
 fn construct_union_with_int_float_data() {
     let input = "
 type Number = (int: Int | float: Float)
@@ -83,13 +103,12 @@ let main = fun (f: Float) -> { Number.float f }
 
     let code_ptr = compile_main(input);
 
-    let code_fn = unsafe { to_fn::<(XFloat,), (XInt, XInt, XFloat)>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(XFloat,), (XInt, XInt)>(code_ptr) };
 
     let result = code_fn((1.23_f64,));
     println!("{result:?}");
     println!("{}", result.0);
     println!("{}", result.1);
-    println!("{}", result.2);
 
     // assert_eq!(code_fn((1.23,)), (1, 0, 1.23));
 }

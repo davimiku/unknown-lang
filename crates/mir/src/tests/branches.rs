@@ -177,6 +177,26 @@ fun main:
 }
 
 #[test]
+fn make_float_union_instance() {
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun () -> { Number.float 1.23 }
+";
+
+    let expected = "
+fun main:
+    params: {none}
+    mut _0: Number~1.0
+    
+    BB0():
+        _0 := Number.float$1(const 1.23)
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
 fn match_unpack_and_repack() {
     let input = "
 type Number = (int: Int | float: Float)

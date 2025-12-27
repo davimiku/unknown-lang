@@ -2,9 +2,8 @@ use std::ops;
 
 use cranelift::codegen::ir::immediates::Offset32;
 use cranelift::prelude::{types, StackSlotData, StackSlotKind, Type as CType};
-use hir::{Context, ContextDisplay, CoreTypes, Type as HType, VariantIdx};
+use hir::{ContextDisplay, CoreTypes, Type as HType, VariantIdx};
 use la_arena::{Arena, ArenaMap, Idx};
-use mir::Operand;
 
 use crate::{place::Pointer, translate::FunctionTranslator};
 
@@ -103,6 +102,7 @@ impl FunctionTranslator<'_> {
                 let mut has_intlike = false;
                 let mut has_float = false;
                 let mut has_stack_slot = false;
+                let mut mixed_int_float = false;
                 for (_, variant_ty) in &sum_type.variants {
                     let layout = self.layout_for_type(*variant_ty);
                     variant_layouts.push(layout);
@@ -117,6 +117,7 @@ impl FunctionTranslator<'_> {
                         BackendRepr::Scalar(Scalar::Pointer(_)) => has_intlike = true,
                         BackendRepr::ScalarPair(..) => has_stack_slot = true,
                         BackendRepr::ScalarTriple(..) => has_stack_slot = true,
+                        BackendRepr::ScalarMemory(scalar, memory) => todo!(),
                     };
                 }
                 let backend_repr = match (has_stack_slot, has_intlike, has_float) {
@@ -131,19 +132,20 @@ impl FunctionTranslator<'_> {
                             offset: Offset32::new(0),
                         }))
                     }
-                    (false, true, true) => {
-                        // Float always 2nd by convention
-                        BackendRepr::ScalarTriple(Scalar::Int, Scalar::Int, Scalar::Float)
-                    }
+                    (false, false, false) => BackendRepr::Scalar(Scalar::Int),
                     (false, true, false) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Int),
                     (false, false, true) => BackendRepr::ScalarPair(Scalar::Int, Scalar::Float),
-                    (false, false, false) => BackendRepr::Scalar(Scalar::Int),
+                    (false, true, true) => {
+                        mixed_int_float = true;
+                        BackendRepr::ScalarPair(Scalar::Int, Scalar::Int)
+                    }
                 };
 
                 Layout {
                     fields: FieldsShape::Scalar,
                     variants: VariantsShape::Multiple {
                         tag_encoding: TagEncoding::Direct,
+                        mixed_int_float,
                         layouts: variant_layouts,
                     },
                     backend_repr,
@@ -232,9 +234,16 @@ pub(crate) enum BackendRepr {
     Scalar(Scalar),
     ScalarPair(Scalar, Scalar),
     ScalarTriple(Scalar, Scalar, Scalar),
-    // TODO - ScalarMemory(Scalar, Memory) ??? for unions with tag and large struct data
+    ScalarMemory(Scalar, Memory),
     // SimdVector
     // todo - wide pointer (data+vtable or closure data+fnptr)
+}
+
+/// Representation
+#[derive(Debug, Clone)]
+enum Memory {
+    Inline,
+    Allocated,
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +257,10 @@ pub(crate) enum VariantsShape {
     Multiple {
         // tag: Scalar, // TODO - tag is always Int scalar? remove?
         tag_encoding: TagEncoding,
+
+        /// At least one variant has an underlying representation of each of Int and Float
+        mixed_int_float: bool,
+
         layouts: Vec<Idx<Layout>>,
     },
 }
