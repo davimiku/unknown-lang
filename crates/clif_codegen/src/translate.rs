@@ -11,20 +11,19 @@ mod arithmetic;
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use cranelift::codegen::ir::ArgumentPurpose;
+use cranelift::codegen::ir::immediates::Offset32;
 use cranelift::codegen::ir::BlockArg;
-use cranelift::codegen::ir::Endianness;
 use cranelift::codegen::ir::UserFuncName;
+use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
 use cranelift::frontend::Switch;
 use cranelift::prelude::types::{F64, I64};
+use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::*;
-use cranelift::prelude::{Block as ClifBlock, Type as ClifType};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Module};
 use hir::{Type as HType, VariantIdx};
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
-use mir::ProjectionElem;
 use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
@@ -32,12 +31,10 @@ use mir::{
 
 use crate::ext::function_builder::FunctionBuilderExt;
 use crate::layout::{BackendRepr, Layouts, Scalar};
-use crate::macros::assert_val;
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
-const WORD_BYTE_SIZE: u32 = 8;
-// power-of-2: 2^3=8
+const WORD_SIZE: u32 = 8;
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
@@ -65,6 +62,9 @@ pub(crate) struct FunctionTranslator<'a> {
     pub(crate) statuses: TranslateStatus,
 
     pub(crate) next_var_idx: usize,
+
+    /// Variable holding the sret (struct return) pointer, if the return type is stack-allocated
+    pub(crate) sret_var: Option<Variable>,
 }
 
 impl<'a> FunctionTranslator<'a> {
@@ -85,6 +85,7 @@ impl<'a> FunctionTranslator<'a> {
             layouts: Layouts::new(context.core_types()),
             statuses: Default::default(),
             next_var_idx: 0,
+            sret_var: None,
         }
     }
 }
@@ -163,12 +164,61 @@ impl FunctionTranslator<'_> {
                     i += 1;
                     self.builder.def_var(third, val);
                 }
-                CPlace::Address { pointer, layout } => todo!(),
+                CPlace::Address { pointer, layout } => {
+                    // Stack-allocated values: copy from parameter to our stack slot
+                    let (slot, offset) = match pointer {
+                        Pointer::Stack { slot, offset } => (slot, offset),
+                        Pointer::Addr { addr, offset } => {
+                            panic!("Expected stack pointer for stack-allocated parameter")
+                        }
+                    };
+                    let size = self.layouts[layout].size;
+                    // The parameter is passed as a pointer - load it from the block params
+                    let param_ptr = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    // Copy from the parameter's memory to our stack slot
+                    let dest_addr = self.builder.ins().stack_addr(I64, slot, offset);
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        dest_addr,
+                        param_ptr,
+                        size.bytes() as u64,
+                        1,    // dest align
+                        1,    // src align
+                        true, // non-overlapping
+                        MemFlags::new(),
+                    );
+                }
             }
         }
 
+        // If return type is stack-allocated, capture the sret pointer in a variable
+        // The sret pointer is passed as the last parameter
+        {
+            let return_ty = self.func.return_ty();
+            let return_layout_idx = self.layout_for_type(return_ty);
+            let return_layout = &self.layouts[return_layout_idx];
+            if matches!(return_layout.backend_repr, BackendRepr::StackSlot) {
+                let sret_var = self.builder.declare_var(I64);
+                let sret_ptr = self.builder.block_params(entry_block)[i];
+                self.builder.def_var(sret_var, sret_ptr);
+                self.sret_var = Some(sret_var);
+            }
+        }
+
+        // translate the entry block first (we're already switched to it)
+        let entry_block_idx = self.func.entry_block();
+        self.translate_basic_block(entry_block_idx, &block_map);
+        self.statuses
+            .entry(entry_block_idx)
+            .and_modify(|entry| *entry = entry.finish());
+
         // translate the rest of the blocks after the entry block
         for (idx, block) in block_map.iter() {
+            // Skip entry block since we already translated it above
+            if idx == entry_block_idx {
+                continue;
+            }
             self.builder.switch_to_block(*block);
             // TODO - cranelift recommends sealing blocks as soon as possible
             // uncomment and run all tests after more of the language is implemented
@@ -205,10 +255,6 @@ impl FunctionTranslator<'_> {
         match layout.backend_repr.clone() {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
-                let var = Variable::new(self.next_var_idx);
-                self.next_var_idx += 1;
-                // TODO - in recent cranelift version you can't specify the var index anymore?
-                // // need to figure out how to do this
                 let var = self.builder.declare_var(scalar.into());
                 let place = CPlace::Var {
                     local,
@@ -232,26 +278,20 @@ impl FunctionTranslator<'_> {
                 };
                 self.places.insert(local_idx, place);
             }
-            BackendRepr::ScalarTriple(first, second, third) => {
-                self.next_var_idx += 1;
-                let var_first = self.builder.declare_var(first.into());
-
-                self.next_var_idx += 1;
-                let var_second = self.builder.declare_var(second.into());
-
-                self.next_var_idx += 1;
-                let var_third = self.builder.declare_var(third.into());
-
-                let place = CPlace::VarTriple {
-                    local,
-                    first: var_first,
-                    second: var_second,
-                    third: var_third,
+            BackendRepr::StackSlot => {
+                // Create a stack slot for this local
+                let size = layout.size.bytes() as u32;
+                let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
+                let slot = self.builder.create_sized_stack_slot(slot_data);
+                let place = CPlace::Address {
+                    pointer: Pointer::Stack {
+                        slot,
+                        offset: 0.into(),
+                    },
                     layout: layout_idx,
                 };
                 self.places.insert(local_idx, place);
             }
-            BackendRepr::ScalarMemory(scalar, memory) => todo!(),
         }
     }
 
@@ -265,27 +305,24 @@ impl FunctionTranslator<'_> {
             match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar, true);
+                    let abi_param = self.translate_scalar_to_abi_param(scalar);
                     self.builder.func.signature.params.push(abi_param);
                 }
                 BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first, true);
+                    let first_abi_param = self.translate_scalar_to_abi_param(first);
                     self.builder.func.signature.params.push(first_abi_param);
 
-                    let second_abi_param = self.translate_scalar_to_abi_param(second, true);
+                    let second_abi_param = self.translate_scalar_to_abi_param(second);
                     self.builder.func.signature.params.push(second_abi_param);
                 }
-                BackendRepr::ScalarTriple(first, second, third) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first, true);
-                    self.builder.func.signature.params.push(first_abi_param);
-
-                    let second_abi_param = self.translate_scalar_to_abi_param(second, true);
-                    self.builder.func.signature.params.push(second_abi_param);
-
-                    let third_abi_param = self.translate_scalar_to_abi_param(third, true);
-                    self.builder.func.signature.params.push(third_abi_param);
+                BackendRepr::StackSlot => {
+                    // Stack-allocated parameters are passed by pointer
+                    // The caller passes a pointer to the data
+                    // We use a regular i64 parameter instead of ArgumentPurpose::StructArgument
+                    // to avoid ABI complications (StructArgument not supported on arm64)
+                    let abi_param = AbiParam::new(I64);
+                    self.builder.func.signature.params.push(abi_param);
                 }
-                BackendRepr::ScalarMemory(scalar, memory) => todo!(),
             }
         }
 
@@ -298,45 +335,34 @@ impl FunctionTranslator<'_> {
             match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar, false);
+                    let abi_param = self.translate_scalar_to_abi_param(scalar);
                     self.builder.func.signature.returns.push(abi_param);
                 }
                 BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first, false);
+                    let first_abi_param = self.translate_scalar_to_abi_param(first);
                     self.builder.func.signature.returns.push(first_abi_param);
 
-                    let second_abi_param = self.translate_scalar_to_abi_param(second, false);
+                    let second_abi_param = self.translate_scalar_to_abi_param(second);
                     self.builder.func.signature.returns.push(second_abi_param);
                 }
-                BackendRepr::ScalarTriple(first, second, third) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first, false);
-                    self.builder.func.signature.returns.push(first_abi_param);
-
-                    let second_abi_param = self.translate_scalar_to_abi_param(second, false);
-                    self.builder.func.signature.returns.push(second_abi_param);
-
-                    let third_abi_param = self.translate_scalar_to_abi_param(third, false);
-                    self.builder.func.signature.returns.push(third_abi_param);
+                BackendRepr::StackSlot => {
+                    // Stack-allocated returns: caller provides a pointer where we write
+                    // the return value. We use a regular i64 parameter instead of
+                    // ArgumentPurpose::StructReturn to avoid ABI complications with
+                    // different calling conventions.
+                    let abi_param = AbiParam::new(I64);
+                    self.builder.func.signature.params.push(abi_param);
                 }
-                BackendRepr::ScalarMemory(scalar, memory) => todo!(),
             }
         }
     }
 
-    fn translate_scalar_to_abi_param(&self, scalar: Scalar, is_arg: bool) -> AbiParam {
+    fn translate_scalar_to_abi_param(&self, scalar: Scalar) -> AbiParam {
         match scalar {
             Scalar::Int => AbiParam::new(I64),
             Scalar::Float => AbiParam::new(F64),
             Scalar::Pointer(Pointer::Addr { .. }) => AbiParam::new(I64),
-            Scalar::Pointer(Pointer::Stack { slot, offset }) => {
-                let size = todo!("store a map of StackSlot to size");
-                let purpose = if is_arg {
-                    ArgumentPurpose::StructArgument(size)
-                } else {
-                    ArgumentPurpose::StructReturn
-                };
-                AbiParam::special(I64, purpose)
-            }
+            Scalar::Pointer(Pointer::Stack { .. }) => AbiParam::new(I64),
         }
     }
 
@@ -491,24 +517,61 @@ impl FunctionTranslator<'_> {
         if return_local.type_(self.context).is_unit() {
             self.builder.ins().return_(&[]);
         } else {
-            let rvals: &[Value] = match self.places[return_local_idx] {
-                CPlace::Var { variable, .. } => &[self.builder.use_var(variable)],
+            match &self.places[return_local_idx] {
+                CPlace::Var { variable, .. } => {
+                    let val = self.builder.use_var(*variable);
+                    self.builder.ins().return_(&[val]);
+                }
                 CPlace::VarPair { first, second, .. } => {
-                    &[self.builder.use_var(first), self.builder.use_var(second)]
+                    let first_val = self.builder.use_var(*first);
+                    let second_val = self.builder.use_var(*second);
+                    self.builder.ins().return_(&[first_val, second_val]);
                 }
                 CPlace::VarTriple {
                     first,
                     second,
                     third,
                     ..
-                } => &[
-                    self.builder.use_var(first),
-                    self.builder.use_var(second),
-                    self.builder.use_var(third),
-                ],
-                CPlace::Address { pointer, layout } => todo!("stack slots for structs?"),
-            };
-            self.builder.ins().return_(rvals);
+                } => {
+                    let first_val = self.builder.use_var(*first);
+                    let second_val = self.builder.use_var(*second);
+                    let third_val = self.builder.use_var(*third);
+                    self.builder
+                        .ins()
+                        .return_(&[first_val, second_val, third_val]);
+                }
+                CPlace::Address {
+                    pointer: Pointer::Stack { slot, offset },
+                    layout,
+                } => {
+                    // For stack-allocated returns, we need to copy our local stack slot
+                    // to the sret pointer that was stored in sret_var at function entry
+                    let sret_var = self
+                        .sret_var
+                        .expect("sret_var should be set for stack-allocated return types");
+                    let sret_ptr = self.builder.use_var(sret_var);
+                    let size = self.layouts[*layout].size;
+                    let src_addr = self.builder.ins().stack_addr(I64, *slot, *offset);
+
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        sret_ptr,
+                        src_addr,
+                        size.bytes() as u64,
+                        1,    // dest align
+                        1,    // src align
+                        true, // non-overlapping
+                        MemFlags::new(),
+                    );
+                    self.builder.ins().return_(&[]);
+                }
+                CPlace::Address {
+                    pointer: Pointer::Addr { .. },
+                    ..
+                } => {
+                    unreachable!("Heap-allocated return not yet supported");
+                }
+            }
         }
     }
 
@@ -521,17 +584,17 @@ impl FunctionTranslator<'_> {
     }
 
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
-        let cval = &match rvalue {
+        let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
-            Rvalue::UnaryOp(unop, op) => todo!(),
+            Rvalue::UnaryOp(_unop, _op) => todo!(),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
             Rvalue::UnionVariant(variant_idx, _, operand) => {
                 self.translate_union_variant(*variant_idx, operand, place.type_idx_of(self.func))
             }
         };
-        let cplace = &self.places[place.local];
-        match (cplace, cval) {
+        let cplace = self.places[place.local].clone();
+        match (&cplace, &cval) {
             (CPlace::Var { variable, .. }, CValue::Val { val, .. }) => {
                 self.builder.def_var(*variable, *val);
             }
@@ -568,10 +631,58 @@ impl FunctionTranslator<'_> {
                 self.builder.def_var(*second_var, *second_val);
                 self.builder.def_var(*third_var, *third_val);
             }
-            (CPlace::Address { pointer, layout }, CValue::Ref { ptr, val, .. }) => todo!(),
-            (CPlace::Address { pointer, layout }, CValue::Val { val, .. }) => todo!(),
-            (CPlace::Address { pointer, layout }, CValue::ValPair { first, second, .. }) => {
-                todo!()
+            (
+                CPlace::Address {
+                    pointer: Pointer::Stack { slot, offset },
+                    layout,
+                },
+                CValue::Ref { ptr: src_ptr, .. },
+            ) => {
+                // Copy from source stack slot to destination stack slot
+                let size = self.layouts[*layout].size;
+                let dest_addr = self.builder.ins().stack_addr(I64, *slot, *offset);
+                let src_addr = match src_ptr {
+                    Pointer::Stack {
+                        slot: src_slot,
+                        offset: src_offset,
+                    } => self.builder.ins().stack_addr(I64, *src_slot, *src_offset),
+                    Pointer::Addr { addr, .. } => *addr,
+                };
+                self.builder.emit_small_memory_copy(
+                    self.module.target_config(),
+                    dest_addr,
+                    src_addr,
+                    size.bytes() as u64,
+                    1,    // dest align
+                    1,    // src align
+                    true, // non-overlapping
+                    MemFlags::new(),
+                );
+            }
+            (
+                CPlace::Address {
+                    pointer: Pointer::Stack { slot, offset },
+                    ..
+                },
+                CValue::Val { val, .. },
+            ) => {
+                // Store a scalar value into a stack slot (e.g., storing discriminant)
+                self.builder.ins().stack_store(*val, *slot, *offset);
+            }
+            (
+                CPlace::Address {
+                    pointer: Pointer::Stack { slot, offset },
+                    ..
+                },
+                CValue::ValPair { first, second, .. },
+            ) => {
+                // Store two values into stack slot (tag + payload)
+                self.builder.ins().stack_store(*first, *slot, *offset);
+                let second_offset: i32 = (*offset).into();
+                let second_offset = Offset32::new(second_offset + WORD_SIZE as i32);
+                self.builder
+                    .ins()
+                    .stack_store(*second, *slot, second_offset);
             }
             (_, _) => unreachable!(
                 "Internal Compiler Error (CLIF): Unexpected Place/Value combination: {:?}/{:?}",
@@ -698,7 +809,7 @@ impl FunctionTranslator<'_> {
     fn translate_discriminant(&mut self, place: &Place) -> CValue {
         let cplace = &self.places[place.local];
         match cplace {
-            // single var means it's a unit sum type, so the variable just is the discrinimant
+            // single var means it's a unit sum type, so the variable just is the discriminant
             CPlace::Var { variable, .. } => CValue::Val {
                 val: self.builder.use_var(*variable),
                 layout: self.layouts.int,
@@ -713,17 +824,30 @@ impl FunctionTranslator<'_> {
                 layout: self.layouts.int,
             },
             CPlace::Address {
-                pointer: Pointer::Stack { .. },
+                pointer: Pointer::Stack { slot, offset },
                 ..
-            } => todo!(),
-            // shouldn't be possible because even a heap allocated union variant would still be a VarPair where
-            // the second Variable was the pointer (and the first is still the discriminant)
+            } => {
+                // Load the discriminant (first word) from the stack slot
+                let val = self.builder.ins().stack_load(I64, *slot, *offset);
+                CValue::Val {
+                    val,
+                    layout: self.layouts.int,
+                }
+            }
             CPlace::Address {
-                pointer: Pointer::Addr { .. },
+                pointer: Pointer::Addr { addr, offset },
                 ..
-            } => unreachable!(
-                "Internal Compiler Error (CLIF): Tried to get the Discriminant of a pointer"
-            ),
+            } => {
+                // Load the discriminant from a heap address
+                let val = self
+                    .builder
+                    .ins()
+                    .load(I64, MemFlags::new(), *addr, *offset);
+                CValue::Val {
+                    val,
+                    layout: self.layouts.int,
+                }
+            }
         }
     }
 
@@ -737,66 +861,135 @@ impl FunctionTranslator<'_> {
         // variant_idx is the numeric index
 
         let layout_idx = self.layout_for_type(ty);
-        let layout = self.layouts.get_cached(ty).unwrap();
+        let layout = self.layouts.get_cached(ty).unwrap().clone();
 
         let discriminant = self
             .builder
             .ins()
             .iconst(I64, variant_idx.into_raw() as i64);
 
-        // if layout is VarPair - translate that operand right into it
-        //     if operand is Float - interpret the int var like a float
-        //     if operand is Int/Ptr - n/a
-        // if layout is Stack -
-        //     ???
+        match &layout.backend_repr {
+            BackendRepr::None => unreachable!("Union cannot have BackendRepr::None"),
 
-        match layout.backend_repr.clone() {
-            BackendRepr::None => unreachable!(),
-            BackendRepr::Scalar(..) => unreachable!(),
-            BackendRepr::ScalarPair(_, payload) => {
-                let variant_val = self.translate_operand(operand);
-                let mut variant_val = assert_val!(variant_val);
-                // FIXME - at compile-time (now), check if
-                //  1. the VarPair is "mixed" (store this on the layout?)
-                //  2. the tag corresponds to a Float variant.
-                // if let Scalar::Float = payload {
-                variant_val = self
-                    .builder
+            // unit union - the discriminant is the value
+            BackendRepr::Scalar(Scalar::Int) => CValue::Val {
+                val: discriminant,
+                layout: layout_idx,
+            },
+
+            BackendRepr::Scalar(_) => unreachable!("Union tag must be Int scalar"),
+
+            // ScalarPair is no longer used for unions, but keep for compatibility
+            BackendRepr::ScalarPair(_, _) => {
+                unreachable!("ScalarPair no longer used for unions - use StackSlot instead")
+            }
+
+            BackendRepr::StackSlot => {
+                // For stack-allocated unions, we need to:
+                // 1. Create a temporary stack slot to hold the result
+                // 2. Write the discriminant at offset 0
+                // 3. Write the payload at offset WORD_SIZE
+                // 4. Return a Ref to this stack slot
+
+                let size = layout.size.bytes() as u32;
+                let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
+                let slot = self.builder.create_sized_stack_slot(slot_data);
+
+                // Write discriminant at offset 0
+                self.builder
                     .ins()
-                    .bitcast(I64, MemFlags::new(), variant_val);
-                // }
+                    .stack_store(discriminant, slot, Offset32::new(0));
 
-                CValue::ValPair {
-                    first: discriminant,
-                    second: variant_val,
+                // Translate and write the payload at offset WORD_SIZE
+                let payload_cval = self.translate_operand(operand);
+                let payload_offset = Offset32::new(WORD_SIZE as i32);
+
+                match payload_cval {
+                    CValue::Val { val, .. } => {
+                        self.builder.ins().stack_store(val, slot, payload_offset);
+                    }
+                    CValue::ValPair { first, second, .. } => {
+                        self.builder.ins().stack_store(first, slot, payload_offset);
+                        let second_offset = Offset32::new((WORD_SIZE * 2) as i32);
+                        self.builder.ins().stack_store(second, slot, second_offset);
+                    }
+                    CValue::ValTriple {
+                        first,
+                        second,
+                        third,
+                        ..
+                    } => {
+                        self.builder.ins().stack_store(first, slot, payload_offset);
+                        let second_offset = Offset32::new((WORD_SIZE * 2) as i32);
+                        self.builder.ins().stack_store(second, slot, second_offset);
+                        let third_offset = Offset32::new((WORD_SIZE * 3) as i32);
+                        self.builder.ins().stack_store(third, slot, third_offset);
+                    }
+                    CValue::Ref {
+                        ptr:
+                            Pointer::Stack {
+                                slot: src_slot,
+                                offset: src_offset,
+                            },
+                        layout: payload_layout,
+                        ..
+                    } => {
+                        // Copy from source stack slot to our payload area
+                        let payload_size = self.layouts[payload_layout].size;
+                        let dest_addr = self.builder.ins().stack_addr(I64, slot, payload_offset);
+                        let src_addr = self.builder.ins().stack_addr(I64, src_slot, src_offset);
+                        self.builder.emit_small_memory_copy(
+                            self.module.target_config(),
+                            dest_addr,
+                            src_addr,
+                            payload_size.bytes() as u64,
+                            1,    // dest align
+                            1,    // src align
+                            true, // non-overlapping
+                            MemFlags::new(),
+                        );
+                    }
+                    CValue::Ref {
+                        ptr:
+                            Pointer::Addr {
+                                addr,
+                                offset: src_offset,
+                            },
+                        layout: payload_layout,
+                        ..
+                    } => {
+                        // Copy from heap address to our payload area
+                        let payload_size = self.layouts[payload_layout].size;
+                        let dest_addr = self.builder.ins().stack_addr(I64, slot, payload_offset);
+                        let src_offset_i32: i32 = src_offset.into();
+                        let src_addr = if src_offset_i32 == 0 {
+                            addr
+                        } else {
+                            self.builder.ins().iadd_imm(addr, src_offset_i32 as i64)
+                        };
+                        self.builder.emit_small_memory_copy(
+                            self.module.target_config(),
+                            dest_addr,
+                            src_addr,
+                            payload_size.bytes() as u64,
+                            1,    // dest align
+                            1,    // src align
+                            true, // non-overlapping
+                            MemFlags::new(),
+                        );
+                    }
+                }
+
+                // Return a reference to our stack slot
+                CValue::Ref {
+                    ptr: Pointer::Stack {
+                        slot,
+                        offset: Offset32::new(0),
+                    },
+                    val: None,
                     layout: layout_idx,
                 }
             }
-            BackendRepr::ScalarTriple(..) => {
-                let variant_val_ty = self.op_type(operand);
-                let variant_val = self.translate_operand(operand);
-                let variant_val = assert_val!(variant_val);
-                if variant_val_ty == self.context.core_types().float {
-                    let zero = self.builder.ins().iconst(I64, 0);
-                    CValue::ValTriple {
-                        first: discriminant,
-                        second: zero,
-                        // by convention floats go last in this scenario
-                        third: variant_val,
-                        layout: layout_idx,
-                    }
-                } else {
-                    let zero = self.builder.ins().f64const(0.00);
-                    CValue::ValTriple {
-                        first: discriminant,
-                        // by convention Int/Ptr go middle in this scenario
-                        second: variant_val,
-                        third: zero,
-                        layout: layout_idx,
-                    }
-                }
-            }
-            BackendRepr::ScalarMemory(scalar, memory) => todo!(),
         }
     }
 

@@ -15,6 +15,7 @@ use util_macros::assert_matches;
 use crate::ext::jit_builder::JITBuilderExt;
 
 #[test]
+#[ignore = "sandbox test"]
 fn multiple_returns() -> Result<(), Box<dyn Error>> {
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").unwrap();
@@ -86,6 +87,7 @@ fn multiple_returns() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+#[ignore = "sandbox test"]
 fn from_text_format() -> Result<(), Box<dyn Error>> {
     let parse_result = cranelift_reader::parse_functions(
         "function u1:0(f64) -> i64, i64, f64 apple_aarch64 {

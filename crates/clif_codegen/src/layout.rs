@@ -1,13 +1,11 @@
 use std::ops;
 
-use cranelift::codegen::ir::immediates::Offset32;
-use cranelift::prelude::{types, StackSlotData, StackSlotKind, Type as CType};
+use cranelift::prelude::{types, Type as CType};
 use hir::{ContextDisplay, CoreTypes, Type as HType, VariantIdx};
 use la_arena::{Arena, ArenaMap, Idx};
 
-use crate::{place::Pointer, translate::FunctionTranslator};
-
-const ALIGN_SHIFT: u8 = 3;
+use crate::place::Pointer;
+use crate::translate::FunctionTranslator;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Layouts {
@@ -96,11 +94,9 @@ impl FunctionTranslator<'_> {
                 )
             }
             HType::String | HType::StringLiteral(_) => todo!(),
-            HType::Sum(sum_type) => {
-                todo!()
-            }
-            HType::Function(function_type) => todo!(),
-            HType::Array(array_type) => todo!(),
+            HType::Sum(sum_type) => self.compute_sum_type_layout(sum_type),
+            HType::Function(_function_type) => todo!(),
+            HType::Array(_array_type) => todo!(),
             HType::Unit => {
                 panic!();
             }
@@ -112,6 +108,67 @@ impl FunctionTranslator<'_> {
             }
         };
         self.layouts.alloc(layout, ty)
+    }
+
+    /// Compute the layout for a Sum type (tagged union)
+    ///
+    /// The layout depends on the variants:
+    /// - If all variants are unit types (no data), the union is just a tag (scalar int)
+    /// - If any variant has data, the entire union is stack-allocated (tag + payload)
+    fn compute_sum_type_layout(&mut self, sum_type: &hir::SumType) -> Layout {
+        let core_types = self.context.core_types();
+        let unit_ty = core_types.unit;
+
+        // Analyze all variants to determine the layout
+        let mut has_any_payload = false;
+        let mut max_payload_size = Size::ZERO;
+        let mut variant_layouts: Vec<Idx<Layout>> = Vec::with_capacity(sum_type.variants.len());
+
+        for (_key, variant_ty) in sum_type.variants.iter() {
+            let variant_layout_idx = self.layout_for_type(*variant_ty);
+            variant_layouts.push(variant_layout_idx);
+
+            let variant_layout = &self.layouts[variant_layout_idx];
+
+            // Check if this variant has a payload (not unit)
+            if *variant_ty != unit_ty && !matches!(variant_layout.backend_repr, BackendRepr::None) {
+                has_any_payload = true;
+                if variant_layout.size > max_payload_size {
+                    max_payload_size = variant_layout.size;
+                }
+            }
+        }
+
+        // Determine the backend representation
+        if !has_any_payload {
+            // Pure unit union - just a tag (enum without data)
+            // e.g., `type Color = red | green | blue`
+            Layout {
+                fields: FieldsShape::Scalar,
+                variants: VariantsShape::Multiple {
+                    tag_encoding: TagEncoding::Explicit,
+                    layouts: variant_layouts,
+                },
+                backend_repr: BackendRepr::Scalar(Scalar::Int),
+                size: Size::ONE_WORD,
+            }
+        } else {
+            // Union with payload - use stack allocation
+            // Tag (1 word) + payload
+            // e.g., `type Number = (int: Int | float: Float)` or nested unions
+            let total_size = Size::ONE_WORD + max_payload_size;
+            Layout {
+                fields: FieldsShape::Fields {
+                    offsets: vec![Size::ZERO, Size::ONE_WORD],
+                },
+                variants: VariantsShape::Multiple {
+                    tag_encoding: TagEncoding::Explicit,
+                    layouts: variant_layouts,
+                },
+                backend_repr: BackendRepr::StackSlot,
+                size: total_size,
+            }
+        }
     }
 }
 
@@ -125,12 +182,16 @@ impl ops::Index<Idx<Layout>> for Layouts {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Layout {
+    /// Shape of fields, if this is a record
     pub fields: FieldsShape,
 
+    /// Shape of variants, if this is a union
     pub variants: VariantsShape,
 
+    /// How this layout will be translated to CLIF code
     pub backend_repr: BackendRepr,
 
+    /// Total size of this layout
     pub size: Size,
 }
 
@@ -152,6 +213,20 @@ impl Size {
     pub(crate) const ONE_WORD: Size = Size { num_bytes: 8 };
 
     pub(crate) const TWO_WORDS: Size = Size { num_bytes: 16 };
+
+    pub(crate) fn bytes(&self) -> u64 {
+        self.num_bytes
+    }
+
+    pub(crate) fn num_words(&self) -> u64 {
+        self.num_bytes / 8
+    }
+}
+
+impl From<u64> for Size {
+    fn from(num_bytes: u64) -> Self {
+        Self { num_bytes }
+    }
 }
 
 impl ops::Add for Size {
@@ -171,50 +246,46 @@ pub(crate) enum FieldsShape {
     Fields {
         // index of Vec is FieldIdx - todo make newtype
         offsets: Vec<Size>,
-        // memory_offsets: Vec<u32>,
     },
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum BackendRepr {
-    None, // for unit or ZST (maybe?)
+    /// For ZST (unit)
+    None,
+    /// Scalar types being "simple" primitives
     Scalar(Scalar),
-    ScalarPair(Scalar, Scalar), // tag + scalar in sum type or 2 field product type
-    ScalarTriple(Scalar, Scalar, Scalar), // tag + 2 field product type in sum type, 3 field product type, etc.
-    ScalarMemory(Scalar, Memory),         // tag + pointer
-                                          // SimdVector?
-                                          // todo - wide pointer (data+vtable or closure data+fnptr)
-}
-
-/// Representation
-#[derive(Debug, Clone)]
-pub(crate) enum Memory {
-    Inline,
-    Allocated,
+    /// String primitive or tag + scalar in sum type or 2 field product type
+    /// NOTE: This is no longer used for unions - they all use StackSlot now.
+    /// Keeping this for potential future use with strings or small structs.
+    ScalarPair(Scalar, Scalar),
+    /// Allocated on the stack - used for all non-unit unions
+    /// The size is stored in the Layout's size field
+    StackSlot,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum VariantsShape {
-    Empty, // might not be used, basically for ZST or never types
+    /// basically for ZST or never types
+    Empty,
 
-    Single {
-        index: VariantIdx, // 0 sentinel value for everything but unions
-    },
+    /// Items that are not a union, using a 0 sentinel value
+    Single { index: VariantIdx },
 
     Multiple {
-        // tag: Scalar, // TODO - tag is always Int scalar? remove?
         tag_encoding: TagEncoding,
-
-        /// At least one variant has an underlying representation of each of Int and Float
-        mixed_int_float: bool,
-
         layouts: Vec<Idx<Layout>>,
     },
 }
 
+/// How the tag is encoded in the value
+///
+/// Currently, only an explicit tag is supported but in the future
+/// using a "niche" (such as how Rust encoded Option::None) may be
+/// supported
 #[derive(Debug, Clone)]
 pub(crate) enum TagEncoding {
-    Direct,
+    Explicit,
     Niche { todo: () },
 }
 

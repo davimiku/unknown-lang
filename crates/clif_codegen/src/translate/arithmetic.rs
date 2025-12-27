@@ -1,5 +1,6 @@
 use cranelift::codegen::ir::types::{F64, I64};
 use cranelift::codegen::ir::InstBuilder;
+use cranelift::prelude::StackSlotData;
 use hir::Type as HType;
 use mir::Operand;
 
