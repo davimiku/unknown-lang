@@ -589,17 +589,37 @@ let main = fun (u: OuterUnion) -> { u }
 
 #[test]
 fn unwrap_add_and_rewrap() {
-    let input = "
-type Number = (int: Int | float: Float)
+    let input = "type Number = (int: Int | float: Float)
 
 let main = fun (n: Number) -> {
     match n {
-        .int i -> Number.int (i + 16)
-        .float f -> Number.float (f + 16.0)
+        .int i -> { Number.int (i + 16) }
+        .float f -> { Number.float (f + 16.0) }
     }
 }";
 
     let code_ptr = compile_main(input);
     let code_fn =
         unsafe { std::mem::transmute::<_, fn(*const Union2Words, *mut Union2Words)>(code_ptr) };
+
+    let case_a = Union2Words { tag: 0, payload: 1 };
+    let expected_a = Union2Words {
+        tag: 0,
+        payload: 17,
+    };
+    let mut output_a = Union2Words { tag: 0, payload: 0 }; // overwritten
+    code_fn(&case_a, &mut output_a);
+    assert_eq!(output_a, expected_a);
+
+    let case_b = Union2Words {
+        tag: 1,
+        payload: bytemuck::cast(2.0),
+    };
+    let mut output_b = Union2Words { tag: 0, payload: 0 }; // overwritten
+    code_fn(&case_b, &mut output_b);
+
+    assert_eq!(1, output_b.tag);
+    // Interpret the payload as f64 and compare semantically
+    let output_b_float: f64 = bytemuck::cast(output_b.payload);
+    assert_eq!(18.0, output_b_float);
 }

@@ -146,29 +146,11 @@ impl FunctionTranslator<'_> {
                     i += 1;
                     self.builder.def_var(second, val);
                 }
-                CPlace::VarTriple {
-                    first,
-                    second,
-                    third,
-                    ..
-                } => {
-                    let val = self.builder.block_params(entry_block)[i];
-                    i += 1;
-                    self.builder.def_var(first, val);
-
-                    let val = self.builder.block_params(entry_block)[i];
-                    i += 1;
-                    self.builder.def_var(second, val);
-
-                    let val = self.builder.block_params(entry_block)[i];
-                    i += 1;
-                    self.builder.def_var(third, val);
-                }
                 CPlace::Address { pointer, layout } => {
                     // Stack-allocated values: copy from parameter to our stack slot
                     let (slot, offset) = match pointer {
                         Pointer::Stack { slot, offset } => (slot, offset),
-                        Pointer::Addr { addr, offset } => {
+                        Pointer::Heap { addr, offset } => {
                             panic!("Expected stack pointer for stack-allocated parameter")
                         }
                     };
@@ -361,7 +343,7 @@ impl FunctionTranslator<'_> {
         match scalar {
             Scalar::Int => AbiParam::new(I64),
             Scalar::Float => AbiParam::new(F64),
-            Scalar::Pointer(Pointer::Addr { .. }) => AbiParam::new(I64),
+            Scalar::Pointer(Pointer::Heap { .. }) => AbiParam::new(I64),
             Scalar::Pointer(Pointer::Stack { .. }) => AbiParam::new(I64),
         }
     }
@@ -527,19 +509,6 @@ impl FunctionTranslator<'_> {
                     let second_val = self.builder.use_var(*second);
                     self.builder.ins().return_(&[first_val, second_val]);
                 }
-                CPlace::VarTriple {
-                    first,
-                    second,
-                    third,
-                    ..
-                } => {
-                    let first_val = self.builder.use_var(*first);
-                    let second_val = self.builder.use_var(*second);
-                    let third_val = self.builder.use_var(*third);
-                    self.builder
-                        .ins()
-                        .return_(&[first_val, second_val, third_val]);
-                }
                 CPlace::Address {
                     pointer: Pointer::Stack { slot, offset },
                     layout,
@@ -566,7 +535,7 @@ impl FunctionTranslator<'_> {
                     self.builder.ins().return_(&[]);
                 }
                 CPlace::Address {
-                    pointer: Pointer::Addr { .. },
+                    pointer: Pointer::Heap { .. },
                     ..
                 } => {
                     unreachable!("Heap-allocated return not yet supported");
@@ -614,24 +583,6 @@ impl FunctionTranslator<'_> {
                 self.builder.def_var(*second_var, *second_val);
             }
             (
-                CPlace::VarTriple {
-                    first: first_var,
-                    second: second_var,
-                    third: third_var,
-                    ..
-                },
-                CValue::ValTriple {
-                    first: first_val,
-                    second: second_val,
-                    third: third_val,
-                    ..
-                },
-            ) => {
-                self.builder.def_var(*first_var, *first_val);
-                self.builder.def_var(*second_var, *second_val);
-                self.builder.def_var(*third_var, *third_val);
-            }
-            (
                 CPlace::Address {
                     pointer: Pointer::Stack { slot, offset },
                     layout,
@@ -646,7 +597,7 @@ impl FunctionTranslator<'_> {
                         slot: src_slot,
                         offset: src_offset,
                     } => self.builder.ins().stack_addr(I64, *src_slot, *src_offset),
-                    Pointer::Addr { addr, .. } => *addr,
+                    Pointer::Heap { addr, .. } => *addr,
                 };
                 self.builder.emit_small_memory_copy(
                     self.module.target_config(),
@@ -683,6 +634,61 @@ impl FunctionTranslator<'_> {
                 self.builder
                     .ins()
                     .stack_store(*second, *slot, second_offset);
+            }
+            (
+                CPlace::Var {
+                    local: _,
+                    variable,
+                    layout: var_layout,
+                },
+                CValue::Ref {
+                    ptr,
+                    val: _,
+                    layout: _,
+                },
+            ) => {
+                // Load a scalar from memory (stack or heap) into a local variable.
+                let var_layout = &self.layouts[*var_layout];
+                let loaded_val = match &var_layout.backend_repr {
+                    BackendRepr::Scalar(Scalar::Int) => match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_load(I64, *slot, *offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            self.builder
+                                .ins()
+                                .load(I64, MemFlags::new(), *addr, *offset)
+                        }
+                    },
+                    BackendRepr::Scalar(Scalar::Float) => match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_load(F64, *slot, *offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            self.builder
+                                .ins()
+                                .load(F64, MemFlags::new(), *addr, *offset)
+                        }
+                    },
+                    BackendRepr::Scalar(Scalar::Pointer(_)) => match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_load(I64, *slot, *offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            self.builder
+                                .ins()
+                                .load(I64, MemFlags::new(), *addr, *offset)
+                        }
+                    },
+                    other => {
+                        unreachable!(
+                            "Internal Compiler Error (CLIF): Cannot load Ref into Var for backend_repr {:?}",
+                            other
+                        )
+                    }
+                };
+
+                self.builder.def_var(*variable, loaded_val);
             }
             (_, _) => unreachable!(
                 "Internal Compiler Error (CLIF): Unexpected Place/Value combination: {:?}/{:?}",
@@ -752,7 +758,75 @@ impl FunctionTranslator<'_> {
     fn translate_operand(&mut self, op: &Operand) -> CValue {
         match op {
             Operand::Copy(place) => {
-                // TODO: use projections too?
+                if !place.projections.is_empty() {
+                    let mut ptr: Option<Pointer> = None;
+
+                    for proj in place.projections.iter() {
+                        match proj {
+                            mir::ProjectionElem::DowncastVariant(_key, _idx) => {
+                                // Currently, all non-unit unions are represented as:
+                                // tag (i64) at offset 0 and payload at offset WORD_SIZE in a stack slot.
+                                // The local for the union should already be a CPlace::Address::Stack
+                                // pointing at the base of that slot. We adjust the offset by WORD_SIZE
+                                // to point at the payload.
+                                let base_place = &self.places[place.local];
+                                match base_place {
+                                    CPlace::Address {
+                                        pointer: Pointer::Stack { slot, offset },
+                                        ..
+                                    } => {
+                                        let base_offset: i32 = (*offset).into();
+                                        let payload_offset =
+                                            Offset32::new(base_offset + WORD_SIZE as i32);
+                                        ptr = Some(Pointer::Stack {
+                                            slot: *slot,
+                                            offset: payload_offset,
+                                        });
+                                    }
+                                    CPlace::Address {
+                                        pointer: Pointer::Heap { addr, offset },
+                                        ..
+                                    } => {
+                                        let base_offset: i32 = (*offset).into();
+                                        let payload_offset =
+                                            Offset32::new(base_offset + WORD_SIZE as i32);
+                                        ptr = Some(Pointer::Heap {
+                                            addr: *addr,
+                                            offset: payload_offset,
+                                        });
+                                    }
+                                    _ => {
+                                        // DowncastVariant on a non-address place is unexpected with current layouts.
+                                        unreachable!(
+                                            "Internal Compiler Error (CLIF): DowncastVariant on non-address place: {:?}",
+                                            base_place
+                                        );
+                                    }
+                                }
+                            }
+                            // Other projections (Field, Index, etc.) are not implemented yet.
+                            _ => {
+                                todo!(
+                                    "Projection {:?} not yet implemented in translate_operand",
+                                    proj
+                                );
+                            }
+                        }
+                    }
+
+                    if let Some(ptr) = ptr {
+                        // The layout for the bound variable will be determined at assignment time.
+                        // Here we just return a reference to the payload.
+                        let layout_idx = self.layout_for_type(place.type_idx_of(self.func));
+                        return CValue::Ref {
+                            ptr,
+                            val: None,
+                            layout: layout_idx,
+                        };
+                    }
+                }
+
+                // no projections - use the place directly
                 let cplace = &self.places[place.local];
                 match cplace {
                     CPlace::Var {
@@ -769,18 +843,6 @@ impl FunctionTranslator<'_> {
                     } => CValue::ValPair {
                         first: self.builder.use_var(*first),
                         second: self.builder.use_var(*second),
-                        layout: *layout,
-                    },
-                    CPlace::VarTriple {
-                        first,
-                        second,
-                        third,
-                        layout,
-                        ..
-                    } => CValue::ValTriple {
-                        first: self.builder.use_var(*first),
-                        second: self.builder.use_var(*second),
-                        third: self.builder.use_var(*third),
                         layout: *layout,
                     },
                     CPlace::Address { pointer, layout } => CValue::Ref {
@@ -819,10 +881,6 @@ impl FunctionTranslator<'_> {
                 val: self.builder.use_var(*first),
                 layout: self.layouts.int,
             },
-            CPlace::VarTriple { first, .. } => CValue::Val {
-                val: self.builder.use_var(*first),
-                layout: self.layouts.int,
-            },
             CPlace::Address {
                 pointer: Pointer::Stack { slot, offset },
                 ..
@@ -835,7 +893,7 @@ impl FunctionTranslator<'_> {
                 }
             }
             CPlace::Address {
-                pointer: Pointer::Addr { addr, offset },
+                pointer: Pointer::Heap { addr, offset },
                 ..
             } => {
                 // Load the discriminant from a heap address
@@ -951,7 +1009,7 @@ impl FunctionTranslator<'_> {
                     }
                     CValue::Ref {
                         ptr:
-                            Pointer::Addr {
+                            Pointer::Heap {
                                 addr,
                                 offset: src_offset,
                             },

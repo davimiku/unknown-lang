@@ -31,17 +31,6 @@ pub(crate) enum CPlace {
         second: Variable,
         layout: Idx<Layout>,
     },
-    /// A MIR local that has been split into three CLIF variables
-    ///
-    /// Some examples could include:
-    /// - union with both Int and Float payloads, since it requires separate CLIF variables
-    VarTriple {
-        local: Local,
-        first: Variable,
-        second: Variable,
-        third: Variable,
-        layout: Idx<Layout>,
-    },
     /// Place representing an address to another location, such as a stack slot or heap allocation
     Address {
         pointer: Pointer,
@@ -55,12 +44,6 @@ impl CPlace {
         match self {
             CPlace::Var { variable, .. } => vec![*variable],
             CPlace::VarPair { first, second, .. } => vec![*first, *second],
-            CPlace::VarTriple {
-                first,
-                second,
-                third,
-                ..
-            } => vec![*first, *second, *third],
             CPlace::Address { .. } => vec![],
         }
     }
@@ -132,14 +115,14 @@ pub(crate) fn to_vec_values(cvalues: Vec<CValue>) -> Vec<Value> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Pointer {
-    Addr { addr: Value, offset: Offset32 },
+    Heap { addr: Value, offset: Offset32 },
     Stack { slot: StackSlot, offset: Offset32 },
 }
 
 impl Pointer {
     fn offset(&self) -> Offset32 {
         match self {
-            Pointer::Addr { offset, .. } => *offset,
+            Pointer::Heap { offset, .. } => *offset,
             Pointer::Stack { offset, .. } => *offset,
         }
     }
