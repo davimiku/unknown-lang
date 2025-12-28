@@ -21,7 +21,7 @@ fun main:
     _2: 4.0
     _3: Float
     _4: Float
-    
+
     BB0():
         _2 := const 4.0
         _3 := Add(copy _1, copy _2)
@@ -56,7 +56,7 @@ fun main:
     _2: 4.0
     _3: Float
     _4: Float
-    
+
     BB0():
         _2 := const 4.0
         _3 := Add(copy _1, copy _2)

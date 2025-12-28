@@ -112,7 +112,7 @@ fn write_signature<W: io::Write>(
             write!(buf, ", ")?;
         }
     }
-    write_line(buf, indent)
+    write_line(buf, &mut 0) // locals_list indents itself
 }
 
 fn write_locals_list<W: io::Write>(
@@ -123,12 +123,13 @@ fn write_locals_list<W: io::Write>(
     indent: &mut Indent,
 ) -> io::Result<()> {
     for (idx, local) in function.locals.iter() {
+        write!(buf, "{}", " ".repeat(*indent * INDENT_SIZE))?;
         let ty = local.ty.display(context);
 
         let mutability = local.mutability;
         let local = idx_local_to_string(&idx);
         write!(buf, "{mutability}{local}: {ty}")?;
-        write_line(buf, indent)?;
+        write_line(buf, &mut 0)?; // indent=0 because auto-formatters remove the spacing
     }
     Ok(())
 }
@@ -141,7 +142,8 @@ fn write_basic_blocks<W: io::Write>(
     indent: &mut Indent,
 ) -> io::Result<()> {
     write_line(buf, indent)?;
-    for (idx, basic_block) in function.blocks.iter() {
+    let len = function.blocks.len();
+    for (i, (idx, basic_block)) in function.blocks.iter().enumerate() {
         if !function.predecessors.has_predecessors(idx) {
             continue;
         }
@@ -155,6 +157,12 @@ fn write_basic_blocks<W: io::Write>(
         write!(buf, "{bb}({params}):")?;
         write_line_and_indent(buf, indent)?;
         basic_block.write(buf, module, context, indent)?;
+        if i == len - 1 {
+            write_line(buf, &mut 0)?; // for auto-formatting that trims indent of blank line
+            *indent -= 1;
+        } else {
+            write_line_and_dedent(buf, indent)?;
+        }
     }
     Ok(())
 }
@@ -195,7 +203,6 @@ impl MirWrite for BasicBlock {
         if let Some(terminator) = &self.terminator {
             terminator.write(buf, module, context, indent)?;
         }
-        write_line_and_dedent(buf, indent)?;
 
         Ok(())
     }

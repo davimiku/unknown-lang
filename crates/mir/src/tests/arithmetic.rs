@@ -7,7 +7,7 @@ fn basic_arithmetic() {
 fun main:
     params: {none}
     mut _0: Int
-    
+
     BB0():
         _0 := Add(const 12, const 4)
         Return _0 ->
@@ -24,7 +24,7 @@ fun main:
     params: _1
     mut _0: Int
     _1: Int
-    
+
     BB0():
         _0 := Add(copy _1, const 16)
         Return _0 ->
@@ -41,7 +41,7 @@ fun main:
     params: _1
     mut _0: Int
     _1: Int
-    
+
     BB0():
         _0 := Sub(copy _1, const 16)
         Return _0 ->
@@ -58,7 +58,7 @@ fun main:
     params: _1
     mut _0: Int
     _1: Int
-    
+
     BB0():
         _0 := Mul(copy _1, const 16)
         Return _0 ->
@@ -70,7 +70,7 @@ fun main:
 #[test]
 fn int_variable_with_addition() {
     let input = "
-let main = fun (a: Int) -> { 
+let main = fun (a: Int) -> {
     let b = a + 16
     b
 }";
@@ -80,7 +80,7 @@ fun main:
     mut _0: Int
     _1: Int
     _2: Int
-    
+
     BB0():
         _2 := Add(copy _1, const 16)
         _0 := copy _2
@@ -102,7 +102,7 @@ fun main:
     _2: Int
     _3: Int
     _4: Int
-    
+
     BB0():
         _4 := Mul(const 2, copy _2)
         _3 := Add(copy _1, copy _4)

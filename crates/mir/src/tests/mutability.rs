@@ -3,7 +3,7 @@ use super::check_module;
 #[test]
 fn mutable_int() {
     let input = "
-let main = fun () -> { 
+let main = fun () -> {
     let mut i = 0
     i = i + 2
     i
@@ -14,7 +14,7 @@ fun main:
     mut _0: Int
     mut _1: Int
     _2: Int
-    
+
     BB0():
         _1 := const 0
         _2 := Add(copy _1, const 2)

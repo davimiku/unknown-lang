@@ -3,7 +3,7 @@ use super::check_module;
 #[test]
 fn empty_loop() {
     let input = "
-let main = fun () -> { 
+let main = fun () -> {
     loop { }
 }";
 
@@ -11,7 +11,7 @@ let main = fun () -> {
 fun main:
     params: {none}
     mut _0: {bottom}
-    
+
     BB0():
         Jump -> BB1()
     BB1():
@@ -24,7 +24,7 @@ fun main:
 #[test]
 fn loop_immediately_break() {
     let input = "
-let main = fun () -> { 
+let main = fun () -> {
     loop { break }
 }";
 
@@ -32,7 +32,7 @@ let main = fun () -> {
 fun main:
     params: {none}
     mut _0: ()
-    
+
     BB0():
         Jump -> BB1()
     BB1():
@@ -61,7 +61,7 @@ fun main:
     _1: Int
     _2: Bool~0.3
     _3: Int
-    
+
     BB0():
         Jump -> BB1()
     BB1():
@@ -84,8 +84,8 @@ fn loop_from_param_with_else() {
     let input = "
 let main = fun (i: Int) -> {
     loop {
-        if i > 5 { 
-            break 
+        if i > 5 {
+            break
         } else {
             i = i + 1
         }
@@ -99,7 +99,7 @@ fun main:
     _1: Int
     _2: Bool~0.3
     _3: Int
-    
+
     BB0():
         Jump -> BB1()
     BB1():
@@ -138,7 +138,7 @@ fun main:
     mut _1: Int
     _2: Bool~0.3
     _3: Int
-    
+
     BB0():
         _1 := const 0
         Jump -> BB1()

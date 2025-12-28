@@ -16,7 +16,7 @@ fun main:
     mut _0: Int
     _1: Bool~0.3
     _2: Int
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2()]
@@ -50,7 +50,7 @@ fun main:
     mut _0: Int
     _1: Color~1.0
     _2: Int
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), 2 -> BB3()]
@@ -87,7 +87,7 @@ fun main:
     _1: Color~1.0
     _2: Int
     _3: Color~1.0
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [0 -> BB1(), else -> BB2()]
@@ -122,7 +122,7 @@ fun main:
     _1: Color~1.0
     _2: Int
     _3: Color~1.0
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [1 -> BB1(), else -> BB2()]
@@ -158,7 +158,7 @@ fun main:
     _2: Int
     _3: Int
     _4: Int
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), else -> BB1()]
@@ -188,7 +188,7 @@ let main = fun () -> { Number.float 1.23 }
 fun main:
     params: {none}
     mut _0: Number~1.0
-    
+
     BB0():
         _0 := Number.float$1(const 1.23)
         Return _0 ->";
@@ -215,7 +215,7 @@ fun main:
     _2: Int
     _3: Int
     _4: Float
-    
+
     BB0():
         _2 := discriminant(_1)
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), else -> BB1()]
@@ -236,7 +236,7 @@ fun main:
 #[test]
 fn basic_if_else() {
     let input = "
-let main = fun (condition: Bool) -> Int { 
+let main = fun (condition: Bool) -> Int {
     if condition {
         16
     } else {
@@ -248,7 +248,7 @@ fun main:
     params: _1
     mut _0: Int
     _1: Bool~0.3
-    
+
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
     BB1():
@@ -267,7 +267,7 @@ fun main:
 #[test]
 fn if_else_with_addition_after() {
     let input = "
-let main = fun (condition: Bool, b: Float) -> Float { 
+let main = fun (condition: Bool, b: Float) -> Float {
     let a = if condition {
         16.0
     } else {
@@ -283,7 +283,7 @@ fun main:
     _1: Bool~0.3
     _2: Float
     _3: Float
-    
+
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
     BB1():
@@ -313,7 +313,7 @@ fun main:
     mut _0: Int
     _1: Bool~0.3
     _2: Int
-    
+
     BB0():
         _0 := copy _2
         Return _0 ->
@@ -339,7 +339,7 @@ fun main:
     _1: Bool~0.3
     _2: Int
     _3: 1
-    
+
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
     BB1():

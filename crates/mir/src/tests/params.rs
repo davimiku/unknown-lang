@@ -8,7 +8,7 @@ fun main:
     params: _1
     mut _0: Int
     _1: Int
-    
+
     BB0():
         _0 := copy _1
         Return _0 ->
@@ -20,7 +20,7 @@ fun main:
 #[test]
 fn int_variable_from_const() {
     let input = "
-let main = fun () -> { 
+let main = fun () -> {
     let a = 16
     a
 }";
@@ -29,7 +29,7 @@ fun main:
     params: {none}
     mut _0: 16
     _1: 16
-    
+
     BB0():
         _1 := const 16
         _0 := copy _1
@@ -42,7 +42,7 @@ fun main:
 #[test]
 fn int_variable_from_param() {
     let input = "
-let main = fun (a: Int) -> { 
+let main = fun (a: Int) -> {
     let b = a
     b
 }";
@@ -52,7 +52,7 @@ fun main:
     mut _0: Int
     _1: Int
     _2: Int
-    
+
     BB0():
         _2 := copy _1
         _0 := copy _2
