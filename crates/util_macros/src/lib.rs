@@ -5,11 +5,12 @@ use std::fmt::Display;
 #[macro_export]
 macro_rules! assert_matches {
     ($value:expr, $variant:path) => {{
+        assert!(matches!($value, $variant(_)));
+
         if let $variant(x) = $value {
             x
         } else {
-            dbg!($value);
-            unreachable!("Unexpected variant")
+            unreachable!()
         }
     }};
 }

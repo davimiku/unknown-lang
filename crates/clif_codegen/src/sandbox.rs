@@ -1,20 +1,16 @@
 use std::error::Error;
 
-use cranelift::codegen::entity::EntityRef;
 use cranelift::codegen::ir::types::*;
 use cranelift::codegen::ir::{AbiParam, Function, InstBuilder, Signature, UserFuncName};
 use cranelift::codegen::isa::CallConv;
 use cranelift::codegen::verifier::verify_function;
 use cranelift::codegen::{settings, write_function};
-use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift::prelude::Configurable;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use util_macros::assert_matches;
 
-use crate::ext::jit_builder::JITBuilderExt;
-
-#[test]
 #[ignore = "sandbox test"]
 fn multiple_returns() -> Result<(), Box<dyn Error>> {
     let mut flag_builder = settings::builder();

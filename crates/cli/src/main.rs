@@ -1,14 +1,12 @@
 mod cli_args;
 
-use std::{
-    env, fs,
-    io::{self, Read, Write},
-    path::{Path, PathBuf},
-};
+use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use cli_args::{BuildArgs, CheckArgs, CliArgs, OutputTarget, RunArgs};
-use exitcode::ExitCode;
 use path_clean::PathClean;
 
 use crate::cli_args::{Commands, EntryPath};
