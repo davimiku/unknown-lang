@@ -22,11 +22,9 @@ fun main:
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2()]
     BB1():
         _0 := const 8
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _0 := const 16
-        Jump -> BB3()
-    BB3():
         Return _0 ->";
 
     check_module(input, expected);
@@ -56,14 +54,12 @@ fun main:
         BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), 2 -> BB3()]
     BB1():
         _0 := const 8
-        Jump -> BB4()
+        Return _0 ->
     BB2():
         _0 := const 16
-        Jump -> BB4()
+        Return _0 ->
     BB3():
         _0 := const 24
-        Jump -> BB4()
-    BB4():
         Return _0 ->";
 
     check_module(input, expected);
@@ -93,12 +89,10 @@ fun main:
         BranchInt(copy _2): [0 -> BB1(), else -> BB2()]
     BB1():
         _0 := const 8
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _3 := copy _1
         _0 := const 16
-        Jump -> BB3()
-    BB3():
         Return _0 ->";
 
     check_module(input, expected);
@@ -128,12 +122,10 @@ fun main:
         BranchInt(copy _2): [1 -> BB1(), else -> BB2()]
     BB1():
         _0 := const 1
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _3 := copy _1
         _0 := copy _3
-        Jump -> BB3()
-    BB3():
         Return _0 ->";
 
     check_module(input, expected);
@@ -165,32 +157,65 @@ fun main:
     BB1():
         _3 := copy _1.int_a
         _0 := copy _3
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _4 := copy _1.int_b
         _0 := copy _4
-        Jump -> BB3()
-    BB3():
         Return _0 ->";
 
     check_module(input, expected);
 }
 
 #[test]
-fn make_float_union_instance() {
-    let input = "
-type Number = (int: Int | float: Float)
+fn unwrap_nested_to_int() {
+    let input = "type InnerUnion = (int_a: Int | int_b: Int)
+type OuterUnion = (a | b: Int | c: InnerUnion)
 
-let main = fun () -> { Number.float 1.23 }
-";
+let main = fun (u: OuterUnion) -> Int {
+    match u {
+        .a -> { 42 }
+        .b b_int -> { b_int }
+        .c inner -> {
+            match inner {
+                .int_a a_int -> { a_int + 1 }
+                .int_b b_int -> { b_int + 2 }
+            }
+        }
+    }
+}";
 
-    let expected = "
-fun main:
-    params: {none}
-    mut _0: Number~1.0
+    let expected = "fun main:
+    params: _1
+    mut _0: Int
+    _1: OuterUnion~1.1
+    _2: Int
+    _3: Int
+    _4: InnerUnion~1.0
+    _5: Int
+    _6: Int
+    _7: Int
 
     BB0():
-        _0 := Number.float$1(const 1.23)
+        _2 := discriminant(_1)
+        BranchInt(copy _2): [0 -> BB1(), 1 -> BB2(), 2 -> BB3(), else -> BB2()]
+    BB1():
+        _0 := const 42
+        Return _0 ->
+    BB2():
+        _3 := copy _1.b
+        _0 := copy _3
+        Return _0 ->
+    BB3():
+        _4 := copy _1.c
+        _5 := discriminant(_4)
+        BranchInt(copy _5): [0 -> BB4(), 1 -> BB5(), else -> BB4()]
+    BB4():
+        _6 := copy _4.int_a
+        _0 := Add(copy _6, const 1)
+        Return _0 ->
+    BB5():
+        _7 := copy _4.int_b
+        _0 := Add(copy _7, const 2)
         Return _0 ->";
 
     check_module(input, expected);
@@ -222,12 +247,10 @@ fun main:
     BB1():
         _3 := copy _1.int
         _0 := Number.int$0(copy _3)
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _4 := copy _1.float
         _0 := Number.float$1(copy _4)
-        Jump -> BB3()
-    BB3():
         Return _0 ->";
 
     check_module(input, expected);

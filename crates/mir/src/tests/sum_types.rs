@@ -121,13 +121,31 @@ let main = fun (n: Number) -> {
         _3 := copy _1.int
         _4 := Add(copy _3, const 16)
         _0 := Number.int$0(copy _4)
-        Jump -> BB3()
+        Return _0 ->
     BB2():
         _5 := copy _1.float
         _6 := Add(copy _5, const 16.0)
         _0 := Number.float$1(copy _6)
-        Jump -> BB3()
-    BB3():
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn make_float_union_instance() {
+    let input = "
+type Number = (int: Int | float: Float)
+
+let main = fun () -> { Number.float 1.23 }
+";
+
+    let expected = "
+fun main:
+    params: {none}
+    mut _0: Number~1.0
+
+    BB0():
+        _0 := Number.float$1(const 1.23)
         Return _0 ->";
 
     check_module(input, expected);

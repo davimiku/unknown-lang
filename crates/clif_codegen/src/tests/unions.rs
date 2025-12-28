@@ -491,7 +491,6 @@ let main = fun (n: Number) -> { n }
     let code_ptr = compile_main(input);
     let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
-    // Int payload
     let input = Union2Words {
         tag: 0,
         payload: 42,
@@ -500,7 +499,7 @@ let main = fun (n: Number) -> { n }
     code_fn(&input, &mut result);
     assert_eq!(result, input);
 
-    // Float payload (stored as bitcast i64)
+    // bitcast i64
     let float_bits = bytemuck::cast::<f64, i64>(3.14);
     let input = Union2Words {
         tag: 1,
@@ -600,15 +599,15 @@ let main = fun (u: OuterUnion) -> Int {
         .b b_int -> { b_int }
         .c inner -> {
             match inner {
-                .int_a a_int -> { a_int }
-                .int_b b_int -> { b_int }
+                .int_a a_int -> { a_int + 1 }
+                .int_b b_int -> { b_int + 2 }
             }
         }
     }
 }";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { to_fn::<*const Union2Words, XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Union3Words,), XInt>(code_ptr) };
 
     // tag=a, other fields arbitrary
     let case_a = Union3Words {
@@ -616,4 +615,30 @@ let main = fun (u: OuterUnion) -> Int {
         payload1: 0,
         payload2: 0,
     };
+    let result = code_fn((&case_a,));
+    assert_eq!(result, 42);
+
+    let case_b = Union3Words {
+        tag: 1,       // b
+        payload1: 16, // b_int
+        payload2: 0,  // arbitrary
+    };
+    let result = code_fn((&case_b,));
+    assert_eq!(result, 16);
+
+    let case_c1 = Union3Words {
+        tag: 2,       // .c
+        payload1: 0,  // .int_a
+        payload2: 20, // a_int
+    };
+    let result = code_fn((&case_c1,));
+    assert_eq!(result, 21);
+
+    let case_c2 = Union3Words {
+        tag: 2,        // .c
+        payload1: 1,   // .int_b
+        payload2: 100, // b_int
+    };
+    let result = code_fn((&case_c2,));
+    assert_eq!(result, 102);
 }

@@ -85,3 +85,43 @@ main~1.1 : (Number~1.0) -> Number~1.0 = fun \"main\"(n~1.2 : Number~1.0) -> Numb
 
     check(input, expected_content, expected_vars);
 }
+
+#[test]
+fn unwrap_nested_to_int() {
+    let input = "type InnerUnion = (int_a: Int | int_b: Int)
+type OuterUnion = (a | b: Int | c: InnerUnion)
+
+let main = fun (u: OuterUnion) -> Int {
+    match u {
+        .a -> { 42 }
+        .b b_int -> { b_int }
+        .c inner -> {
+            match inner {
+                .int_a a_int -> { a_int + 1 }
+                .int_b b_int -> { b_int + 2 }
+            }
+        }
+    }
+}";
+
+    let expected_content = "InnerUnion~1.0 := int_a: Int~0.0 | int_b: Int~0.0
+OuterUnion~1.1 := a: () | b: Int~0.0 | c: InnerUnion~1.0
+main~1.2 : (OuterUnion~1.1) -> Int = fun \"main\"(u~1.3 : OuterUnion~1.1) -> Int { match u~1.3 {
+    .a -> { 42; }
+    .b b_int -> { b_int~1.4; }
+    .c inner -> { match inner~1.5 {
+        .int_a a_int -> { `+`~0.3$0 (a_int~1.6,1,); }
+        .int_b b_int -> { `+`~0.3$0 (b_int~1.7,2,); }
+    }; }
+}; };";
+    let expected_vars = &[
+        ("a_int~1.6", "Int"),
+        ("b_int~1.4", "Int"),
+        ("b_int~1.7", "Int"),
+        ("inner~1.5", "InnerUnion~1.0"),
+        ("main~1.2", "(OuterUnion~1.1) -> Int"),
+        ("u~1.3", "OuterUnion~1.1"),
+    ];
+
+    check(input, expected_content, expected_vars);
+}

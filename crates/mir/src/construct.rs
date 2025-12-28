@@ -617,6 +617,7 @@ impl Builder {
         let mut branches = vec![];
         // TODO - rustc always generates an 'otherwise' block
         // if the match is exhaustive, it puts an "unreachable" no-op
+        // should evaluate if/why we would want to do the same thing
         let mut otherwise = None;
         for arm in match_expr.arms.iter() {
             self.current_block = self.new_block();
@@ -635,9 +636,16 @@ impl Builder {
 
         let join_block = self.new_block();
 
+        // jump each arm to the join block if it doesn't already have
+        // a terminator, which could be set by control flow inside the arm
+        // like a branch or return
         for block_idx in match_arm_blocks {
-            self.block_mut(block_idx).terminator =
-                Some(self.make_jump_terminator_with_source(join_block, block_idx));
+            if self.block(block_idx).terminator.is_none() {
+                self.current_function_mut()
+                    .predecessors
+                    .add(block_idx, join_block);
+                self.block_mut(block_idx).terminator = Some(Terminator::jump(join_block, vec![]));
+            }
         }
 
         let targets = BranchIntTargets {
@@ -650,8 +658,6 @@ impl Builder {
         self.current_block = join_block;
     }
 
-    // TODO - can't decide whether to inline this again
-    // TODO - should the Variant branch have a `loop` rather than recursion?
     fn construct_match_pattern(
         &mut self,
         pattern: Idx<Pattern>,
@@ -692,20 +698,28 @@ impl Builder {
                 });
             }
             hir::Pattern::Variant { meta: _, pattern } => {
-                // TODO: support recursively nested pattern.inner_pattern
                 let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
-                let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!("Internal Compiler Error (MIR): Found '{}' binding, expected that to exist on type {}",
-                        context.lookup(pattern.variant),
-                        scrutinee_ty.display(context)));
+                let variant_index = sum_type.index_of(pattern.variant).unwrap_or_else(|| panic!(
+                    "Internal Compiler Error (MIR): Found '{}' binding, expected that to exist on type {}",
+                    context.lookup(pattern.variant),
+                    scrutinee_ty.display(context)
+                ));
 
                 branches.push((
                     variant_index.into_raw() as i64,
                     BlockTarget::with_empty_args(self.current_block),
                 ));
+
+                // if there is an inner pattern then recurse with a *projected* scrutinee
+                // place that points at the payload of this variant
                 if let Some(inner) = pattern.inner_pattern {
+                    let projected_scrutinee = scrutinee_place.with_projection(
+                        ProjectionElem::DowncastVariant(Some(pattern.variant), variant_index),
+                    );
+
                     self.construct_match_pattern(
                         inner,
-                        scrutinee_place,
+                        &projected_scrutinee,
                         branches,
                         otherwise,
                         context,
