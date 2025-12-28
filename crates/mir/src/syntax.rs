@@ -4,7 +4,7 @@ use std::slice::Iter;
 
 use hir::{Context, Expr, IntrinsicExpr, Key, Mutability, Type, ValueSymbol, VariantIdx};
 use itertools::Itertools;
-use la_arena::{Arena, ArenaMap, Idx};
+use la_arena::{Arena, Idx};
 
 use crate::predecessors::Predecessors;
 

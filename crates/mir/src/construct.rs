@@ -783,7 +783,6 @@ impl Builder {
         // constructing the next BasicBlock(s) by starting at its current statement
         self.current_block = join_block;
 
-        // TODO: is this needed?
         if let Some(assign_place) = assign_to {
             self.use_block_param(assign_place.local);
         }

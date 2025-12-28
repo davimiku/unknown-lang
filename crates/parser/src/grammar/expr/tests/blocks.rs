@@ -86,7 +86,6 @@ BlockExpr@0..35
 }
 
 #[test]
-#[ignore = "FIXME - `blue` is being parsed as a CallExpr, as if it was `blue Color.green`"]
 fn parse_block_with_type_definition() {
     let input = "{
         type Color = red | green | blue
@@ -94,7 +93,46 @@ fn parse_block_with_type_definition() {
         Color.green
 }";
 
-    check_expr(input, expect![[r#""#]]);
+    check_expr(input, expect![[r#"
+        BlockExpr@0..64
+          LBrace@0..1 "{"
+          Newline@1..2 "\n"
+          Emptyspace@2..10 "        "
+          TypeBinding@10..41
+            TypeKw@10..14 "type"
+            Emptyspace@14..15 " "
+            Ident@15..21
+              Ident@15..20 "Color"
+              Emptyspace@20..21 " "
+            Equals@21..22 "="
+            Emptyspace@22..23 " "
+            TypeExpr@23..41
+              InfixExpr@23..41
+                Ident@23..27
+                  Ident@23..26 "red"
+                  Emptyspace@26..27 " "
+                Bar@27..28 "|"
+                Emptyspace@28..29 " "
+                InfixExpr@29..41
+                  Ident@29..35
+                    Ident@29..34 "green"
+                    Emptyspace@34..35 " "
+                  Bar@35..36 "|"
+                  Emptyspace@36..37 " "
+                  Ident@37..41
+                    Ident@37..41 "blue"
+          Newline@41..42 "\n"
+          Newline@42..43 "\n"
+          Emptyspace@43..51 "        "
+          PathExpr@51..62
+            Ident@51..56
+              Ident@51..56 "Color"
+            Dot@56..57 "."
+            PathExpr@57..62
+              Ident@57..62
+                Ident@57..62 "green"
+          Newline@62..63 "\n"
+          RBrace@63..64 "}""#]]);
 }
 
 #[test]
