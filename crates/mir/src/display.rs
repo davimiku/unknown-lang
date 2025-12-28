@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Write};
 use std::io;
 use std::ops::Deref;
 
-use hir::{Context, ContextDisplay, Key};
+use hir::{Context, ContextDisplay};
 use itertools::Itertools;
 use la_arena::Idx;
 

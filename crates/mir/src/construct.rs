@@ -1,7 +1,5 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
-use std::env::var;
-
 use hir::{
     CallExpr, Context, ContextDisplay, Expr, FunctionParam, IfExpr, LoopExpr, MatchExpr,
     Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
@@ -710,16 +708,13 @@ impl Builder {
                     BlockTarget::with_empty_args(self.current_block),
                 ));
 
-                // if there is an inner pattern then recurse with a *projected* scrutinee
-                // place that points at the payload of this variant
                 if let Some(inner) = pattern.inner_pattern {
-                    let projected_scrutinee = scrutinee_place.with_projection(
-                        ProjectionElem::DowncastVariant(Some(pattern.variant), variant_index),
-                    );
+                    // make a new scrutinee_place to not clobber the outside one
+                    let scrutinee_place = scrutinee_place.clone();
 
                     self.construct_match_pattern(
                         inner,
-                        &projected_scrutinee,
+                        &scrutinee_place,
                         branches,
                         otherwise,
                         context,

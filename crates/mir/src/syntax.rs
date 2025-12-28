@@ -460,10 +460,6 @@ fn is_return(local: Idx<Local>) -> bool {
     local.into_raw().into_u32() == 0
 }
 
-// struct Ty<'tcx>(Interned<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>);
-
-// struct Interned<'a, T>(pub &'a T, pub PrivateZst);
-
 /// Projections, which are fields or other things that "project out" from
 /// a base place. These are represented by the newtype'd type ProjectionElem.
 /// So e.g. the place _1.f is a projection, with f being the "projection element"
