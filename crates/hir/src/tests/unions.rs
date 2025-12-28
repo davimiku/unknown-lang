@@ -66,15 +66,15 @@ fn unwrap_add_and_rewrap() {
     let input = "type Number = (int: Int | float: Float)
 let main = fun (n: Number) -> {
     match n {
-        .int i -> Number.int (i + 16)
-        .float f -> Number.float (f + 16.0)
+        .int i -> { Number.int (i + 16) }
+        .float f -> { Number.float (f + 16.0) }
     }
 }";
 
     let expected_content = "Number~1.0 := int: Int~0.0 | float: Float~0.1
 main~1.1 : (Number~1.0) -> Number~1.0 = fun \"main\"(n~1.2 : Number~1.0) -> Number~1.0 { match n~1.2 {
-    .int i -> Number~1.0.int$0 (`+`~0.3$0 (i~1.3,16,),)
-    .float f -> Number~1.0.float$0 (`+`~0.3$3 (f~1.4,16.0,),)
+    .int i -> { Number~1.0.int$0 (`+`~0.3$0 (i~1.3,16,),); }
+    .float f -> { Number~1.0.float$0 (`+`~0.3$3 (f~1.4,16.0,),); }
 }; };";
     let expected_vars = &[
         ("f~1.4", "Float"),

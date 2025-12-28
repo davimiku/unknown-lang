@@ -15,10 +15,10 @@ let main = fun (scrutinee: Color) -> Int {
 }";
     let expected = indoc! {r#"
 Color~1.0 := red: () | green: () | blue: ()
-main~1.1 : (Color~1.0) -> Int = fun "main"(scrutinee~1.2 : Color~1.0) -> Int { match scrutinee~1.2{
-    
-    
-    
+main~1.1 : (Color~1.0) -> Int = fun "main"(scrutinee~1.2 : Color~1.0) -> Int { match scrutinee~1.2 {
+    .red -> { 8; }
+    .green -> { 16; }
+    .blue -> { 24; }
 }; };"#};
 
     let expected_vars = &[
@@ -41,9 +41,9 @@ let main = fun (scrutinee: Union) -> Int {
 }";
     let expected = indoc! {r#"
 Union~1.0 := a: Int~0.0 | b: Float~0.1
-main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { match scrutinee~1.2{
-    
-    
+main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { match scrutinee~1.2 {
+    .a a_int -> { 2; }
+    .b b_float -> { 3; }
 }; };"#};
 
     let expected_vars = &[
@@ -68,9 +68,9 @@ let main = fun (scrutinee: Union) -> Int {
 }";
     let expected = indoc! {r#"
 Union~1.0 := a: Int~0.0 | b: Float~0.1
-main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { match scrutinee~1.2{
-    
-    
+main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { match scrutinee~1.2 {
+    .a a_int -> { a_int~1.3; }
+    .b b_float -> { 0; }
 }; };"#};
 
     let expected_vars = &[
@@ -95,9 +95,9 @@ let main = fun (condition: Color) -> Color {
 }";
     let expected = indoc! {r#"
 Color~1.0 := red: () | green: () | blue: ()
-main~1.1 : (Color~1.0) -> Color~1.0 = fun "main"(condition~1.2 : Color~1.0) -> Color~1.0 { match condition~1.2{
-    
-    
+main~1.1 : (Color~1.0) -> Color~1.0 = fun "main"(condition~1.2 : Color~1.0) -> Color~1.0 { match condition~1.2 {
+    .green -> { Color~1.0.green; }
+    otherwise -> { otherwise~1.3; }
 }; };"#};
 
     let expected_vars = &[
