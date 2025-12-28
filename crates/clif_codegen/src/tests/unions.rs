@@ -1,9 +1,5 @@
-use crate::builtins::XInt;
-use crate::tests::{compile_main, to_fn};
-
-// =============================================================================
-// Unit Unions (no data) - still use scalar returns
-// =============================================================================
+use crate::builtins::{XInt, XTag};
+use crate::tests::{compile_main, to_fn, to_fn_one_param_sret, to_fn_zero_param_sret};
 
 #[test]
 fn define_and_pass_through_sum_type() {
@@ -77,12 +73,6 @@ let main = fun () -> { DaysOfWeek.saturday }";
     assert_eq!(code_fn(()), 5);
 }
 
-// =============================================================================
-// Non-unit unions use sret calling convention
-// The function signature is: fn(regular_params..., sret_ptr) -> void
-// We need to allocate space and pass a pointer for the return value
-// =============================================================================
-
 /// Helper struct for unions with tag + one i64 payload (16 bytes)
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(C)]
@@ -108,10 +98,6 @@ struct Union3Words {
     payload2: i64,
 }
 
-// =============================================================================
-// Unions with Int data - use sret convention
-// =============================================================================
-
 #[test]
 fn construct_union_with_int_data() {
     let input = "
@@ -123,7 +109,7 @@ let main = fun (i: Int) -> { CoolInt.int_c 32 }
     let code_ptr = compile_main(input);
 
     // Function signature: fn(i64, *mut Union2Words) -> ()
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<XTag, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(100_000, &mut result);
@@ -142,7 +128,7 @@ let main = fun (i: Int) -> { CoolInt.int_c i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<XTag, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(16, &mut result);
@@ -164,7 +150,7 @@ let main = fun (i: Int) -> { CoolInt.int_a i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(42, &mut result);
@@ -186,7 +172,7 @@ let main = fun (i: Int) -> { CoolInt.int_b i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(-999, &mut result);
@@ -199,10 +185,6 @@ let main = fun (i: Int) -> { CoolInt.int_b i }
     );
 }
 
-// =============================================================================
-// Unions with Float data - use sret convention
-// =============================================================================
-
 #[test]
 fn construct_union_with_float_data() {
     let input = "
@@ -212,7 +194,7 @@ let main = fun (f: Float) -> { CoolFloat.float_c f }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(f64, *mut Union2WordsFloat)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
         tag: 0,
@@ -237,7 +219,7 @@ let main = fun (f: Float) -> { CoolFloat.float_a f }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(f64, *mut Union2WordsFloat)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
         tag: 0,
@@ -262,8 +244,7 @@ let main = fun () -> { CoolFloat.float_b 2.718 }
 ";
 
     let code_ptr = compile_main(input);
-    // No regular params, just sret
-    let code_fn = unsafe { std::mem::transmute::<_, fn(*mut Union2WordsFloat)>(code_ptr) };
+    let code_fn = unsafe { to_fn_zero_param_sret::<Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
         tag: 0,
@@ -288,7 +269,7 @@ let main = fun (f: Float) -> { CoolFloat.neg f }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(f64, *mut Union2WordsFloat)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
         tag: 0,
@@ -304,10 +285,6 @@ let main = fun (f: Float) -> { CoolFloat.neg f }
     );
 }
 
-// =============================================================================
-// Mixed Int/Float Unions - stored as i64 with bitcasting
-// =============================================================================
-
 #[test]
 fn construct_union_with_int_float_data_literal() {
     let input = "
@@ -317,7 +294,7 @@ let main = fun () -> { Number.float 1.23 }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(*mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_zero_param_sret::<Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(&mut result);
@@ -336,7 +313,7 @@ let main = fun (f: Float) -> { Number.float f }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(f64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(1.23, &mut result);
@@ -354,7 +331,7 @@ let main = fun (i: Int) -> { Number.int i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(42, &mut result);
@@ -388,7 +365,7 @@ let main = fun (f: Float) -> { Number.float f }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(f64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
 
@@ -410,7 +387,7 @@ let main = fun () -> { Number.int 999 }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(*mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_zero_param_sret::<Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(&mut result);
@@ -432,7 +409,7 @@ let main = fun (i: Int) -> { Value.other i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { std::mem::transmute::<_, fn(i64, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(123, &mut result);
@@ -445,10 +422,6 @@ let main = fun (i: Int) -> { Value.other i }
     );
 }
 
-// =============================================================================
-// Pass-through and identity operations with sret
-// =============================================================================
-
 #[test]
 fn pass_through_union_with_int_payload() {
     let input = "
@@ -458,9 +431,7 @@ let main = fun (c: CoolInt) -> { c }
 ";
 
     let code_ptr = compile_main(input);
-    // Input: pointer to CoolInt, Output: sret pointer
-    let code_fn =
-        unsafe { std::mem::transmute::<_, fn(*const Union2Words, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     let input = Union2Words {
         tag: 0,
@@ -487,9 +458,8 @@ let main = fun (c: CoolFloat) -> { c }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe {
-        std::mem::transmute::<_, fn(*const Union2WordsFloat, *mut Union2WordsFloat)>(code_ptr)
-    };
+    let code_fn =
+        unsafe { to_fn_one_param_sret::<*const Union2WordsFloat, Union2WordsFloat>(code_ptr) };
 
     let input = Union2WordsFloat {
         tag: 0,
@@ -519,8 +489,7 @@ let main = fun (n: Number) -> { n }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn =
-        unsafe { std::mem::transmute::<_, fn(*const Union2Words, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     // Int payload
     let input = Union2Words {
@@ -551,8 +520,7 @@ let main = fun (u: OuterUnion) -> { u }
         ";
 
     let code_ptr = compile_main(input);
-    let code_fn =
-        unsafe { std::mem::transmute::<_, fn(*const Union3Words, *mut Union3Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Union3Words, Union3Words>(code_ptr) };
 
     // case a: tag=0, payloads are arbitrary
     let case_a = Union3Words {
@@ -599,8 +567,7 @@ let main = fun (n: Number) -> {
 }";
 
     let code_ptr = compile_main(input);
-    let code_fn =
-        unsafe { std::mem::transmute::<_, fn(*const Union2Words, *mut Union2Words)>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     let case_a = Union2Words { tag: 0, payload: 1 };
     let expected_a = Union2Words {
@@ -619,7 +586,34 @@ let main = fun (n: Number) -> {
     code_fn(&case_b, &mut output_b);
 
     assert_eq!(1, output_b.tag);
-    // Interpret the payload as f64 and compare semantically
-    let output_b_float: f64 = bytemuck::cast(output_b.payload);
-    assert_eq!(18.0, output_b_float);
+    assert_eq!(18.0, bytemuck::cast::<i64, f64>(output_b.payload));
+}
+
+#[test]
+fn unwrap_nested_to_int() {
+    let input = "type InnerUnion = (int_a: Int | int_b: Int)
+type OuterUnion = (a | b: Int | c: InnerUnion)
+
+let main = fun (u: OuterUnion) -> Int {
+    match u {
+        .a -> { 42 }
+        .b b_int -> { b_int }
+        .c inner -> {
+            match inner {
+                .int_a a_int -> { a_int }
+                .int_b b_int -> { b_int }
+            }
+        }
+    }
+}";
+
+    let code_ptr = compile_main(input);
+    let code_fn = unsafe { to_fn::<*const Union2Words, XInt>(code_ptr) };
+
+    // tag=a, other fields arbitrary
+    let case_a = Union3Words {
+        tag: 0,
+        payload1: 0,
+        payload2: 0,
+    };
 }

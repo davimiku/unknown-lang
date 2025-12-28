@@ -43,6 +43,27 @@ unsafe fn to_fn<I, O>(code_ptr: *const u8) -> fn(I) -> O {
     std::mem::transmute::<_, fn(I) -> O>(code_ptr)
 }
 
+/// Returned stack allocated structs (incl. non-unit unions) use sret calling convention
+/// The function signature is: fn(regular_params..., sret_ptr) -> void
+/// The caller allocates space and passes a pointer for the return value
+unsafe fn to_fn_zero_param_sret<R>(code_ptr: *const u8) -> fn(*mut R) {
+    std::mem::transmute::<_, fn(*mut R)>(code_ptr)
+}
+
+/// Returned stack allocated structs (incl. non-unit unions) use sret calling convention
+/// The function signature is: fn(regular_params..., sret_ptr) -> void
+/// The caller allocates space and passes a pointer for the return value
+unsafe fn to_fn_one_param_sret<I, R>(code_ptr: *const u8) -> fn(I, *mut R) {
+    std::mem::transmute::<_, fn(I, *mut R)>(code_ptr)
+}
+
+/// Returned stack allocated structs (incl. non-unit unions) use sret calling convention
+/// The function signature is: fn(regular_params..., sret_ptr) -> void
+/// The caller allocates space and passes a pointer for the return value
+unsafe fn to_fn_two_param_sret<I1, I2, R>(code_ptr: *const u8) -> fn(I1, I2, *mut R) {
+    std::mem::transmute::<_, fn(I1, I2, *mut R)>(code_ptr)
+}
+
 use crate::compile_module;
 
 fn compile_main(input: &str) -> *const u8 {

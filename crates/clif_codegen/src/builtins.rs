@@ -18,6 +18,10 @@ pub(crate) type XInt = i64;
 /// Language `Float` is a Rust `f64`
 pub(crate) type XFloat = f64;
 
+/// Useful alias for internal tests and other usage, the tag of
+/// a tagged union is a Rust `i64`
+pub(crate) type XTag = i64;
+
 /// Language `Bool` is a unit union type which is represented as a Rust `i64`
 ///
 /// repr(transparent) is mandatory for FFI through "extern "C"" functions
