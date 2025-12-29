@@ -35,7 +35,7 @@ pub enum SyntaxKind {
     FloatLiteral,
     StringLiteral,
 
-    ListLiteral,
+    RecordLiteral,
     ArrayType,
 
     // Delimiters

@@ -407,7 +407,7 @@ fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
         p.expect(T::Comma); // TODO: recover at next comma if possible? `["ok", -}.?*, "ok"]
     }
 
-    m.complete(p, SyntaxKind::ListLiteral)
+    m.complete(p, SyntaxKind::RecordLiteral)
 }
 
 fn parse_loop_expr(p: &mut Parser) -> CompletedMarker {

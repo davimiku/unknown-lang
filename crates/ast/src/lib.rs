@@ -4,16 +4,12 @@ mod type_expr;
 #[cfg(test)]
 mod tests;
 
-pub use expr::Expr;
-// TODO: don't export these individually, have the HIR use them as `ast::expr::T`
-// motivation: can duplicate things in type_expr if necessary without renaming and
-// don't need "Expr" suffix, it's clear from full name
 pub use expr::{
-    Binary, Block, Function, Ident, LetBinding, Mutability, PathExpr, Pattern, ReAssignment,
+    Binary, Block, Expr, Function, Ident, LetBinding, Mutability, PathExpr, Pattern, ReAssignment,
     TypeBinding, Unary,
 };
 pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
-pub use expr::{FloatLiteral, IntLiteral, ListLiteral, StringLiteral};
+pub use expr::{FloatLiteral, IntLiteral, RecordLiteral, StringLiteral};
 use parser::{Parse, SyntaxKind, SyntaxNode};
 use text_size::TextRange;
 pub use type_expr::{PathExpr as TypePathExpr, TypeExpr, Union};

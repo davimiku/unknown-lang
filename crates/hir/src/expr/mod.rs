@@ -238,6 +238,11 @@ impl ListLiteralExpr {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RecordLiteralExpr {
+    elements: Vec<(Key, Idx<Expr>)>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub expr: Idx<Expr>,

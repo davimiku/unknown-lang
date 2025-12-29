@@ -18,7 +18,7 @@ pub enum Expr {
     If(If),
     IntLiteral(IntLiteral),
     LetBinding(LetBinding),
-    ListLiteral(ListLiteral),
+    RecordLiteral(RecordLiteral),
     Loop(Loop),
     Match(Match),
     Paren(ParenExpr),
@@ -33,7 +33,7 @@ pub enum Expr {
 impl Expr {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         Some(match node.kind() {
-            SyntaxKind::ListLiteral => Self::ListLiteral(ListLiteral(node)),
+            SyntaxKind::RecordLiteral => Self::RecordLiteral(RecordLiteral(node)),
             SyntaxKind::BlockExpr => Self::Block(Block(node)),
             SyntaxKind::BreakStatement => Self::Break(BreakStatement(node)),
             SyntaxKind::Call => Self::Call(CallExpr(node)),
@@ -64,10 +64,10 @@ impl Expr {
         })
     }
 
-    pub fn range(self) -> TextRange {
+    pub fn range(&self) -> TextRange {
         use Expr as E;
         match self {
-            E::ListLiteral(e) => e.range(),
+            E::RecordLiteral(e) => e.range(),
             E::Block(e) => e.range(),
             E::Binary(e) => e.range(),
             E::Break(e) => e.range(),
@@ -107,15 +107,36 @@ fn cast_infix(node: SyntaxNode) -> Expr {
 }
 
 #[derive(Debug, Clone)]
-pub struct ListLiteral(SyntaxNode);
+pub enum RecordItem {
+    ListItem(Expr),
+    RecordItem((SyntaxToken, Expr)),
+}
 
-impl ListLiteral {
+impl RecordItem {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        dbg!(node);
+
+        None
+    }
+
+    pub fn range(&self) -> TextRange {
+        match self {
+            RecordItem::ListItem(expr) => expr.range(),
+            RecordItem::RecordItem((syntax_token, expr)) => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordLiteral(SyntaxNode);
+
+impl RecordLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         (node.kind() == SyntaxKind::BlockExpr).then_some(Self(node))
     }
 
-    pub fn items(&self) -> impl Iterator<Item = Expr> {
-        self.0.children().filter_map(Expr::cast)
+    pub fn items(&self) -> impl Iterator<Item = RecordItem> {
+        self.0.children().filter_map(RecordItem::cast)
     }
 
     pub fn range(&self) -> TextRange {

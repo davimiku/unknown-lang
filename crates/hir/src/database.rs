@@ -119,7 +119,7 @@ impl Database {
     pub(crate) fn alloc_expr(&mut self, expr: Expr, ast: Option<ast::Expr>) -> Idx<Expr> {
         let idx = self.exprs.alloc(expr);
 
-        let range = ast.map_or_else(Default::default, ast::Expr::range);
+        let range = ast.map_or_else(Default::default, |expr| expr.range());
         self.expr_ranges.insert(idx, range);
 
         idx
