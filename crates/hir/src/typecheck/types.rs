@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::fmt::{self};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::{Index, IndexMut};
 
@@ -32,7 +32,7 @@ pub enum Type {
     Sum(SumType),
 
     // Product
-    // Product(ProductType)
+    Product(ProductType),
     Function(FunctionType),
     Array(ArrayType),
     // TODO: consider arena allocating larger variants
@@ -68,6 +68,21 @@ impl Type {
 
         Self::Sum(SumType {
             variants,
+            hash,
+            name,
+        })
+    }
+
+    pub(crate) fn product(fields: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
+        let mut s = DefaultHasher::new();
+        for (key, ty) in fields.iter() {
+            (*key).hash(&mut s);
+            (*ty).into_raw().into_u32().hash(&mut s);
+        }
+        let hash = s.finish();
+
+        Self::Sum(SumType {
+            variants: fields,
             hash,
             name,
         })
@@ -175,6 +190,7 @@ impl ContextDisplay for Type {
             Type::StringLiteral(key) => format!("\"{}\"", context.lookup(*key)),
 
             Type::Sum(sum_type) => sum_type.display(context),
+            Type::Product(product_type) => product_type.display(context),
 
             Type::Function(func) => func.display(context),
             Type::Array(arr) => arr.display(context),
@@ -248,6 +264,68 @@ impl ContextDisplay for SumType {
             }
         }
         s.push(')');
+
+        s
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductType {
+    /// Named fields like `key: Type`
+    pub fields: Box<[(Key, Idx<Type>)]>,
+
+    /// Hash computed on creation for faster comparisons
+    pub(crate) hash: u64,
+
+    pub(crate) name: Option<TypeSymbol>,
+}
+
+impl ProductType {
+    pub fn index_of(&self, key: Key) -> Option<VariantIdx> {
+        self.fields
+            .iter()
+            .position(|(k, _)| *k == key)
+            .map(VariantIdx::from)
+    }
+
+    pub fn type_of_key(&self, key: Key) -> Option<Idx<Type>> {
+        self.fields
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(.., ty)| ty)
+            .copied()
+    }
+
+    pub fn type_of_idx(&self, idx: VariantIdx) -> Idx<Type> {
+        self.fields[idx.into_raw() as usize].1
+    }
+
+    pub fn is_unit(&self, context: &Context) -> bool {
+        self.fields
+            .iter()
+            .all(|(.., ty)| *ty == context.core_types().unit)
+    }
+}
+
+impl ContextDisplay for ProductType {
+    fn display(&self, context: &Context) -> String {
+        if let Some(name) = self.name {
+            return name.display(context);
+        }
+        let mut s = String::new();
+        s.push_str("[ ");
+        let mut fields = self.fields.iter().peekable();
+        while let Some((tag, ty)) = fields.next() {
+            s.push_str(context.lookup(*tag));
+            if *ty != context.core_types().unit {
+                s.push_str(": ");
+                s.push_str(&ty.display(context));
+            }
+            if fields.peek().is_some() {
+                s.push_str(", ");
+            }
+        }
+        s.push_str(" ]");
 
         s
     }

@@ -36,7 +36,7 @@ pub enum SyntaxKind {
     StringLiteral,
 
     RecordLiteral,
-    ArrayType,
+    RecordType,
 
     // Delimiters
     /// `{`

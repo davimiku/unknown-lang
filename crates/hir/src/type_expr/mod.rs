@@ -37,14 +37,16 @@ pub enum TypeExpr {
     VarRef(TypeRefExpr),
 
     /// Reference to a type variable not defined in the current scope
-    UnresolvedVarRef {
-        key: Key,
-    },
+    UnresolvedVarRef { key: Key },
 
     /// Definition of a local type variable
     VarDef(TypeVarDefExpr),
 
+    /// Union type (sum type)
     Union(UnionTypeExpr),
+
+    /// Record type (product type)
+    Record(RecordTypeExpr),
 
     /// Expression evaluating to the unit type, such as `()`
     Unit,
@@ -98,6 +100,19 @@ pub struct UnionTypeExpr {
     ///                                  ^^^^
     /// Each variant has a key/name, and a type (unit, if not specified by the user)
     pub variants: Vec<(Key, Idx<TypeExpr>)>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RecordTypeExpr {
+    /// User-given name, if part of a type binding statement, i.e. `type Point = ...`
+    ///                                                                  ^^^^^
+    pub name: Option<TypeSymbol>,
+
+    /// Fields of the record, i.e. `[ x: Float, y: Float ]`
+    ///                               ^^^^^^^^
+    ///
+    /// Each field has key (name) and a type
+    pub fields: Vec<(Key, Idx<TypeExpr>)>,
 }
 
 /// Local type definition

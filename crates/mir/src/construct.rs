@@ -269,7 +269,6 @@ impl Builder {
             // couldn't be optimized away unless do_thing could be proven to
             // be side-effect free
             // TODO: optimization pass to remove if elements are literals
-            Expr::ListLiteral(_) => todo!(),
 
             // TODO: will be removed in favor of Call
             Expr::Unary(_) => todo!(),
@@ -842,7 +841,6 @@ impl Builder {
                 self.construct_operand_assign(assign_to, Operand::Constant((*i).into()))
             }
             Expr::StringLiteral(_) => todo!(),
-            Expr::ListLiteral(_) => todo!(),
             Expr::Unary(_) => todo!(),
             Expr::Block(_) => todo!(),
             Expr::Call(call) => self.construct_call_operand(call, ty, assign_to, context),

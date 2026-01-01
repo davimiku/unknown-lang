@@ -16,6 +16,7 @@ pub enum TypeExpr {
     Paren(ParenExpr),
     StringLiteral(StringLiteral),
     Union(Union),
+    Record(Record),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
 
@@ -40,6 +41,7 @@ impl TypeExpr {
             // SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
+            SyntaxKind::RecordType => Self::Record(Record(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
 
             _ => return None,
@@ -60,6 +62,7 @@ impl TypeExpr {
             T::Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),
             T::Union(e) => e.range(),
+            T::Record(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
@@ -162,31 +165,12 @@ impl Union {
     // see the parser tests/binding.rs
     // for a full example of this structure
     pub fn variants(&self) -> Vec<CompoundTypeItem> {
-        /*
-        [crates/ast/src/type_expr.rs:193:9] self = Union(
-            InfixExpr@9..18
-              Ident@9..11
-                Ident@9..10 "a"
-                Emptyspace@10..11 " "
-              Bar@11..12 "|"
-              Emptyspace@12..13 " "
-              InfixExpr@13..18
-                Ident@13..15
-                  Ident@13..14 "b"
-                  Emptyspace@14..15 " "
-                Bar@15..16 "|"
-                Emptyspace@16..17 " "
-                Ident@17..18
-                  Ident@17..18 "c"
-            ,
-        )
-                 */
         // this is fairly flakey, if the CST changes slightly this will definitely break
         let mut variants: Vec<CompoundTypeItem> = vec![];
         for child in self.0.children() {
             let kind = child.kind();
             match kind {
-                // TODO - first child should be one of these
+                // TODO - consolidate parsing to reduce these possibilities
                 SyntaxKind::Ident | SyntaxKind::CompoundTypeItem => {
                     variants.push(CompoundTypeItem(child));
                 }
@@ -202,6 +186,43 @@ impl Union {
             node.kind(),
             SyntaxKind::Ident | SyntaxKind::CompoundTypeItem
         ) || node.has_child_of(SyntaxKind::Bar)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+/// Type containing 0 to many fields
+///
+/// ```ignore
+/// type Empty = []
+/// type Point = [ x: Float, y: Float ]
+/// ```
+#[derive(Debug, Clone)]
+pub struct Record(SyntaxNode);
+
+impl Record {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        if node.kind() == SyntaxKind::RecordType {
+            Some(Self(node))
+        } else if node
+            .first_child()
+            .map(|n| n.kind())
+            .unwrap_or(SyntaxKind::Error)
+            == SyntaxKind::RecordType
+        {
+            Some(Self(node.first_child().unwrap()))
+        } else {
+            None
+        }
+    }
+
+    pub fn fields(&self) -> Vec<CompoundTypeItem> {
+        self.0
+            .children()
+            .filter_map(CompoundTypeItem::cast)
+            .collect()
     }
 
     pub fn range(&self) -> TextRange {

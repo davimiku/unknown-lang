@@ -4,6 +4,7 @@ mod literals;
 mod logic;
 mod loops;
 mod operators;
+mod records;
 mod scopes;
 mod typecheck;
 mod unions;
@@ -348,30 +349,6 @@ res~1.0 : Bool~0.3 = true~0.2;
 if (res~1.0) { return 1; };"};
 
     let expected_vars = &[("res~1.0", "Bool~0.3")];
-
-    check(input, expected, expected_vars);
-}
-
-#[test]
-fn array_literal_int() {
-    let input = r#"let a = [1, 2, 3]"#;
-
-    let expected = indoc! {"
-    a~1.0 : []Int = [1,2,3,];"};
-
-    let expected_vars = &[("a~1.0", "[]Int")];
-
-    check(input, expected, expected_vars);
-}
-
-#[test]
-fn list_literal_string() {
-    let input = r#"let a = ["x", "y", "z"]"#;
-
-    let expected = indoc! {"
-    a~1.0 : []String = [\"x\",\"y\",\"z\",];"};
-
-    let expected_vars = &[("a~1.0", "[]String")];
 
     check(input, expected, expected_vars);
 }

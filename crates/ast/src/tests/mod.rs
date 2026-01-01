@@ -6,8 +6,8 @@ mod branches;
 mod calls;
 mod concat;
 mod functions;
-mod lists_records;
 mod loops;
+mod records;
 mod statements;
 mod types;
 

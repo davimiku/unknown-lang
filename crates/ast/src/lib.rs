@@ -12,7 +12,7 @@ pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 pub use expr::{FloatLiteral, IntLiteral, RecordLiteral, StringLiteral};
 use parser::{Parse, SyntaxKind, SyntaxNode};
 use text_size::TextRange;
-pub use type_expr::{PathExpr as TypePathExpr, TypeExpr, Union};
+pub use type_expr::{PathExpr as TypePathExpr, Record, TypeExpr, Union};
 
 impl From<Parse> for Root {
     fn from(parse_tree: Parse) -> Self {

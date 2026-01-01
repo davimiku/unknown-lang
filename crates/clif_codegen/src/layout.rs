@@ -95,6 +95,7 @@ impl FunctionTranslator<'_> {
             }
             HType::String | HType::StringLiteral(_) => todo!(),
             HType::Sum(sum_type) => self.compute_sum_type_layout(sum_type),
+            HType::Product(product_type) => self.compute_product_type_layout(product_type),
             HType::Function(_function_type) => todo!(),
             HType::Array(_array_type) => todo!(),
             HType::Unit => {
@@ -169,6 +170,10 @@ impl FunctionTranslator<'_> {
                 size: total_size,
             }
         }
+    }
+
+    fn compute_product_type_layout(&mut self, product_type: &hir::ProductType) -> Layout {
+        todo!()
     }
 }
 

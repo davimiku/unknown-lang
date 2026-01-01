@@ -160,7 +160,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 
         T::LParen => parse_paren_expr(p),
         T::LBrace => parse_block(p),
-        T::LBracket => parse_array_literal(p),
+        T::LBracket => parse_record_literal(p),
         T::Loop => parse_loop_expr(p),
 
         T::Let => parse_let_binding(p),
@@ -389,7 +389,7 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
-fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
+fn parse_record_literal(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LBracket);
 
     let m = p.start();
@@ -399,6 +399,8 @@ fn parse_array_literal(p: &mut Parser) -> CompletedMarker {
         if p.bump_all_if_at(T::RBracket) {
             break;
         }
+        parse_ident(p);
+        p.expect(T::Equals);
         parse_expr(p);
 
         if p.bump_all_if_at(T::RBracket) {

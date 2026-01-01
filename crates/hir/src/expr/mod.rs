@@ -11,7 +11,7 @@ use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
 use crate::type_expr::TypeExpr;
 use crate::typecheck::VariantIdx;
-use crate::{Context, ContextDisplay, Type};
+use crate::{Context, Type};
 
 /// HIR Expression
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -28,9 +28,6 @@ pub enum Expr {
 
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
-
-    /// Array literal value, ex. `[1, 2, 3]`
-    ListLiteral(ListLiteralExpr),
 
     /// Unary expression, ex. `-a`, `!b`
     // TODO: remove and use a Call instead (unary function call)
@@ -220,21 +217,6 @@ impl From<ValueSymbol> for (u32, u32) {
 pub struct VarRefExpr {
     /// Unique identifier for the value symbol
     pub symbol: ValueSymbol,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ListLiteralExpr {
-    Empty,
-    NonEmpty { elements: Vec<Idx<Expr>> },
-}
-
-impl ListLiteralExpr {
-    pub fn elements(&self) -> &[Idx<Expr>] {
-        match self {
-            Self::Empty => &[],
-            Self::NonEmpty { elements } => elements,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

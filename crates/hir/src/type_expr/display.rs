@@ -1,5 +1,6 @@
 use la_arena::Idx;
 
+use crate::type_expr::{RecordTypeExpr, UnionTypeExpr};
 use crate::{Context, ContextDisplay, COMPILER_BRAND};
 
 use super::{TypeExpr, TypeRefExpr, TypeSymbol, TypeVarDefExpr};
@@ -32,19 +33,8 @@ impl ContextDisplay for TypeExpr {
                 s.push_str(&type_expr.display(context).to_string());
                 s
             }
-            TypeExpr::Union(union_type_expr) => {
-                let mut s = String::new();
-                let len = union_type_expr.variants.len();
-                for (i, variant) in union_type_expr.variants.iter().enumerate() {
-                    s.push_str(context.lookup(variant.0));
-                    s.push_str(": ");
-                    s.push_str(&variant.1.display(context));
-                    if i < len - 1 {
-                        s.push_str(" | ");
-                    }
-                }
-                s
-            }
+            TypeExpr::Union(union_type_expr) => union_type_expr.display(context),
+            TypeExpr::Record(record_type_expr) => record_type_expr.display(context),
             TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),
             TypeExpr::Unary(_) => todo!(),
@@ -66,5 +56,39 @@ impl ContextDisplay for TypeSymbol {
 impl ContextDisplay for TypeRefExpr {
     fn display(&self, context: &Context) -> String {
         self.symbol.display(context)
+    }
+}
+
+impl ContextDisplay for UnionTypeExpr {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        let len = self.variants.len();
+        for (i, variant) in self.variants.iter().enumerate() {
+            s.push_str(context.lookup(variant.0));
+            s.push_str(": ");
+            s.push_str(&variant.1.display(context));
+            if i < len - 1 {
+                s.push_str(" | ");
+            }
+        }
+        s
+    }
+}
+
+impl ContextDisplay for RecordTypeExpr {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        s.push_str("[ ");
+        let len = self.fields.len();
+        for (i, field) in self.fields.iter().enumerate() {
+            s.push_str(context.lookup(field.0));
+            s.push_str(": ");
+            s.push_str(&field.1.display(context));
+            if i < len - 1 {
+                s.push_str(", ");
+            }
+        }
+        s.push_str(" ]");
+        s
     }
 }

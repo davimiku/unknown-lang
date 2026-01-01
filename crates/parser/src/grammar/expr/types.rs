@@ -92,12 +92,10 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_string_literal(p)
     } else if p.at(T::Ident) {
         parse_compound_type_item(p)
-    } else if p.at(T::Struct) {
-        parse_struct(p)
     } else if p.at(T::LParen) {
         parse_paren_expr(p)
     } else if p.at(T::LBracket) {
-        parse_array_type(p)
+        parse_record_type(p)
     } else {
         p.error();
         return None;
@@ -108,21 +106,18 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
 
 /// Parses a type expression beginning with a LParen
 ///
-/// This expression could be any one of a "regular" parenthesized expression,
-/// a unit type, tuple type
+/// This expression could be a parenthesized expression or tuple type
 ///
 /// ```text
 /// (Texpr + Texpr) * Texpr // paren type expr
 /// ^^^^^^^^^^^^^^^
 ///
-/// () // unit type
-/// ^^
-///
 /// (Texpr, Texpr, Texpr) // tuple type
 /// ^^^^^^^^^^^^^^^^^^^^^
+///
+/// () // invalid
+/// ^^
 /// ```
-/// TODO - may not have tuples
-/// TODO - unit might be `[]` if records are `[ ... ]`
 fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LParen);
 
@@ -154,17 +149,35 @@ fn parse_paren_expr(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::ParenExpr)
 }
 
-fn parse_array_type(p: &mut Parser) -> CompletedMarker {
+fn parse_record_type(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at(T::LBracket);
 
     let m = p.start();
 
     p.bump();
+    // early exit for `[]`
+    if p.at(T::RBracket) {
+        p.bump();
+        return m.complete(p, SyntaxKind::RecordType);
+    }
+
+    loop {
+        let m = p.start();
+        parse_ident(p);
+        p.expect(T::Colon);
+        type_expr_binding_power(p, 0);
+        m.complete(p, SyntaxKind::CompoundTypeItem);
+
+        if p.at(T::Comma) {
+            p.bump();
+        } else {
+            break;
+        }
+    }
+
     p.expect(T::RBracket);
 
-    parse_lhs(p);
-
-    m.complete(p, SyntaxKind::ArrayType)
+    m.complete(p, SyntaxKind::RecordType)
 }
 
 fn parse_struct(p: &mut Parser) -> CompletedMarker {

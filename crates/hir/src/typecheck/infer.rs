@@ -16,7 +16,7 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    ListLiteralExpr, LoopExpr, MatchExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    LoopExpr, MatchExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
@@ -67,7 +67,6 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::FloatLiteral(f) => result.chain(infer_float_literal(expr_idx, f, context)),
         Expr::IntLiteral(i) => result.chain(infer_int_literal(expr_idx, i, context)),
         Expr::StringLiteral(key) => result.chain(infer_string_literal(expr_idx, key, context)),
-        Expr::ListLiteral(array_expr) => result.chain(infer_list_literal(&array_expr, context)),
 
         Expr::VarRef(var_ref) => result.chain(infer_var_ref(&var_ref, context)),
         Expr::UnresolvedVarRef { key } => result.push_diag(TypeDiagnostic {
@@ -192,6 +191,23 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             result.ty = context
                 .type_database
                 .alloc_type(Type::sum(variants.into(), union.name));
+
+            result
+        }
+        TE::Record(record) => {
+            let mut result = TypeResult::new(&context.type_database);
+
+            let mut fields: Vec<(Key, Idx<Type>)> = Vec::with_capacity(record.fields.len());
+            for (key, type_expr) in &record.fields {
+                let inferred = infer_type_expr(*type_expr, context);
+                let ty = inferred.ty;
+                result.chain(inferred);
+                fields.push((*key, ty));
+            }
+
+            result.ty = context
+                .type_database
+                .alloc_type(Type::product(fields.into(), record.name));
 
             result
         }
@@ -527,44 +543,6 @@ fn infer_string_literal(idx: Idx<Expr>, key: Key, context: &mut Context) -> Type
     inferred.into()
 }
 
-/// Infers the type for an ListLiteral
-///
-/// Loops through the items and infers the types for each of those.
-/// The first (non-error) inferred type becomes the expected type for
-/// the rest of the elements.
-fn infer_list_literal(array_expr: &ListLiteralExpr, context: &mut Context) -> TypeResult {
-    match array_expr {
-        ListLiteralExpr::Empty => context
-            .type_database
-            .alloc_type(Type::array_of(context.core_types().bottom))
-            .into(),
-        ListLiteralExpr::NonEmpty { elements } => {
-            let mut result = TypeResult::new(&context.type_database);
-            let mut inner_type: Option<Idx<Type>> = None;
-            for idx in elements {
-                if let Some(ref inner_type) = inner_type {
-                    result.check(*idx, *inner_type, context);
-                } else {
-                    result.chain(infer_expr(*idx, context));
-                    if result.is_ok() {
-                        inner_type = Some(widen_to_scalar(result.ty, context));
-                    }
-                }
-            }
-
-            let inner = inner_type.unwrap_or(context.core_types().error);
-
-            result.chain(
-                context
-                    .type_database
-                    .alloc_type(Type::array_of(inner))
-                    .into(),
-            );
-            result
-        }
-    }
-}
-
 fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> TypeResult {
     let IndexIntExpr { subject, .. } = index_expr;
 
@@ -807,7 +785,7 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
             | Type::Float
             | Type::Int
             // | Type::Function(_)
-            // | Type::Array(_) 
+            // | Type::Array(_)
             | Type::String=> result.ty = context.core_types().string,
 
             _ => result.push_diag(TypeDiagnostic {
