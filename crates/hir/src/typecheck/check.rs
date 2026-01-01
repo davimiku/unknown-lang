@@ -7,7 +7,7 @@ use la_arena::Idx;
 use super::infer::infer_expr;
 use super::types::{FuncSignature, SumType};
 use super::{Type, TypeDiagnostic};
-use crate::{Context, Expr, FunctionType};
+use crate::{Context, Expr, FunctionType, ProductType};
 
 /// Checks whether the provided expression is a subtype of the expected expression.
 ///
@@ -68,6 +68,8 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
 
         (Type::Sum(a), Type::Sum(b)) => is_sumtype_subtype(a, b, context),
 
+        (Type::Product(a), Type::Product(b)) => is_product_subtype(a, b, context),
+
         _ => false,
     }
 }
@@ -120,7 +122,32 @@ fn is_sumtype_subtype(a: &SumType, b: &SumType, context: &Context) -> bool {
         return false;
     }
 
+    // TODO - this is order dependent, do we want ( x: X | y: Y ) ~= ( y: Y | x: X )  ?
     for ((a_key, a_type), (b_key, b_type)) in a.variants.iter().zip(b.variants.iter()) {
+        if *a_key != *b_key {
+            return false;
+        }
+        if !is_subtype(*a_type, *b_type, context) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_product_subtype(a: &ProductType, b: &ProductType, context: &Context) -> bool {
+    if a.hash == b.hash {
+        return true;
+    }
+
+    // quick exit - for now it's not really a subtype it's an exact match
+    if a.fields.len() != b.fields.len() {
+        return false;
+    }
+
+    // TODO - this is order dependent, do we want order independent?
+    // depends on if the compiler normalizes field order for codegen
+    for ((a_key, a_type), (b_key, b_type)) in a.fields.iter().zip(b.fields.iter()) {
         if *a_key != *b_key {
             return false;
         }

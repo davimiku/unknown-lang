@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{self};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::{Index, IndexMut};
@@ -36,7 +37,7 @@ pub enum Type {
     Function(FunctionType),
     Array(ArrayType),
     // TODO: consider arena allocating larger variants
-    // and could consider making this Copy
+    // and could consider making this Copy - but would need a custom impl of PartialEq?
 }
 
 impl Type {
@@ -272,7 +273,8 @@ impl ContextDisplay for SumType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductType {
     /// Named fields like `key: Type`
-    pub fields: Box<[(Key, Idx<Type>)]>,
+    // TODO - optimized data storage for this kind of key (NonZeroU32)
+    pub fields: HashMap<Key, Idx<Type>>,
 
     /// Hash computed on creation for faster comparisons
     pub(crate) hash: u64,
@@ -281,29 +283,8 @@ pub struct ProductType {
 }
 
 impl ProductType {
-    pub fn index_of(&self, key: Key) -> Option<VariantIdx> {
-        self.fields
-            .iter()
-            .position(|(k, _)| *k == key)
-            .map(VariantIdx::from)
-    }
-
     pub fn type_of_key(&self, key: Key) -> Option<Idx<Type>> {
-        self.fields
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(.., ty)| ty)
-            .copied()
-    }
-
-    pub fn type_of_idx(&self, idx: VariantIdx) -> Idx<Type> {
-        self.fields[idx.into_raw() as usize].1
-    }
-
-    pub fn is_unit(&self, context: &Context) -> bool {
-        self.fields
-            .iter()
-            .all(|(.., ty)| *ty == context.core_types().unit)
+        self.fields.get(&key).copied()
     }
 }
 
