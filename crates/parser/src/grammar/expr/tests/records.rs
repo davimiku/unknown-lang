@@ -171,28 +171,30 @@ fn parse_record_two_fields() {
     check_expr(
         "[ field_a = value_a, field_b = value_b ]",
         expect![[r#"
-        RecordLiteral@0..40
-          LBracket@0..1 "["
-          Emptyspace@1..2 " "
-          Ident@2..10
-            Ident@2..9 "field_a"
-            Emptyspace@9..10 " "
-          Equals@10..11 "="
-          Emptyspace@11..12 " "
-          PathExpr@12..19
-            Ident@12..19
-              Ident@12..19 "value_a"
-          Comma@19..20 ","
-          Emptyspace@20..21 " "
-          Ident@21..29
-            Ident@21..28 "field_b"
-            Emptyspace@28..29 " "
-          Equals@29..30 "="
-          Emptyspace@30..31 " "
-          PathExpr@31..39
-            Ident@31..39
-              Ident@31..38 "value_b"
-              Emptyspace@38..39 " "
-          RBracket@39..40 "]""#]],
+            RecordLiteral@0..40
+              LBracket@0..1 "["
+              Emptyspace@1..2 " "
+              RecordItem@2..19
+                Ident@2..10
+                  Ident@2..9 "field_a"
+                  Emptyspace@9..10 " "
+                Equals@10..11 "="
+                Emptyspace@11..12 " "
+                PathExpr@12..19
+                  Ident@12..19
+                    Ident@12..19 "value_a"
+              Comma@19..20 ","
+              Emptyspace@20..21 " "
+              RecordItem@21..39
+                Ident@21..29
+                  Ident@21..28 "field_b"
+                  Emptyspace@28..29 " "
+                Equals@29..30 "="
+                Emptyspace@30..31 " "
+                PathExpr@31..39
+                  Ident@31..39
+                    Ident@31..38 "value_b"
+                    Emptyspace@38..39 " "
+              RBracket@39..40 "]""#]],
     )
 }

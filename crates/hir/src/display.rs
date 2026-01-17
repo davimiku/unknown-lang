@@ -1,6 +1,8 @@
 use la_arena::Idx;
 
-use crate::{Context, Expr, Module, Type};
+#[cfg(test)]
+use crate::Module;
+use crate::{Context, Expr, Type};
 
 /// Types implementing this trait can be processed into string messages
 /// with the information available in a Context

@@ -205,7 +205,7 @@ fn infer_match_arms() {
         .red -> { 8 }
         .green -> { 16 }
         .blue -> { 24 }
-    }        
+    }
 }";
 
     let expected = Type::Int;
@@ -223,7 +223,7 @@ fn infer_match_arms_with_data() {
     match n {
         .int i -> { 0.0 }
         .float f -> { f }
-    }        
+    }
 }";
 
     let expected = Type::Float;

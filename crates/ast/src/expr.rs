@@ -107,23 +107,31 @@ fn cast_infix(node: SyntaxNode) -> Expr {
 }
 
 #[derive(Debug, Clone)]
-pub enum RecordItem {
-    ListItem(Expr),
-    RecordItem((SyntaxToken, Expr)),
-}
+pub struct RecordItem(SyntaxNode);
 
 impl RecordItem {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        dbg!(node);
-
-        None
+        (node.kind() == SyntaxKind::RecordItem).then_some(Self(node))
     }
 
     pub fn range(&self) -> TextRange {
-        match self {
-            RecordItem::ListItem(expr) => expr.range(),
-            RecordItem::RecordItem((syntax_token, expr)) => todo!(),
-        }
+        self.0.text_range()
+    }
+
+    pub fn field_name(&self) -> Option<String> {
+        self.0
+            .children()
+            .find_map(Ident::cast)
+            .map(|ident| ident.as_string())
+    }
+
+    pub fn field_value(&self) -> Option<Expr> {
+        self.0
+            .children()
+            .filter_map(Expr::cast)
+            .skip(1) // skip the Ident
+            .take(1)
+            .next()
     }
 }
 
@@ -132,11 +140,13 @@ pub struct RecordLiteral(SyntaxNode);
 
 impl RecordLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        (node.kind() == SyntaxKind::BlockExpr).then_some(Self(node))
+        dbg!(&node);
+        dbg!(node.first_child());
+        (node.kind() == SyntaxKind::RecordLiteral).then_some(Self(node))
     }
 
     pub fn items(&self) -> impl Iterator<Item = RecordItem> {
-        self.0.children().filter_map(RecordItem::cast)
+        self.0.children().into_iter().filter_map(RecordItem::cast)
     }
 
     pub fn range(&self) -> TextRange {

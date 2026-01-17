@@ -82,7 +82,7 @@ impl ContextDisplay for RecordTypeExpr {
         let len = self.fields.len();
         for (i, field) in self.fields.iter().enumerate() {
             s.push_str(context.lookup(field.0));
-            s.push_str(": ");
+            s.push_str(" : ");
             s.push_str(&field.1.display(context));
             if i < len - 1 {
                 s.push_str(", ");

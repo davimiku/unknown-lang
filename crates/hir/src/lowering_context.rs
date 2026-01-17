@@ -11,8 +11,8 @@ use util_macros::assert_matches;
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IntrinsicExpr,
-    LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta, ReAssignment, UnaryExpr, UnionNamespace,
-    UnionUnitVariant, UnionVariant, VarRefExpr, VariantPattern,
+    LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta, ReAssignment, RecordExpr, UnaryExpr,
+    UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr, VariantPattern,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -410,7 +410,19 @@ impl Context {
     }
 
     fn lower_record_literal(&mut self, ast: ast::RecordLiteral) -> Expr {
-        todo!();
+        let fields: Vec<(Key, Idx<Expr>)> = ast
+            .items()
+            .filter_map(|item| match (item.field_name(), item.field_value()) {
+                (Some(name), Some(value)) => {
+                    let name = self.interner.intern(&name);
+                    let value = self.lower_expr(Some(value));
+                    Some((name, value))
+                }
+                _ => None,
+            })
+            .collect();
+        let record = RecordExpr { fields };
+        Expr::Record(record)
     }
 
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {

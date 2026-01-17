@@ -5,6 +5,7 @@ mod comparison;
 mod loops;
 mod mutability;
 mod params;
+mod product_types;
 mod scopes;
 mod sum_types;
 

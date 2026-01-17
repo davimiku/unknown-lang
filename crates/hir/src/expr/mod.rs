@@ -65,6 +65,8 @@ pub enum Expr {
 
     IndexInt(IndexIntExpr),
 
+    Record(RecordExpr),
+
     /// Function definition, including parameters and body for each overload.
     ///
     /// A function is inherently anonymous, but if created inside of a VarDef
@@ -627,6 +629,11 @@ pub struct UnionUnitVariant {
 
     /// Value expression for the union namespace
     pub union_namespace: Idx<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct RecordExpr {
+    pub fields: Vec<(Key, Idx<Expr>)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -64,6 +64,7 @@ impl Codegen {
             Expr::UnionNamespace(namespace) => todo!("object literal, maybe"),
             Expr::UnionVariant(variant) => todo!("object literal with Symbol.tag or w/e"),
             Expr::UnionUnitVariant(variant) => todo!("string literal (maybe)"),
+            Expr::Record(record) => todo!("JS object literal"),
             Expr::IndexInt(_) => todo!(),
             Expr::Function(func) => self.write_function_literal(func, context),
             Expr::VarDef(var_def) => self.write_var_def(var_def, context),

@@ -102,6 +102,20 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
             unit_variant.union_namespace.display(context),
             context.lookup(unit_variant.name)
         )),
+        Expr::Record(record_expr) => {
+            let len = record_expr.fields.len();
+            s.push_str("[");
+            for (i, (key, expr)) in record_expr.fields.iter().enumerate() {
+                s.push(' ');
+                s.push_str(context.lookup(*key));
+                s.push_str(" = ");
+                fmt_idx_expr(s, *expr, context, indent);
+                if i < (len - 1) {
+                    s.push_str(",");
+                }
+            }
+            s.push_str(" ]");
+        }
         Expr::IndexInt(index_expr) => fmt_index_int_expr(s, index_expr, context, indent),
         Expr::TypeStatement(.., type_expr) => {
             s.push_str(&type_expr.display(context).to_string());

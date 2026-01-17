@@ -74,23 +74,17 @@ impl Type {
         })
     }
 
-    pub(crate) fn product(fields: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
+    pub(crate) fn product(field_list: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
         let mut s = DefaultHasher::new();
-        for (key, ty) in fields.iter() {
+        let mut fields = HashMap::new();
+        for (key, ty) in field_list.iter() {
             (*key).hash(&mut s);
             (*ty).into_raw().into_u32().hash(&mut s);
+            fields.insert(*key, *ty);
         }
         let hash = s.finish();
 
-        Self::Sum(SumType {
-            variants: fields,
-            hash,
-            name,
-        })
-    }
-
-    pub(crate) fn array_of(of: Idx<Type>) -> Self {
-        Self::Array(ArrayType { of })
+        Self::Product(ProductType { fields, hash, name })
     }
 
     pub(crate) fn func(signatures: Vec<FuncSignature>) -> Self {
@@ -299,7 +293,7 @@ impl ContextDisplay for ProductType {
         while let Some((tag, ty)) = fields.next() {
             s.push_str(context.lookup(*tag));
             if *ty != context.core_types().unit {
-                s.push_str(": ");
+                s.push_str(" : ");
                 s.push_str(&ty.display(context));
             }
             if fields.peek().is_some() {

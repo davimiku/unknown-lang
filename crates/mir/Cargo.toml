@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 hir = { path = "../hir" }
 
-itertools = "0.12.1"
+itertools = { version = "0.12.1" }
 la-arena = "0.3.1"
 ryu = "1.0"
 util_macros = { path = "../util_macros" }

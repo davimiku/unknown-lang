@@ -399,9 +399,11 @@ fn parse_record_literal(p: &mut Parser) -> CompletedMarker {
         if p.bump_all_if_at(T::RBracket) {
             break;
         }
+        let m2 = p.start();
         parse_ident(p);
         p.expect(T::Equals);
         parse_expr(p);
+        m2.complete(p, SyntaxKind::RecordItem);
 
         if p.bump_all_if_at(T::RBracket) {
             break;

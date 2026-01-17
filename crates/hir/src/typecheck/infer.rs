@@ -4,8 +4,6 @@
 //! the expression and recursively calls infer when necessary. Base cases are
 //! for value literals and types that have already been inferred.
 
-use std::env::var;
-
 use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
@@ -16,11 +14,11 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    LoopExpr, MatchExpr, ReAssignment, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    LoopExpr, MatchExpr, ReAssignment, RecordExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
-use crate::{ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module, Pattern};
+use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern, ProductType};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -91,7 +89,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         // but could someone do: `type Color = red | green | blue; let some_var = Color` ?
         // what would be the type of some_var ? Or we treat it like a namespace which isn't typed?
         // Or introduce the concept of a namespace type?
-        // Or treat it as a record of `( red: Color, green: Color, blue: Color )` when records are implemented?
+        // Or treat it as a record of `[ red: Color, green: Color, blue: Color ]` when records are implemented?
         Expr::UnionNamespace(_) => todo!(),
 
         Expr::UnionVariant(variant) => {
@@ -127,6 +125,22 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             let union_namespace = context.expr(unit_variant.union_namespace);
             let union_namespace = assert_matches!(union_namespace, Expr::UnionNamespace);
             result.chain(infer_type_expr(union_namespace.type_expr, context));
+        }
+        Expr::Record(record_expr) => {
+            let fields = record_expr
+                .fields
+                .iter()
+                .map(|(key, expr)| {
+                    let field_ty_result = infer_expr(*expr, context);
+                    let field_ty = field_ty_result.ty;
+                    result.chain(field_ty_result);
+                    (*key, field_ty)
+                })
+                .collect_vec();
+            let ty = context
+                .type_database
+                .alloc_type(Type::product(fields.into(), None));
+            result.ty = ty;
         }
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
     };
@@ -795,4 +809,8 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
         },
     }
     result
+}
+
+fn infer_record(expr_idx: Idx<Expr>, expr: &RecordExpr, context: &mut Context) -> TypeResult {
+    todo!()
 }
