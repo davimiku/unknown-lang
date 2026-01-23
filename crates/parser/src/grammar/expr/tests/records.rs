@@ -168,8 +168,9 @@ fn parse_record_type_binding() {
 
 #[test]
 fn parse_record_two_fields() {
+    let input = "[ field_a = value_a, field_b = value_b ]";
     check_expr(
-        "[ field_a = value_a, field_b = value_b ]",
+        input,
         expect![[r#"
             RecordLiteral@0..40
               LBracket@0..1 "["
@@ -197,4 +198,17 @@ fn parse_record_two_fields() {
                     Emptyspace@38..39 " "
               RBracket@39..40 "]""#]],
     )
+}
+
+#[test]
+fn parse_field_from_record() {
+    let input = "record.field";
+    check_expr(input, expect![[r#"
+        PathExpr@0..12
+          Ident@0..6
+            Ident@0..6 "record"
+          Dot@6..7 "."
+          PathExpr@7..12
+            Ident@7..12
+              Ident@7..12 "field""#]])
 }

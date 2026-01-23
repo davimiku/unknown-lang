@@ -14,11 +14,14 @@ use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    LoopExpr, MatchExpr, ReAssignment, RecordExpr, UnaryExpr, UnaryOp, VarDefExpr, VarRefExpr,
+    LoopExpr, MatchExpr, PathExpr, ReAssignment, RecordLiteralExpr, UnaryExpr, UnaryOp, VarDefExpr,
+    VarRefExpr,
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
-use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern, ProductType};
+use crate::{
+    ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module, Pattern, ProductType,
+};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -84,7 +87,10 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::Match(match_expr) => result.chain(infer_match_expr(&match_expr, context)),
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Loop(loop_expr) => result.chain(infer_loop_expr(&loop_expr, context)),
-        Expr::Path(_) => todo!("typecheck paths"),
+        Expr::Path(path_expr) => result.chain(infer_path_expr(expr_idx, &path_expr, context)),
+        Expr::PathSegment(_) => {
+            todo!("determine if this should never be typed-checked on its own (only within a Path)")
+        }
         // TODO - this should be just a part of a Path, ex. `>Color<.green` and not type checked itself
         // but could someone do: `type Color = red | green | blue; let some_var = Color` ?
         // what would be the type of some_var ? Or we treat it like a namespace which isn't typed?
@@ -126,7 +132,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             let union_namespace = assert_matches!(union_namespace, Expr::UnionNamespace);
             result.chain(infer_type_expr(union_namespace.type_expr, context));
         }
-        Expr::Record(record_expr) => {
+        Expr::RecordLiteral(record_expr) => {
             let fields = record_expr
                 .fields
                 .iter()
@@ -557,6 +563,44 @@ fn infer_string_literal(idx: Idx<Expr>, key: Key, context: &mut Context) -> Type
     inferred.into()
 }
 
+fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Context) -> TypeResult {
+    let mut subject = path_expr.subject;
+    let mut result = TypeResult::new(&context.type_database);
+    for segment in &path_expr.segments {
+        result.chain(infer_expr(subject, context));
+        if result.is_err() {
+            return result;
+        }
+        let segment_expr = assert_matches!(context.expr(*segment), Expr::PathSegment);
+        let subject_ty_idx = result.ty;
+        let subject_ty = context.type_(subject_ty_idx);
+        match subject_ty {
+            // future - ensure this works for tuples too which should be lowered to ProductType
+            // as well with "0", "1", "2", etc. keys
+            Type::Product(product_type) => match product_type.fields.get(&segment_expr.key) {
+                Some(field_ty) => {
+                    result.ty = *field_ty;
+                    subject = *segment;
+                }
+                None => {
+                    let range = context.range_of_expr(expr_idx);
+                    let mut result = TypeResult::new(&context.type_database);
+                    result.push_diag(TypeDiagnostic {
+                        variant: TypeDiagnosticVariant::UnresolvedProductField {
+                            field: segment_expr.key,
+                            ty: subject_ty_idx,
+                        },
+                        range,
+                    });
+                }
+            },
+            _ => todo!("any other possibilities?"),
+        }
+    }
+
+    result
+}
+
 fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> TypeResult {
     let IndexIntExpr { subject, .. } = index_expr;
 
@@ -784,10 +828,13 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
             let bool_ty = context.core_types().bool;
             result.chain(match result.ty == bool_ty {
                 true => bool_ty.into(),
-                false => TypeResult::from_diag(
-                    TypeDiagnostic::mismatch(bool_ty, result.ty, TextRange::default()),
-                    context.core_types().error,
-                ),
+                false => {
+                    let range = context.range_of_expr(expr_idx);
+                    TypeResult::from_diag(
+                        TypeDiagnostic::mismatch(bool_ty, result.ty, range),
+                        context.core_types().error,
+                    )
+                }
             })
         }
 
@@ -811,6 +858,10 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
     result
 }
 
-fn infer_record(expr_idx: Idx<Expr>, expr: &RecordExpr, context: &mut Context) -> TypeResult {
+fn infer_record(
+    expr_idx: Idx<Expr>,
+    expr: &RecordLiteralExpr,
+    context: &mut Context,
+) -> TypeResult {
     todo!()
 }

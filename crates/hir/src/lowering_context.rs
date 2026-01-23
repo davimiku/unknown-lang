@@ -11,8 +11,9 @@ use util_macros::assert_matches;
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IntrinsicExpr,
-    LoopExpr, MatchArm, MatchExpr, Pattern, PatternMeta, ReAssignment, RecordExpr, UnaryExpr,
-    UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr, VariantPattern,
+    LoopExpr, MatchArm, MatchExpr, PathExpr, PathSegmentExpr, Pattern, PatternMeta, ReAssignment,
+    RecordLiteralExpr, UnaryExpr, UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
+    VariantPattern,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -303,7 +304,8 @@ impl Context {
 
     pub(crate) fn lower_expr(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         use ast::Expr as E;
-        let expr = if let Some(ast) = ast.clone() {
+        let ast_clone = ast.clone();
+        let expr = if let Some(ast) = ast {
             match ast {
                 E::Binary(ast) => self.lower_binary(ast),
                 E::Block(ast) => self.lower_block(ast),
@@ -319,7 +321,7 @@ impl Context {
                 E::Loop(ast) => self.lower_loop(ast),
                 E::Match(ast) => self.lower_match_expr(ast),
                 E::Paren(ast) => return self.lower_expr(ast.expr()),
-                E::Path(ast) => self.lower_path(ast),
+                E::Path(path_ast) => self.lower_path(path_ast),
                 E::ReAssignment(ast) => self.lower_reassignment(ast),
                 E::RecordLiteral(ast) => self.lower_record_literal(ast),
                 E::Return(ast) => self.lower_return_statement(ast),
@@ -331,7 +333,7 @@ impl Context {
             Expr::Empty
         };
 
-        self.alloc_expr(expr, ast)
+        self.alloc_expr(expr, ast_clone)
     }
 
     fn lower_value_name(&mut self, name: String) -> (Key, ValueSymbol) {
@@ -421,8 +423,8 @@ impl Context {
                 _ => None,
             })
             .collect();
-        let record = RecordExpr { fields };
-        Expr::Record(record)
+        let record = RecordLiteralExpr { fields };
+        Expr::RecordLiteral(record)
     }
 
     fn lower_binary(&mut self, ast: ast::Binary) -> Expr {
@@ -674,6 +676,18 @@ impl Context {
         // -> subject: `Status` (UnionNamespace)
         // -> member: `pending` (UnionVariant)
 
+        // `a.b`
+        // -> subject: `a` (PathExpr/Ident)
+        // -> member: `b`  (RecordField)
+        // CST for this:
+        // PathExpr
+        //   Ident
+        //     Ident "a"
+        //   Dot "."
+        //   PathExpr
+        //     Ident
+        //       Ident "b"
+
         // `a.b.c` (MemberExpr)
         // -> subject: `a.b` (PathExpr)
         // -> member: `c`    (RecordField)
@@ -690,87 +704,129 @@ impl Context {
         // let x = Example.c.ee.ff 3
         // ```
 
-        // TODO - arbitrary depths, for when module namespaces are added
-        // Core.Net.Ip.v4    // or something like that
-
-        if let Some(member) = path.member() {
-            let subject = self.lower_expr(path.subject());
-
-            let member = self.lower_expr(Some(member));
-            let member_key = match self.expr(member) {
-                Expr::VarRef(var_ref_expr) => {
-                    self.database.value_names.get(&var_ref_expr.symbol).copied()
-                }
-                Expr::UnresolvedVarRef { key } => Some(*key),
-                Expr::Path(path_expr) => todo!(),
-                _ => None,
-            }
-            .expect("ast::PathExpr to have a member that can be string interned");
-
-            match self.expr(subject) {
-                Expr::Path(path_expr) => todo!(),
-                Expr::UnionNamespace(union_namespace) => {
-                    for (idx, (key, type_expr)) in union_namespace.members.iter().enumerate() {
-                        if member_key == *key {
-                            match self.type_expr(*type_expr) {
-                                TypeExpr::Unit => {
-                                    return Expr::UnionUnitVariant(UnionUnitVariant {
-                                        name: *key,
-                                        index: idx as u32,
-                                        union_namespace: subject,
-                                    })
-                                }
-
-                                _ => {
-                                    return Expr::UnionVariant(UnionVariant {
-                                        name: *key,
-                                        index: idx as u32,
-                                        union_namespace: subject,
-                                    })
-                                }
-                            }
-                        }
-                    }
-                }
-                // is this possible?
-                Expr::UnionVariant(union_variant) => todo!(),
-                // is this possible?
-                Expr::UnionUnitVariant(union_unit_variant) => todo!(),
-                _ => {}
-            }
-
-            // if subject is UnionNamespace
-            // and if member Key matches any UnionNamespace.members
-            // make a UnionUnitVariant or UnionVariant accordingly
-
-            // FIXME - this just produces UnresolvedVarRef, because "green" doesn't
-            // exists as a value in the current namespace, it only exists as a value in
-            // the "Color" namespace
-            // Pass in a namespace to self.lower_expr?
-            // change some kind of state on self?
-            //
-
-            // if subject is UnionNamespace, member should be UnionVariant/UnionUnitVariant
-
-            match self.expr(member) {
-                Expr::UnresolvedVarRef { key } => panic!(
-                    "Internal Compiler Error (HIR): Unresolved variable '{}'",
-                    self.lookup(*key)
-                ),
-
-                // Expr::
-                e => {
-                    dbg!(e);
-                    todo!("{}", e.display(self))
-                }
-            }
-        } else {
+        if path.member().is_none() {
+            // early exit for single variable case
             let subject = path
                 .subject_as_ident()
-                .expect("left side of path to be an ident");
+                .expect("subject of path expr to be an ident");
 
-            self.lower_name_ref(&subject.as_string())
+            return self.lower_name_ref(&subject.as_string());
         }
+        let subject = self.lower_expr(path.subject());
+        let mut segments: Vec<Idx<Expr>> = vec![];
+
+        let mut path_member = path.member();
+        loop {
+            use ast::Expr as E;
+            match path_member {
+                Some(member_ast) => {
+                    let member_ast_clone = member_ast.clone();
+                    match member_ast {
+                        E::Path(inner_path) => {
+                            let ident = inner_path.subject_as_ident().expect("todo! when/how is this possible and what to recover");
+                            let key = self.interner.intern(&ident.as_string());
+                            let segment = Expr::PathSegment(PathSegmentExpr { key });
+                            let segment_expr = self.database.alloc_expr(segment, Some(member_ast_clone));
+                            segments.push(segment_expr);
+
+                            // continue the loop with the next segment
+                            path_member = inner_path.member();
+                        }
+                        E::Call(call_expr) => todo!("confirm that 'foo.bar()' would be a Call here"),
+                        E::StringLiteral(string_literal) => todo!("may use this syntax to allow non-ASCII or spaces in member names"),
+                        E::IntLiteral(int_literal) => todo!("undecided on tuple member access syntax"),
+                        E::Paren(paren_expr) => todo!("undecided on dynamic member access"),
+                        E::Ident(ident) => unreachable!("Internal Compiler Error (HIR): Didn't expect an Ident directly in a member, should be a child of Path"),
+                        _ => unreachable!(
+                            "Internal Compiler Error (HIR): Invalid member of path expression: {member_ast:?}"
+                        ),
+                    }
+                }
+                None => break,
+            }
+        }
+
+        let path_expr = PathExpr { subject, segments };
+        Expr::Path(path_expr)
+
+        // if let Some(member) = path.member() {
+        // let subject = self.lower_expr(path.subject());
+
+        // let member = self.lower_expr(Some(member));
+        // let member_key = match self.expr(member) {
+        //     Expr::VarRef(var_ref_expr) => {
+        //         self.database.value_names.get(&var_ref_expr.symbol).copied()
+        //     }
+        //     Expr::UnresolvedVarRef { key } => Some(*key),
+        //     Expr::Path(path_expr) => todo!(),
+        //     _ => None,
+        // }
+        // .expect("ast::PathExpr to have a member that can be string interned");
+
+        // match self.expr(subject) {
+        //     Expr::Path(path_expr) => todo!(),
+        //     Expr::UnionNamespace(union_namespace) => {
+        //         for (idx, (key, type_expr)) in union_namespace.members.iter().enumerate() {
+        //             if member_key == *key {
+        //                 match self.type_expr(*type_expr) {
+        //                     TypeExpr::Unit => {
+        //                         return Expr::UnionUnitVariant(UnionUnitVariant {
+        //                             name: *key,
+        //                             index: idx as u32,
+        //                             union_namespace: subject,
+        //                         })
+        //                     }
+
+        //                     _ => {
+        //                         return Expr::UnionVariant(UnionVariant {
+        //                             name: *key,
+        //                             index: idx as u32,
+        //                             union_namespace: subject,
+        //                         })
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     // is this possible?
+        //     Expr::UnionVariant(union_variant) => todo!(),
+        //     // is this possible?
+        //     Expr::UnionUnitVariant(union_unit_variant) => todo!(),
+        //     _ => {}
+        // }
+
+        // if subject is UnionNamespace
+        // and if member Key matches any UnionNamespace.members
+        // make a UnionUnitVariant or UnionVariant accordingly
+
+        // FIXME - this just produces UnresolvedVarRef, because "green" doesn't
+        // exists as a value in the current namespace, it only exists as a value in
+        // the "Color" namespace
+        // Pass in a namespace to self.lower_expr?
+        // change some kind of state on self?
+        //
+
+        // if subject is UnionNamespace, member should be UnionVariant/UnionUnitVariant
+
+        //     match self.expr(member) {
+        //         Expr::UnresolvedVarRef { key } => panic!(
+        //             "Internal Compiler Error (HIR): Unresolved variable '{}'",
+        //             self.lookup(*key)
+        //         ),
+
+        //         // Expr::
+        //         e => {
+        //             dbg!(e);
+        //             todo!("{}", e.display(self))
+        //         }
+        //     }
+        // } else {
+        //     let subject = path
+        //         .subject_as_ident()
+        //         .expect("subject of path expr to be an ident");
+
+        //     self.lower_name_ref(&subject.as_string())
+        // }
     }
 
     fn lower_index_expr(&mut self, subject: Expr, index: Expr) -> Expr {
@@ -781,10 +837,6 @@ impl Context {
         let key = self.interner.intern(name);
 
         let value_symbol = self.find_value(key);
-
-        // TODO - figure out if its unionnamespace
-        // Expr::UnionNamespace(UnionNamespace { name, members });
-
         if let Some(symbol) = value_symbol {
             // if this ValueSymbol was originally defined by virtue of a type binding (ex. unions)
             if let Some(type_symbol) = self.database.type_value_symbols.get(&symbol) {

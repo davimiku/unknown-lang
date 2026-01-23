@@ -273,6 +273,10 @@ impl TypeResult {
         self.diagnostics.is_empty()
     }
 
+    pub fn is_err(&self) -> bool {
+        !self.diagnostics.is_empty()
+    }
+
     fn push_diag(&mut self, diagnostic: TypeDiagnostic) {
         self.diagnostics.push(diagnostic)
     }
@@ -292,6 +296,8 @@ impl TypeResult {
 
     /// Chains two results together, applying the newer inferred type,
     /// or accumulating the diagnostics if these exist.
+    ///
+    /// Kind of like monadic "bind"
     pub fn chain(&mut self, mut other: TypeResult) {
         if other.is_ok() {
             self.ty = other.ty;

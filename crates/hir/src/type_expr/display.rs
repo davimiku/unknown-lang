@@ -19,7 +19,7 @@ impl ContextDisplay for TypeExpr {
 
             TypeExpr::FloatLiteral(f) => f.to_string(),
             TypeExpr::IntLiteral(i) => i.to_string(),
-            TypeExpr::StringLiteral(key) => format!(r#""{}""#, context.lookup(*key)),
+            TypeExpr::StringLiteral(key) => format!(r#""{}""#, key.display(context)),
 
             TypeExpr::Unit => "()".to_string(),
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
@@ -44,7 +44,7 @@ impl ContextDisplay for TypeExpr {
 
 impl ContextDisplay for TypeSymbol {
     fn display(&self, context: &Context) -> String {
-        let name = context.lookup(context.database.type_names[self]);
+        let name = context.database.type_names[self].display(context);
         let TypeSymbol {
             symbol_id,
             module_id,
@@ -64,7 +64,7 @@ impl ContextDisplay for UnionTypeExpr {
         let mut s = String::new();
         let len = self.variants.len();
         for (i, variant) in self.variants.iter().enumerate() {
-            s.push_str(context.lookup(variant.0));
+            s.push_str(&variant.0.display(context));
             s.push_str(": ");
             s.push_str(&variant.1.display(context));
             if i < len - 1 {
@@ -81,7 +81,7 @@ impl ContextDisplay for RecordTypeExpr {
         s.push_str("[ ");
         let len = self.fields.len();
         for (i, field) in self.fields.iter().enumerate() {
-            s.push_str(context.lookup(field.0));
+            s.push_str(&field.0.display(context));
             s.push_str(" : ");
             s.push_str(&field.1.display(context));
             if i < len - 1 {

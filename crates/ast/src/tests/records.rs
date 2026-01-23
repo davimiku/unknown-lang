@@ -11,6 +11,8 @@ fn record_empty() {
     let parsed = parse_expr(input);
 
     let record_literal = assert_matches!(parsed, Expr::RecordLiteral);
+    let items: Vec<_> = record_literal.items().collect();
+    assert!(items.is_empty());
 }
 
 #[test]
@@ -20,6 +22,13 @@ fn record_one_item() {
     let parsed = parse_expr(input);
 
     let record_literal = assert_matches!(parsed, Expr::RecordLiteral);
+    let items: Vec<_> = record_literal.items().collect();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].field_name(), Some("key".to_string()));
+    let field_value = assert_some!(items[0].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value".to_string());
 }
 
 #[test]
@@ -29,8 +38,13 @@ fn record_one_item_trailing_comma() {
     let parsed = parse_expr(input);
 
     let record_literal = assert_matches!(parsed, Expr::RecordLiteral);
-
-    // TODO - walk AST for more assertions
+    let items: Vec<_> = record_literal.items().collect();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].field_name(), Some("key".to_string()));
+    let field_value = assert_some!(items[0].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value".to_string());
 }
 
 #[test]
@@ -40,8 +54,20 @@ fn record_two_items() {
     let parsed = parse_expr(input);
 
     let record_literal = assert_matches!(parsed, Expr::RecordLiteral);
+    let items: Vec<_> = record_literal.items().collect();
+    assert_eq!(items.len(), 2);
 
-    // TODO - walk AST for more assertions
+    assert_eq!(items[0].field_name(), Some("key1".to_string()));
+    let field_value = assert_some!(items[0].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value1".to_string());
+
+    assert_eq!(items[1].field_name(), Some("key2".to_string()));
+    let field_value = assert_some!(items[1].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value2".to_string());
 }
 
 #[test]
@@ -51,7 +77,20 @@ fn record_two_items_trailing_comma() {
     let parsed = parse_expr(input);
 
     let record_literal = assert_matches!(parsed, Expr::RecordLiteral);
-    // TODO - walk AST for more assertions
+    let items: Vec<_> = record_literal.items().collect();
+    assert_eq!(items.len(), 2);
+
+    assert_eq!(items[0].field_name(), Some("key1".to_string()));
+    let field_value = assert_some!(items[0].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value1".to_string());
+
+    assert_eq!(items[1].field_name(), Some("key2".to_string()));
+    let field_value = assert_some!(items[1].field_value());
+    let field_value = assert_matches!(field_value, Expr::Path);
+    let field_value = assert_some!(field_value.subject_as_ident());
+    assert_eq!(field_value.as_string(), "value2".to_string());
 }
 
 #[test]

@@ -140,8 +140,6 @@ pub struct RecordLiteral(SyntaxNode);
 
 impl RecordLiteral {
     pub fn cast(node: SyntaxNode) -> Option<Self> {
-        dbg!(&node);
-        dbg!(node.first_child());
         (node.kind() == SyntaxKind::RecordLiteral).then_some(Self(node))
     }
 
@@ -818,7 +816,6 @@ impl ParenExpr {
     }
 }
 
-// TODO: rename to member expression?
 // TODO: parameterize to have Expr/TypeExpr use the same struct?
 #[derive(Debug, Clone)]
 pub struct PathExpr(SyntaxNode);

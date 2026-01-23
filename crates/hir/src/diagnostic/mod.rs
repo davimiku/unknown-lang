@@ -189,6 +189,14 @@ pub enum TypeDiagnosticVariant {
         // TODO: use interned key?
         name: String,
     },
+    /// Field on a product type does not exist
+    UnresolvedProductField {
+        /// Field that was tried to access
+        field: Key,
+
+        /// Product type that did not contain the requested field
+        ty: Idx<Type>,
+    },
     UnresolvedVarRef {
         key: Key,
     },

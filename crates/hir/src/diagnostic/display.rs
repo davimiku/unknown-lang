@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use super::{Diagnostic, LoweringDiagnostic, TypeDiagnostic, TypeDiagnosticVariant};
 use crate::{BinaryOp, Context, ContextDisplay};
 
@@ -40,6 +42,11 @@ impl ContextDisplay for TypeDiagnosticVariant {
                 type_mismatch_message(&expected.display(context), &actual.display(context))
             }
             V::UndefinedFunction { name } => todo!(),
+            V::UnresolvedProductField { field, ty } => {
+                let field_name = context.lookup(*field);
+                let ty = ty.display(context);
+                format!("Field ‘{field_name}’ does not exist in type ‘{ty}’")
+            }
             V::UnresolvedVarRef { key } => {
                 let name = context.lookup(*key);
                 format!("Unable to resolve variable ‘{name}’")

@@ -48,7 +48,11 @@ pub enum Expr {
         key: Key,
     },
 
+    /// Expression to represent a Path with a subject and member
     Path(PathExpr),
+
+    /// Expression to represent the field to the “right of the dot” within a PathExpr
+    PathSegment(PathSegmentExpr),
 
     /// The value representation of a union type
     ///
@@ -59,13 +63,24 @@ pub enum Expr {
     /// ```
     UnionNamespace(UnionNamespace),
 
+    // todo - may need to get rid of these specialized variants and instead use
+    // PathExpr / PathSegmentExpr so that there can be a clean loop down the path
+    // like a complicated `Namespace.record.union.variant`
+    // or `union.variant_is_a_record.record_field` or something like that
+    // Pushes some more work to the type checker and MIR
     UnionVariant(UnionVariant),
 
     UnionUnitVariant(UnionUnitVariant),
 
     IndexInt(IndexIntExpr),
 
-    Record(RecordExpr),
+    /// Record literal
+    ///
+    /// Zero to many key/value fields with statically known field names and types
+    /// at compile time
+    ///
+    /// ex. `[ a = 1, b = 2 ]`
+    RecordLiteral(RecordLiteralExpr),
 
     /// Function definition, including parameters and body for each overload.
     ///
@@ -219,11 +234,6 @@ impl From<ValueSymbol> for (u32, u32) {
 pub struct VarRefExpr {
     /// Unique identifier for the value symbol
     pub symbol: ValueSymbol,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct RecordLiteralExpr {
-    elements: Vec<(Key, Idx<Expr>)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -571,7 +581,7 @@ pub struct IdentPatternBinding {
 /// ```
 ///
 /// Since types are structural and can be anonymous, the way to unwrap
-/// the `Int` is a triple-nested pattern binding on the variants
+/// the `int` is a triple-nested pattern binding on the variants
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct VariantPattern {
     /// Key corresponding to the variant without the dot
@@ -586,11 +596,42 @@ pub struct VariantPattern {
     pub inner_pattern: Option<Idx<Pattern>>,
 }
 
+/// Expression to represent a Path with a subject and 1+ segments
+///
+/// Used for:
+/// - namespace field access (ex. `Namespace.field`)
+/// - record field access (ex. `record.field`)
+/// - [future] tuple field access (ex. `pair.0`)
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PathExpr {
+    /// Expression to the "left of the dot"
     pub subject: Idx<Expr>,
 
-    pub member: Idx<Expr>,
+    /// Individual segments in this path
+    /// - invariant: these are PathSegmentExpr
+    /// - invariant: length is at least 1
+    pub segments: Vec<Idx<Expr>>,
+}
+
+/// Expression to represent a segment within a Path
+///
+/// Similar to a `VarRefExpr` except contains more information about
+/// the "scope" that the ValueSymbol exists in for the value symbol
+///
+/// Used for:
+/// - namespace field access (ex. `Namespace.field`)
+/// - record field access (ex. `record.field`)
+/// - [future] tuple field access (ex. `pair.0`)
+///
+// TODO - possibly have to change this to an enum with variants for Key/Call/Int
+// for the possibilities of field access, function call, and tuple field
+//
+// currently this only exists simply to be a VarRefExpr basically that doesn't need
+// a value symbol (because it doesn't have a "scope" in the same way)
+#[derive(Debug, PartialEq, Clone)]
+pub struct PathSegmentExpr {
+    /// Interned field name/str
+    pub key: Key,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -631,8 +672,12 @@ pub struct UnionUnitVariant {
     pub union_namespace: Idx<Expr>,
 }
 
+/// Expression for the literal value of the record
+/// with keys and the types of values known statically
+///
+/// ex. `[ a = 1, y = 2]`
 #[derive(Debug, PartialEq, Clone)]
-pub struct RecordExpr {
+pub struct RecordLiteralExpr {
     pub fields: Vec<(Key, Idx<Expr>)>,
 }
 

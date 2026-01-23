@@ -31,8 +31,8 @@ type Color = red | green | blue
 
 let main = fun (c: Color) -> { c }";
 
-    let expected_content = "Color~1.0 := red: () | green: () | blue: ()
-main~1.1 : (Color~1.0) -> Color~1.0 = fun \"main\"(c~1.2 : Color~1.0) -> Color~1.0 { c~1.2; };";
+    let expected_content = r#"Color~1.0 := red: () | green: () | blue: ()
+main~1.1 : (Color~1.0) -> Color~1.0 = fun "main"(c~1.2 : Color~1.0) -> Color~1.0 { c~1.2; };"#;
     let expected_vars = &[
         ("c~1.2", "Color~1.0"),
         ("main~1.1", "(Color~1.0) -> Color~1.0"),
@@ -50,9 +50,9 @@ type OuterUnion = (a | b: Int | c: InnerUnion)
 let main = fun (u: OuterUnion) -> { u }
         ";
 
-    let expected_content = "InnerUnion~1.0 := int_a: Int~0.0 | int_b: Int~0.0
+    let expected_content = r#"InnerUnion~1.0 := int_a: Int~0.0 | int_b: Int~0.0
 OuterUnion~1.1 := a: () | b: Int~0.0 | c: InnerUnion~1.0
-main~1.2 : (OuterUnion~1.1) -> OuterUnion~1.1 = fun \"main\"(u~1.3 : OuterUnion~1.1) -> OuterUnion~1.1 { u~1.3; };";
+main~1.2 : (OuterUnion~1.1) -> OuterUnion~1.1 = fun "main"(u~1.3 : OuterUnion~1.1) -> OuterUnion~1.1 { u~1.3; };"#;
     let expected_vars = &[
         ("main~1.2", "(OuterUnion~1.1) -> OuterUnion~1.1"),
         ("u~1.3", "OuterUnion~1.1"),
@@ -71,11 +71,11 @@ let main = fun (n: Number) -> {
     }
 }";
 
-    let expected_content = "Number~1.0 := int: Int~0.0 | float: Float~0.1
-main~1.1 : (Number~1.0) -> Number~1.0 = fun \"main\"(n~1.2 : Number~1.0) -> Number~1.0 { match n~1.2 {
+    let expected_content = r#"Number~1.0 := int: Int~0.0 | float: Float~0.1
+main~1.1 : (Number~1.0) -> Number~1.0 = fun "main"(n~1.2 : Number~1.0) -> Number~1.0 { match n~1.2 {
     .int i -> { Number~1.0.int$0 (`+`~0.3$0 (i~1.3,16,),); }
     .float f -> { Number~1.0.float$0 (`+`~0.3$3 (f~1.4,16.0,),); }
-}; };";
+}; };"#;
     let expected_vars = &[
         ("f~1.4", "Float"),
         ("i~1.3", "Int"),

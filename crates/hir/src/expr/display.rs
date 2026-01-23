@@ -67,7 +67,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
             s.push_str(buffer.format_finite(*f))
         }
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
-        Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, context.lookup(*key))),
+        Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, key.display(context))),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),
@@ -76,7 +76,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
         Expr::VarRef(var_ref) => s.push_str(&var_ref.display(context)),
 
         Expr::UnresolvedVarRef { key } => {
-            s.push_str(&format!("<undefined {}>", context.lookup(*key)))
+            s.push_str(&format!("<undefined {}>", key.display(context)))
         }
 
         Expr::Function(function) => fmt_function_expr_group(s, function, context, indent),
@@ -86,7 +86,18 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
         Expr::Match(match_expr) => fmt_match_expr(s, match_expr, context, &mut indent),
         Expr::If(if_expr) => fmt_if_expr(s, if_expr, context, indent),
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
-        Expr::Path(_) => todo!(),
+        Expr::Path(path) => {
+            s.push_str(&path.subject.display(context));
+            s.push('.');
+            let len = path.segments.len();
+            for (i, segment) in path.segments.iter().enumerate() {
+                s.push_str(&segment.display(context));
+                if i < len - 1 {
+                    s.push('.');
+                }
+            }
+        }
+        Expr::PathSegment(segment) => s.push_str(&segment.key.display(context)),
         Expr::UnionNamespace(union_namespace) => {
             s.push_str(&union_namespace.name.display(context).to_string())
         }
@@ -94,20 +105,20 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
             s.push_str(&format!(
                 "{}.{}",
                 variant.union_namespace.display(context),
-                context.lookup(variant.name)
+                variant.name.display(context)
             ));
         }
         Expr::UnionUnitVariant(unit_variant) => s.push_str(&format!(
             "{}.{}",
             unit_variant.union_namespace.display(context),
-            context.lookup(unit_variant.name)
+            unit_variant.name.display(context)
         )),
-        Expr::Record(record_expr) => {
-            let len = record_expr.fields.len();
+        Expr::RecordLiteral(record_literal) => {
+            let len = record_literal.fields.len();
             s.push_str("[");
-            for (i, (key, expr)) in record_expr.fields.iter().enumerate() {
+            for (i, (key, expr)) in record_literal.fields.iter().enumerate() {
                 s.push(' ');
-                s.push_str(context.lookup(*key));
+                s.push_str(&key.display(context));
                 s.push_str(" = ");
                 fmt_idx_expr(s, *expr, context, indent);
                 if i < (len - 1) {
@@ -132,12 +143,12 @@ fn fmt_pattern(s: &mut String, pattern: &Pattern, context: &Context, indent: &mu
     match pattern {
         Pattern::Wild { .. } => s.push_str("_ "),
         Pattern::IdentBinding { binding, .. } => {
-            s.push_str(context.lookup(binding.ident));
+            s.push_str(&binding.ident.display(context));
             s.push(' ');
         }
         Pattern::Variant { pattern, .. } => {
             s.push('.');
-            s.push_str(context.lookup(pattern.variant));
+            s.push_str(&pattern.variant.display(context));
             s.push(' ');
             if let Some(inner_pattern) = pattern.inner_pattern {
                 let inner_pattern = context.pattern(inner_pattern);
@@ -230,7 +241,7 @@ fn fmt_function_expr_group(
     s.push_str("fun ");
     if let Some((key, ..)) = name {
         s.push('"');
-        s.push_str(context.lookup(*key));
+        s.push_str(&key.display(context));
         s.push('"');
     }
 

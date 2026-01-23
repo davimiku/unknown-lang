@@ -1,7 +1,15 @@
 use lasso::{Rodeo, Spur};
 
+use crate::ContextDisplay;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key(Spur);
+
+impl ContextDisplay for Key {
+    fn display(&self, context: &crate::Context) -> String {
+        context.lookup(*self).to_owned()
+    }
+}
 
 #[derive(Debug)]
 pub struct Interner(Rodeo, CoreKeys);

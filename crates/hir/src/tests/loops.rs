@@ -24,7 +24,7 @@ fn loop_immediate_break() {
 
 #[test]
 fn loop_break_later() {
-    let input = "loop { 
+    let input = "loop {
 if true { break }
 }";
 
@@ -47,14 +47,14 @@ let main = fun () -> {
     i
 }";
 
-    let expected = "main~1.0 : () -> Int = fun \"main\"() -> Int {
+    let expected = r#"main~1.0 : () -> Int = fun "main"() -> Int {
     i~1.1 : mut Int = 0;
     loop {
         if (`>`~0.13$0 (i~1.1,5,)) { break; };
         i~1.1 <- `+`~0.3$0 (i~1.1,1,);
     };
     i~1.1;
-};";
+};"#;
 
     let expected_vars = &[("i~1.1", "Int"), ("main~1.0", "() -> Int")];
 

@@ -55,3 +55,23 @@ fn inferred_one_int_field() {
 
     check(input, expected_content, expected_vars);
 }
+
+#[test]
+fn access_field_of_record() {
+    let input = "let main = fun (i: Int) -> {
+    let record = [ int = i ]
+    record.int
+    }";
+
+    let expected_content = r#"main~1.0 : (Int) -> Int = fun "main"(i~1.1 : Int) -> Int {
+    record~1.2 : [ int : Int ] = [ int = i~1.1 ];
+    record~1.2.int;
+};"#;
+    let expected_vars = &[
+        ("i~1.1", "Int"),
+        ("main~1.0", "(Int) -> Int"),
+        ("record~1.2", "[ int : Int ]"),
+    ];
+
+    check(input, expected_content, expected_vars);
+}

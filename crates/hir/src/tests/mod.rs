@@ -357,7 +357,7 @@ if (res~1.0) { return 1; };"};
 fn always_returns_true() {
     let input = "let main = fun () -> { true }";
 
-    let expected = "main~1.0 : () -> Bool~0.3 = fun \"main\"() -> Bool~0.3 { true~0.2; };";
+    let expected = r#"main~1.0 : () -> Bool~0.3 = fun "main"() -> Bool~0.3 { true~0.2; };"#;
 
     let expected_vars = &[("main~1.0", "() -> Bool~0.3")];
 

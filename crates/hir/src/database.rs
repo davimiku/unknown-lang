@@ -83,6 +83,14 @@ impl Database {
         (&self.exprs[idx], &self.expr_ranges[idx])
     }
 
+    /// Returns a mutable reference to the expression at the given index.
+    ///
+    /// Panics if the index doesn't exist. An invalid index indicates
+    /// a bug in the compiler.
+    pub(crate) fn expr_mut(&mut self, idx: Idx<Expr>) -> &mut Expr {
+        &mut self.exprs[idx]
+    }
+
     /// Returns the type expression at the given index.
     ///
     /// Panics if the index doesn't exist. An invalid index indicates
