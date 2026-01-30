@@ -105,12 +105,11 @@ fn write_signature<W: io::Write>(
     if function.params.is_empty() {
         write!(buf, "{{none}}")?;
     }
-    let len = function.params.len();
     for (i, _) in function.params.iter().enumerate() {
-        write!(buf, "_{}", i + 1)?;
-        if i < len - 1 {
+        if i > 0 {
             write!(buf, ", ")?;
         }
+        write!(buf, "_{}", i + 1)?;
     }
     write_line(buf, &mut 0) // locals_list indents itself
 }
@@ -274,10 +273,10 @@ impl MirWrite for Terminator {
                 func.write(buf, module, context, indent)?;
                 write!(buf, "(")?;
                 for (i, arg) in args.iter().enumerate() {
-                    arg.write(buf, module, context, indent)?;
-                    if i < args.len() - 1 {
+                    if i > 0 {
                         write!(buf, ", ")?;
                     }
+                    arg.write(buf, module, context, indent)?;
                 }
                 write!(buf, ") -> [return: ")?;
                 target
@@ -407,6 +406,17 @@ impl MirWrite for Rvalue {
                 write!(buf, "{}${}(", context.lookup(*key), variant_idx.into_raw())?;
                 operand.write(buf, module, context, indent)?;
                 write!(buf, ")")
+            }
+            Rvalue::Aggregate(fields) => {
+                write!(buf, "[ ")?;
+                for (i, (key, operand)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(buf, ", ")?;
+                    }
+                    write!(buf, "{} = ", context.lookup(*key))?;
+                    operand.write(buf, module, context, indent)?;
+                }
+                write!(buf, " ]")
             }
         }
     }

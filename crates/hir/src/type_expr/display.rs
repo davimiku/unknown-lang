@@ -62,14 +62,13 @@ impl ContextDisplay for TypeRefExpr {
 impl ContextDisplay for UnionTypeExpr {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
-        let len = self.variants.len();
         for (i, variant) in self.variants.iter().enumerate() {
+            if i > 0 {
+                s.push_str(" | ");
+            }
             s.push_str(&variant.0.display(context));
             s.push_str(": ");
             s.push_str(&variant.1.display(context));
-            if i < len - 1 {
-                s.push_str(" | ");
-            }
         }
         s
     }
@@ -79,14 +78,13 @@ impl ContextDisplay for RecordTypeExpr {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
         s.push_str("[ ");
-        let len = self.fields.len();
         for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                s.push_str(", ");
+            }
             s.push_str(&field.0.display(context));
             s.push_str(" : ");
             s.push_str(&field.1.display(context));
-            if i < len - 1 {
-                s.push_str(", ");
-            }
         }
         s.push_str(" ]");
         s

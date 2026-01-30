@@ -89,12 +89,11 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
         Expr::Path(path) => {
             s.push_str(&path.subject.display(context));
             s.push('.');
-            let len = path.segments.len();
             for (i, segment) in path.segments.iter().enumerate() {
-                s.push_str(&segment.display(context));
-                if i < len - 1 {
+                if i > 0 {
                     s.push('.');
                 }
+                s.push_str(&segment.display(context));
             }
         }
         Expr::PathSegment(segment) => s.push_str(&segment.key.display(context)),
@@ -114,16 +113,15 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
             unit_variant.name.display(context)
         )),
         Expr::RecordLiteral(record_literal) => {
-            let len = record_literal.fields.len();
             s.push_str("[");
             for (i, (key, expr)) in record_literal.fields.iter().enumerate() {
+                if i > 0 {
+                    s.push_str(",");
+                }
                 s.push(' ');
                 s.push_str(&key.display(context));
                 s.push_str(" = ");
                 fmt_idx_expr(s, *expr, context, indent);
-                if i < (len - 1) {
-                    s.push_str(",");
-                }
             }
             s.push_str(" ]");
         }
