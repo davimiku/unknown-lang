@@ -101,6 +101,7 @@ impl TypeDatabase {
                 (interner.core_keys().r#true, unit),
             ]),
             None, // mutated / re-assigned later in `intrinsics`
+            None, // TODO - allocate the "Bool" itself as a built-in? to allow `Bool.true` ?
         ));
         let core = CoreTypes {
             unknown,
@@ -194,7 +195,7 @@ impl TypeDatabase {
     }
 
     // todo - panics if called before type checking, move to another module?
-    pub(super) fn get_value_with_symbol(&self, symbol: &ValueSymbol) -> Idx<Type> {
+    pub(super) fn get_type_from_valuesymbol(&self, symbol: &ValueSymbol) -> Idx<Type> {
         self.value_symbols[symbol]
     }
 
@@ -203,7 +204,7 @@ impl TypeDatabase {
     }
 
     // todo - panics if called before type checking, move to another module?
-    pub(super) fn get_type_with_symbol(&self, symbol: &TypeSymbol) -> Idx<Type> {
+    pub(super) fn get_type_from_typesymbol(&self, symbol: &TypeSymbol) -> Idx<Type> {
         self.type_symbols[symbol]
     }
 

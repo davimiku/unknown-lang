@@ -68,8 +68,10 @@ pub enum Expr {
     // like a complicated `Namespace.record.union.variant`
     // or `union.variant_is_a_record.record_field` or something like that
     // Pushes some more work to the type checker and MIR
+    #[deprecated]
     UnionVariant(UnionVariant),
 
+    #[deprecated]
     UnionUnitVariant(UnionUnitVariant),
 
     IndexInt(IndexIntExpr),
@@ -555,7 +557,7 @@ pub struct IdentPatternBinding {
     /// ```
     pub ident: Key,
 
-    /// Scoped symbol in the value namespace for the new variable
+    /// Scoped symbol in the value world for the new variable
     pub symbol: ValueSymbol,
 
     /// Key corresponding to the variant without the dot if
@@ -636,16 +638,18 @@ pub struct PathSegmentExpr {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnionNamespace {
-    /// Name of the union in the value namespace
+    /// Name of the union in the value world
     pub name: ValueSymbol,
 
     /// The original type expression defined for this union
-    /// i.e. `type Color = red | green | blue`
-    ///                    ^^^^^^^^^^^^^^^^^^
+    /// ```ignore
+    /// type Color = red: Int | green: Int | blue: Int
+    /// //           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// ```
     pub type_expr: Idx<TypeExpr>,
 
-    /// Names of the variants (value namespace) with their type annotations
-    pub members: Vec<(Key, Idx<TypeExpr>)>,
+    /// Names of the variants with their type annotations
+    pub variants: Vec<(Key, Idx<TypeExpr>)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

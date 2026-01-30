@@ -19,8 +19,10 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
+use crate::typecheck::types::UnionNamespaceType;
 use crate::{
     ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module, Pattern, ProductType,
+    VariantIdx,
 };
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
@@ -96,13 +98,17 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         // what would be the type of some_var ? Or we treat it like a namespace which isn't typed?
         // Or introduce the concept of a namespace type?
         // Or treat it as a record of `[ red: Color, green: Color, blue: Color ]` when records are implemented?
-        Expr::UnionNamespace(_) => todo!(),
+        Expr::UnionNamespace(union_namespace) => {
+            result.ty = context
+                .type_database
+                .get_type_from_valuesymbol(&union_namespace.name);
+        }
 
         Expr::UnionVariant(variant) => {
             let union_namespace =
                 assert_matches!(context.expr(variant.union_namespace), Expr::UnionNamespace)
                     .clone();
-            let (variant_key, variant_ty_expr) = union_namespace.members[variant.index as usize];
+            let (variant_key, variant_ty_expr) = union_namespace.variants[variant.index as usize];
             let variant_key = {
                 let union_namespace_key = context.database.value_names[&union_namespace.name];
                 let union_name = context.lookup(union_namespace_key);
@@ -186,9 +192,10 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             .alloc_type(Type::StringLiteral(s))
             .into(),
 
-        TE::VarRef(TypeRefExpr { symbol, .. }) => {
-            context.type_database.get_type_with_symbol(&symbol).into()
-        }
+        TE::VarRef(TypeRefExpr { symbol, .. }) => context
+            .type_database
+            .get_type_from_typesymbol(&symbol)
+            .into(),
         TE::UnresolvedVarRef { key } => {
             println!("unresolved type key '{}'", context.lookup(key));
             todo!()
@@ -208,9 +215,44 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 variants.push((*key, ty));
             }
 
-            result.ty = context
-                .type_database
-                .alloc_type(Type::sum(variants.into(), union.name));
+            let sum_type = context.type_database.alloc_type(Type::sum(
+                variants.clone().into(),
+                union.name,
+                None,
+            ));
+            result.ty = sum_type;
+
+            if let Some(value_symbol) = union.namespace_symbol {
+                let variant_constructors = variants
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (key, variant_ty))| {
+                        let constructor_ty = if *variant_ty == context.core_types().unit {
+                            sum_type
+                        } else {
+                            panic!("test!");
+                            let func = FunctionType {
+                                signatures: vec![FuncSignature {
+                                    params: Box::new([*variant_ty]),
+                                    return_ty: sum_type,
+                                }],
+                                variant: Some((*variant_ty, i.into(), *key)),
+                            };
+                            context.type_database.alloc_type(Type::Function(func))
+                        };
+                        (*key, (i as u32, constructor_ty))
+                    })
+                    .collect();
+                let ty = UnionNamespaceType {
+                    name: value_symbol,
+                    variant_constructors,
+                    associated_sum_type: sum_type,
+                };
+                let ty_idx = context.type_database.alloc_type(Type::UnionNamespace(ty));
+                context
+                    .type_database
+                    .insert_value_symbol(value_symbol, ty_idx);
+            }
 
             result
         }
@@ -388,28 +430,6 @@ fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> T
     TypeResult::from_ty(context.core_types().unit)
 }
 
-// TODO - delete?
-fn infer_union(union: &UnionTypeExpr, context: &mut Context) -> TypeResult {
-    let mut result = TypeResult::new(&context.type_database);
-
-    let variants = union
-        .variants
-        .iter()
-        .map(|(key, type_expr)| (*key, infer_type_expr(*type_expr, context)))
-        .map(|(key, type_result)| {
-            let ty = type_result.ty;
-            result.chain(type_result);
-            (key, ty)
-        })
-        .collect_vec();
-
-    result.ty = context
-        .type_database
-        .alloc_type(Type::sum(variants.into(), union.name));
-
-    result
-}
-
 fn infer_reassignment(reassignment: &ReAssignment, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
 
@@ -533,6 +553,7 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
 
         // TODO: set result.ty to Error? or leave it as Unknown?
     } else {
+        dbg!(result.ty.display(context));
         result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
         result.ty = context.core_types().error
     }
@@ -575,6 +596,29 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
         let subject_ty_idx = result.ty;
         let subject_ty = context.type_(subject_ty_idx);
         match subject_ty {
+            // constructing a value from the variant of a UnionNamespace as part of a path expression,
+            // i.e. doing `let my_value = Union.variant`
+            Type::UnionNamespace(union_namespace) => {
+                let variant_constructor_ty =
+                    union_namespace.variant_constructors.get(&segment_expr.key);
+                match variant_constructor_ty {
+                    Some((_, variant_constructor_ty)) => {
+                        result.ty = *variant_constructor_ty;
+                        subject = *segment;
+                    }
+                    None => {
+                        let range = context.range_of_expr(expr_idx);
+                        let mut result = TypeResult::new(&context.type_database);
+                        result.push_diag(TypeDiagnostic {
+                            variant: TypeDiagnosticVariant::UnresolvedSumVariant {
+                                variant: segment_expr.key,
+                                ty: subject_ty_idx,
+                            },
+                            range,
+                        });
+                    }
+                }
+            }
             // future - ensure this works for tuples too which should be lowered to ProductType
             // as well with "0", "1", "2", etc. keys
             Type::Product(product_type) => match product_type.fields.get(&segment_expr.key) {
@@ -594,7 +638,7 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
                     });
                 }
             },
-            _ => todo!("any other possibilities?"),
+            t => todo!("any other possibilities like {t:?}"),
         }
     }
 

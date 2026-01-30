@@ -156,6 +156,10 @@ impl Context {
         self.type_database.type_(idx)
     }
 
+    pub fn type_mut(&mut self, idx: Idx<Type>) -> &mut Type {
+        self.type_database.type_mut(idx)
+    }
+
     pub fn type_is_function(&self, idx: Idx<Type>) -> bool {
         matches!(self.type_(idx), Type::Function(_))
     }
@@ -165,7 +169,7 @@ impl Context {
     }
 
     pub fn type_idx_of_value(&self, value: &ValueSymbol) -> Idx<Type> {
-        self.type_database.get_value_with_symbol(value)
+        self.type_database.get_type_from_valuesymbol(value)
     }
 
     pub fn range_of_expr(&self, idx: Idx<Expr>) -> TextRange {
@@ -712,6 +716,7 @@ impl Context {
 
             return self.lower_name_ref(&subject.as_string());
         }
+        // debug note to remove later - this could be a Expr::UnionNamespace or Expr::PathExpr
         let subject = self.lower_expr(path.subject());
         let mut segments: Vec<Idx<Expr>> = vec![];
 
@@ -749,20 +754,6 @@ impl Context {
         let path_expr = PathExpr { subject, segments };
         Expr::Path(path_expr)
 
-        // if let Some(member) = path.member() {
-        // let subject = self.lower_expr(path.subject());
-
-        // let member = self.lower_expr(Some(member));
-        // let member_key = match self.expr(member) {
-        //     Expr::VarRef(var_ref_expr) => {
-        //         self.database.value_names.get(&var_ref_expr.symbol).copied()
-        //     }
-        //     Expr::UnresolvedVarRef { key } => Some(*key),
-        //     Expr::Path(path_expr) => todo!(),
-        //     _ => None,
-        // }
-        // .expect("ast::PathExpr to have a member that can be string interned");
-
         // match self.expr(subject) {
         //     Expr::Path(path_expr) => todo!(),
         //     Expr::UnionNamespace(union_namespace) => {
@@ -799,6 +790,7 @@ impl Context {
         // and if member Key matches any UnionNamespace.members
         // make a UnionUnitVariant or UnionVariant accordingly
 
+        // let green = Color.green
         // FIXME - this just produces UnresolvedVarRef, because "green" doesn't
         // exists as a value in the current namespace, it only exists as a value in
         // the "Color" namespace
@@ -850,7 +842,7 @@ impl Context {
                         return Expr::UnionNamespace(UnionNamespace {
                             name: symbol,
                             type_expr: *type_expr_idx,
-                            members: union_type_expr.variants.clone(),
+                            variants: union_type_expr.variants.clone(),
                         });
                     }
                     _ => unreachable!("Values defined from types currently only include Unions"),
@@ -1061,10 +1053,11 @@ impl Context {
             })
             .collect_vec();
 
-        // Union names also exist in the value namespace
+        // Union names also exist in the value world
         // `type Color = red | green | blue`
         // `let myColor = Color.green`
         //                ^^^^^ ^^^^^
+        let mut namespace_symbol: Option<ValueSymbol> = None;
         if let Some(type_symbol) = name {
             let key = self.database.type_names[&type_symbol];
             let value_symbol = self.lower_value_key(key);
@@ -1074,9 +1067,14 @@ impl Context {
             self.database
                 .type_value_symbols
                 .insert(value_symbol, type_symbol);
+            namespace_symbol = Some(value_symbol);
         }
 
-        TypeExpr::Union(UnionTypeExpr { name, variants })
+        TypeExpr::Union(UnionTypeExpr {
+            name,
+            variants,
+            namespace_symbol,
+        })
     }
 
     fn lower_record_type(&mut self, ast: ast::Record, name: Option<TypeSymbol>) -> TypeExpr {

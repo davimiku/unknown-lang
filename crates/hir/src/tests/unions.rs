@@ -125,3 +125,23 @@ main~1.2 : (OuterUnion~1.1) -> Int = fun \"main\"(u~1.3 : OuterUnion~1.1) -> Int
 
     check(input, expected_content, expected_vars);
 }
+
+#[test]
+fn construct_union_with_int_data() {
+    let input = "
+type CoolInt = (int_a: Int | int_b: Int | int_c: Int)
+
+let main = fun (i: Int) -> { CoolInt.int_c 32 }
+";
+
+    let expected_content = r#"
+CoolInt~1.0 := int_a: Int~0.0 | int_b: Int~0.0 | int_c: Int~0.0
+main~1.1 : (Int) -> CoolInt~1.0 = fun "main"(i~1.2 : Int) -> CoolInt~1.0 { CoolInt~1.0.int_c$0 (32,); };"#;
+    let expected_vars = &[
+        ("CoolInt~1.0", "CoolInt~1.0"),
+        ("i~1.2", "Int"),
+        ("main~1.1", "(Int) -> CoolInt~1.0"),
+    ];
+
+    check(input, expected_content, expected_vars);
+}

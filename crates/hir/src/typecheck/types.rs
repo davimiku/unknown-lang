@@ -7,7 +7,7 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::type_expr::TypeSymbol;
-use crate::{Context, ContextDisplay, Key};
+use crate::{Context, ContextDisplay, Key, ValueSymbol};
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Type {
@@ -31,6 +31,7 @@ pub enum Type {
 
     // Sum
     Sum(SumType),
+    UnionNamespace(UnionNamespaceType),
 
     // Product
     Product(ProductType),
@@ -59,7 +60,11 @@ impl Type {
 }
 
 impl Type {
-    pub(crate) fn sum(variants: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
+    pub(crate) fn sum(
+        variants: Box<[(Key, Idx<Type>)]>,
+        name: Option<TypeSymbol>,
+        namespace_ty: Option<Idx<Type>>,
+    ) -> Self {
         let mut s = DefaultHasher::new();
         for (key, ty) in variants.iter() {
             (*key).hash(&mut s);
@@ -71,6 +76,7 @@ impl Type {
             variants,
             hash,
             name,
+            namespace_ty,
         })
     }
 
@@ -185,6 +191,7 @@ impl ContextDisplay for Type {
             Type::StringLiteral(key) => format!("\"{}\"", context.lookup(*key)),
 
             Type::Sum(sum_type) => sum_type.display(context),
+            Type::UnionNamespace(union_namespace) => union_namespace.display(context),
             Type::Product(product_type) => product_type.display(context),
 
             Type::Function(func) => func.display(context),
@@ -210,7 +217,13 @@ pub struct SumType {
     /// Hash computed on creation for faster comparisons
     pub(crate) hash: u64,
 
+    /// Symbol for this sum type in the type world if it exists. This would not exist for
+    /// anonymous sum types.
     pub(crate) name: Option<TypeSymbol>,
+
+    /// Optional reference to the [`UnionNamespaceType`] that produces instances of this sum type,
+    /// if it exists. This would not exist for anonymous sum types
+    pub(crate) namespace_ty: Option<Idx<Type>>,
 }
 
 impl SumType {
@@ -264,6 +277,42 @@ impl ContextDisplay for SumType {
     }
 }
 
+/// Represents the type of the union namespace value itself,
+/// **not** the type of an instance of that union (i.e. when a variant is constructed)
+///
+/// ```ignore
+/// type Color = (red: Int | green: Int | blue: Int)
+/// let example = Color
+/// //            ^^^^^
+/// let example_red = Color.red 255
+/// //                ^^^^^
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnionNamespaceType {
+    /// Symbol for the term in the value world
+    pub name: ValueSymbol,
+
+    /// Names of the variants with their inferred type of the "constructor" for that variant.
+    /// Unit variants are just the SumType.
+    /// All other variants are a synthesized "function" producing that SumType.
+    ///
+    /// ```ignore
+    /// let i = NumberUnion.int 123
+    /// //                  ^^^^^^^
+    /// // this is a "call" producing an instance of "NumberUnion"
+    /// ```
+    pub variant_constructors: HashMap<Key, (u32, Idx<Type>)>,
+
+    /// Index to the associated [`SumType`] for instances constructed from this union/namespace
+    pub associated_sum_type: Idx<Type>,
+}
+
+impl ContextDisplay for UnionNamespaceType {
+    fn display(&self, context: &Context) -> String {
+        self.name.display(context)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductType {
     /// Named fields like `key: Type`
@@ -289,7 +338,12 @@ impl ContextDisplay for ProductType {
         }
         let mut s = String::new();
         s.push_str("[ ");
-        let mut fields = self.fields.iter().peekable();
+
+        // Sort fields by name for deterministic display
+        let mut fields: Vec<_> = self.fields.iter().map(|(key, ty)| (*key, *ty)).collect();
+        fields.sort_by_key(|(tag, _)| context.lookup(*tag));
+
+        let mut fields = fields.iter().peekable();
         while let Some((tag, ty)) = fields.next() {
             s.push_str(context.lookup(*tag));
             if *ty != context.core_types().unit {
@@ -312,7 +366,8 @@ pub struct FunctionType {
     // most functions probably have a single signature
     pub signatures: Vec<FuncSignature>,
 
-    /// Non-unit variants are type checked as a function returning an instance of that union
+    /// Non-unit variants treated as a function returning an instance of that union for type checking,
+    /// so this field distinguishes that case vs. a regular function for CFG construction
     pub variant: Option<(Idx<Type>, VariantIdx, Key)>,
 }
 

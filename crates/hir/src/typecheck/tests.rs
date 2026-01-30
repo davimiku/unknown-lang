@@ -114,6 +114,7 @@ fn infer_union_implicit_unit() {
             (blue, context.core_types().unit),
         ]),
         None,
+        None,
     );
     let expected_sum = assert_matches!(expected, Type::Sum);
 
@@ -148,6 +149,7 @@ fn infer_union_explicit_unit() {
             (blue, context.core_types().unit),
         ]),
         None,
+        None,
     );
     let expected_sum = assert_matches!(expected, Type::Sum);
 
@@ -181,6 +183,7 @@ fn infer_union_with_payload_types() {
             (green, context.core_types().unit),
             (blue, context.core_types().bool),
         ]),
+        None,
         None,
     );
     let expected_sum = assert_matches!(expected, Type::Sum);

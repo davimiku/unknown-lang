@@ -3,7 +3,7 @@ mod display;
 use la_arena::Idx;
 
 use crate::interner::Key;
-use crate::{BinaryOp, UnaryOp};
+use crate::{BinaryOp, UnaryOp, ValueSymbol};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypeExpr {
@@ -100,6 +100,9 @@ pub struct UnionTypeExpr {
     ///                                  ^^^^
     /// Each variant has a key/name, and a type (unit, if not specified by the user)
     pub variants: Vec<(Key, Idx<TypeExpr>)>,
+
+    /// Optional reference to the related symbol in the value world for the UnionNamespace
+    pub namespace_symbol: Option<ValueSymbol>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

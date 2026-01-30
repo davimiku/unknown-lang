@@ -122,7 +122,7 @@ impl ContextDisplay for Vec<ModuleScopes> {
 
 // Non-Mutating functions
 impl ModuleScopes {
-    /// Finds the symbol for the given name in the "value" namespace
+    /// Finds the symbol for the given name in the "value" world
     /// by recursively searching up from the current scope.
     pub(crate) fn find_value(&self, name: Key) -> Option<ValueSymbol> {
         self.current().get_local(name).or(self
@@ -132,7 +132,7 @@ impl ModuleScopes {
             .find_map(|scope| scope.data().get_local(name)))
     }
 
-    /// Finds the symbol for the given name in the "type" namespace
+    /// Finds the symbol for the given name in the "type" world
     /// by recursively searching up from the current scope.
     pub(crate) fn find_type(&self, name: Key) -> Option<TypeSymbol> {
         self.current().get_local_type(name).or(self

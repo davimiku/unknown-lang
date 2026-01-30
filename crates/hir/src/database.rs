@@ -21,7 +21,7 @@ pub struct Database {
     pub(crate) type_exprs: Arena<TypeExpr>,
 
     /// Type expressions defined in a type binding (i.e. alias), so these
-    /// have a name in the type namespace
+    /// have a name in the type world
     pub(crate) named_type_exprs: HashMap<TypeSymbol, Idx<TypeExpr>>,
 
     /// Text ranges of the expressions from `type_exprs`
@@ -44,7 +44,7 @@ pub struct Database {
     pub(crate) mutabilities: HashMap<ValueSymbol, Mutability>,
 
     /// Mapping between symbols defining a type and symbols defining a value
-    /// for cases where the symbol exists in both namespaces (like unions)
+    /// for cases where the symbol exists in both worlds (like unions)
     /// `type Color = red | green | blue`
     /// `let myColor = Color.green`
     ///                ^^^^^

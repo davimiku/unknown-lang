@@ -18,8 +18,8 @@ pub use diagnostic::Diagnostic;
 pub use display::{display_root, ContextDisplay};
 pub use expr::{
     BinaryOp, BlockExpr, CallExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr,
-    IndexIntExpr, IntrinsicExpr, LoopExpr, MatchExpr, Pattern, ReAssignment, UnaryExpr, UnaryOp,
-    ValueSymbol, VarDefExpr, VarRefExpr,
+    IndexIntExpr, IntrinsicExpr, LoopExpr, MatchExpr, PathExpr, Pattern, ReAssignment, UnaryExpr,
+    UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{
