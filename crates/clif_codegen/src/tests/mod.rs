@@ -4,6 +4,7 @@ mod calls;
 mod logical;
 mod loops;
 mod mutability;
+mod records;
 mod scopes;
 mod simple;
 mod unions;

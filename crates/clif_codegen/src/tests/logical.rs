@@ -3,9 +3,9 @@ use crate::tests::{compile_main, to_fn};
 
 #[test]
 fn is_even() {
-    let input = "let main = fun (a: Int) -> { a % 2 == 0 }";
+    let code = "let main = fun (a: Int) -> { a % 2 == 0 }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
 
@@ -20,9 +20,9 @@ fn is_even() {
 
 #[test]
 fn int_equality() {
-    let input = "let main = fun (a: Int, b: Int) -> { a == b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a == b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -32,9 +32,9 @@ fn int_equality() {
 
 #[test]
 fn int_not_equality() {
-    let input = "let main = fun (a: Int, b: Int) -> { a != b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a != b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -44,9 +44,9 @@ fn int_not_equality() {
 
 #[test]
 fn int_less_than() {
-    let input = "let main = fun (a: Int, b: Int) -> { a < b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a < b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -57,9 +57,9 @@ fn int_less_than() {
 
 #[test]
 fn int_less_than_or_equal() {
-    let input = "let main = fun (a: Int, b: Int) -> { a <= b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a <= b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -70,9 +70,9 @@ fn int_less_than_or_equal() {
 
 #[test]
 fn int_greater_than() {
-    let input = "let main = fun (a: Int, b: Int) -> { a > b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a > b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 
@@ -83,9 +83,9 @@ fn int_greater_than() {
 
 #[test]
 fn int_greater_than_imm() {
-    let input = "let main = fun (a: Int) -> { a > 16 }";
+    let code = "let main = fun (a: Int) -> { a > 16 }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
 
@@ -96,9 +96,9 @@ fn int_greater_than_imm() {
 
 #[test]
 fn int_greater_than_or_equal() {
-    let input = "let main = fun (a: Int, b: Int) -> { a >= b }";
+    let code = "let main = fun (a: Int, b: Int) -> { a >= b }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
 

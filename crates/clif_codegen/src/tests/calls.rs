@@ -3,14 +3,14 @@ use crate::tests::{compile_main, to_fn};
 
 #[test]
 fn is_even_call() {
-    let input = "
+    let code = "
 let is_even = fun (a: Int) -> Bool { a % 2 == 0 }
 
 let main = fun (a: Int) -> Bool {
     is_even a
 }
 ";
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XBool>(main) };
 
@@ -22,7 +22,7 @@ let main = fun (a: Int) -> Bool {
 
 #[test]
 fn is_even_call_conditional() {
-    let input = "
+    let code = "
 let is_even = fun (a: Int) -> Bool { a % 2 == 0 }
 
 let main = fun (a: Int) -> Int {
@@ -33,7 +33,7 @@ let main = fun (a: Int) -> Int {
     }
 }
 ";
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
 

@@ -3,7 +3,7 @@ use crate::tests::{compile_main, to_fn};
 
 #[test]
 fn match_with_basic_union() {
-    let input = "
+    let code = "
 type Color = (red | green | blue)
 let main = fun (condition: Color) -> Int {
     match condition {
@@ -13,7 +13,7 @@ let main = fun (condition: Color) -> Int {
     }
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
@@ -23,7 +23,7 @@ let main = fun (condition: Color) -> Int {
 
 #[test]
 fn match_with_one_branch_and_otherwise() {
-    let input = "
+    let code = "
 type Color = (red | green | blue)
 let main = fun (condition: Color) -> Int {
     match condition {
@@ -32,7 +32,7 @@ let main = fun (condition: Color) -> Int {
     }
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
@@ -42,7 +42,7 @@ let main = fun (condition: Color) -> Int {
 
 #[test]
 fn match_with_two_branches_and_otherwise() {
-    let input = "
+    let code = "
 type Color = (red | green | blue | purple)
 let main = fun (condition: Color) -> Int {
     match condition {
@@ -52,7 +52,7 @@ let main = fun (condition: Color) -> Int {
     }
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
@@ -63,7 +63,7 @@ let main = fun (condition: Color) -> Int {
 
 #[test]
 fn match_with_otherwise_using_bound_otherwise() {
-    let input = "
+    let code = "
 type Color = (red | green | blue)
 let main = fun (condition: Color) -> Color {
     match condition {
@@ -72,7 +72,7 @@ let main = fun (condition: Color) -> Color {
     }
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
     assert_eq!(code_fn((0,)), 0); // .red
@@ -82,8 +82,8 @@ let main = fun (condition: Color) -> Color {
 
 #[test]
 fn basic_if_else() {
-    let input = "
-    let main = fun (condition: Bool) -> Int { 
+    let code = "
+    let main = fun (condition: Bool) -> Int {
         if condition {
             16
         } else {
@@ -91,7 +91,7 @@ fn basic_if_else() {
         }
     }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XBool,), XInt>(main) };
     assert_eq!(code_fn((TRUE,)), 16);
@@ -102,13 +102,13 @@ fn basic_if_else() {
 fn empty_then() {
     // the `mut` makes the type inferred as `Int` instead of `0` to guard
     // against future possible optimizations (could be optimized to "return 0")
-    let input = "
+    let code = "
 let main = fun (condition: Bool, i: Int) -> Int {
     if condition {}
     i
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
     assert_eq!(code_fn((TRUE, 16)), 16);
@@ -117,7 +117,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 
 #[test]
 fn no_else_block() {
-    let input = "
+    let code = "
 let main = fun (condition: Bool, i: Int) -> Int {
     if condition {
         let j = 1
@@ -125,7 +125,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
     i
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
     assert_eq!(code_fn((TRUE, 16)), 16);
@@ -134,8 +134,8 @@ let main = fun (condition: Bool, i: Int) -> Int {
 
 #[test]
 fn if_else_with_addition_after() {
-    let input = "
-let main = fun (condition: Bool, b: Int) -> Int { 
+    let code = "
+let main = fun (condition: Bool, b: Int) -> Int {
     let a = if condition {
         16
     } else {
@@ -144,7 +144,7 @@ let main = fun (condition: Bool, b: Int) -> Int {
     a + b
 }";
 
-    let main = compile_main(input);
+    let main = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
     assert_eq!(code_fn((TRUE, 2)), 18);

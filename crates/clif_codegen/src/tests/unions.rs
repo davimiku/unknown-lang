@@ -3,12 +3,12 @@ use crate::tests::{compile_main, to_fn, to_fn_one_param_sret, to_fn_zero_param_s
 
 #[test]
 fn define_and_pass_through_sum_type() {
-    let input = "
+    let code = "
 type Color = red | green | blue
 
 let main = fun (c: Color) -> { c }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
 
@@ -19,12 +19,12 @@ let main = fun (c: Color) -> { c }";
 
 #[test]
 fn define_and_use_sum_type() {
-    let input = "
+    let code = "
 type Color = red | green | blue
 
 let main = fun () -> { Color.green }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -33,12 +33,12 @@ let main = fun () -> { Color.green }";
 
 #[test]
 fn unit_union_first_variant() {
-    let input = "
+    let code = "
 type Color = red | green | blue
 
 let main = fun () -> { Color.red }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -47,12 +47,12 @@ let main = fun () -> { Color.red }";
 
 #[test]
 fn unit_union_last_variant() {
-    let input = "
+    let code = "
 type Color = red | green | blue
 
 let main = fun () -> { Color.blue }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -61,12 +61,12 @@ let main = fun () -> { Color.blue }";
 
 #[test]
 fn unit_union_with_many_variants() {
-    let input = "
+    let code = "
 type DaysOfWeek = monday | tuesday | wednesday | thursday | friday | saturday | sunday
 
 let main = fun () -> { DaysOfWeek.saturday }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
 
@@ -100,13 +100,13 @@ struct Union3Words {
 
 #[test]
 fn construct_union_with_int_data() {
-    let input = "
+    let code = "
 type CoolInt = (int_a: Int | int_b: Int | int_c: Int)
 
 let main = fun (i: Int) -> { CoolInt.int_c 32 }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
 
     // Function signature: fn(i64, *mut Union2Words) -> ()
     let code_fn = unsafe { to_fn_one_param_sret::<XTag, Union2Words>(code_ptr) };
@@ -143,13 +143,13 @@ let main = fun (i: Int) -> { CoolInt.int_c i }
 
 #[test]
 fn construct_union_with_int_data_first_variant() {
-    let input = "
+    let code = "
 type CoolInt = (int_a: Int | int_b: Int | int_c: Int)
 
 let main = fun (i: Int) -> { CoolInt.int_a i }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -165,13 +165,13 @@ let main = fun (i: Int) -> { CoolInt.int_a i }
 
 #[test]
 fn construct_union_with_int_data_negative() {
-    let input = "
+    let code = "
 type CoolInt = (int_a: Int | int_b: Int)
 
 let main = fun (i: Int) -> { CoolInt.int_b i }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -187,13 +187,13 @@ let main = fun (i: Int) -> { CoolInt.int_b i }
 
 #[test]
 fn construct_union_with_float_data() {
-    let input = "
+    let code = "
 type CoolFloat = (float_a: Float | float_b: Float | float_c: Float)
 
 let main = fun (f: Float) -> { CoolFloat.float_c f }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
@@ -212,13 +212,13 @@ let main = fun (f: Float) -> { CoolFloat.float_c f }
 
 #[test]
 fn construct_union_with_float_data_first_variant() {
-    let input = "
+    let code = "
 type CoolFloat = (float_a: Float | float_b: Float)
 
 let main = fun (f: Float) -> { CoolFloat.float_a f }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
@@ -237,13 +237,13 @@ let main = fun (f: Float) -> { CoolFloat.float_a f }
 
 #[test]
 fn construct_union_with_float_literal() {
-    let input = "
+    let code = "
 type CoolFloat = (float_a: Float | float_b: Float)
 
 let main = fun () -> { CoolFloat.float_b 2.718 }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_zero_param_sret::<Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
@@ -262,13 +262,13 @@ let main = fun () -> { CoolFloat.float_b 2.718 }
 
 #[test]
 fn construct_union_with_negative_float() {
-    let input = "
+    let code = "
 type CoolFloat = (pos: Float | neg: Float)
 
 let main = fun (f: Float) -> { CoolFloat.neg f }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2WordsFloat>(code_ptr) };
 
     let mut result = Union2WordsFloat {
@@ -287,13 +287,13 @@ let main = fun (f: Float) -> { CoolFloat.neg f }
 
 #[test]
 fn construct_union_with_int_float_data_literal() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun () -> { Number.float 1.23 }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_zero_param_sret::<Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -306,13 +306,13 @@ let main = fun () -> { Number.float 1.23 }
 
 #[test]
 fn construct_union_with_int_float_data() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun (f: Float) -> { Number.float f }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -324,13 +324,13 @@ let main = fun (f: Float) -> { Number.float f }
 
 #[test]
 fn mixed_union_int_variant() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun (i: Int) -> { Number.int i }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -358,13 +358,13 @@ let main = fun (i: Int) -> { Number.int i }
 
 #[test]
 fn mixed_union_float_variant() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun (f: Float) -> { Number.float f }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<f64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -380,13 +380,13 @@ let main = fun (f: Float) -> { Number.float f }
 
 #[test]
 fn mixed_union_with_int_literal() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun () -> { Number.int 999 }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_zero_param_sret::<Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -402,13 +402,13 @@ let main = fun () -> { Number.int 999 }
 
 #[test]
 fn mixed_union_three_variants() {
-    let input = "
+    let code = "
 type Value = (int: Int | float: Float | other: Int)
 
 let main = fun (i: Int) -> { Value.other i }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
@@ -424,13 +424,13 @@ let main = fun (i: Int) -> { Value.other i }
 
 #[test]
 fn pass_through_union_with_int_payload() {
-    let input = "
+    let code = "
 type CoolInt = (a: Int | b: Int)
 
 let main = fun (c: CoolInt) -> { c }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     let input = Union2Words {
@@ -451,13 +451,13 @@ let main = fun (c: CoolInt) -> { c }
 
 #[test]
 fn pass_through_union_with_float_payload() {
-    let input = "
+    let code = "
 type CoolFloat = (a: Float | b: Float)
 
 let main = fun (c: CoolFloat) -> { c }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn =
         unsafe { to_fn_one_param_sret::<*const Union2WordsFloat, Union2WordsFloat>(code_ptr) };
 
@@ -482,13 +482,13 @@ let main = fun (c: CoolFloat) -> { c }
 
 #[test]
 fn pass_through_mixed_union() {
-    let input = "
+    let code = "
 type Number = (int: Int | float: Float)
 
 let main = fun (n: Number) -> { n }
 ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     let input = Union2Words {
@@ -511,14 +511,14 @@ let main = fun (n: Number) -> { n }
 
 #[test]
 fn pass_through_stack_allocated_union() {
-    let input = "
+    let code = "
 type InnerUnion = (int_a: Int | int_b: Int)
 type OuterUnion = (a | b: Int | c: InnerUnion)
 
 let main = fun (u: OuterUnion) -> { u }
         ";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<*const Union3Words, Union3Words>(code_ptr) };
 
     // case a: tag=0, payloads are arbitrary
@@ -556,7 +556,7 @@ let main = fun (u: OuterUnion) -> { u }
 
 #[test]
 fn unwrap_add_and_rewrap() {
-    let input = "type Number = (int: Int | float: Float)
+    let code = "type Number = (int: Int | float: Float)
 
 let main = fun (n: Number) -> {
     match n {
@@ -565,7 +565,7 @@ let main = fun (n: Number) -> {
     }
 }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<*const Union2Words, Union2Words>(code_ptr) };
 
     let case_a = Union2Words { tag: 0, payload: 1 };
@@ -590,7 +590,7 @@ let main = fun (n: Number) -> {
 
 #[test]
 fn unwrap_nested_to_int() {
-    let input = "type InnerUnion = (int_a: Int | int_b: Int)
+    let code = "type InnerUnion = (int_a: Int | int_b: Int)
 type OuterUnion = (a | b: Int | c: InnerUnion)
 
 let main = fun (u: OuterUnion) -> Int {
@@ -606,7 +606,7 @@ let main = fun (u: OuterUnion) -> Int {
     }
 }";
 
-    let code_ptr = compile_main(input);
+    let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn::<(*const Union3Words,), XInt>(code_ptr) };
 
     // tag=a, other fields arbitrary
