@@ -189,6 +189,14 @@ pub enum TypeDiagnosticVariant {
         // TODO: use interned key?
         name: String,
     },
+    /// Variant on a sum type does not exist
+    UnresolvedSumVariant {
+        /// Variant that was tried to access
+        variant: Key,
+
+        /// Sum type that did not contain the requested variant
+        ty: Idx<Type>,
+    },
     /// Field on a product type does not exist
     UnresolvedProductField {
         /// Field that was tried to access

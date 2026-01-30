@@ -42,6 +42,11 @@ impl ContextDisplay for TypeDiagnosticVariant {
                 type_mismatch_message(&expected.display(context), &actual.display(context))
             }
             V::UndefinedFunction { name } => todo!(),
+            V::UnresolvedSumVariant { variant, ty } => {
+                let variant_name = context.lookup(*variant);
+                let ty = ty.display(context);
+                format!("Variant ‘{variant_name}’ does not exist in type ‘{ty}’")
+            }
             V::UnresolvedProductField { field, ty } => {
                 let field_name = context.lookup(*field);
                 let ty = ty.display(context);
