@@ -95,6 +95,7 @@ impl FunctionTranslator<'_> {
             }
             HType::String | HType::StringLiteral(_) => todo!(),
             HType::Sum(sum_type) => self.compute_sum_type_layout(sum_type),
+            HType::UnionNamespace(_) => todo!("something like a product type, maybe"),
             HType::Product(product_type) => self.compute_product_type_layout(product_type),
             HType::Function(_function_type) => todo!(),
             HType::Array(_array_type) => todo!(),

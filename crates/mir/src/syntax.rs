@@ -539,6 +539,13 @@ pub enum Rvalue {
     ///
     UnionVariant(VariantIdx, Key, Operand),
 
+    /// Creates an aggregate value, like a record or tuple
+    // TODO - tuples aren't implemented yet but should work the same?
+    // note - different than how rustc does it (I think?), couldn't
+    // figure out how to make this an Operand rather than Rvalue but this
+    // should work?
+    Aggregate(Vec<(Key, Operand)>),
+
     // Creates an array where each element is the value of the operand.
     // in rustc Const is struct { ty: Ty, kind: ConstKind }
     // we could do IntLiteral instead or something

@@ -1,8 +1,8 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
 use hir::{
-    CallExpr, Context, ContextDisplay, Expr, FunctionParam, IfExpr, LoopExpr, MatchExpr,
-    Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
+    CallExpr, Context, ContextDisplay, Expr, FuncSignature, FunctionParam, IfExpr, LoopExpr,
+    MatchExpr, Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
 };
 use itertools::Itertools;
 use la_arena::Idx;
@@ -313,7 +313,26 @@ impl Builder {
             Expr::VarRef(var_ref) => {
                 self.construct_var_ref_operand(var_ref, assign_to, context);
             }
-            Expr::Path(_) => todo!(),
+            Expr::Path(path_expr) => {
+                self.construct_path_expr(path_expr, assign_to, context);
+            }
+            Expr::RecordLiteral(record) => {
+                // Each field can be arbitrarily complex expressions itself,
+                // so recursively construct those operands first
+                let mut field_operands = Vec::new();
+                for (field_key, field_expr) in &record.fields {
+                    let field_op_or_place = self.construct_operand(*field_expr, &None, context);
+                    let field_operand = Operand::from_op_or_place(field_op_or_place, context);
+                    field_operands.push((*field_key, field_operand));
+                }
+
+                let rvalue = Rvalue::Aggregate(field_operands);
+
+                if let Some(assign_place) = assign_to {
+                    let assign = Statement::assign(assign_place.clone(), rvalue);
+                    self.current_block_mut().statements.push(assign);
+                }
+            }
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
             Expr::Match(match_expr) => self.construct_match_expr(match_expr, assign_to, context),
@@ -847,7 +866,36 @@ impl Builder {
             Expr::VarRef(var_ref) => {
                 OperandOrPlace::from(self.construct_var_ref_operand(var_ref, assign_to, context))
             }
-            Expr::Path(_) => todo!(),
+            Expr::Path(path_expr) => {
+                OperandOrPlace::from(self.construct_path_expr(path_expr, assign_to, context))
+            }
+            Expr::RecordLiteral(record) => {
+                let record_ty = context.expr_type_idx(expr);
+
+                let assign_place = match assign_to {
+                    Some(assign_place) => assign_place.clone(),
+                    None => self
+                        .construct_local(record_ty, None, Mutability::Not)
+                        .into(),
+                };
+
+                // Each field value can be its own arbitrarily complex expression,
+                // so recursively calculate those operands first
+                let mut field_operands = Vec::new();
+                for (field_key, field_expr) in &record.fields {
+                    let field_op_or_place = self.construct_operand(*field_expr, &None, context);
+
+                    let field_operand = Operand::from_op_or_place(field_op_or_place, context);
+                    field_operands.push((*field_key, field_operand));
+                }
+
+                let rvalue = Rvalue::Aggregate(field_operands);
+
+                let assign = Statement::assign(assign_place.clone(), rvalue);
+                self.current_block_mut().statements.push(assign);
+
+                OperandOrPlace::from(assign_place)
+            }
             Expr::IndexInt(_) => todo!(),
             Expr::Function(_) => todo!(),
             Expr::VarDef(_) => todo!(),
@@ -873,7 +921,7 @@ impl Builder {
 
             _ => panic!(
                 "unexpected Expr variant when constructing operand: {:?}",
-                expr
+                expr.display(context)
             ),
         }
     }
@@ -916,6 +964,55 @@ impl Builder {
         };
 
         operand
+    }
+
+    fn construct_path_expr(
+        &mut self,
+        path_expr: &hir::PathExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Operand {
+        let first_segment = path_expr.segments[0];
+        let first_segment = context.expr(first_segment);
+        let segment_key = assert_matches!(first_segment, hir::Expr::PathSegment).key;
+        let operand = match context.expr_type(path_expr.subject) {
+            Type::Sum(sum_type) => todo!(),
+            Type::UnionNamespace(union_namespace_type) => {
+                let (i, variant_constructor_ty) =
+                    union_namespace_type.variant_constructors[&segment_key];
+                let variant_constructor_ty = context.type_(variant_constructor_ty);
+                match variant_constructor_ty {
+                    Type::Sum(_) => Operand::Constant(Constant::Int(i as i64)),
+                    Type::Function(function_type) => {
+                        let signature = &function_type.signatures[0];
+                        let FuncSignature { return_ty, .. } = signature;
+
+                        todo!()
+                    }
+                    t => unreachable!("unreachable: {:?} {}", t, t.display(context)),
+                }
+            }
+            Type::Product(product_type) => {
+                todo!()
+            }
+            t => todo!("handle {t:?}"),
+        };
+
+        if let Some(assign_place) = assign_to {
+            let assign = Statement::assign(assign_place.clone(), operand.clone());
+            self.current_block_mut().statements.push(assign);
+            self.def_local(assign_place.local);
+        };
+
+        operand
+    }
+
+    fn construct_path_segment(
+        &mut self,
+        segment: Idx<Expr>,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) {
     }
 
     fn def_local(&mut self, local: Idx<Local>) {

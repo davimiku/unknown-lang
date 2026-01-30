@@ -557,6 +557,7 @@ impl FunctionTranslator<'_> {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(_unop, _op) => todo!(),
+            Rvalue::Aggregate(aggregate) => todo!(),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
             Rvalue::UnionVariant(variant_idx, _, operand) => {
                 self.translate_union_variant(*variant_idx, operand, place.type_idx_of(self.func))
