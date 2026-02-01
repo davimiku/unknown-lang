@@ -24,6 +24,7 @@ use cranelift_module::{FuncId, Module};
 use hir::{Type as HType, VariantIdx};
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
+use mir::RvalueUnionVariant;
 use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
@@ -559,8 +560,8 @@ impl FunctionTranslator<'_> {
             Rvalue::UnaryOp(_unop, _op) => todo!(),
             Rvalue::Aggregate(aggregate) => todo!(),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
-            Rvalue::UnionVariant(variant_idx, _, operand) => {
-                self.translate_union_variant(*variant_idx, operand, place.type_idx_of(self.func))
+            Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => {
+                self.translate_union_variant(*idx, operand, place.type_idx_of(self.func))
             }
         };
         let cplace = self.places[place.local].clone();
