@@ -327,7 +327,7 @@ impl ContextDisplay for UnionNamespaceType {
 pub struct ProductType {
     /// Named fields like `key: (index, Type)`
     /// The u32 index represents the field's position in the canonical sorted order
-    // TODO - optimized data storage for this kind of key (NonZeroU32)
+    // TODO - optimized hashmap for this kind of key (NonZeroU32)
     pub fields: HashMap<Key, (u32, Idx<Type>)>,
 
     /// Hash computed on creation for faster comparisons
@@ -337,6 +337,20 @@ pub struct ProductType {
 }
 
 impl ProductType {
+    /// Fields in canonical order for structural equality between different
+    /// record types and determining memory layout
+    // todo - determine if canonical order should be stored rather than
+    // sorted on demand?
+    pub fn canonical_fields(&self) -> Vec<(Key, u32, Idx<Type>)> {
+        let mut vec = self
+            .fields
+            .iter()
+            .map(|(key, (idx, ty))| (*key, *idx, *ty))
+            .collect_vec();
+        vec.sort_by_key(|(_, idx, _)| *idx);
+        vec
+    }
+
     pub fn type_of_key(&self, key: Key) -> Option<Idx<Type>> {
         self.fields.get(&key).map(|(_, ty)| *ty)
     }
@@ -354,23 +368,16 @@ impl ContextDisplay for ProductType {
         let mut s = String::new();
         s.push_str("[ ");
 
-        // Sort fields by index for deterministic display
-        let mut fields: Vec<_> = self
-            .fields
-            .iter()
-            .map(|(key, (idx, ty))| (*idx, *key, *ty))
-            .collect();
-        fields.sort_by_key(|(idx, _, _)| *idx);
+        let fields = self.canonical_fields();
 
-        let mut fields = fields.iter().peekable();
-        while let Some((_, tag, ty)) = fields.next() {
-            s.push_str(context.lookup(*tag));
-            if *ty != context.core_types().unit {
+        for (key, idx, ty) in fields {
+            if idx > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(context.lookup(key));
+            if ty != context.core_types().unit {
                 s.push_str(" : ");
                 s.push_str(&ty.display(context));
-            }
-            if fields.peek().is_some() {
-                s.push_str(", ");
             }
         }
         s.push_str(" ]");
