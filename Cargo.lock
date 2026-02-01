@@ -258,6 +258,7 @@ dependencies = [
  "cranelift-native",
  "cranelift-reader",
  "hir",
+ "itertools",
  "la-arena",
  "mir",
  "proc-macro2",

@@ -10,14 +10,15 @@ hir = { path = "../hir" }
 mir = { path = "../mir" }
 util_macros = { path = "../util_macros" }
 
-cranelift = "0.127.0"
-cranelift-module = "0.127.0"
-cranelift-jit = "0.127.0"
-cranelift-native = "0.127.0"
-cranelift-reader = "0.127.0"
-la-arena = "0.3.1"
-ryu = "1.0"
-proc-macro2 = "1.0.43"
-smallvec = "1.14.0"
-text-size = "1.1.1"
-bytemuck = "*"
+cranelift = { version = "0.127.0" }
+cranelift-module = { version = "0.127.0" }
+cranelift-jit = { version = "0.127.0" }
+cranelift-native = { version = "0.127.0" }
+cranelift-reader = { version = "0.127.0" }
+la-arena = { version = "0.3.1" }
+itertools = { version = "0.12.1" }
+ryu = { version = "1.0" }
+proc-macro2 = { version = "1.0.43" }
+smallvec = { version = "1.14.0" }
+text-size = { version = "1.1.1" }
+bytemuck = { version = "*" }
