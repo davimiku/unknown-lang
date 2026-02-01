@@ -8,7 +8,7 @@ use la_arena::Idx;
 
 use crate::syntax::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Operand, Place, ProjectionElem, Rvalue,
-    Statement, Terminator, UnOp,
+    RvalueUnionVariant, Statement, Terminator, UnOp,
 };
 use crate::{BasicBlock, Function, Local, Module};
 
@@ -402,8 +402,16 @@ impl MirWrite for Rvalue {
                 place.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }
-            Rvalue::UnionVariant(variant_idx, key, operand) => {
-                write!(buf, "{}${}(", context.lookup(*key), variant_idx.into_raw())?;
+            Rvalue::UnionVariant(RvalueUnionVariant {
+                idx,
+                key,
+                operand,
+                namespace,
+            }) => {
+                if let Some(namespace) = namespace {
+                    write!(buf, "{}.", context.lookup(*namespace))?;
+                }
+                write!(buf, "{}${}(", context.lookup(*key), idx.into_raw())?;
                 operand.write(buf, module, context, indent)?;
                 write!(buf, ")")
             }

@@ -686,6 +686,8 @@ pub enum UnOp {
     Neg,
 }
 
+/// Somewhat analogous to a translation of an expression, one of the
+/// fundamental units used in Rvalues and statements in the CFG
 #[derive(Debug, Clone)]
 pub enum Operand {
     /// Copies the value from the given Place

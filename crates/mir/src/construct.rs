@@ -1,7 +1,7 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
 use hir::{
-    CallExpr, Context, ContextDisplay, Expr, FuncSignature, FunctionParam, IfExpr, LoopExpr,
+    CallExpr, Context, ContextDisplay, Expr, FuncSignature, FunctionParam, IfExpr, Key, LoopExpr,
     MatchExpr, Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
 };
 use itertools::Itertools;
@@ -9,7 +9,8 @@ use la_arena::Idx;
 
 use crate::syntax::{
     BasicBlock, BinOp, BlockTarget, BranchIntTargets, BranchTarget, Callee, Constant, FuncId,
-    Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, Statement, Terminator,
+    Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, RvalueUnionVariant, Statement,
+    Terminator,
 };
 use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
@@ -299,7 +300,19 @@ impl Builder {
                         .construct_operand(call.args[0], &None, context)
                         .as_operand();
 
-                    let rvalue = Rvalue::UnionVariant(variant_idx, key, operand);
+                    let mut namespace: Option<Key> = None;
+                    let union_ty = context.type_(call.return_ty(context));
+                    if let Type::Sum(sum_type) = union_ty {
+                        if let Some(symbol) = sum_type.name {
+                            namespace = Some(context.type_symbol_key(symbol));
+                        }
+                    }
+                    let rvalue = Rvalue::UnionVariant(RvalueUnionVariant {
+                        idx: variant_idx,
+                        key,
+                        operand,
+                        namespace,
+                    });
 
                     if let Some(assign_place) = assign_to {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
