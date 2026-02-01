@@ -32,6 +32,12 @@ pub(crate) type XTag = i64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct XBool(i64);
 
+impl Default for XBool {
+    fn default() -> Self {
+        FALSE
+    }
+}
+
 /// Use this constant for "true" when doing any FFI from Rust
 pub const TRUE: XBool = XBool(1);
 /// Use this constant for "false" when going any FFI from Rust
