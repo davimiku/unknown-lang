@@ -65,6 +65,13 @@ unsafe fn to_fn_two_param_sret<I1, I2, R>(code_ptr: *const u8) -> fn(I1, I2, *mu
     std::mem::transmute::<_, fn(I1, I2, *mut R)>(code_ptr)
 }
 
+/// Returned stack allocated structs use sret calling convention
+/// The function signature is: fn(regular_params..., sret_ptr) -> void
+/// The caller allocates space and passes a pointer for the return value
+unsafe fn to_fn_three_param_sret<I1, I2, I3, R>(code_ptr: *const u8) -> fn(I1, I2, I3, *mut R) {
+    std::mem::transmute::<_, fn(I1, I2, I3, *mut R)>(code_ptr)
+}
+
 use crate::compile_module;
 
 fn compile_main(input: &str) -> *const u8 {

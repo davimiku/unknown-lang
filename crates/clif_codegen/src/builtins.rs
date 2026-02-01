@@ -32,7 +32,9 @@ pub(crate) type XTag = i64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct XBool(i64);
 
+/// Use this constant for "true" when doing any FFI from Rust
 pub const TRUE: XBool = XBool(1);
+/// Use this constant for "false" when going any FFI from Rust
 pub const FALSE: XBool = XBool(0);
 
 impl From<bool> for XBool {
