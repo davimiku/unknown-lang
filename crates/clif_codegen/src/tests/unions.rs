@@ -423,6 +423,26 @@ let main = fun (i: Int) -> { Value.other i }
 }
 
 #[test]
+fn pass_union_return_unit() {
+    let code = "
+type CoolInt = (a: Int | b: Int)
+
+let main = fun (c: CoolInt) -> { }
+";
+
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<*const Union2Words, ()>(code_ptr) };
+
+    let input = Union2Words {
+        tag: 0,
+        payload: 42,
+    };
+    let result = code_fn(&input);
+
+    assert_eq!(result, ());
+}
+
+#[test]
 fn pass_through_union_with_int_payload() {
     let code = "
 type CoolInt = (a: Int | b: Int)
