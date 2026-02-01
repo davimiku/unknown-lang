@@ -65,15 +65,101 @@ fun main:
 
 #[test]
 fn pull_field_from_product_type() {
+    let input = "
+type Point = [ x: Int, y: Int ]
+
+let main = fun (p: Point) -> { p.x }";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: Point~1.0
+
+    BB0():
+        _0 := copy _1.0
+        Return _0 ->
+";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn pull_field_from_record_literal() {
     let input = "let main = fun () -> {
         let record = [ t = 1 ]
         record.t
-        }";
+    }";
     let expected = "
 fun main:
+    params: {none}
+    mut _0: 1
+    _1: [ t : 1 ]
 
     BB0():
-        ";
+        _1 := [ t = const 1 ]
+        _0 := copy _1.0
+        Return _0 ->
+";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn access_multiple_fields() {
+    let input = "
+type Point = [ x: Int, y: Int ]
+
+let main = fun (p: Point) -> { p.y }";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: Point~1.0
+
+    BB0():
+        _0 := copy _1.1
+        Return _0 ->
+";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn field_ordering_by_key() {
+    let input = "
+type Record = [ z: Int, a: Int, m: Int ]
+
+let main = fun (r: Record) -> { r.a }";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: Record~1.0
+
+    BB0():
+        _0 := copy _1.0
+        Return _0 ->
+";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn field_ordering_by_key_second_field() {
+    let input = "
+type Record = [ z: Int, a: Int, m: Int ]
+
+let main = fun (r: Record) -> { r.m }";
+    let expected = "
+fun main:
+    params: _1
+    mut _0: Int
+    _1: Record~1.0
+
+    BB0():
+        _0 := copy _1.1
+        Return _0 ->
+";
 
     check_module(input, expected);
 }
