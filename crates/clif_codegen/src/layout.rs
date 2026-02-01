@@ -160,9 +160,7 @@ impl FunctionTranslator<'_> {
             // e.g., `type Number = (int: Int | float: Float)` or nested unions
             let total_size = Size::ONE_WORD + max_payload_size;
             Layout {
-                fields: FieldsShape::Fields {
-                    offsets: Box::new([Size::ZERO, Size::ONE_WORD]),
-                },
+                fields: FieldsShape::from_field_offsets(Box::new([Size::ZERO, Size::ONE_WORD])),
                 variants: VariantsShape::Multiple {
                     tag_encoding: TagEncoding::Explicit,
                     layouts: variant_layouts,
@@ -202,9 +200,7 @@ impl FunctionTranslator<'_> {
         // For now, all non-empty records are stack-allocated
         // Future - heap for large records and maybe scalar for 1 scalar-field records
         Layout {
-            fields: FieldsShape::Fields {
-                offsets: offsets.into(),
-            },
+            fields: FieldsShape::from_field_offsets(offsets.into()),
             variants: VariantsShape::Single {
                 index: VariantIdx::default(),
             },
@@ -285,10 +281,19 @@ impl ops::Add for Size {
 pub(crate) enum FieldsShape {
     Scalar,
 
-    Fields {
-        // index of Vec is FieldIdx - todo make newtype
-        offsets: Box<[Size]>,
-    },
+    Fields(FieldsShapeFields),
+}
+
+impl FieldsShape {
+    fn from_field_offsets(offsets: Box<[Size]>) -> Self {
+        Self::Fields(FieldsShapeFields { offsets })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FieldsShapeFields {
+    // Index of the boxed array is implicitly the FieldIdx
+    pub(crate) offsets: Box<[Size]>,
 }
 
 #[derive(Debug, Clone)]

@@ -14,14 +14,15 @@ use std::ops::Deref;
 use cranelift::codegen::ir::immediates::Offset32;
 use cranelift::codegen::ir::BlockArg;
 use cranelift::codegen::ir::UserFuncName;
-use cranelift::codegen::ir::{StackSlotData, StackSlotKind};
+use cranelift::codegen::ir::{StackSlot, StackSlotData, StackSlotKind};
 use cranelift::frontend::Switch;
 use cranelift::prelude::types::{F64, I64};
 use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Module};
-use hir::{Type as HType, VariantIdx};
+use hir::{Key, Type as HType, VariantIdx};
+use itertools::Itertools as _;
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
 use mir::RvalueUnionVariant;
@@ -29,9 +30,10 @@ use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
     Terminator,
 };
+use util_macros::assert_matches;
 
 use crate::ext::function_builder::FunctionBuilderExt;
-use crate::layout::{BackendRepr, Layouts, Scalar};
+use crate::layout::{BackendRepr, FieldsShape, Layouts, Scalar};
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
@@ -558,7 +560,7 @@ impl FunctionTranslator<'_> {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(_unop, _op) => todo!(),
-            Rvalue::Aggregate(aggregate) => todo!(),
+            Rvalue::Aggregate(aggregate) => self.translate_aggregate(place, aggregate),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
             Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => {
                 self.translate_union_variant(*idx, operand, place.type_idx_of(self.func))
@@ -1053,7 +1055,128 @@ impl FunctionTranslator<'_> {
         }
     }
 
-    fn op_type(&self, op: &Operand) -> Idx<HType> {
+    fn translate_aggregate(&mut self, place: &Place, field_operands: &[(Key, Operand)]) -> CValue {
+        let record_ty = place.type_idx_of(self.func);
+        let layout_idx = self.layout_for_type(record_ty);
+        let layout = self.layouts[layout_idx].clone();
+
+        // All records stack-allocated currently
+        // (GC in future for large records,  >64 bytes?)
+        match &layout.backend_repr {
+            BackendRepr::None => CValue::Ref {
+                ptr: Pointer::Stack {
+                    slot: StackSlot::new(0),
+                    offset: Offset32::new(0),
+                },
+                val: None,
+                layout: layout_idx,
+            },
+            BackendRepr::StackSlot => {
+                let offsets = &assert_matches!(&layout.fields, FieldsShape::Fields).offsets;
+
+                let field_info = {
+                    let record_type =
+                        assert_matches!(self.context.type_(record_ty), HType::Product);
+                    field_operands
+                        .iter()
+                        .map(|(key, _)| record_type.fields[key])
+                        .collect_vec()
+                };
+
+                let size = layout.size.bytes() as u32;
+                let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
+                let slot = self.builder.create_sized_stack_slot(slot_data);
+
+                // write each field to its offset in the result stack slot
+                for ((_field_key, field_operand), (field_index, _field_ty)) in
+                    field_operands.iter().zip(field_info.iter())
+                {
+                    let field_offset = offsets[*field_index as usize];
+                    let field_cval = self.translate_operand(field_operand);
+                    let field_offset_i32 = Offset32::new(field_offset.bytes() as i32);
+                    match field_cval {
+                        CValue::Val { val, .. } => {
+                            self.builder.ins().stack_store(val, slot, field_offset_i32);
+                        }
+                        CValue::ValPair { first, second, .. } => {
+                            self.builder
+                                .ins()
+                                .stack_store(first, slot, field_offset_i32);
+                            let second_offset =
+                                Offset32::new(field_offset.bytes() as i32 + WORD_SIZE as i32);
+                            self.builder.ins().stack_store(second, slot, second_offset);
+                        }
+                        CValue::ValTriple {
+                            first,
+                            second,
+                            third,
+                            ..
+                        } => {
+                            self.builder
+                                .ins()
+                                .stack_store(first, slot, field_offset_i32);
+                            let second_offset =
+                                Offset32::new(field_offset.bytes() as i32 + WORD_SIZE as i32);
+                            self.builder.ins().stack_store(second, slot, second_offset);
+                            let third_offset =
+                                Offset32::new(field_offset.bytes() as i32 + WORD_SIZE as i32 * 2);
+                            self.builder.ins().stack_store(third, slot, third_offset);
+                        }
+                        CValue::Ref {
+                            ptr,
+                            layout: field_layout,
+                            ..
+                        } => {
+                            // TODO - this is a placeholder implementation but not tested yet,
+                            // until a GC / malloc equivalent is created
+                            let field_size = self.layouts[field_layout].size;
+                            let dest_addr =
+                                self.builder.ins().stack_addr(I64, slot, field_offset_i32);
+                            let src_addr = match ptr {
+                                Pointer::Stack {
+                                    slot: src_slot,
+                                    offset: src_offset,
+                                } => self.builder.ins().stack_addr(I64, src_slot, src_offset),
+                                Pointer::Heap { addr, offset } => {
+                                    let offset_i32: i32 = offset.into();
+                                    if offset_i32 == 0 {
+                                        addr
+                                    } else {
+                                        self.builder.ins().iadd_imm(addr, offset_i32 as i64)
+                                    }
+                                }
+                            };
+                            self.builder.emit_small_memory_copy(
+                                self.module.target_config(),
+                                dest_addr,
+                                src_addr,
+                                field_size.bytes() as u64,
+                                1,    // dest align
+                                1,    // src align
+                                true, // non-overlapping
+                                MemFlags::new(),
+                            );
+                        }
+                    }
+                }
+
+                CValue::Ref {
+                    ptr: Pointer::Stack {
+                        slot,
+                        offset: Offset32::new(0),
+                    },
+                    val: None,
+                    layout: layout_idx,
+                }
+            }
+            _ => unreachable!(
+                "Unexpected backend representation for aggregate: {:?}",
+                layout.backend_repr
+            ),
+        }
+    }
+
+    fn op_type(&mut self, op: &Operand) -> Idx<HType> {
         let core_types = self.context.core_types();
         let ty_idx = match op {
             Operand::Copy(place) => self.place_type_idx(place),
