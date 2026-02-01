@@ -151,7 +151,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
                 .collect_vec();
             let ty = context
                 .type_database
-                .alloc_type(Type::product(fields.into(), None));
+                .alloc_type(Type::product(fields.into(), None, context));
             result.ty = ty;
         }
         Expr::IndexInt(index_expr) => result.chain(infer_index_int_expr(&index_expr, context)),
@@ -230,7 +230,6 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                         let constructor_ty = if *variant_ty == context.core_types().unit {
                             sum_type
                         } else {
-                            panic!("test!");
                             let func = FunctionType {
                                 signatures: vec![FuncSignature {
                                     params: Box::new([*variant_ty]),
@@ -267,9 +266,11 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 fields.push((*key, ty));
             }
 
-            result.ty = context
-                .type_database
-                .alloc_type(Type::product(fields.into(), record.name));
+            result.ty = context.type_database.alloc_type(Type::product(
+                fields.into(),
+                record.name,
+                context,
+            ));
 
             result
         }
@@ -622,7 +623,7 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
             // future - ensure this works for tuples too which should be lowered to ProductType
             // as well with "0", "1", "2", etc. keys
             Type::Product(product_type) => match product_type.fields.get(&segment_expr.key) {
-                Some(field_ty) => {
+                Some((_, field_ty)) => {
                     result.ty = *field_ty;
                     subject = *segment;
                 }

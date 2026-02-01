@@ -140,19 +140,23 @@ fn is_product_subtype(a: &ProductType, b: &ProductType, context: &Context) -> bo
         return true;
     }
 
-    // quick exit - for now it's not really a subtype it's an exact match
+    // quick exit - it's not really a subtype for products it's an exact match
+    // (before row polymorphism is implemented)
     if a.fields.len() != b.fields.len() {
         return false;
     }
 
-    // TODO - this is order dependent, do we want order independent?
-    // depends on if the compiler normalizes field order for codegen
-    for ((a_key, a_type), (b_key, b_type)) in a.fields.iter().zip(b.fields.iter()) {
-        if *a_key != *b_key {
-            return false;
-        }
-        if !is_subtype(*a_type, *b_type, context) {
-            return false;
+    for (a_key, (a_idx, a_type)) in a.fields.iter() {
+        match b.fields.get(a_key) {
+            Some((b_idx, b_type)) => {
+                if *a_idx != *b_idx {
+                    return false;
+                }
+                if !is_subtype(*a_type, *b_type, context) {
+                    return false;
+                }
+            }
+            None => return false,
         }
     }
 

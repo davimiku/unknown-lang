@@ -201,6 +201,11 @@ impl Context {
         self.lookup(key)
     }
 
+    /// Gets the interned Key for a type symbol
+    pub fn type_symbol_key(&self, symbol: TypeSymbol) -> Key {
+        self.database.type_names[&symbol]
+    }
+
     /// Gets the interned string for a type symbol
     pub fn type_symbol_str(&self, symbol: TypeSymbol) -> &str {
         let key = self.database.type_names[&symbol];

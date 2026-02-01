@@ -80,13 +80,23 @@ impl Type {
         })
     }
 
-    pub(crate) fn product(field_list: Box<[(Key, Idx<Type>)]>, name: Option<TypeSymbol>) -> Self {
+    pub(crate) fn product(
+        field_list: Box<[(Key, Idx<Type>)]>,
+        name: Option<TypeSymbol>,
+        context: &Context,
+    ) -> Self {
         let mut s = DefaultHasher::new();
+
+        // Fields sorted alphabetically for canonical ordering and structural
+        // equality, i.e. `[ a: Int, b: Int ] ~= [ b: Int, a: Int]`
+        let mut sorted_fields: Vec<_> = field_list.iter().copied().collect();
+        sorted_fields.sort_by_key(|(key, _)| context.lookup(*key));
+
         let mut fields = HashMap::new();
-        for (key, ty) in field_list.iter() {
+        for (index, (key, ty)) in sorted_fields.iter().enumerate() {
             (*key).hash(&mut s);
             (*ty).into_raw().into_u32().hash(&mut s);
-            fields.insert(*key, *ty);
+            fields.insert(*key, (index as u32, *ty));
         }
         let hash = s.finish();
 
@@ -219,7 +229,7 @@ pub struct SumType {
 
     /// Symbol for this sum type in the type world if it exists. This would not exist for
     /// anonymous sum types.
-    pub(crate) name: Option<TypeSymbol>,
+    pub name: Option<TypeSymbol>,
 
     /// Optional reference to the [`UnionNamespaceType`] that produces instances of this sum type,
     /// if it exists. This would not exist for anonymous sum types
@@ -315,9 +325,10 @@ impl ContextDisplay for UnionNamespaceType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductType {
-    /// Named fields like `key: Type`
+    /// Named fields like `key: (index, Type)`
+    /// The u32 index represents the field's position in the canonical sorted order
     // TODO - optimized data storage for this kind of key (NonZeroU32)
-    pub fields: HashMap<Key, Idx<Type>>,
+    pub fields: HashMap<Key, (u32, Idx<Type>)>,
 
     /// Hash computed on creation for faster comparisons
     pub(crate) hash: u64,
@@ -327,7 +338,11 @@ pub struct ProductType {
 
 impl ProductType {
     pub fn type_of_key(&self, key: Key) -> Option<Idx<Type>> {
-        self.fields.get(&key).copied()
+        self.fields.get(&key).map(|(_, ty)| *ty)
+    }
+
+    pub fn index_of_key(&self, key: Key) -> Option<u32> {
+        self.fields.get(&key).map(|(idx, _)| *idx)
     }
 }
 
@@ -339,12 +354,16 @@ impl ContextDisplay for ProductType {
         let mut s = String::new();
         s.push_str("[ ");
 
-        // Sort fields by name for deterministic display
-        let mut fields: Vec<_> = self.fields.iter().map(|(key, ty)| (*key, *ty)).collect();
-        fields.sort_by_key(|(tag, _)| context.lookup(*tag));
+        // Sort fields by index for deterministic display
+        let mut fields: Vec<_> = self
+            .fields
+            .iter()
+            .map(|(key, (idx, ty))| (*idx, *key, *ty))
+            .collect();
+        fields.sort_by_key(|(idx, _, _)| *idx);
 
         let mut fields = fields.iter().peekable();
-        while let Some((tag, ty)) = fields.next() {
+        while let Some((_, tag, ty)) = fields.next() {
             s.push_str(context.lookup(*tag));
             if *ty != context.core_types().unit {
                 s.push_str(" : ");
