@@ -12,7 +12,7 @@ type Point = [ x: Int, y: Int ]
 let main = fun (p: Point) -> { p }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, Default, PartialEq, Clone, Copy)]
     struct Point {
         x: i64,
         y: i64,
@@ -20,12 +20,12 @@ let main = fun (p: Point) -> { p }";
 
     let code_ptr = compile_main(code);
 
-    // Function signature: fn(Point, *mut Point) -> ()
-    let code_fn = unsafe { to_fn_one_param_sret::<Point, Point>(code_ptr) };
+    // Function signature: fn(*const Point, *mut Point) -> ()
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Point, Point>(code_ptr) };
 
     let input = Point { x: 123, y: 456 };
-    let mut output = Point { x: 0, y: 0 };
-    code_fn(input, &mut output);
+    let mut output = Point::default();
+    code_fn(&input, &mut output);
 
     assert_eq!(input, output);
 }
@@ -35,7 +35,7 @@ fn return_field_of_product_type() {
     let input = "
 type Point = [ x: Int, y: Int ]
 
-let main = fun (p: Point) -> { p.x }";
+let main = fun (p: Point) -> { p.y }";
 
     #[repr(C)]
     #[derive(Debug, PartialEq)]
@@ -45,12 +45,12 @@ let main = fun (p: Point) -> { p.x }";
     }
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { to_fn::<(Point,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Point,), XInt>(code_ptr) };
 
     let input = Point { x: 123, y: 456 };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
-    assert_eq!(123, output);
+    assert_eq!(456, output);
 }
 
 #[test]
@@ -84,7 +84,7 @@ type Point = [ x: Int, y: Int ]
 let main = fun () -> { [ x = 10, y = 20 ] }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Default, PartialEq)]
     struct Point {
         x: i64,
         y: i64,
@@ -93,7 +93,7 @@ let main = fun () -> { [ x = 10, y = 20 ] }";
     let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_zero_param_sret::<Point>(code_ptr) };
 
-    let mut output = Point { x: 0, y: 0 };
+    let mut output = Point::default();
     code_fn(&mut output);
 
     assert_eq!(Point { x: 10, y: 20 }, output);
@@ -107,7 +107,7 @@ type Point = [ x: Int, y: Int ]
 let main = fun (a: Int, b: Int) -> { [ x = a, y = b ] }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Default, PartialEq)]
     struct Point {
         x: i64,
         y: i64,
@@ -116,7 +116,7 @@ let main = fun (a: Int, b: Int) -> { [ x = a, y = b ] }";
     let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_two_param_sret::<XInt, XInt, Point>(code_ptr) };
 
-    let mut output = Point { x: 0, y: 0 };
+    let mut output = Point::default();
     code_fn(7, 13, &mut output);
 
     assert_eq!(Point { x: 7, y: 13 }, output);
@@ -130,10 +130,10 @@ type Mixed = [ flag: Bool, count: Int, ratio: Float ]
 let main = fun (m: Mixed) -> { m }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, Default, PartialEq, Clone, Copy)]
     struct Mixed {
-        flag: XBool,
         count: i64,
+        flag: XBool,
         ratio: f64,
     }
 
@@ -141,15 +141,11 @@ let main = fun (m: Mixed) -> { m }";
     let code_fn = unsafe { to_fn_one_param_sret::<Mixed, Mixed>(code_ptr) };
 
     let input = Mixed {
-        flag: TRUE,
         count: 42,
+        flag: TRUE,
         ratio: 3.14,
     };
-    let mut output = Mixed {
-        flag: FALSE,
-        count: 0,
-        ratio: 0.0,
-    };
+    let mut output = Mixed::default();
     code_fn(input, &mut output);
 
     assert_eq!(input, output);
@@ -170,10 +166,10 @@ let main = fun (p: Point) -> { p.x + p.y }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(Point,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Point,), XInt>(code_ptr) };
 
     let input = Point { x: 100, y: 50 };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
     assert_eq!(150, output);
 }
@@ -186,7 +182,7 @@ type Data = [ a: Int, b: Int, c: Int, d: Int, e: Int ]
 let main = fun (data: Data) -> { data }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, Default, PartialEq, Clone, Copy)]
     struct Data {
         a: i64,
         b: i64,
@@ -196,7 +192,7 @@ let main = fun (data: Data) -> { data }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn_one_param_sret::<Data, Data>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<*const Data, Data>(code_ptr) };
 
     let input = Data {
         a: 1,
@@ -205,14 +201,8 @@ let main = fun (data: Data) -> { data }";
         d: 4,
         e: 5,
     };
-    let mut output = Data {
-        a: 0,
-        b: 0,
-        c: 0,
-        d: 0,
-        e: 0,
-    };
-    code_fn(input, &mut output);
+    let mut output = Data::default();
+    code_fn(&input, &mut output);
 
     assert_eq!(input, output);
 }
@@ -225,7 +215,7 @@ type Point = [ x: Int, y: Int ]
 let main = fun (n: Int) -> { [ x = n * 2, y = n + 10 ] }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Default, PartialEq)]
     struct Point {
         x: i64,
         y: i64,
@@ -234,7 +224,7 @@ let main = fun (n: Int) -> { [ x = n * 2, y = n + 10 ] }";
     let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_one_param_sret::<XInt, Point>(code_ptr) };
 
-    let mut output = Point { x: 0, y: 0 };
+    let mut output = Point::default();
     code_fn(5, &mut output);
 
     assert_eq!(Point { x: 10, y: 15 }, output);
@@ -255,13 +245,13 @@ let main = fun (b: Box) -> { b.width * b.height }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(Box,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Box,), XInt>(code_ptr) };
 
     let input = Box {
         width: 7,
         height: 8,
     };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
     assert_eq!(56, output);
 }
@@ -282,13 +272,13 @@ let main = fun (f: Flags) -> { f.enabled && f.active }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(Flags,), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Flags,), XBool>(code_ptr) };
 
     let input = Flags {
         enabled: TRUE,
         active: TRUE,
     };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
     assert_eq!(TRUE, output);
 }
@@ -307,10 +297,10 @@ let main = fun (c: Circle) -> { c.radius * 2.0 }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(Circle,), XFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Circle,), XFloat>(code_ptr) };
 
     let input = Circle { radius: 5.0 };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
     assert_eq!(10.0, output);
 }
@@ -323,27 +313,23 @@ type Mixed = [ flag: Bool, count: Int, ratio: Float ]
 let main = fun (b: Bool, n: Int, f: Float) -> { [ flag = b, count = n, ratio = f ] }";
 
     #[repr(C)]
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Default, PartialEq)]
     struct Mixed {
-        flag: XBool,
         count: i64,
+        flag: XBool,
         ratio: f64,
     }
 
     let code_ptr = compile_main(code);
     let code_fn = unsafe { to_fn_three_param_sret::<XBool, XInt, XFloat, Mixed>(code_ptr) };
 
-    let mut output = Mixed {
-        flag: FALSE,
-        count: 0,
-        ratio: 0.0,
-    };
+    let mut output = Mixed::default();
     code_fn(TRUE, 99, 2.718, &mut output);
 
     assert_eq!(
         Mixed {
-            flag: TRUE,
             count: 99,
+            flag: TRUE,
             ratio: 2.718
         },
         output
