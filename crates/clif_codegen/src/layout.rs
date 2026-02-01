@@ -161,7 +161,7 @@ impl FunctionTranslator<'_> {
             let total_size = Size::ONE_WORD + max_payload_size;
             Layout {
                 fields: FieldsShape::Fields {
-                    offsets: vec![Size::ZERO, Size::ONE_WORD],
+                    offsets: Box::new([Size::ZERO, Size::ONE_WORD]),
                 },
                 variants: VariantsShape::Multiple {
                     tag_encoding: TagEncoding::Explicit,
@@ -174,7 +174,43 @@ impl FunctionTranslator<'_> {
     }
 
     fn compute_product_type_layout(&mut self, product_type: &hir::ProductType) -> Layout {
-        todo!()
+        // Empty records are unit (ZST)
+        if product_type.fields.is_empty() {
+            return Layout {
+                fields: FieldsShape::Scalar,
+                variants: VariantsShape::Single {
+                    index: VariantIdx::default(),
+                },
+                backend_repr: BackendRepr::None,
+                size: Size::ZERO,
+            };
+        }
+
+        let fields = product_type.canonical_fields();
+        let mut offsets = Vec::with_capacity(fields.len());
+        let mut current_offset = Size::ZERO;
+
+        for (_field_key, _field_idx, field_ty) in &fields {
+            offsets.push(current_offset);
+            let field_layout_idx = self.layout_for_type(*field_ty);
+            let field_layout = &self.layouts[field_layout_idx];
+            current_offset = current_offset + field_layout.size;
+        }
+
+        let total_size = current_offset;
+
+        // For now, all non-empty records are stack-allocated
+        // Future - heap for large records and maybe scalar for 1 scalar-field records
+        Layout {
+            fields: FieldsShape::Fields {
+                offsets: offsets.into(),
+            },
+            variants: VariantsShape::Single {
+                index: VariantIdx::default(),
+            },
+            backend_repr: BackendRepr::StackSlot,
+            size: total_size,
+        }
     }
 }
 
@@ -251,7 +287,7 @@ pub(crate) enum FieldsShape {
 
     Fields {
         // index of Vec is FieldIdx - todo make newtype
-        offsets: Vec<Size>,
+        offsets: Box<[Size]>,
     },
 }
 

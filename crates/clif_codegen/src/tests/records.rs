@@ -58,7 +58,7 @@ fn pass_record_return_unit() {
     let code = "
 type Point = [ x: Int, y: Int ]
 
-let main = fun (p: Point) -> { () }";
+let main = fun (p: Point) -> { }";
 
     #[repr(C)]
     #[derive(Debug, PartialEq)]
@@ -68,10 +68,10 @@ let main = fun (p: Point) -> { () }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(Point,), ()>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Point,), ()>(code_ptr) };
 
     let input = Point { x: 42, y: 99 };
-    let output = code_fn((input,));
+    let output = code_fn((&input,));
 
     assert_eq!((), output);
 }
