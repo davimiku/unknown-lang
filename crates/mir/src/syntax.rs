@@ -526,9 +526,19 @@ impl Local {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FieldIdx {
-    private: u32,
+    idx: u32,
+}
+
+impl FieldIdx {
+    pub fn new(idx: u32) -> Self {
+        Self { idx }
+    }
+
+    pub fn index(self) -> u32 {
+        self.idx
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -537,7 +547,7 @@ pub enum Rvalue {
     Use(Operand),
 
     ///
-    UnionVariant(VariantIdx, Key, Operand),
+    UnionVariant(RvalueUnionVariant),
 
     /// Creates an aggregate value, like a record or tuple
     // TODO - tuples aren't implemented yet but should work the same?
@@ -594,6 +604,18 @@ impl From<Operand> for Rvalue {
     fn from(operand: Operand) -> Self {
         Self::Use(operand)
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct RvalueUnionVariant {
+    /// New-typed numeric index of the variant in the union
+    pub idx: VariantIdx,
+    /// Interned string of the variant name
+    pub key: Key,
+    /// Operand translated in this Rvalue
+    pub operand: Operand,
+    /// Interned string of the union's namespace, if it exists
+    pub namespace: Option<Key>,
 }
 
 /// Intrinsic operation that does not diverge

@@ -8,9 +8,9 @@ use itertools::Itertools;
 use la_arena::Idx;
 
 use crate::syntax::{
-    BasicBlock, BinOp, BlockTarget, BranchIntTargets, BranchTarget, Callee, Constant, FuncId,
-    Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, RvalueUnionVariant, Statement,
-    Terminator,
+    BasicBlock, BinOp, BlockTarget, BranchIntTargets, BranchTarget, Callee, Constant, FieldIdx,
+    FuncId, Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, RvalueUnionVariant,
+    Statement, Terminator,
 };
 use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
@@ -989,7 +989,7 @@ impl Builder {
         let first_segment = context.expr(first_segment);
         let segment_key = assert_matches!(first_segment, hir::Expr::PathSegment).key;
         let operand = match context.expr_type(path_expr.subject) {
-            Type::Sum(sum_type) => todo!(),
+            Type::Sum(sum_type) => todo!("TODO - determine if this is possible - may not be because you're supposed to deconstruct an instance of the sum type with 'match' because you don't know the fields without checking the discriminant first"),
             Type::UnionNamespace(union_namespace_type) => {
                 let (i, variant_constructor_ty) =
                     union_namespace_type.variant_constructors[&segment_key];
@@ -1006,7 +1006,47 @@ impl Builder {
                 }
             }
             Type::Product(product_type) => {
-                todo!()
+                let mut place = match context.expr(path_expr.subject) {
+                    Expr::VarRef(var_ref) => {
+                        // For variable references, the Place can be made directly
+                        let local_idx = self.find_symbol(var_ref.symbol, context);
+                        Place::from(local_idx)
+                    }
+                    _ => {
+                        // For other expressions, need to construct an operand to store in a temporary place
+                        let subject_op_or_place = self.construct_operand(path_expr.subject, &None, context);
+                        match subject_op_or_place {
+                            OperandOrPlace::Place(place) => place,
+                            OperandOrPlace::Operand(operand) => {
+                                let subject_ty = context.expr_type_idx(path_expr.subject);
+                                let temp_local = self.construct_local(subject_ty, None, Mutability::Not);
+                                let temp_place: Place = temp_local.into();
+                                let assign = Statement::assign(temp_place.clone(), operand);
+                                self.current_block_mut().statements.push(assign);
+                                temp_place
+                            }
+                        }
+                    }
+                };
+
+                let mut current_ty = context.expr_type(path_expr.subject);
+                for segment_idx in &path_expr.segments {
+                    let segment_expr = context.expr(*segment_idx);
+                    let field_key = assert_matches!(segment_expr, hir::Expr::PathSegment).key;
+
+                    let product_type = assert_matches!(current_ty, Type::Product);
+
+                    let (field_index, field_type_idx) = product_type.fields[&field_key];
+                    let field_type = context.type_(field_type_idx);
+
+                    let field_idx = FieldIdx::new(field_index);
+                    let projection = ProjectionElem::Field(field_idx, field_type.clone());
+                    place = place.with_projection(projection);
+
+                    current_ty = field_type;
+                }
+
+                Operand::Copy(place)
             }
             t => todo!("handle {t:?}"),
         };

@@ -357,7 +357,7 @@ impl MirWrite for ProjectionElem {
     ) -> io::Result<()> {
         match self {
             ProjectionElem::Deref => todo!(),
-            ProjectionElem::Field(field_idx, ty) => todo!(),
+            ProjectionElem::Field(field_idx, _ty) => write!(buf, ".{}", field_idx.index()),
             ProjectionElem::Index(idx) => todo!(),
             ProjectionElem::ConstantIndex {
                 offset,
