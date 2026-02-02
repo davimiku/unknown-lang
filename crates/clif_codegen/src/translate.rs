@@ -25,6 +25,7 @@ use hir::{Key, Type as HType, VariantIdx};
 use itertools::Itertools as _;
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
+use mir::ProjectionElem;
 use mir::RvalueUnionVariant;
 use mir::{
     BinOpKind, BlockTarget, BranchIntTargets, Constant, Local, Operand, Place, Rvalue, Statement,
@@ -767,7 +768,7 @@ impl FunctionTranslator<'_> {
 
                     for proj in place.projections.iter() {
                         match proj {
-                            mir::ProjectionElem::DowncastVariant(_key, _idx) => {
+                            ProjectionElem::DowncastVariant(_key, _idx) => {
                                 // Currently, all non-unit unions are represented as:
                                 // tag (i64) at offset 0 and payload at offset WORD_SIZE in a stack slot.
                                 // The local for the union should already be a CPlace::Address::Stack
@@ -800,7 +801,7 @@ impl FunctionTranslator<'_> {
                                         });
                                     }
                                     _ => {
-                                        // DowncastVariant on a non-address place is unexpected with current layouts.
+                                        // DowncastVariant is always expected to be on an Address
                                         unreachable!(
                                             "Internal Compiler Error (CLIF): DowncastVariant on non-address place: {:?}",
                                             base_place
@@ -808,7 +809,55 @@ impl FunctionTranslator<'_> {
                                     }
                                 }
                             }
-                            // Other projections (Field, Index, etc.) are not implemented yet.
+                            ProjectionElem::Field(field_idx, _field_ty) => {
+                                // Base should be a CPlace::Address, then compute the field offset from the layout
+                                // and add it to the base pointer.
+
+                                // Get the base pointer (or accumulated ptr from previous projections)
+                                let base_ptr = ptr.unwrap_or_else(|| {
+                                    let base_place = &self.places[place.local];
+                                    if let CPlace::Address { pointer, .. } = base_place {
+                                        *pointer
+                                    } else {
+                                        unreachable!(
+                                            "Internal Compiler Error (CLIF): Field projection on non-address place: {:?}",
+                                            base_place
+                                        );
+                                    }
+                                });
+
+                                // Get the record type and its layout to find the field offset
+                                let base_ty = if ptr.is_some() {
+                                    // If we have a previous projection, we need to get the type from that projection
+                                    // For now, we'll get it from the place base type
+                                    // TODO: Handle nested projections more carefully
+                                    place.type_idx_of(self.func)
+                                } else {
+                                    self.func.locals[place.local].type_idx()
+                                };
+
+                                let layout_idx = self.layout_for_type(base_ty);
+                                let layout = &self.layouts[layout_idx];
+
+                                let field_offsets =
+                                    &assert_matches!(&layout.fields, FieldsShape::Fields).offsets;
+                                let field_offset = field_offsets[field_idx.index() as usize];
+                                ptr = Some(match base_ptr {
+                                    Pointer::Stack { slot, offset } => Pointer::Stack {
+                                        slot,
+                                        offset: Offset32::new(
+                                            i32::from(offset) + field_offset.as_i32(),
+                                        ),
+                                    },
+                                    Pointer::Heap { addr, offset } => Pointer::Heap {
+                                        addr,
+                                        offset: Offset32::new(
+                                            i32::from(offset) + field_offset.as_i32(),
+                                        ),
+                                    },
+                                });
+                            }
+                            // Other projections (Index, etc.) are not implemented yet.
                             _ => {
                                 todo!(
                                     "Projection {:?} not yet implemented in translate_operand",
@@ -819,14 +868,47 @@ impl FunctionTranslator<'_> {
                     }
 
                     if let Some(ptr) = ptr {
-                        // The layout for the bound variable will be determined at assignment time.
-                        // Here we just return a reference to the payload.
-                        let layout_idx = self.layout_for_type(place.type_idx_of(self.func));
-                        return CValue::Ref {
-                            ptr,
-                            val: None,
-                            layout: layout_idx,
-                        };
+                        // Get the type of the place after projections
+                        let layout_idx = self.layout_for_type(self.place_type_idx(place));
+                        let layout = &self.layouts[layout_idx];
+
+                        // If the result is a scalar, load it from memory
+                        match &layout.backend_repr {
+                            BackendRepr::Scalar(scalar) => {
+                                let val = match (ptr, scalar) {
+                                    (Pointer::Stack { slot, offset }, Scalar::Int) => {
+                                        self.builder.ins().stack_load(I64, slot, offset)
+                                    }
+                                    (Pointer::Stack { slot, offset }, Scalar::Float) => {
+                                        self.builder.ins().stack_load(F64, slot, offset)
+                                    }
+                                    (Pointer::Stack { slot, offset }, Scalar::Pointer(_)) => {
+                                        self.builder.ins().stack_load(I64, slot, offset)
+                                    }
+                                    (Pointer::Heap { addr, offset }, Scalar::Int) => {
+                                        self.builder.ins().load(I64, MemFlags::new(), addr, offset)
+                                    }
+                                    (Pointer::Heap { addr, offset }, Scalar::Float) => {
+                                        self.builder.ins().load(F64, MemFlags::new(), addr, offset)
+                                    }
+                                    (Pointer::Heap { addr, offset }, Scalar::Pointer(_)) => {
+                                        self.builder.ins().load(I64, MemFlags::new(), addr, offset)
+                                    }
+                                };
+                                return CValue::Val {
+                                    val,
+                                    layout: layout_idx,
+                                };
+                            }
+                            // For non-scalar types, return a reference
+                            _ => {
+                                return CValue::Ref {
+                                    ptr,
+                                    val: None,
+                                    layout: layout_idx,
+                                };
+                            }
+                        }
                     }
                 }
 
@@ -1072,7 +1154,10 @@ impl FunctionTranslator<'_> {
                 layout: layout_idx,
             },
             BackendRepr::StackSlot => {
-                let offsets = &assert_matches!(&layout.fields, FieldsShape::Fields).offsets;
+                let offsets = match &layout.fields {
+                    FieldsShape::Fields(fields) => &fields.offsets,
+                    _ => panic!("Expected Fields layout for aggregate"),
+                };
 
                 let field_info = {
                     let record_type =
@@ -1198,9 +1283,52 @@ impl FunctionTranslator<'_> {
     }
 
     fn place_type_idx(&self, place: &Place) -> Idx<HType> {
-        // TODO: use projections...
-        let local = &self.func.locals[place.local];
-        local.type_idx()
+        let mut current_ty_idx = self.func.locals[place.local].type_idx();
+
+        // Apply each projection to get the final type
+        for proj in &place.projections {
+            match proj {
+                mir::ProjectionElem::Field(field_idx, _field_ty) => {
+                    // Look up the field type from the product type
+                    let current_ty = self.context.type_(current_ty_idx);
+                    let product_type = match current_ty {
+                        HType::Product(pt) => pt,
+                        _ => panic!("Field projection on non-product type"),
+                    };
+
+                    // Find the field by its index
+                    let field_entry = product_type
+                        .fields
+                        .values()
+                        .find(|(idx, _ty)| *idx == field_idx.index())
+                        .expect("Field index not found in product type");
+
+                    current_ty_idx = field_entry.1;
+                }
+                mir::ProjectionElem::DowncastVariant(_key, _idx) => {
+                    // For union variants, we need to look up the variant type
+                    // This is handled elsewhere in union translation
+                    // For now, keep the current type
+                }
+                mir::ProjectionElem::Deref => {
+                    todo!("Deref projection not yet implemented")
+                }
+                mir::ProjectionElem::Index(_) => {
+                    todo!("Index projection not yet implemented")
+                }
+                mir::ProjectionElem::ConstantIndex { .. } => {
+                    todo!("ConstantIndex projection not yet implemented")
+                }
+                mir::ProjectionElem::Subslice { .. } => {
+                    todo!("Subslice projection not yet implemented")
+                }
+                mir::ProjectionElem::OpaqueCast(_) => {
+                    todo!("OpaqueCast projection not yet implemented")
+                }
+            }
+        }
+
+        current_ty_idx
     }
 
     fn constant_type(&self, constant: &Constant) -> &HType {

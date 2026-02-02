@@ -229,7 +229,7 @@ pub(crate) struct Layout {
     /// How this layout will be translated to CLIF code
     pub backend_repr: BackendRepr,
 
-    /// Total size of this layout
+    /// Total size of this layout (bytes)
     pub size: Size,
 }
 
@@ -258,6 +258,10 @@ impl Size {
 
     pub(crate) fn num_words(&self) -> u64 {
         self.num_bytes / 8
+    }
+
+    pub(crate) fn as_i32(self) -> i32 {
+        self.bytes() as i32
     }
 }
 
