@@ -22,6 +22,7 @@ main~1.1 : (Color~1.0) -> Int = fun "main"(scrutinee~1.2 : Color~1.0) -> Int { m
 }; };"#};
 
     let expected_vars = &[
+        ("Color~1.0", "Color~1.0"),
         ("main~1.1", "(Color~1.0) -> Int"),
         ("scrutinee~1.2", "Color~1.0"),
     ];
@@ -47,6 +48,7 @@ main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { m
 }; };"#};
 
     let expected_vars = &[
+        ("Union~1.0", "Union~1.0"),
         ("main~1.1", "(Union~1.0) -> Int"),
         ("scrutinee~1.2", "Union~1.0"),
         ("a_int~1.3", "Int"),
@@ -74,6 +76,7 @@ main~1.1 : (Union~1.0) -> Int = fun "main"(scrutinee~1.2 : Union~1.0) -> Int { m
 }; };"#};
 
     let expected_vars = &[
+        ("Union~1.0", "Union~1.0"),
         ("main~1.1", "(Union~1.0) -> Int"),
         ("scrutinee~1.2", "Union~1.0"),
         ("a_int~1.3", "Int"),
@@ -101,6 +104,7 @@ main~1.1 : (Color~1.0) -> Color~1.0 = fun "main"(condition~1.2 : Color~1.0) -> C
 }; };"#};
 
     let expected_vars = &[
+        ("Color~1.0", "Color~1.0"),
         ("main~1.1", "(Color~1.0) -> Color~1.0"),
         ("condition~1.2", "Color~1.0"),
         ("otherwise~1.3", "Color~1.0"),

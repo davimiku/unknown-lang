@@ -7,7 +7,7 @@ fn define_union() {
 ";
 
     let expected_content = "Color~1.0 := red: () | green: () | blue: ()";
-    let expected_vars = &[];
+    let expected_vars = &[("Color~1.0", "Color~1.0")];
 
     check(input, expected_content, expected_vars);
 }
@@ -19,7 +19,7 @@ fn define_union_explicit_unit() {
 ";
 
     let expected_content = "Color~1.0 := red: () | green: () | blue: ()";
-    let expected_vars = &[];
+    let expected_vars = &[("Color~1.0", "Color~1.0")];
 
     check(input, expected_content, expected_vars);
 }
@@ -34,6 +34,7 @@ let main = fun (c: Color) -> { c }";
     let expected_content = r#"Color~1.0 := red: () | green: () | blue: ()
 main~1.1 : (Color~1.0) -> Color~1.0 = fun "main"(c~1.2 : Color~1.0) -> Color~1.0 { c~1.2; };"#;
     let expected_vars = &[
+        ("Color~1.0", "Color~1.0"),
         ("c~1.2", "Color~1.0"),
         ("main~1.1", "(Color~1.0) -> Color~1.0"),
     ];
@@ -54,6 +55,8 @@ let main = fun (u: OuterUnion) -> { u }
 OuterUnion~1.1 := a: () | b: Int~0.0 | c: InnerUnion~1.0
 main~1.2 : (OuterUnion~1.1) -> OuterUnion~1.1 = fun "main"(u~1.3 : OuterUnion~1.1) -> OuterUnion~1.1 { u~1.3; };"#;
     let expected_vars = &[
+        ("InnerUnion~1.0", "InnerUnion~1.0"),
+        ("OuterUnion~1.1", "OuterUnion~1.1"),
         ("main~1.2", "(OuterUnion~1.1) -> OuterUnion~1.1"),
         ("u~1.3", "OuterUnion~1.1"),
     ];
@@ -77,6 +80,7 @@ main~1.1 : (Number~1.0) -> Number~1.0 = fun "main"(n~1.2 : Number~1.0) -> Number
     .float f -> { Number~1.0.float$0 (`+`~0.3$3 (f~1.4,16.0,),); }
 }; };"#;
     let expected_vars = &[
+        ("Number~1.0", "Number~1.0"),
         ("f~1.4", "Float"),
         ("i~1.3", "Int"),
         ("main~1.1", "(Number~1.0) -> Number~1.0"),
@@ -115,6 +119,8 @@ main~1.2 : (OuterUnion~1.1) -> Int = fun \"main\"(u~1.3 : OuterUnion~1.1) -> Int
     }; }
 }; };";
     let expected_vars = &[
+        ("InnerUnion~1.0", "InnerUnion~1.0"),
+        ("OuterUnion~1.1", "OuterUnion~1.1"),
         ("a_int~1.6", "Int"),
         ("b_int~1.4", "Int"),
         ("b_int~1.7", "Int"),
