@@ -25,12 +25,37 @@ fn define_one_field_record_type() {
 }
 
 #[test]
+fn define_inner_empty_record_type() {
+    let input = "
+    type InnerEmpty = [ inner: [] ]
+";
+
+    let expected_content = "InnerEmpty~1.0 := [ inner : [  ] ]";
+    let expected_vars = &[];
+
+    check(input, expected_content, expected_vars);
+}
+
+#[test]
 fn define_two_field_record_type() {
     let input = "
     type Point = [ x: Float, y: Float ]
 ";
 
     let expected_content = "Point~1.0 := [ x : Float~0.1, y : Float~0.1 ]";
+    let expected_vars = &[];
+
+    check(input, expected_content, expected_vars);
+}
+
+#[test]
+fn defined_nested_field_record_type() {
+    let input = "
+    type Point = [ a: Int, inner: [ x: Float, y: Float ], b: Int ]
+";
+
+    let expected_content =
+        "Point~1.0 := [ a : Int~0.0, inner : [ x : Float~0.1, y : Float~0.1 ], b : Int~0.0 ]";
     let expected_vars = &[];
 
     check(input, expected_content, expected_vars);
@@ -57,10 +82,40 @@ fn inferred_one_int_field() {
 }
 
 #[test]
+fn inferred_nested_field() {
+    let input = "let nested = [ a = 123, inner = [ x = 456, y = 789 ] ]";
+
+    let expected_content = "nested~1.0 : [ a : 123, inner : [ x : 456, y : 789 ] ] = [ a = 123, inner = [ x = 456, y = 789 ] ];";
+    let expected_vars = &[("nested~1.0", "[ a : 123, inner : [ x : 456, y : 789 ] ]")];
+
+    check(input, expected_content, expected_vars);
+}
+
+#[test]
 fn access_field_of_record() {
     let input = "let main = fun (i: Int) -> {
     let record = [ int = i ]
     record.int
+    }";
+
+    let expected_content = r#"main~1.0 : (Int) -> Int = fun "main"(i~1.1 : Int) -> Int {
+    record~1.2 : [ int : Int ] = [ int = i~1.1 ];
+    record~1.2.int;
+};"#;
+    let expected_vars = &[
+        ("i~1.1", "Int"),
+        ("main~1.0", "(Int) -> Int"),
+        ("record~1.2", "[ int : Int ]"),
+    ];
+
+    check(input, expected_content, expected_vars);
+}
+
+#[test]
+fn access_nested_field_of_record() {
+    let input = "let main = fun (i: Int) -> {
+    let record = [ a = 1, inner = [ b = i, c = i ] ]
+    record.inner.b
     }";
 
     let expected_content = r#"main~1.0 : (Int) -> Int = fun "main"(i~1.1 : Int) -> Int {
