@@ -119,13 +119,13 @@ fn access_nested_field_of_record() {
     }";
 
     let expected_content = r#"main~1.0 : (Int) -> Int = fun "main"(i~1.1 : Int) -> Int {
-    record~1.2 : [ int : Int ] = [ int = i~1.1 ];
-    record~1.2.int;
+    record~1.2 : [ a : 1, inner : [ b : Int, c : Int ] ] = [ a = 1, inner = [ b = i~1.1, c = i~1.1 ] ];
+    record~1.2.inner.b;
 };"#;
     let expected_vars = &[
         ("i~1.1", "Int"),
         ("main~1.0", "(Int) -> Int"),
-        ("record~1.2", "[ int : Int ]"),
+        ("record~1.2", "[ a : 1, inner : [ b : Int, c : Int ] ]"),
     ];
 
     check(input, expected_content, expected_vars);

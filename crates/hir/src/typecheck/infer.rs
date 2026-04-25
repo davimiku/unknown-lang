@@ -90,7 +90,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
         Expr::If(if_expr) => result.chain(infer_if_expr(&if_expr, context)),
         Expr::Loop(loop_expr) => result.chain(infer_loop_expr(&loop_expr, context)),
         Expr::Path(path_expr) => result.chain(infer_path_expr(expr_idx, &path_expr, context)),
-        Expr::PathSegment(_) => {
+        Expr::PathSegment(path_segment) => {
             todo!("determine if this should never be typed-checked on its own (only within a Path)")
         }
         // TODO - this should be just a part of a Path, ex. `>Color<.green` and not type checked itself
@@ -600,15 +600,16 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
         return result;
     };
 
-    result.chain(infer_expr(member_idx, context));
-    if result.is_err() {
-        return result;
-    }
-
+    // Handle the member (right side of the dot).
+    //
+    // `Expr::PathSegment` is not a meaningful standalone expression, it's only valid as
+    // part of a `PathExpr`, so we interpret the segment structurally based on the subject type
+    // rather than recurse out to the main `infer_expr`.
     let member_expr = context.expr(member_idx).clone();
 
     match member_expr {
-        // Recursive case: subject.member is itself another PathExpr
+        // Recursive case: `a.(b.c)` — the member is another PathExpr.
+        // We infer the inner path and use its resulting type.
         Expr::Path(inner_path) => {
             result.chain(infer_path_expr(expr_idx, &inner_path, context));
         }
@@ -617,7 +618,7 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
         Expr::PathSegment(segment_expr) => {
             let subject_ty = context.type_(subject_ty_idx).clone();
             match subject_ty {
-                // `Status.success` where `Status` lowered to Expr::UnionNamespace and thus has type UnionNamespaceType
+                // `Status.success` where `Status` has type UnionNamespaceType
                 Type::UnionNamespace(union_namespace) => {
                     match union_namespace.variant_constructors.get(&segment_expr.key) {
                         Some((_, variant_constructor_ty)) => {
@@ -660,10 +661,9 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
         }
 
         // Method/field call as member: `a.b()`
-        // The member expression already carries the call typing logic; we just adopt its type.
+        // Here the member *is* a real expression, so we infer it and use the call return type.
         Expr::Call(_call_expr) => {
-            // `infer_expr(member_idx, ...)` above already set `result.ty` to the call return type
-            // so nothing further is needed here.
+            result.chain(infer_expr(member_idx, context));
         }
 
         // Other member syntaxes are not yet decided/implemented.
