@@ -51,7 +51,8 @@ pub enum Expr {
     /// Expression to represent a Path with a subject and member
     Path(PathExpr),
 
-    /// Expression to represent the field to the “right of the dot” within a PathExpr
+    /// Expression to represent a field within a PathExpr, similar to VarRef but
+    /// its resolution is to within the path rather than within its scope
     PathSegment(PathSegmentExpr),
 
     /// The value representation of a union type
@@ -609,10 +610,9 @@ pub struct PathExpr {
     /// Expression to the "left of the dot"
     pub subject: Idx<Expr>,
 
-    /// Individual segments in this path
-    /// - invariant: these are PathSegmentExpr
-    /// - invariant: length is at least 1
-    pub segments: Vec<Idx<Expr>>,
+    /// Expression to the "right of the dot"
+    /// None for plain variables or at the end of a path
+    pub member: Option<Idx<Expr>>,
 }
 
 /// Expression to represent a segment within a Path

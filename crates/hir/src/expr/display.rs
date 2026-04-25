@@ -88,12 +88,9 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
         Expr::Loop(loop_expr) => fmt_loop_expr(s, loop_expr, context, &mut indent),
         Expr::Path(path) => {
             s.push_str(&path.subject.display(context));
-            s.push('.');
-            for (i, segment) in path.segments.iter().enumerate() {
-                if i > 0 {
-                    s.push('.');
-                }
-                s.push_str(&segment.display(context));
+            if let Some(member) = path.member {
+                s.push('.');
+                s.push_str(&member.display(context));
             }
         }
         Expr::PathSegment(segment) => s.push_str(&segment.key.display(context)),

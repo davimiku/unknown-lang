@@ -985,9 +985,8 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Operand {
-        let first_segment = path_expr.segments[0];
-        let first_segment = context.expr(first_segment);
-        let segment_key = assert_matches!(first_segment, hir::Expr::PathSegment).key;
+        let subject = context.expr(path_expr.subject);
+        let segment_key = assert_matches!(subject, hir::Expr::PathSegment).key;
         let operand = match context.expr_type(path_expr.subject) {
             Type::Sum(sum_type) => todo!("TODO - determine if this is possible - may not be because you're supposed to deconstruct an instance of the sum type with 'match' because you don't know the fields without checking the discriminant first"),
             Type::UnionNamespace(union_namespace_type) => {
@@ -1029,21 +1028,62 @@ impl Builder {
                     }
                 };
 
-                let mut current_ty = context.expr_type(path_expr.subject);
-                for segment_idx in &path_expr.segments {
-                    let segment_expr = context.expr(*segment_idx);
-                    let field_key = assert_matches!(segment_expr, hir::Expr::PathSegment).key;
+                // Walk the recursive PathExpr structure, accumulating projections until the member is None.
+                //
+                // The first "segment" projection is represented by `path_expr.member` (and then further
+                // segments are nested inside `Expr::Path`).
+                let mut current_expr: &hir::PathExpr = path_expr;
+                let mut current_ty = context.expr_type(current_expr.subject);
 
-                    let product_type = assert_matches!(current_ty, Type::Product);
+                loop {
+                    let Some(member_idx) = current_expr.member else {
+                        break;
+                    };
 
-                    let (field_index, field_type_idx) = product_type.fields[&field_key];
-                    let field_type = context.type_(field_type_idx);
+                    let member_expr = context.expr(member_idx);
 
-                    let field_idx = FieldIdx::new(field_index);
-                    let projection = ProjectionElem::Field(field_idx, field_type.clone());
-                    place = place.with_projection(projection);
+                    match member_expr {
+                        hir::Expr::PathSegment(segment_expr) => {
+                            let field_key = segment_expr.key;
 
-                    current_ty = field_type;
+                            let product_type = assert_matches!(current_ty, Type::Product);
+
+                            let (field_index, field_type_idx) = product_type.fields[&field_key];
+                            let field_type = context.type_(field_type_idx);
+
+                            let field_idx = FieldIdx::new(field_index);
+                            let projection = ProjectionElem::Field(field_idx, field_type.clone());
+                            place = place.with_projection(projection);
+
+                            // current_ty = field_type;
+
+                            // No more nested path segments after a plain segment.
+                            break;
+                        }
+
+                        hir::Expr::Path(inner_path) => {
+                            // The inner path represents additional segments.
+                            // Apply its subject segment as a field projection, then continue.
+                            let inner_subject = context.expr(inner_path.subject);
+                            let field_key = assert_matches!(inner_subject, hir::Expr::PathSegment).key;
+
+                            let product_type = assert_matches!(current_ty, Type::Product);
+
+                            let (field_index, field_type_idx) = product_type.fields[&field_key];
+                            let field_type = context.type_(field_type_idx);
+
+                            let field_idx = FieldIdx::new(field_index);
+                            let projection = ProjectionElem::Field(field_idx, field_type.clone());
+                            place = place.with_projection(projection);
+
+                            current_ty = field_type;
+                            current_expr = inner_path;
+                        }
+
+                        other => unreachable!(
+                            "Internal Compiler Error (MIR): invalid member of path expression: {other:?}"
+                        ),
+                    }
                 }
 
                 Operand::Copy(place)

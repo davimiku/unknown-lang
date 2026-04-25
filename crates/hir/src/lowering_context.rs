@@ -673,157 +673,108 @@ impl Context {
     }
 
     fn lower_path(&mut self, path: ast::PathExpr) -> Expr {
-        // `a`
-        // -> subject: `a`  (Ident)
-        // -> member: None
+        self._lower_path(path, None)
+    }
 
-        // `Color.green` (VariantExpr)
-        // -> subject: `Color`  (UnionNamespace)
-        // -> member: `green`   (UnionUnitVariant)
-
-        // `Status.pending start_time`
-        // -> subject: `Status` (UnionNamespace)
-        // -> member: `pending` (UnionVariant)
-
-        // `a.b`
-        // -> subject: `a` (PathExpr/Ident)
-        // -> member: `b`  (RecordField)
-        // CST for this:
-        // PathExpr
-        //   Ident
-        //     Ident "a"
-        //   Dot "."
-        //   PathExpr
-        //     Ident
-        //       Ident "b"
-
-        // `a.b.c` (MemberExpr)
-        // -> subject: `a.b` (PathExpr)
-        // -> member: `c`    (RecordField)
-
-        // Need to recognize "Color" as a namespace / union namespace kind of thing, and
-        // recognize "green" as a UnitVariant
-
-        // or is Color more of a "synthesized record"?
-        // pseudo `let Color = ( red={...}, green={...}, blue={...} )`
-
-        // TODO - allow nested anonymous unions? paths of arbitrary depths
-        // ```
-        // type Example = a | b: Int | c: (dd: Int | ee: (ff: Int | gg: Int))
-        // let x = Example.c.ee.ff 3
-        // ```
-
-        if path.member().is_none() {
-            // early exit for single variable case
+    fn _lower_path(&mut self, path: ast::PathExpr, accumulated: Option<Idx<Expr>>) -> Expr {
+        // If this is just a plain variable reference (`a`), lower it as a name ref.
+        // We only do this when we are at the beginning of lowering (no accumulated subject).
+        if accumulated.is_none() && path.member().is_none() {
             let subject = path
                 .subject_as_ident()
-                .expect("subject of path expr to be an ident");
-
+                .expect("beginning of path expr to be an ident");
             return self.lower_name_ref(&subject.as_string());
         }
-        // debug note to remove later - this could be a Expr::UnionNamespace or Expr::PathExpr
-        let subject = self.lower_expr(path.subject());
-        let mut segments: Vec<Idx<Expr>> = vec![];
 
-        let mut path_member = path.member();
-        loop {
-            use ast::Expr as E;
-            match path_member {
-                Some(member_ast) => {
-                    let member_ast_clone = member_ast.clone();
-                    match member_ast {
-                        E::Path(inner_path) => {
-                            let ident = inner_path.subject_as_ident().expect("todo! when/how is this possible and what to recover");
-                            let key = self.interner.intern(&ident.as_string());
-                            let segment = Expr::PathSegment(PathSegmentExpr { key });
-                            let segment_expr = self.database.alloc_expr(segment, Some(member_ast_clone));
-                            segments.push(segment_expr);
+        // Determine the subject for this step:
+        // - if we already accumulated a subject (from earlier segments), use it
+        // - otherwise lower the AST subject expression and allocate it so it can be referenced
+        let subject_idx: Idx<Expr> = if let Some(subject_idx) = accumulated {
+            subject_idx
+        } else {
+            self.lower_expr(path.subject())
+        };
 
-                            // continue the loop with the next segment
-                            path_member = inner_path.member();
-                        }
-                        E::Call(call_expr) => todo!("confirm that 'foo.bar()' would be a Call here"),
-                        E::StringLiteral(string_literal) => todo!("may use this syntax to allow non-ASCII or spaces in member names"),
-                        E::IntLiteral(int_literal) => todo!("undecided on tuple member access syntax"),
-                        E::Paren(paren_expr) => todo!("undecided on dynamic member access"),
-                        E::Ident(ident) => unreachable!("Internal Compiler Error (HIR): Didn't expect an Ident directly in a member, should be a child of Path"),
-                        _ => unreachable!(
-                            "Internal Compiler Error (HIR): Invalid member of path expression: {member_ast:?}"
-                        ),
-                    }
-                }
-                None => break,
-            }
-        }
+        // If there is no member, then this node represents the end of a path.
+        // In practice this should only be reachable for single identifiers handled above,
+        // but keep it safe and return the subject expression.
+        let Some(member_ast) = path.member() else {
+            return self.expr(subject_idx).clone();
+        };
 
-        let path_expr = PathExpr { subject, segments };
-        Expr::Path(path_expr)
+        // Helper to allocate a path-segment member from an identifier.
+        let alloc_segment_member = |this: &mut Self, ident: ast::Ident| -> Idx<Expr> {
+            let key = this.interner.intern(&ident.as_string());
+            let segment = Expr::PathSegment(PathSegmentExpr { key });
+            this.alloc_expr(segment, Some(ast::Expr::Ident(ident)))
+        };
 
-        // match self.expr(subject) {
-        //     Expr::Path(path_expr) => todo!(),
-        //     Expr::UnionNamespace(union_namespace) => {
-        //         for (idx, (key, type_expr)) in union_namespace.members.iter().enumerate() {
-        //             if member_key == *key {
-        //                 match self.type_expr(*type_expr) {
-        //                     TypeExpr::Unit => {
-        //                         return Expr::UnionUnitVariant(UnionUnitVariant {
-        //                             name: *key,
-        //                             index: idx as u32,
-        //                             union_namespace: subject,
-        //                         })
-        //                     }
-
-        //                     _ => {
-        //                         return Expr::UnionVariant(UnionVariant {
-        //                             name: *key,
-        //                             index: idx as u32,
-        //                             union_namespace: subject,
-        //                         })
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     // is this possible?
-        //     Expr::UnionVariant(union_variant) => todo!(),
-        //     // is this possible?
-        //     Expr::UnionUnitVariant(union_unit_variant) => todo!(),
-        //     _ => {}
-        // }
-
-        // if subject is UnionNamespace
-        // and if member Key matches any UnionNamespace.members
-        // make a UnionUnitVariant or UnionVariant accordingly
-
-        // let green = Color.green
-        // FIXME - this just produces UnresolvedVarRef, because "green" doesn't
-        // exists as a value in the current namespace, it only exists as a value in
-        // the "Color" namespace
-        // Pass in a namespace to self.lower_expr?
-        // change some kind of state on self?
+        // Lower the immediate member of this path node to a HIR expr index.
         //
+        // For nested paths like `a.b.c`, the AST typically looks like:
+        // PathExpr { subject: a, member: PathExpr { subject: b, member: Ident(c) } }
+        // We:
+        // 1) build `a.<member>` as an Expr::Path
+        // 2) if the member is itself a PathExpr, recurse with that new path as the accumulated subject
+        match member_ast {
+            ast::Expr::Path(inner_path) => {
+                // The inner path's subject is the next segment (must be an ident).
+                let inner_subject_ident = inner_path
+                    .subject_as_ident()
+                    .expect("subject of nested path expr to be an ident");
 
-        // if subject is UnionNamespace, member should be UnionVariant/UnionUnitVariant
+                let inner_subject_member_idx = alloc_segment_member(self, inner_subject_ident);
 
-        //     match self.expr(member) {
-        //         Expr::UnresolvedVarRef { key } => panic!(
-        //             "Internal Compiler Error (HIR): Unresolved variable '{}'",
-        //             self.lookup(*key)
-        //         ),
+                // Build the next accumulated subject: `subject_idx.<inner_subject_ident>`
+                let path_expr = Expr::Path(PathExpr {
+                    subject: subject_idx,
+                    member: Some(inner_subject_member_idx),
+                });
+                let path_idx = self.alloc_expr(path_expr, Some(ast::Expr::Path(path)));
 
-        //         // Expr::
-        //         e => {
-        //             dbg!(e);
-        //             todo!("{}", e.display(self))
-        //         }
-        //     }
-        // } else {
-        //     let subject = path
-        //         .subject_as_ident()
-        //         .expect("subject of path expr to be an ident");
+                // Recurse into the rest of the path, using the newly created path as the subject.
+                //
+                // Avoid moving `inner_path` (which is still needed for source mapping) by cloning.
+                let tail_expr = self._lower_path(inner_path.clone(), Some(path_idx));
+                let tail_idx = self.alloc_expr(tail_expr, Some(ast::Expr::Path(inner_path)));
+                self.expr(tail_idx).clone()
+            }
 
-        //     self.lower_name_ref(&subject.as_string())
-        // }
+            ast::Expr::Ident(ident) => {
+                let member_idx = alloc_segment_member(self, ident);
+                Expr::Path(PathExpr {
+                    subject: subject_idx,
+                    member: Some(member_idx),
+                })
+            }
+
+            ast::Expr::Call(call_expr) => {
+                // Handle method call: `a.b()`
+                //
+                // Avoid moving `call_expr` (we still want to use it for source mapping) by cloning.
+                let call_hir = self.lower_call(call_expr.clone());
+                let call_idx = self.alloc_expr(call_hir, Some(ast::Expr::Call(call_expr)));
+
+                Expr::Path(PathExpr {
+                    subject: subject_idx,
+                    member: Some(call_idx),
+                })
+            }
+
+            ast::Expr::StringLiteral(_) => {
+                todo!("may use this syntax to allow non-ASCII or spaces in member names")
+            }
+            ast::Expr::IntLiteral(_) => {
+                todo!("undecided on tuple member access syntax")
+            }
+            ast::Expr::Paren(_) => {
+                todo!("undecided on dynamic member access")
+            }
+
+            other => unreachable!(
+                "Internal Compiler Error (HIR): Invalid member of path expression: {other:?}"
+            ),
+        }
     }
 
     fn lower_index_expr(&mut self, subject: Expr, index: Expr) -> Expr {

@@ -586,61 +586,93 @@ fn infer_string_literal(idx: Idx<Expr>, key: Key, context: &mut Context) -> Type
 }
 
 fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Context) -> TypeResult {
-    let mut subject = path_expr.subject;
     let mut result = TypeResult::new(&context.type_database);
-    for segment in &path_expr.segments {
-        result.chain(infer_expr(subject, context));
-        if result.is_err() {
-            return result;
+
+    // Infer the subject first (left side of the dot)
+    result.chain(infer_expr(path_expr.subject, context));
+    if result.is_err() {
+        return result;
+    }
+    let subject_ty_idx = result.ty;
+
+    let Some(member_idx) = path_expr.member else {
+        result.ty = subject_ty_idx;
+        return result;
+    };
+
+    result.chain(infer_expr(member_idx, context));
+    if result.is_err() {
+        return result;
+    }
+
+    let member_expr = context.expr(member_idx).clone();
+
+    match member_expr {
+        // Recursive case: subject.member is itself another PathExpr
+        Expr::Path(inner_path) => {
+            result.chain(infer_path_expr(expr_idx, &inner_path, context));
         }
-        let segment_expr = assert_matches!(context.expr(*segment), Expr::PathSegment);
-        let subject_ty_idx = result.ty;
-        let subject_ty = context.type_(subject_ty_idx);
-        match subject_ty {
-            // constructing a value from the variant of a UnionNamespace as part of a path expression,
-            // i.e. doing `let my_value = Union.variant`
-            Type::UnionNamespace(union_namespace) => {
-                let variant_constructor_ty =
-                    union_namespace.variant_constructors.get(&segment_expr.key);
-                match variant_constructor_ty {
-                    Some((_, variant_constructor_ty)) => {
-                        result.ty = *variant_constructor_ty;
-                        subject = *segment;
+
+        // Normal segment access: `a.b`
+        Expr::PathSegment(segment_expr) => {
+            let subject_ty = context.type_(subject_ty_idx).clone();
+            match subject_ty {
+                // `Status.success` where `Status` lowered to Expr::UnionNamespace and thus has type UnionNamespaceType
+                Type::UnionNamespace(union_namespace) => {
+                    match union_namespace.variant_constructors.get(&segment_expr.key) {
+                        Some((_, variant_constructor_ty)) => {
+                            result.ty = *variant_constructor_ty;
+                        }
+                        None => {
+                            let range = context.range_of_expr(expr_idx);
+                            result.push_diag(TypeDiagnostic {
+                                variant: TypeDiagnosticVariant::UnresolvedSumVariant {
+                                    variant: segment_expr.key,
+                                    ty: subject_ty_idx,
+                                },
+                                range,
+                            });
+                            result.ty = context.core_types().error;
+                        }
+                    }
+                }
+
+                // Record / tuple-like product field access: `record.field`
+                Type::Product(product_type) => match product_type.fields.get(&segment_expr.key) {
+                    Some((_, field_ty)) => {
+                        result.ty = *field_ty;
                     }
                     None => {
                         let range = context.range_of_expr(expr_idx);
-                        let mut result = TypeResult::new(&context.type_database);
                         result.push_diag(TypeDiagnostic {
-                            variant: TypeDiagnosticVariant::UnresolvedSumVariant {
-                                variant: segment_expr.key,
+                            variant: TypeDiagnosticVariant::UnresolvedProductField {
+                                field: segment_expr.key,
                                 ty: subject_ty_idx,
                             },
                             range,
                         });
+                        result.ty = context.core_types().error;
                     }
-                }
+                },
+
+                t => todo!("any other possibilities like {t:?}"),
             }
-            // future - ensure this works for tuples too which should be lowered to ProductType
-            // as well with "0", "1", "2", etc. keys
-            Type::Product(product_type) => match product_type.fields.get(&segment_expr.key) {
-                Some((_, field_ty)) => {
-                    result.ty = *field_ty;
-                    subject = *segment;
-                }
-                None => {
-                    let range = context.range_of_expr(expr_idx);
-                    let mut result = TypeResult::new(&context.type_database);
-                    result.push_diag(TypeDiagnostic {
-                        variant: TypeDiagnosticVariant::UnresolvedProductField {
-                            field: segment_expr.key,
-                            ty: subject_ty_idx,
-                        },
-                        range,
-                    });
-                }
-            },
-            t => todo!("any other possibilities like {t:?}"),
         }
+
+        // Method/field call as member: `a.b()`
+        // The member expression already carries the call typing logic; we just adopt its type.
+        Expr::Call(_call_expr) => {
+            // `infer_expr(member_idx, ...)` above already set `result.ty` to the call return type
+            // so nothing further is needed here.
+        }
+
+        // Other member syntaxes are not yet decided/implemented.
+        Expr::StringLiteral(_) => todo!("string literal member access not implemented yet"),
+        Expr::IntLiteral(_) => todo!("tuple index member access not implemented yet"),
+
+        other => unreachable!(
+            "Internal Compiler Error (HIR/typecheck): invalid member of PathExpr: {other:?}"
+        ),
     }
 
     result
