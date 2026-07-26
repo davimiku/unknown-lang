@@ -985,13 +985,17 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Operand {
-        let subject = context.expr(path_expr.subject);
-        let segment_key = assert_matches!(subject, hir::Expr::PathSegment).key;
         let operand = match context.expr_type(path_expr.subject) {
             Type::Sum(sum_type) => todo!("TODO - determine if this is possible - may not be because you're supposed to deconstruct an instance of the sum type with 'match' because you don't know the fields without checking the discriminant first"),
             Type::UnionNamespace(union_namespace_type) => {
+                let member_key = match path_expr.member.map(|member| context.expr(member)) {
+                    Some(hir::Expr::PathSegment(segment)) => segment.key,
+                    other => panic!(
+                        "Internal Compiler Error (MIR): expected union namespace path member to be a PathSegment, got {other:?}"
+                    ),
+                };
                 let (i, variant_constructor_ty) =
-                    union_namespace_type.variant_constructors[&segment_key];
+                    union_namespace_type.variant_constructors[&member_key];
                 let variant_constructor_ty = context.type_(variant_constructor_ty);
                 match variant_constructor_ty {
                     Type::Sum(_) => Operand::Constant(Constant::Int(i as i64)),
