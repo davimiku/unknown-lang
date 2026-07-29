@@ -10,11 +10,11 @@ hir = { path = "../hir" }
 mir = { path = "../mir" }
 util_macros = { path = "../util_macros" }
 
-cranelift = { version = "0.128.1" }
-cranelift-module = { version = "0.128.1" }
-cranelift-jit = { version = "0.128.1" }
-cranelift-native = { version = "0.128.1" }
-cranelift-reader = { version = "0.128.1" }
+cranelift = { version = "0.133.1" }
+cranelift-module = { version = "0.133.1" }
+cranelift-jit = { version = "0.133.1" }
+cranelift-native = { version = "0.133.1" }
+cranelift-reader = { version = "0.133.1" }
 la-arena = { version = "0.3.1" }
 itertools = { version = "0.12.1" }
 ryu = { version = "1.0" }

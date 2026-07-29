@@ -172,7 +172,7 @@ impl FunctionTranslator<'_> {
                         1,    // dest align
                         1,    // src align
                         true, // non-overlapping
-                        MemFlags::new(),
+                        MemFlagsData::new(),
                     );
                 }
             }
@@ -534,7 +534,7 @@ impl FunctionTranslator<'_> {
                         1,    // dest align
                         1,    // src align
                         true, // non-overlapping
-                        MemFlags::new(),
+                        MemFlagsData::new(),
                     );
                     self.builder.ins().return_(&[]);
                 }
@@ -612,7 +612,7 @@ impl FunctionTranslator<'_> {
                     1,    // dest align
                     1,    // src align
                     true, // non-overlapping
-                    MemFlags::new(),
+                    MemFlagsData::new(),
                 );
             }
             (
@@ -662,7 +662,7 @@ impl FunctionTranslator<'_> {
                         Pointer::Heap { addr, offset } => {
                             self.builder
                                 .ins()
-                                .load(I64, MemFlags::new(), *addr, *offset)
+                                .load(I64, MemFlagsData::new(), *addr, *offset)
                         }
                     },
                     BackendRepr::Scalar(Scalar::Float) => match ptr {
@@ -672,7 +672,7 @@ impl FunctionTranslator<'_> {
                         Pointer::Heap { addr, offset } => {
                             self.builder
                                 .ins()
-                                .load(F64, MemFlags::new(), *addr, *offset)
+                                .load(F64, MemFlagsData::new(), *addr, *offset)
                         }
                     },
                     BackendRepr::Scalar(Scalar::Pointer(_)) => match ptr {
@@ -682,7 +682,7 @@ impl FunctionTranslator<'_> {
                         Pointer::Heap { addr, offset } => {
                             self.builder
                                 .ins()
-                                .load(I64, MemFlags::new(), *addr, *offset)
+                                .load(I64, MemFlagsData::new(), *addr, *offset)
                         }
                     },
                     other => {
@@ -885,15 +885,18 @@ impl FunctionTranslator<'_> {
                                     (Pointer::Stack { slot, offset }, Scalar::Pointer(_)) => {
                                         self.builder.ins().stack_load(I64, slot, offset)
                                     }
-                                    (Pointer::Heap { addr, offset }, Scalar::Int) => {
-                                        self.builder.ins().load(I64, MemFlags::new(), addr, offset)
-                                    }
-                                    (Pointer::Heap { addr, offset }, Scalar::Float) => {
-                                        self.builder.ins().load(F64, MemFlags::new(), addr, offset)
-                                    }
-                                    (Pointer::Heap { addr, offset }, Scalar::Pointer(_)) => {
-                                        self.builder.ins().load(I64, MemFlags::new(), addr, offset)
-                                    }
+                                    (Pointer::Heap { addr, offset }, Scalar::Int) => self
+                                        .builder
+                                        .ins()
+                                        .load(I64, MemFlagsData::new(), addr, offset),
+                                    (Pointer::Heap { addr, offset }, Scalar::Float) => self
+                                        .builder
+                                        .ins()
+                                        .load(F64, MemFlagsData::new(), addr, offset),
+                                    (Pointer::Heap { addr, offset }, Scalar::Pointer(_)) => self
+                                        .builder
+                                        .ins()
+                                        .load(I64, MemFlagsData::new(), addr, offset),
                                 };
                                 return CValue::Val {
                                     val,
@@ -986,7 +989,7 @@ impl FunctionTranslator<'_> {
                 let val = self
                     .builder
                     .ins()
-                    .load(I64, MemFlags::new(), *addr, *offset);
+                    .load(I64, MemFlagsData::new(), *addr, *offset);
                 CValue::Val {
                     val,
                     layout: self.layouts.int,
@@ -1090,7 +1093,7 @@ impl FunctionTranslator<'_> {
                             1,    // dest align
                             1,    // src align
                             true, // non-overlapping
-                            MemFlags::new(),
+                            MemFlagsData::new(),
                         );
                     }
                     CValue::Ref {
@@ -1119,7 +1122,7 @@ impl FunctionTranslator<'_> {
                             1,    // dest align
                             1,    // src align
                             true, // non-overlapping
-                            MemFlags::new(),
+                            MemFlagsData::new(),
                         );
                     }
                 }
@@ -1239,7 +1242,7 @@ impl FunctionTranslator<'_> {
                                 1,    // dest align
                                 1,    // src align
                                 true, // non-overlapping
-                                MemFlags::new(),
+                                MemFlagsData::new(),
                             );
                         }
                     }
