@@ -49,6 +49,10 @@ impl CPlace {
     }
 }
 
+/// Represents data is/was transformed into a "Cranelift Value"
+///
+/// We use this while emitting CLIF instructions as a slightly higher
+/// abstraction level compared to the raw Cranelift "val"/"ref".
 #[derive(Debug, Clone)]
 pub(crate) enum CValue {
     Ref {

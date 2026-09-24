@@ -9,6 +9,7 @@ edition = "2021"
 hir = { path = "../hir" }
 mir = { path = "../mir" }
 util_macros = { path = "../util_macros" }
+runtime = { path = "../runtime" }
 
 cranelift = { version = "0.133.1" }
 cranelift-module = { version = "0.133.1" }

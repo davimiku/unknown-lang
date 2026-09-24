@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use cranelift::codegen::ir::UserStackMap;
 use cranelift::codegen::print_errors::{self, pretty_error};
 #[cfg(debug_assertions)]
 use cranelift::codegen::write_function;
@@ -7,9 +8,11 @@ use cranelift::prelude::types::*;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleResult};
+use itertools::Itertools;
 
 use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
+use crate::stackmaps::{PendingFunctionStackMap, PendingSafepoint};
 use crate::translate::FunctionTranslator;
 use crate::{builtins, CompileErrors, FunctionErrors};
 
@@ -33,6 +36,8 @@ pub struct JIT {
 
     /// Map between builtin names and their Cranelift function ID.
     pub(crate) builtins: HashMap<String, FuncId>,
+
+    pub(crate) pending_stack_maps: HashMap<FuncId, PendingFunctionStackMap>,
     // Map between MIR functions and CLIF functions
     // pub(crate) func_id_map: HashMap<mir::FuncId, FuncId>,
 }
@@ -49,18 +54,25 @@ impl Default for JIT {
             builder_ctx: FunctionBuilderContext::new(),
             data_description: DataDescription::new(),
             builtins: Default::default(),
+            pending_stack_maps: Default::default(),
         }
     }
 }
+
 impl JIT {
     // TODO: make this the Default ?
     pub(crate) fn with_builtins() -> Self {
         let mut jit = JIT::default();
 
-        let builtins = vec![
+        let ptr_ty = I64;
+        let ptr = [ptr_ty];
+        let ptr_len = [ptr_ty, I64];
+        let builtins: Vec<(&[Type], &[Type], &str)> = vec![
+            (&ptr_len, &ptr, builtins::ALLOC_STRING),
             (&[I64], &[], builtins::PRINT_INT),
             (&[F64], &[], builtins::PRINT_FLOAT),
             (&[I64], &[], builtins::PRINT_BOOL),
+            (&ptr, &[], builtins::PRINT_STRING),
         ];
 
         for (params, returns, name) in builtins {
@@ -134,25 +146,39 @@ impl JIT {
 
         self.module.define_function(func_id, &mut self.ctx)?;
 
-        // TODO: for garbage collection, need to get the stack maps something
-        // like this and store them somewhere global-ish (accessible by the runtime,
-        // could be in a lazy_static or once_cell)
-        // Questions:
-        //   1. How to get the &dyn TargetIsa to pass into compile_and_emit ?
-        //   2. How to get the ControlPlane to pass into compile_and_emit ?
+        let compiled = self.ctx.compiled_code().expect("compiled code to exist");
 
-        // // is this how to get a &dyn TargetIsa?
-        // let shared_builder = settings::builder();
-        // let shared_flags = settings::Flags::new(shared_builder);
-        // let isa_builder = isa::lookup(triple!("x86_64")).unwrap();
+        let code_size = compiled.buffer.total_size();
 
-        // is this how to get a ControlPlane?
-        // let control_plane = ControlPlane::default();
-        // let mut emit_buffer = Vec::new();
-        // let context = self.module.make_context();
-        // let res = context.compile_and_emit(isa, &mut emit_buffer, ctrl_plane);
-        // let stack_maps = res.unwrap().buffer.stack_maps();
-        // stack_maps[0].stack_map;
+        type CodeOffset = u32; // aliases to help remember what these are
+        type FrameSize = u32;
+        type StackMap = (CodeOffset, FrameSize, UserStackMap);
+        let stack_maps: &[StackMap] = compiled.buffer.user_stack_maps();
+
+        let mut safepoints = Vec::<PendingSafepoint>::new();
+        for (code_offset, frame_size, stack_map) in stack_maps {
+            let root_offsets = stack_map
+                .entries()
+                .map(|(ty, offset)| {
+                    assert_eq!(ty, I64, "ICE: GcRefs to be one word");
+                    offset
+                })
+                .collect_vec();
+
+            safepoints.push(PendingSafepoint {
+                code_offset: *code_offset,
+                frame_size: *frame_size,
+                root_offsets,
+            });
+        }
+
+        self.pending_stack_maps.insert(
+            func_id,
+            PendingFunctionStackMap {
+                code_size,
+                safepoints,
+            },
+        );
 
         #[cfg(debug_assertions)]
         {

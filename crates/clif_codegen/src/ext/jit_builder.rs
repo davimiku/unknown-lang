@@ -20,13 +20,20 @@ impl JITBuilderExt for JITBuilder {
             .unwrap_or_else(|error| panic!("ISA error: {error}"));
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
-        let builtins = [
-            (builtins::PRINT_STRING, builtins::print_string as *const u8),
+        let native_functions = [
+            (
+                builtins::PRINT_STRING,
+                runtime::ffi::print_string as *const u8,
+            ),
+            (
+                builtins::ALLOC_STRING,
+                runtime::ffi::alloc_string as *const u8,
+            ),
             (builtins::PRINT_INT, builtins::print_int as *const u8),
             (builtins::PRINT_FLOAT, builtins::print_float as *const u8),
             (builtins::PRINT_BOOL, builtins::print_bool as *const u8),
         ];
-        for (name, ptr) in builtins {
+        for (name, ptr) in native_functions {
             builder.symbol(name, ptr);
         }
 

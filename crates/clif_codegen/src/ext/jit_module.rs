@@ -1,6 +1,6 @@
 use cranelift::prelude::{AbiParam, Signature, Type};
 use cranelift_jit::JITModule;
-use cranelift_module::{DataId, FuncId, FuncOrDataId, Module};
+use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Module, ModuleError};
 
 pub(crate) trait JITModuleExt {
     fn make_sig_types(&self, params: &[Type], returns: &[Type]) -> Signature;
@@ -8,6 +8,8 @@ pub(crate) trait JITModuleExt {
     fn get_func_id(&self, name: &str) -> Option<FuncId>;
 
     fn get_data_id(&self, name: &str) -> Option<DataId>;
+
+    fn declare_string_literal_data(&mut self, bytes: &[u8]) -> Result<DataId, ModuleError>;
 }
 
 impl JITModuleExt for JITModule {
@@ -36,5 +38,16 @@ impl JITModuleExt for JITModule {
             Some(FuncOrDataId::Data(id)) => Some(id),
             _ => None,
         }
+    }
+
+    fn declare_string_literal_data(&mut self, bytes: &[u8]) -> Result<DataId, ModuleError> {
+        let data_id = self.declare_anonymous_data(false, false)?;
+
+        let mut description = DataDescription::new();
+        description.define(bytes.into());
+
+        self.define_data(data_id, &description)?;
+
+        Ok(data_id)
     }
 }

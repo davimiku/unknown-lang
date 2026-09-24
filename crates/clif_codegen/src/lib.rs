@@ -12,6 +12,7 @@ mod macros;
 mod place;
 #[cfg(test)]
 mod sandbox;
+mod stackmaps;
 #[cfg(test)]
 mod tests;
 mod translate;
@@ -45,9 +46,11 @@ pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
             } else {
                 println!("{err}");
             }
-            panic!("temporary!")
+            panic!("ICE: error while finalizing definitions");
         }
     };
+
+    jit.register_stack_maps();
 
     // map all the entry points to executable functions
     {

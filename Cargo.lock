@@ -262,6 +262,7 @@ dependencies = [
  "la-arena",
  "mir",
  "proc-macro2",
+ "runtime",
  "ryu",
  "smallvec",
  "text-size",
@@ -1085,10 +1086,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory_recycling"
-version = "0.1.0"
-
-[[package]]
 name = "miniz_oxide"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1304,6 +1301,10 @@ dependencies = [
  "rustc-hash 1.1.0",
  "text-size",
 ]
+
+[[package]]
+name = "runtime"
+version = "0.1.0"
 
 [[package]]
 name = "rustc-demangle"

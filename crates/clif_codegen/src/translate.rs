@@ -33,7 +33,9 @@ use mir::{
 };
 use util_macros::assert_matches;
 
+use crate::builtins;
 use crate::ext::function_builder::FunctionBuilderExt;
+use crate::ext::jit_module::JITModuleExt;
 use crate::layout::{BackendRepr, FieldsShape, Layouts, Scalar};
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
@@ -242,6 +244,10 @@ impl FunctionTranslator<'_> {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
                 let var = self.builder.declare_var(scalar.into());
+
+                if matches!(scalar, Scalar::GcRef) {
+                    self.builder.declare_var_needs_stack_map(var);
+                }
                 let place = CPlace::Var {
                     local,
                     variable: var,
@@ -349,6 +355,7 @@ impl FunctionTranslator<'_> {
             Scalar::Float => AbiParam::new(F64),
             Scalar::Pointer(Pointer::Heap { .. }) => AbiParam::new(I64),
             Scalar::Pointer(Pointer::Stack { .. }) => AbiParam::new(I64),
+            Scalar::GcRef => AbiParam::new(I64),
         }
     }
 
@@ -885,6 +892,13 @@ impl FunctionTranslator<'_> {
                                     (Pointer::Stack { slot, offset }, Scalar::Pointer(_)) => {
                                         self.builder.ins().stack_load(I64, slot, offset)
                                     }
+                                    (Pointer::Heap { addr, offset }, Scalar::GcRef) => self
+                                        .builder
+                                        .ins()
+                                        .load(I64, MemFlagsData::new(), addr, offset),
+                                    (Pointer::Stack { slot, offset }, Scalar::GcRef) => {
+                                        self.builder.ins().stack_load(I64, slot, offset)
+                                    }
                                     (Pointer::Heap { addr, offset }, Scalar::Int) => self
                                         .builder
                                         .ins()
@@ -950,10 +964,53 @@ impl FunctionTranslator<'_> {
                     val: self.builder.ins().f64const(*f),
                     layout: self.layout_for_type(self.context.core_types().float),
                 },
-                Constant::String(_) => todo!(),
+                Constant::String(key) => self.translate_string_constant(*key),
                 Constant::Func(..) => unreachable!("TODO"),
             },
             Operand::Move(_) => todo!(),
+        }
+    }
+
+    fn translate_string_constant(&mut self, key: Key) -> CValue {
+        let bytes = self.context.lookup(key).as_bytes().to_vec();
+        let len = bytes.len() as i64;
+        let data_id = self
+            .module
+            .declare_string_literal_data(&bytes)
+            .expect("ICE: couldn't define data for string literal");
+
+        let global_value = self.module.declare_data_in_func(data_id, self.builder.func);
+
+        // GlobalValue --> SSA value
+        let pointer_type = self.module.target_config().pointer_type();
+        let bytes_ptr = self.builder.ins().global_value(pointer_type, global_value);
+
+        let len_value = self.builder.ins().iconst(I64, len);
+
+        let alloc_string_id = self
+            .module
+            .get_func_id(builtins::ALLOC_STRING)
+            .expect("ICE: __alloc_string to be defined");
+        let alloc_string_ref = self
+            .module
+            .declare_func_in_func(alloc_string_id, self.builder.func);
+
+        let call = self
+            .builder
+            .ins()
+            .call(alloc_string_ref, &[bytes_ptr, len_value]);
+
+        let results = self.builder.inst_results(call);
+        assert_eq!(
+            results.len(),
+            1,
+            "ICE: __alloc_string to return exactly one value"
+        );
+        let gc_ref = results[0];
+
+        CValue::Val {
+            val: gc_ref,
+            layout: self.layouts.ptr,
         }
     }
 
@@ -1342,7 +1399,7 @@ impl FunctionTranslator<'_> {
         match constant {
             Constant::Int(_) => self.context.core_types().int,
             Constant::Float(_) => self.context.core_types().float,
-            Constant::String(_) => todo!(),
+            Constant::String(_) => self.context.core_types().string,
             Constant::Func(..) => unreachable!("TODO"),
         }
     }

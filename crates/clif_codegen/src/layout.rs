@@ -13,6 +13,7 @@ pub(crate) struct Layouts {
     map: ArenaMap<Idx<HType>, Idx<Layout>>,
     pub(crate) int: Idx<Layout>,
     pub(crate) float: Idx<Layout>,
+    pub(crate) ptr: Idx<Layout>,
 }
 
 impl Layouts {
@@ -48,11 +49,22 @@ impl Layouts {
         });
         map.insert(core_types.float, float_layout);
 
+        let ptr_layout = cache.alloc(Layout {
+            fields: FieldsShape::Scalar,
+            variants: VariantsShape::Single {
+                index: VariantIdx::default(),
+            },
+            backend_repr: BackendRepr::Scalar(Scalar::GcRef),
+            size: Size::ONE_WORD,
+        });
+        map.insert(core_types.string, ptr_layout);
+
         Self {
             cache,
             map,
             int: int_layout,
             float: float_layout,
+            ptr: ptr_layout,
         }
     }
 
@@ -87,13 +99,17 @@ impl FunctionTranslator<'_> {
         }
 
         let layout = match self.context.type_(ty) {
-            HType::Int | HType::IntLiteral(_) | HType::Float | HType::FloatLiteral(_) => {
+            HType::Int
+            | HType::IntLiteral(_)
+            | HType::Float
+            | HType::FloatLiteral(_)
+            | HType::String
+            | HType::StringLiteral(_) => {
                 unreachable!(
                     "Internal Compiler Error (CLIF): Layout for {} was not cached",
                     ty.display(self.context)
                 )
             }
-            HType::String | HType::StringLiteral(_) => todo!(),
             HType::Sum(sum_type) => self.compute_sum_type_layout(sum_type),
             HType::UnionNamespace(_) => todo!("something like a product type, maybe"),
             HType::Product(product_type) => self.compute_product_type_layout(product_type),
@@ -344,6 +360,7 @@ pub(crate) enum TagEncoding {
 pub(crate) enum Scalar {
     Int,
     Float,
+    GcRef,
     Pointer(Pointer),
 }
 
@@ -352,6 +369,7 @@ impl From<Scalar> for CType {
         match value {
             Scalar::Int => types::I64,
             Scalar::Float => types::F64,
+            Scalar::GcRef => types::I64,
             Scalar::Pointer(..) => types::I64,
         }
     }
