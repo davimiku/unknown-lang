@@ -872,7 +872,9 @@ impl Builder {
             Expr::IntLiteral(i) => {
                 self.construct_operand_assign(assign_to, Operand::Constant((*i).into()))
             }
-            Expr::StringLiteral(_) => todo!(),
+            Expr::StringLiteral(s) => {
+                self.construct_operand_assign(assign_to, Operand::Constant((*s).into()))
+            }
             Expr::Unary(_) => todo!(),
             Expr::Block(_) => todo!(),
             Expr::Call(call) => self.construct_call_operand(call, ty, assign_to, context),

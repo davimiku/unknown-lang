@@ -89,8 +89,7 @@ impl FunctionTranslator<'_> {
         let ty = match self.context.type_(ty) {
             HType::FloatLiteral(_) => self.context.core_types().float,
             HType::IntLiteral(_) => self.context.core_types().int,
-            // TODO - string literals might have a different layout (embedded or ptr to data section of binary)
-            // HType::StringLiteral(key) => todo!(),
+            HType::StringLiteral(_) => self.context.core_types().string,
             _ => ty,
         };
         let cached = self.layouts.get_cached_idx(ty);
