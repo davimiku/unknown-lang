@@ -150,13 +150,20 @@ impl JIT {
 
         let code_size = compiled.buffer.total_size();
 
-        type CodeOffset = u32; // aliases to help remember what these are
-        type FrameSize = u32;
-        type StackMap = (CodeOffset, FrameSize, UserStackMap);
+        type ReturnAddressOffset = u32; // aliases to help remember what these are
+        type StackSpan = u32;
+        type StackMap = (ReturnAddressOffset, StackSpan, UserStackMap);
         let stack_maps: &[StackMap] = compiled.buffer.user_stack_maps();
+        // Call-site frame offsets may not be provided by Cranelift
+        // The frame layout describes the fixed frame's bottom (SP) relative to its FP
+        let frame_to_fp_offset = compiled
+            .buffer
+            .frame_layout()
+            .expect("ICE: compiled Hopper function to have a frame layout")
+            .frame_to_fp_offset;
 
-        let mut safepoints = Vec::<PendingSafepoint>::new();
-        for (code_offset, frame_size, stack_map) in stack_maps {
+        let mut safepoints: Vec<PendingSafepoint> = vec![];
+        for (return_address_offset, stack_span, stack_map) in stack_maps {
             let root_offsets = stack_map
                 .entries()
                 .map(|(ty, offset)| {
@@ -166,8 +173,8 @@ impl JIT {
                 .collect_vec();
 
             safepoints.push(PendingSafepoint {
-                code_offset: *code_offset,
-                frame_size: *frame_size,
+                return_address_offset: *return_address_offset,
+                stack_span: *stack_span,
                 root_offsets,
             });
         }
@@ -176,6 +183,7 @@ impl JIT {
             func_id,
             PendingFunctionStackMap {
                 code_size,
+                frame_to_fp_offset,
                 safepoints,
             },
         );

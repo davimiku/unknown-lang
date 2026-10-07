@@ -554,7 +554,6 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
 
         // TODO: set result.ty to Error? or leave it as Unknown?
     } else {
-        dbg!(result.ty.display(context));
         result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
         result.ty = context.core_types().error
     }

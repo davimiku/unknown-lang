@@ -36,13 +36,17 @@ pub fn runtime() -> &'static Mutex<Runtime> {
 pub fn register_function_stack_maps(
     function_start: usize,
     function_size: u32,
+    frame_to_fp_offset: u32,
     safepoints: Vec<Safepoint>,
 ) {
     let mut runtime = runtime()
         .lock()
         .expect("runtime to not be poisoned while registering stack maps");
 
-    runtime
-        .stackmap_registry
-        .register_function(function_start, function_size, safepoints);
+    runtime.stackmap_registry.register_function(
+        function_start,
+        function_size,
+        frame_to_fp_offset,
+        safepoints,
+    );
 }
