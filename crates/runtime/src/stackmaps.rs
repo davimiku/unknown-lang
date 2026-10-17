@@ -9,7 +9,7 @@ pub struct StackMapRegistry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Safepoint {
     pub return_address: usize,
-    pub frame_size: u32,
+    pub stack_span: u32,
     pub root_offsets: Vec<u32>,
 }
 
@@ -17,6 +17,8 @@ pub struct Safepoint {
 pub struct FunctionRange {
     pub start: usize,
     pub end: usize,
+    /// Offset from the bottom (SP) of this function's frame to its FP
+    pub frame_to_fp_offset: u32,
 }
 
 impl StackMapRegistry {
@@ -24,6 +26,7 @@ impl StackMapRegistry {
         &mut self,
         function_start: usize,
         function_size: u32,
+        frame_to_fp_offset: u32,
         safepoints: impl IntoIterator<Item = Safepoint>,
     ) {
         let function_size = function_size as usize;
@@ -32,6 +35,7 @@ impl StackMapRegistry {
         let function_range = FunctionRange {
             start: function_start,
             end: function_end,
+            frame_to_fp_offset,
         };
         self.function_ranges.push(function_range);
 
@@ -85,15 +89,16 @@ mod tests {
         registry.register_function(
             0x1000,
             0x100,
+            32,
             [
                 Safepoint {
                     return_address: 0x1020,
-                    frame_size: 64,
+                    stack_span: 64,
                     root_offsets: vec![8, 24],
                 },
                 Safepoint {
                     return_address: 0x1060,
-                    frame_size: 64,
+                    stack_span: 64,
                     root_offsets: vec![16],
                 },
             ],
@@ -103,7 +108,7 @@ mod tests {
             registry.get(0x1020),
             Some(&Safepoint {
                 return_address: 0x1020,
-                frame_size: 64,
+                stack_span: 64,
                 root_offsets: vec![8, 24],
             })
         );
@@ -112,7 +117,7 @@ mod tests {
             registry.get(0x1060),
             Some(&Safepoint {
                 return_address: 0x1060,
-                frame_size: 64,
+                stack_span: 64,
                 root_offsets: vec![16],
             })
         );
@@ -124,13 +129,14 @@ mod tests {
     fn finds_function_containing_address() {
         let mut registry = StackMapRegistry::default();
 
-        registry.register_function(0x1000, 0x100, []);
+        registry.register_function(0x1000, 0x100, 32, []);
 
         assert_eq!(
             registry.function_containing(0x1080),
             Some(FunctionRange {
                 start: 0x1000,
                 end: 0x1100,
+                frame_to_fp_offset: 32,
             })
         );
 
@@ -145,9 +151,10 @@ mod tests {
         registry.register_function(
             0x1000,
             0x100,
+            32,
             [Safepoint {
                 return_address: 0x1200,
-                frame_size: 64,
+                stack_span: 64,
                 root_offsets: vec![8],
             }],
         );

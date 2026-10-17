@@ -2,6 +2,7 @@ use cranelift::prelude::{AbiParam, Signature, Type};
 use cranelift_jit::JITModule;
 use cranelift_module::{DataDescription, DataId, FuncId, FuncOrDataId, Module, ModuleError};
 
+/// Methods to add to cranelift_jit::JITModule for syntactic convenience
 pub(crate) trait JITModuleExt {
     fn make_sig_types(&self, params: &[Type], returns: &[Type]) -> Signature;
 
