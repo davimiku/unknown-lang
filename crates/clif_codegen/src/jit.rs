@@ -8,10 +8,12 @@ use cranelift::prelude::types::*;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module, ModuleResult};
+use hir::ContextDisplay;
 use itertools::Itertools;
 
 use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
+use crate::layout::unsupported_gc_aggregate;
 use crate::stackmaps::{PendingFunctionStackMap, PendingSafepoint};
 use crate::translate::FunctionTranslator;
 use crate::{builtins, CompileErrors, FunctionErrors};
@@ -64,24 +66,13 @@ impl JIT {
     pub(crate) fn with_builtins() -> Self {
         let mut jit = JIT::default();
 
-        let ptr_ty = I64;
-        let ptr = [ptr_ty];
-        let ptr_len = [ptr_ty, I64];
-        let builtins: Vec<(&[Type], &[Type], &str)> = vec![
-            (&ptr_len, &ptr, builtins::ALLOC_STRING),
-            (&[I64], &[], builtins::PRINT_INT),
-            (&[F64], &[], builtins::PRINT_FLOAT),
-            (&[I64], &[], builtins::PRINT_BOOL),
-            (&ptr, &[], builtins::PRINT_STRING),
-        ];
-
-        for (params, returns, name) in builtins {
-            let sig = jit.module.make_sig_types(params, returns);
+        for builtin in builtins::native_builtins() {
+            let sig = jit.module.make_sig_types(builtin.params, builtin.returns);
             let func_id = jit
                 .module
-                .declare_function(name, Linkage::Import, &sig)
+                .declare_function(builtin.name, Linkage::Import, &sig)
                 .unwrap();
-            jit.builtins.insert(name.to_string(), func_id);
+            jit.builtins.insert(builtin.name.to_string(), func_id);
         }
 
         jit
@@ -103,6 +94,24 @@ impl JIT {
         func_map: &mut HashMap<mir::FuncId, FuncId>,
         hir_context: &hir::Context,
     ) -> Result<(), CompileErrors> {
+        // Reject unsupported GC-bearing layouts before defining any functions.
+        // Supported records and scalar-payload unions have precise stack roots.
+        for (_, func) in module.functions.iter() {
+            for ty in func
+                .locals
+                .iter()
+                .map(|(_, local)| local.type_idx())
+                .chain(std::iter::once(func.return_ty()))
+            {
+                if unsupported_gc_aggregate(hir_context, ty) {
+                    return Err(CompileErrors::UnsupportedGcAggregate {
+                        function: func.name.clone().unwrap_or_else(|| "{anonymous}".into()),
+                        ty: format!("{}", ty.display(hir_context)),
+                    });
+                }
+            }
+        }
+
         let mut errors: FunctionErrors = Default::default();
 
         for (_, func) in module.functions.iter() {

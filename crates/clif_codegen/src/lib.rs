@@ -19,6 +19,16 @@ mod translate;
 
 type EntryPoints = HashMap<String, *const u8>;
 
+/// Compiles a module and returns untyped JIT entry addresses.
+///
+/// # Calling returned entry points
+///
+/// Calling a raw address requires matching its ABI. Since automatic GC is
+/// enabled, native callers must not retain unrooted GC results across possible
+/// collections (including GC references inside returned records or unions).
+/// For a no-argument String-returning entry, use
+/// `runtime::NativeRoot::call_no_arg_string` to register its result before
+/// another Hopper thread can collect.
 pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
     let (module, context) = mir::construct(input);
     assert_eq!(context.diagnostics, vec![]);
@@ -28,6 +38,7 @@ pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
 
     match jit.compile_module(&module, &mut func_map, &context) {
         Ok(()) => {}
+        Err(err @ CompileErrors::UnsupportedGcAggregate { .. }) => return Err(err),
         Err(err) => {
             for err in err.compilation_errors() {
                 let pretty = print_errors::pretty_error(&jit.ctx.func, err);
@@ -78,11 +89,15 @@ pub enum CompileErrors {
 
     /// Error(s) that occurred for individual functions
     Function(FunctionErrors),
+
+    /// This GC-bearing aggregate does not yet have precise roots.
+    UnsupportedGcAggregate { function: String, ty: String },
 }
 
 impl CompileErrors {
     fn compilation_errors(self) -> Vec<CodegenError> {
         match self {
+            CompileErrors::UnsupportedGcAggregate { .. } => vec![],
             CompileErrors::Module(err) => {
                 if let ModuleError::Compilation(err) = *err {
                     vec![err]

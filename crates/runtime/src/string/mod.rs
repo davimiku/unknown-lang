@@ -42,7 +42,12 @@ impl Heap {
         roots: &mut dyn RootSet,
     ) -> Result<GcRef, AllocError> {
         let len = bytes.len();
-        let boxed: Box<[u8]> = bytes.to_vec().into_boxed_slice();
+        let mut copied = Vec::new();
+        copied
+            .try_reserve_exact(len)
+            .map_err(|_| AllocError::OutOfMemory)?;
+        copied.extend_from_slice(bytes);
+        let boxed = copied.into_boxed_slice();
 
         let size = size_of::<HopperString>();
         let string_ref = self.alloc_raw(size, &HOPPER_STRING_DESCRIPTOR, roots)?;

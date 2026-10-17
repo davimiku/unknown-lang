@@ -1,6 +1,7 @@
 mod arithmetic;
 mod branches;
 mod calls;
+mod gc_safety;
 mod logical;
 mod loops;
 mod mutability;

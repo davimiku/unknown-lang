@@ -14,7 +14,7 @@ use std::ops::Deref;
 use cranelift::codegen::ir::immediates::Offset32;
 use cranelift::codegen::ir::BlockArg;
 use cranelift::codegen::ir::UserFuncName;
-use cranelift::codegen::ir::{StackSlot, StackSlotData, StackSlotKind};
+use cranelift::codegen::ir::{Inst, StackSlot, StackSlotData, StackSlotKind, UserStackMapEntry};
 use cranelift::frontend::Switch;
 use cranelift::prelude::types::{F64, I64};
 use cranelift::prelude::Block as ClifBlock;
@@ -65,6 +65,17 @@ pub(crate) struct FunctionTranslator<'a> {
 
     pub(crate) layouts: Layouts,
 
+    /// Per-local nullable root for tagged unions with a GC payload.
+    pub(crate) union_roots: ArenaMap<Idx<Local>, StackSlot>,
+
+    /// Partially constructed records remain mapped only until copied to their
+    /// destination local. Each field is initialized to null before publication.
+    active_record_roots: Vec<(StackSlot, Vec<u32>)>,
+
+    /// Scalar GC arguments produced while evaluating a call are not MIR
+    /// locals, so they need temporary slots until the call completes.
+    active_argument_roots: Vec<StackSlot>,
+
     pub(crate) statuses: TranslateStatus,
 
     pub(crate) next_var_idx: usize,
@@ -89,6 +100,9 @@ impl<'a> FunctionTranslator<'a> {
             func_map,
             places: Default::default(),
             layouts: Layouts::new(context.core_types()),
+            union_roots: Default::default(),
+            active_record_roots: Vec::new(),
+            active_argument_roots: Vec::new(),
             statuses: Default::default(),
             next_var_idx: 0,
             sret_var: None,
@@ -130,6 +144,35 @@ impl FunctionTranslator<'_> {
                 .append_block_params_for_function_params(entry_block);
             self.builder.switch_to_block(entry_block);
             self.safe_seal_block(entry_block_idx, entry_block);
+            self.call_native_builtin(builtins::ENTER_FRAME, &[]);
+            // Every mapped record field must contain either null or a valid
+            // GcRef, even before the local's first assignment.
+            let roots: Vec<_> = self
+                .places
+                .iter()
+                .filter_map(|(_, place)| match place {
+                    CPlace::Address {
+                        pointer: Pointer::Stack { slot, offset },
+                        layout,
+                    } => Some((*slot, *offset, self.layouts[*layout].gc_ref_offsets.clone())),
+                    _ => None,
+                })
+                .collect();
+            let zero = self.builder.ins().iconst(I64, 0);
+            for (slot, base, offsets) in roots {
+                for offset in offsets {
+                    self.builder.ins().stack_store(
+                        zero,
+                        slot,
+                        Offset32::new(i32::from(base) + offset as i32),
+                    );
+                }
+            }
+            for (_, shadow) in self.union_roots.iter() {
+                self.builder
+                    .ins()
+                    .stack_store(zero, *shadow, Offset32::new(0));
+            }
             entry_block
         };
 
@@ -178,6 +221,7 @@ impl FunctionTranslator<'_> {
                     );
                 }
             }
+            self.sync_union_root(local_idx);
         }
 
         // If return type is stack-allocated, capture the sret pointer in a variable
@@ -283,6 +327,14 @@ impl FunctionTranslator<'_> {
                     layout: layout_idx,
                 };
                 self.places.insert(local_idx, place);
+                if !layout.gc_variant_tags.is_empty() {
+                    let root = self.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        WORD_SIZE,
+                        3,
+                    ));
+                    self.union_roots.insert(local_idx, root);
+                }
             }
         }
     }
@@ -419,6 +471,101 @@ impl FunctionTranslator<'_> {
         self.builder.ins().jump(target, &[]);
     }
 
+    /// Add explicit stack roots to a call's precise map. Cranelift converts
+    /// (stack slot, field offset) to the final SP-relative address; we must
+    /// not guess the physical stack-slot location ourselves.
+    fn mark_explicit_roots_at_call(&mut self, call: Inst) {
+        let roots: Vec<_> = self
+            .places
+            .iter()
+            .filter_map(|(_, place)| match place {
+                CPlace::Address {
+                    pointer: Pointer::Stack { slot, offset },
+                    layout,
+                } => Some((*slot, *offset, self.layouts[*layout].gc_ref_offsets.clone())),
+                _ => None,
+            })
+            .flat_map(|(slot, base, offsets)| {
+                offsets.into_iter().map(move |offset| UserStackMapEntry {
+                    ty: I64,
+                    slot,
+                    offset: u32::try_from(i32::from(base) + offset as i32)
+                        .expect("GC field to lie inside its stack slot"),
+                })
+            })
+            .collect();
+        let union_roots = self.union_roots.iter().map(|(_, &slot)| UserStackMapEntry {
+            ty: I64,
+            slot,
+            offset: 0,
+        });
+        let temporary_roots = self.active_record_roots.iter().flat_map(|(slot, offsets)| {
+            offsets.iter().map(|&offset| UserStackMapEntry {
+                ty: I64,
+                slot: *slot,
+                offset,
+            })
+        });
+        let argument_roots = self
+            .active_argument_roots
+            .iter()
+            .map(|&slot| UserStackMapEntry {
+                ty: I64,
+                slot,
+                offset: 0,
+            });
+        self.builder.func.dfg.append_user_stack_map_entries(
+            call,
+            roots
+                .into_iter()
+                .chain(union_roots)
+                .chain(temporary_roots)
+                .chain(argument_roots),
+        );
+    }
+
+    /// Refresh a union's nullable shadow root after writing the full tagged value.
+    fn sync_union_root(&mut self, local: Idx<Local>) {
+        let Some(&shadow) = self.union_roots.get(local) else {
+            return;
+        };
+        let CPlace::Address {
+            pointer: Pointer::Stack { slot, offset },
+            layout,
+        } = &self.places[local]
+        else {
+            unreachable!("GC union local must live in a stack slot")
+        };
+        let (slot, base) = (*slot, i32::from(*offset));
+        let tags = self.layouts[*layout].gc_variant_tags.clone();
+        let tag = self
+            .builder
+            .ins()
+            .stack_load(I64, slot, Offset32::new(base));
+        // Supported variants always initialize the payload word. The select
+        // publishes null, never an integer or float payload, for other tags.
+        let payload =
+            self.builder
+                .ins()
+                .stack_load(I64, slot, Offset32::new(base + WORD_SIZE as i32));
+        let mut is_gc = self
+            .builder
+            .ins()
+            .icmp_imm(IntCC::Equal, tag, tags[0] as i64);
+        for &variant in &tags[1..] {
+            let match_tag = self
+                .builder
+                .ins()
+                .icmp_imm(IntCC::Equal, tag, variant as i64);
+            is_gc = self.builder.ins().bor(is_gc, match_tag);
+        }
+        let zero = self.builder.ins().iconst(I64, 0);
+        let root = self.builder.ins().select(is_gc, payload, zero);
+        self.builder
+            .ins()
+            .stack_store(root, shadow, Offset32::new(0));
+    }
+
     fn translate_call_terminator(
         &mut self,
         func: &Operand,
@@ -426,8 +573,64 @@ impl FunctionTranslator<'_> {
         destination: &Place,
         target: Option<(ClifBlock, &Vec<Idx<Local>>)>,
     ) {
-        let args: Vec<CValue> = args.iter().map(|arg| self.translate_operand(arg)).collect();
-        let args = to_vec_values(args);
+        let prior_argument_roots = self.active_argument_roots.len();
+        let args: Vec<CValue> = args
+            .iter()
+            .map(|arg| {
+                let value = self.translate_operand(arg);
+                if let CValue::Val { val, layout } = &value {
+                    if matches!(
+                        self.layouts[*layout].backend_repr,
+                        BackendRepr::Scalar(Scalar::GcRef)
+                    ) {
+                        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            WORD_SIZE,
+                            3,
+                        ));
+                        self.builder.ins().stack_store(*val, slot, Offset32::new(0));
+                        self.active_argument_roots.push(slot);
+                    }
+                }
+                value
+            })
+            .collect();
+        let mut args: Vec<Value> = args
+            .into_iter()
+            .flat_map(|arg| match arg {
+                CValue::Ref {
+                    ptr,
+                    val: None,
+                    layout,
+                } if matches!(self.layouts[layout].backend_repr, BackendRepr::StackSlot) => {
+                    let address = match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_addr(I64, slot, offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            let offset: i32 = offset.into();
+                            if offset == 0 {
+                                addr
+                            } else {
+                                self.builder.ins().iadd_imm(addr, offset as i64)
+                            }
+                        }
+                    };
+                    vec![address]
+                }
+                other => to_vec_values(vec![other]),
+            })
+            .collect();
+
+        if let CPlace::Address {
+            pointer: Pointer::Stack { slot, offset },
+            layout,
+        } = &self.places[destination.local]
+        {
+            if matches!(self.layouts[*layout].backend_repr, BackendRepr::StackSlot) {
+                args.push(self.builder.ins().stack_addr(I64, *slot, *offset));
+            }
+        }
 
         let returns = match func {
             Operand::Constant(constant) => match constant {
@@ -442,6 +645,10 @@ impl FunctionTranslator<'_> {
             Operand::Copy(place) => todo!("func_addr and indirect call"),
             Operand::Move(place) => todo!("closures that capture resources might become Move?"),
         };
+        self.mark_explicit_roots_at_call(returns);
+        if self.union_roots.get(destination.local).is_some() {
+            self.sync_union_root(destination.local);
+        }
         let returns = self.builder.inst_results(returns);
         match returns.len() {
             0 => {}
@@ -468,6 +675,7 @@ impl FunctionTranslator<'_> {
             .map(|value| BlockArg::Value(value))
             .collect();
         self.builder.ins().jump(target.unwrap().0, &block_call_args);
+        self.active_argument_roots.truncate(prior_argument_roots);
     }
 
     fn translate_branch_terminator(
@@ -508,16 +716,19 @@ impl FunctionTranslator<'_> {
     fn translate_return_terminator(&mut self) {
         let (return_local_idx, return_local) = self.func.return_local();
         if return_local.type_(self.context).is_unit() {
+            self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
             self.builder.ins().return_(&[]);
         } else {
             match &self.places[return_local_idx] {
                 CPlace::Var { variable, .. } => {
                     let val = self.builder.use_var(*variable);
+                    self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
                     self.builder.ins().return_(&[val]);
                 }
                 CPlace::VarPair { first, second, .. } => {
                     let first_val = self.builder.use_var(*first);
                     let second_val = self.builder.use_var(*second);
+                    self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
                     self.builder.ins().return_(&[first_val, second_val]);
                 }
                 CPlace::Address {
@@ -543,6 +754,7 @@ impl FunctionTranslator<'_> {
                         true, // non-overlapping
                         MemFlagsData::new(),
                     );
+                    self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
                     self.builder.ins().return_(&[]);
                 }
                 CPlace::Address {
@@ -564,6 +776,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
+        let temporary_root_count = self.active_record_roots.len();
         let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
@@ -707,6 +920,9 @@ impl FunctionTranslator<'_> {
                 cplace, cval
             ),
         }
+        self.sync_union_root(place.local);
+        // The constructed record has been copied into its mapped local slot.
+        self.active_record_roots.truncate(temporary_root_count);
     }
 
     fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> CValue {
@@ -971,6 +1187,43 @@ impl FunctionTranslator<'_> {
         }
     }
 
+    /// Emit an imported builtin call using the shared ABI/effect declaration.
+    /// Scalar roots are handled by Cranelift. GC-triggering builtins also need
+    /// the explicit aggregate slots in their call's user stack map.
+    fn call_native_builtin(&mut self, name: &str, args: &[Value]) -> Inst {
+        let builtin = builtins::native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == name)
+            .expect("ICE: native builtin must have an ABI and GC effect");
+        assert_eq!(
+            args.len(),
+            builtin.params.len(),
+            "ICE: builtin argument count"
+        );
+        for (&arg, &ty) in args.iter().zip(builtin.params) {
+            assert_eq!(
+                self.builder.func.dfg.value_type(arg),
+                ty,
+                "ICE: builtin argument type"
+            );
+        }
+        let id = self
+            .module
+            .get_func_id(name)
+            .expect("ICE: native builtin to be declared");
+        let func_ref = self.module.declare_func_in_func(id, self.builder.func);
+        let call = self.builder.ins().call(func_ref, args);
+        if matches!(builtin.entry, builtins::NativeEntry::MayCollect(_)) {
+            self.mark_explicit_roots_at_call(call);
+        }
+        assert_eq!(
+            self.builder.inst_results(call).len(),
+            builtin.returns.len(),
+            "ICE: builtin return count"
+        );
+        call
+    }
+
     fn translate_string_constant(&mut self, key: Key) -> CValue {
         let bytes = self.context.lookup(key).as_bytes().to_vec();
         let len = bytes.len() as i64;
@@ -987,18 +1240,7 @@ impl FunctionTranslator<'_> {
 
         let len_value = self.builder.ins().iconst(I64, len);
 
-        let alloc_string_id = self
-            .module
-            .get_func_id(builtins::ALLOC_STRING)
-            .expect("ICE: __alloc_string to be defined");
-        let alloc_string_ref = self
-            .module
-            .declare_func_in_func(alloc_string_id, self.builder.func);
-
-        let call = self
-            .builder
-            .ins()
-            .call(alloc_string_ref, &[bytes_ptr, len_value]);
+        let call = self.call_native_builtin(builtins::ALLOC_STRING, &[bytes_ptr, len_value]);
 
         let results = self.builder.inst_results(call);
         assert_eq!(
@@ -1232,7 +1474,19 @@ impl FunctionTranslator<'_> {
                 let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
                 let slot = self.builder.create_sized_stack_slot(slot_data);
 
-                // write each field to its offset in the result stack slot
+                if !layout.gc_ref_offsets.is_empty() {
+                    let zero = self.builder.ins().iconst(I64, 0);
+                    for &offset in &layout.gc_ref_offsets {
+                        self.builder
+                            .ins()
+                            .stack_store(zero, slot, Offset32::new(offset as i32));
+                    }
+                    self.active_record_roots
+                        .push((slot, layout.gc_ref_offsets.clone()));
+                }
+
+                // Store each field before evaluating the next: an allocation in
+                // the next operand must see every reference already produced.
                 for ((_field_key, field_operand), (field_index, _field_ty)) in
                     field_operands.iter().zip(field_info.iter())
                 {
