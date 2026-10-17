@@ -1,6 +1,6 @@
 /// Also known as "garbage collection" but cuter name
 /// Memory is reused/recycled, not thrown away
-use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use std::alloc::{alloc, dealloc, Layout};
 use std::cmp;
 use std::mem::{align_of, size_of};
 use std::ptr::NonNull;
@@ -16,6 +16,7 @@ pub struct Heap {
     head: Option<NonNull<GcHeader>>,
     allocated_bytes: usize,
     next_gc_threshold: usize,
+    automatic_collection_enabled: bool,
 }
 
 impl Default for Heap {
@@ -24,6 +25,7 @@ impl Default for Heap {
             head: None,
             allocated_bytes: 0,
             next_gc_threshold: INITIAL_THRESHOLD,
+            automatic_collection_enabled: true,
         }
     }
 }
@@ -34,12 +36,43 @@ impl Default for Heap {
 unsafe impl Send for Heap {}
 
 impl Heap {
-    // Right now this just allocates the GcHeader, other callers have
-    // to fill in the rest (like the bytes for a string), but this could
-    // be bad for a record with ref fields itself
-    // Possible ideas:
-    // - initializing all GC fields to a known null/empty representation before publication
-    // - making a helper allocator that constructs the full object before it can become reachable
+    pub(crate) fn disable_automatic_collection(&mut self) {
+        self.automatic_collection_enabled = false;
+    }
+
+    pub(crate) fn collection_due_for(&self, size: usize) -> bool {
+        self.allocated_bytes
+            .checked_add(size)
+            .is_none_or(|total| total > self.next_gc_threshold)
+    }
+
+    #[cfg(any(test, feature = "gc-stress"))]
+    pub(crate) fn set_collection_threshold_for_test(&mut self, threshold: usize) {
+        self.next_gc_threshold = threshold;
+    }
+
+    #[cfg(any(test, debug_assertions, feature = "gc-stress"))]
+    pub fn allocated_bytes(&self) -> usize {
+        self.allocated_bytes
+    }
+
+    #[cfg(any(test, debug_assertions, feature = "gc-stress"))]
+    pub fn contains_address(&self, address: usize) -> bool {
+        let mut current = self.head;
+        while let Some(header) = current {
+            if header.as_ptr() as usize == address {
+                return true;
+            }
+            // SAFETY: every entry in the heap's linked list points to an owned header.
+            current = unsafe { (*header.as_ptr()).next };
+        }
+        false
+    }
+
+    /// Allocates an object header and initializes every traced field to null.
+    /// Callers must initialize all other fields before the object can become
+    /// reachable or another collection can run. In particular, a zeroed root
+    /// word must not be read as a Rust `GcRef` (which is non-null).
     pub fn alloc_raw(
         &mut self,
         size: usize,
@@ -52,21 +85,34 @@ impl Heap {
         if size < size_of::<GcHeader>() {
             return Err(AllocError::InvalidSize);
         }
-        // todo - track a max_allocated_bytes and Err OOM here
-        // so people who embed this runtime can control the heap size
+        // Reject invalid trace layouts before collection or allocation.
+        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
+            for &offset in offsets {
+                let offset = offset as usize;
+                if offset < size_of::<GcHeader>()
+                    || offset % align_of::<GcRef>() != 0
+                    || offset
+                        .checked_add(size_of::<GcRef>())
+                        .is_none_or(|end| end > size)
+                {
+                    return Err(AllocError::InvalidSize);
+                }
+            }
+        }
 
-        if self.allocated_bytes + size > self.next_gc_threshold {
+        if self.automatic_collection_enabled && self.collection_due_for(size) {
             self.collect(roots);
         }
 
+        let new_total = self
+            .allocated_bytes
+            .checked_add(size)
+            .ok_or(AllocError::OutOfMemory)?;
         let layout = layout_for_size(size);
-        let ptr = unsafe { alloc(layout) }.cast::<GcHeader>();
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-
-        // safety: ptr was just checked for null
-        let ptr = unsafe { NonNull::new_unchecked(ptr) };
+        // SAFETY: layout is valid and the allocator returns either a suitably
+        // aligned allocation or null. No field is read before initialization.
+        let ptr = NonNull::new(unsafe { alloc(layout) }.cast::<GcHeader>())
+            .ok_or(AllocError::OutOfMemory)?;
         let object = GcRef(ptr);
 
         unsafe {
@@ -78,12 +124,26 @@ impl Heap {
             });
         }
 
+        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
+            for &offset in offsets {
+                // SAFETY: offsets were validated above; these words are within
+                // the owned allocation and have GC-pointer alignment.
+                unsafe {
+                    ptr.as_ptr()
+                        .cast::<u8>()
+                        .add(offset as usize)
+                        .cast::<*mut GcHeader>()
+                        .write(std::ptr::null_mut());
+                }
+            }
+        }
+
         self.head = Some(ptr);
-        self.allocated_bytes += size;
+        self.allocated_bytes = new_total;
 
         if self.allocated_bytes > self.next_gc_threshold {
             self.next_gc_threshold = cmp::max(
-                self.next_gc_threshold * GC_THRESHOLD_FACTOR,
+                self.next_gc_threshold.saturating_mul(GC_THRESHOLD_FACTOR),
                 self.allocated_bytes,
             );
         }
@@ -91,6 +151,16 @@ impl Heap {
         Ok(object)
     }
 
+    /// Collects objects not reachable from `roots`.
+    ///
+    /// The caller must provide all live GC roots and ensure that
+    /// no Hopper thread is running unsuspended.
+    /// Holding the global runtime mutex alone does not suspend JIT execution;
+    /// the execution gate does not coordinate arbitrary Rust calls to `collect`.
+    /// The global heap is private to `Runtime`: `collect_idle` coordinates
+    /// collection with the execution gate and includes registered native roots.
+    /// The global runtime's threshold policy collects through `Runtime`, not
+    /// through this standalone-heap method.
     pub fn collect(&mut self, roots: &mut dyn RootSet) {
         let mut marker = Marker;
         roots.visit_roots(&mut marker);
@@ -98,7 +168,7 @@ impl Heap {
 
         if self.allocated_bytes >= self.next_gc_threshold / GC_THRESHOLD_FACTOR {
             self.next_gc_threshold = cmp::max(
-                self.allocated_bytes * GC_THRESHOLD_FACTOR,
+                self.allocated_bytes.saturating_mul(GC_THRESHOLD_FACTOR),
                 INITIAL_THRESHOLD,
             );
         } else {
@@ -138,8 +208,13 @@ impl RootVisitor for Marker {
             return;
         }
 
-        let gc_ref = unsafe { *root };
-        mark_object(gc_ref);
+        // A stack record may not have been initialized yet. Read its root
+        // word as a raw pointer so a null (empty) slot is not interpreted as
+        // a non-null GcRef, which would be undefined behavior.
+        let address = unsafe { root.cast::<*mut GcHeader>().read() };
+        if let Some(header) = NonNull::new(address) {
+            mark_object(GcRef::new(header));
+        }
     }
 }
 
@@ -242,8 +317,12 @@ fn mark_root_slot(root: *mut GcRef) {
         return;
     }
 
-    let gc_ref = unsafe { *root };
-    mark_object(gc_ref);
+    // Traced fields are initialized to null before publication. Read the
+    // pointer representation, not a non-null GcRef, until a value is stored.
+    let address = unsafe { root.cast::<*mut GcHeader>().read() };
+    if let Some(header) = NonNull::new(address) {
+        mark_object(GcRef::new(header));
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +396,124 @@ mod tests {
 
         let too_large = heap.alloc_raw((u32::MAX as usize) + 1, &TEST_LEAF_DESCRIPTOR, &mut roots);
         assert!(matches!(too_large, Err(AllocError::InvalidSize)));
+    }
+
+    #[test]
+    fn global_runtime_heap_cannot_collect_without_combined_roots() {
+        let mut heap = crate::Runtime::default().heap;
+        heap.next_gc_threshold = 0;
+        let mut roots = EmptyRootSet;
+
+        let first = heap.alloc_string(b"first", &mut roots).unwrap();
+        heap.alloc_string(b"second", &mut roots).unwrap();
+
+        assert_eq!(
+            heap.allocated_bytes,
+            2 * size_of::<crate::string::HopperString>()
+        );
+        // Runtime, not this private Heap policy, owns global collections.
+        let first = first.as_ptr().cast::<crate::string::HopperString>();
+        unsafe {
+            assert_eq!((*first).len, 5);
+            assert_eq!(std::slice::from_raw_parts((*first).bytes, 5), b"first");
+        }
+        heap.collect(&mut roots);
+    }
+
+    #[test]
+    fn null_stack_record_field_is_not_a_gc_ref() {
+        let mut heap = Heap::default();
+        let mut no_roots = EmptyRootSet;
+        heap.alloc_string(b"unreachable", &mut no_roots).unwrap();
+
+        let mut empty_field = 0usize;
+        let slot = (&mut empty_field as *mut usize).cast::<GcRef>();
+        let mut roots = SlotRootSet::new(vec![slot]);
+        heap.collect(&mut roots);
+        assert_eq!(heap.allocated_bytes, 0);
+    }
+
+    #[test]
+    fn traced_fields_start_null_and_can_be_collected_before_initialization() {
+        let mut heap = Heap::default();
+        let parent = heap
+            .alloc_raw(
+                size_of::<TestParent>(),
+                &TEST_PARENT_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+        let child_word = unsafe {
+            std::ptr::addr_of!((*parent.as_ptr().cast::<TestParent>()).child)
+                .cast::<*mut GcHeader>()
+                .read()
+        };
+        assert!(child_word.is_null());
+
+        let mut parent_root = parent;
+        heap.collect(&mut SlotRootSet::new(vec![&mut parent_root]));
+        assert_eq!(heap.allocated_bytes, size_of::<TestParent>());
+        heap.collect(&mut EmptyRootSet);
+        assert_eq!(heap.allocated_bytes, 0);
+    }
+
+    #[test]
+    fn rejects_traced_fields_outside_aligned_object_payload() {
+        static BAD_HEADER: TypeDescriptor = TypeDescriptor {
+            name: "BadHeader",
+            kind: ObjectKind::Other,
+            trace: TraceDescriptor::Fields(&[0]),
+            destroy: destroy_test_object,
+        };
+        static BAD_ALIGNMENT: TypeDescriptor = TypeDescriptor {
+            name: "BadAlignment",
+            kind: ObjectKind::Other,
+            trace: TraceDescriptor::Fields(&[(size_of::<GcHeader>() + 1) as u32]),
+            destroy: destroy_test_object,
+        };
+        static BAD_BOUND: TypeDescriptor = TypeDescriptor {
+            name: "BadBound",
+            kind: ObjectKind::Other,
+            trace: TraceDescriptor::Fields(&[size_of::<TestParent>() as u32]),
+            destroy: destroy_test_object,
+        };
+        let mut heap = Heap::default();
+        for descriptor in [&BAD_HEADER, &BAD_ALIGNMENT, &BAD_BOUND] {
+            assert!(matches!(
+                heap.alloc_raw(size_of::<TestParent>(), descriptor, &mut EmptyRootSet),
+                Err(AllocError::InvalidSize)
+            ));
+        }
+        assert!(heap.head.is_none());
+    }
+
+    #[test]
+    fn allocation_accounting_fails_instead_of_wrapping() {
+        let mut heap = Heap::default();
+        // Synthetic counters avoid requiring impossible physical allocations.
+        heap.allocated_bytes = usize::MAX - 1;
+        heap.next_gc_threshold = usize::MAX;
+        assert!(heap.collection_due_for(size_of::<TestLeaf>()));
+        heap.disable_automatic_collection();
+        assert!(matches!(
+            heap.alloc_raw(
+                size_of::<TestLeaf>(),
+                &TEST_LEAF_DESCRIPTOR,
+                &mut EmptyRootSet
+            ),
+            Err(AllocError::OutOfMemory)
+        ));
+        assert!(heap.head.is_none());
+    }
+
+    #[test]
+    fn threshold_growth_saturates_without_wrapping() {
+        let mut heap = Heap::default();
+        // Exercise arithmetic without allocating an enormous heap.
+        heap.next_gc_threshold = usize::MAX / GC_THRESHOLD_FACTOR + 1;
+        heap.allocated_bytes = heap.next_gc_threshold;
+        heap.collect(&mut EmptyRootSet);
+        assert_eq!(heap.next_gc_threshold, usize::MAX);
     }
 
     #[test]
