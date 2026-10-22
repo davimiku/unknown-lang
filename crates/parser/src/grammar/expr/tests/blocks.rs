@@ -93,7 +93,9 @@ fn parse_block_with_type_definition() {
         Color.green
 }";
 
-    check_expr(input, expect![[r#"
+    check_expr(
+        input,
+        expect![[r#"
         BlockExpr@0..64
           LBrace@0..1 "{"
           Newline@1..2 "\n"
@@ -132,7 +134,8 @@ fn parse_block_with_type_definition() {
               Ident@57..62
                 Ident@57..62 "green"
           Newline@62..63 "\n"
-          RBrace@63..64 "}""#]]);
+          RBrace@63..64 "}""#]],
+    );
 }
 
 #[test]

@@ -203,12 +203,15 @@ fn parse_record_two_fields() {
 #[test]
 fn parse_field_from_record() {
     let input = "record.field";
-    check_expr(input, expect![[r#"
+    check_expr(
+        input,
+        expect![[r#"
         PathExpr@0..12
           Ident@0..6
             Ident@0..6 "record"
           Dot@6..7 "."
           PathExpr@7..12
             Ident@7..12
-              Ident@7..12 "field""#]])
+              Ident@7..12 "field""#]],
+    )
 }
