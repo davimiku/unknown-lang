@@ -72,11 +72,23 @@ let main = fun (choice: Choice) -> { [ choice = choice, number = 42 ] }
 }
 
 #[test]
-fn rejects_union_with_nested_record_string_payload() {
+fn accepts_union_with_nested_record_string_payload() {
+    compile_module(
+        r#"
+type Choice = (record: [ first: String, inner: [ second: String ] ] | number: Int)
+let main = fun (choice: Choice) -> { 0 }
+"#,
+    )
+    .expect("record variant references have per-variant shadow roots");
+}
+
+#[test]
+fn rejects_nested_gc_union_variant() {
     assert_rejects_gc_aggregate(
         r#"
-type Choice = (record: [ text: String ] | number: Int)
-let main = fun (choice: Choice) -> { 0 }
+type Inner = (text: String | number: Int)
+type Outer = (nested: Inner | number: Int)
+let main = fun (choice: Outer) -> { 0 }
 "#,
     );
 }

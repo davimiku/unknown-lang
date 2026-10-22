@@ -65,8 +65,8 @@ pub(crate) struct FunctionTranslator<'a> {
 
     pub(crate) layouts: Layouts,
 
-    /// Per-local nullable root for tagged unions with a GC payload.
-    pub(crate) union_roots: ArenaMap<Idx<Local>, StackSlot>,
+    /// Per-local nullable shadow words, one for each distinct GC payload offset.
+    pub(crate) union_roots: ArenaMap<Idx<Local>, (StackSlot, Vec<u32>)>,
 
     /// Partially constructed records remain mapped only until copied to their
     /// destination local. Each field is initialized to null before publication.
@@ -168,10 +168,14 @@ impl FunctionTranslator<'_> {
                     );
                 }
             }
-            for (_, shadow) in self.union_roots.iter() {
-                self.builder
-                    .ins()
-                    .stack_store(zero, *shadow, Offset32::new(0));
+            for (_, (shadow, offsets)) in self.union_roots.iter() {
+                for index in 0..offsets.len() {
+                    self.builder.ins().stack_store(
+                        zero,
+                        *shadow,
+                        Offset32::new((index as u32 * WORD_SIZE) as i32),
+                    );
+                }
             }
             entry_block
         };
@@ -327,13 +331,20 @@ impl FunctionTranslator<'_> {
                     layout: layout_idx,
                 };
                 self.places.insert(local_idx, place);
-                if !layout.gc_variant_tags.is_empty() {
+                if !layout.gc_variant_roots.is_empty() {
+                    let mut offsets: Vec<u32> = layout
+                        .gc_variant_roots
+                        .iter()
+                        .flat_map(|(_, offsets)| offsets.iter().copied())
+                        .collect();
+                    offsets.sort_unstable();
+                    offsets.dedup();
                     let root = self.builder.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
-                        WORD_SIZE,
+                        offsets.len() as u32 * WORD_SIZE,
                         3,
                     ));
-                    self.union_roots.insert(local_idx, root);
+                    self.union_roots.insert(local_idx, (root, offsets));
                 }
             }
         }
@@ -494,10 +505,12 @@ impl FunctionTranslator<'_> {
                 })
             })
             .collect();
-        let union_roots = self.union_roots.iter().map(|(_, &slot)| UserStackMapEntry {
-            ty: I64,
-            slot,
-            offset: 0,
+        let union_roots = self.union_roots.iter().flat_map(|(_, (slot, offsets))| {
+            (0..offsets.len()).map(move |index| UserStackMapEntry {
+                ty: I64,
+                slot: *slot,
+                offset: index as u32 * WORD_SIZE,
+            })
         });
         let temporary_roots = self.active_record_roots.iter().flat_map(|(slot, offsets)| {
             offsets.iter().map(|&offset| UserStackMapEntry {
@@ -524,9 +537,9 @@ impl FunctionTranslator<'_> {
         );
     }
 
-    /// Refresh a union's nullable shadow root after writing the full tagged value.
+    /// Publish only active-variant references, clearing all inactive shadow words.
     fn sync_union_root(&mut self, local: Idx<Local>) {
-        let Some(&shadow) = self.union_roots.get(local) else {
+        let Some((shadow, offsets)) = self.union_roots.get(local).cloned() else {
             return;
         };
         let CPlace::Address {
@@ -537,33 +550,53 @@ impl FunctionTranslator<'_> {
             unreachable!("GC union local must live in a stack slot")
         };
         let (slot, base) = (*slot, i32::from(*offset));
-        let tags = self.layouts[*layout].gc_variant_tags.clone();
+        let variants = self.layouts[*layout].gc_variant_roots.clone();
         let tag = self
             .builder
             .ins()
             .stack_load(I64, slot, Offset32::new(base));
-        // Supported variants always initialize the payload word. The select
-        // publishes null, never an integer or float payload, for other tags.
-        let payload =
-            self.builder
-                .ins()
-                .stack_load(I64, slot, Offset32::new(base + WORD_SIZE as i32));
-        let mut is_gc = self
-            .builder
-            .ins()
-            .icmp_imm(IntCC::Equal, tag, tags[0] as i64);
-        for &variant in &tags[1..] {
-            let match_tag = self
-                .builder
-                .ins()
-                .icmp_imm(IntCC::Equal, tag, variant as i64);
-            is_gc = self.builder.ins().bor(is_gc, match_tag);
-        }
         let zero = self.builder.ins().iconst(I64, 0);
-        let root = self.builder.ins().select(is_gc, payload, zero);
-        self.builder
-            .ins()
-            .stack_store(root, shadow, Offset32::new(0));
+        for (index, offset) in offsets.into_iter().enumerate() {
+            let tags = variants
+                .iter()
+                .filter(|(_, fields)| fields.contains(&offset))
+                .map(|(tag, _)| *tag);
+            let mut tags = tags;
+            let first = tags.next().expect("shadow word must belong to a variant");
+            let mut is_gc = self.builder.ins().icmp_imm(IntCC::Equal, tag, first as i64);
+            for variant in tags {
+                let match_tag = self
+                    .builder
+                    .ins()
+                    .icmp_imm(IntCC::Equal, tag, variant as i64);
+                is_gc = self.builder.ins().bor(is_gc, match_tag);
+            }
+            // Only the active variant's field is initialized by the ABI.
+            // Do not eagerly load an inactive, possibly uninitialized word.
+            let live = self.builder.create_block();
+            let inactive = self.builder.create_block();
+            let join = self.builder.create_block();
+            self.builder.append_block_param(join, I64);
+            self.builder.ins().brif(is_gc, live, &[], inactive, &[]);
+            self.builder.switch_to_block(live);
+            self.builder.seal_block(live);
+            let payload =
+                self.builder
+                    .ins()
+                    .stack_load(I64, slot, Offset32::new(base + offset as i32));
+            self.builder.ins().jump(join, &[BlockArg::Value(payload)]);
+            self.builder.switch_to_block(inactive);
+            self.builder.seal_block(inactive);
+            self.builder.ins().jump(join, &[BlockArg::Value(zero)]);
+            self.builder.seal_block(join);
+            self.builder.switch_to_block(join);
+            let root = self.builder.block_params(join)[0];
+            self.builder.ins().stack_store(
+                root,
+                shadow,
+                Offset32::new(index as i32 * WORD_SIZE as i32),
+            );
+        }
     }
 
     fn translate_call_terminator(
@@ -1341,7 +1374,22 @@ impl FunctionTranslator<'_> {
                 let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
                 let slot = self.builder.create_sized_stack_slot(slot_data);
 
-                // Write discriminant at offset 0
+                // Initialize all possible reference words before copying this
+                // variant: an inactive, shorter payload must never leave an
+                // uninitialized word for the shadow-root refresh to read.
+                let zero = self.builder.ins().iconst(I64, 0);
+                let mut offsets: Vec<_> = layout
+                    .gc_variant_roots
+                    .iter()
+                    .flat_map(|(_, offsets)| offsets.iter().copied())
+                    .collect();
+                offsets.sort_unstable();
+                offsets.dedup();
+                for offset in offsets {
+                    self.builder
+                        .ins()
+                        .stack_store(zero, slot, Offset32::new(offset as i32));
+                }
                 self.builder
                     .ins()
                     .stack_store(discriminant, slot, Offset32::new(0));

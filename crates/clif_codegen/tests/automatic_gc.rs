@@ -104,6 +104,51 @@ let main = fun () -> String {
     )
     .expect("reassigned union program to compile")["main"];
 
+    let record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (record: [ first: String, second: String ] | other: [ count: Int, text: String ] | number: Int)
+let make = fun () -> Choice {
+    let value = [ first = "first", second = "second" ]
+    Choice.record value
+}
+
+let consume = fun (choice: Choice) -> String {
+    let child = "child"
+    match choice {
+        .record value -> { value.second }
+        .other value -> { value.text }
+        otherwise -> { "unexpected variant" }
+    }
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    consume choice
+}
+
+"#,
+    )
+    .expect("record-payload union program to compile")["main"];
+    let other_record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (record: [ first: String, second: String ] | other: [ count: Int, text: String ] | number: Int)
+let make = fun () -> Choice {
+    let value = [ count = 42, text = "other" ]
+    Choice.other value
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    let child = "child"
+    match choice {
+        .other value -> { value.text }
+        otherwise -> { "unexpected variant" }
+    }
+}
+"#,
+    )
+    .expect("alternate record-payload union program to compile")["main"];
+
     // SAFETY: each entry is a registered, no-argument String-returning JIT
     // function. NativeRoot registers each result before releasing the gate.
     let baseline = unsafe { runtime::NativeRoot::call_no_arg_string(baseline_entry) };
@@ -161,6 +206,8 @@ let main = fun () -> String {
         active_union_entry,
         inactive_union_entry,
         reassigned_union_entry,
+        record_union_entry,
+        other_record_union_entry,
     ] {
         unsafe { runtime::configure_automatic_collection_for_test(object_size) };
         let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
