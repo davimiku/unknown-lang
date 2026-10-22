@@ -36,13 +36,22 @@ use util_macros::assert_matches;
 use crate::builtins;
 use crate::ext::function_builder::FunctionBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
-use crate::layout::{BackendRepr, FieldsShape, Layouts, Scalar};
+use crate::layout::{BackendRepr, FieldsShape, GcUnionField, Layout, Layouts, Scalar};
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
 const WORD_SIZE: u32 = 8;
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
+
+#[derive(Clone)]
+pub(crate) struct UnionShadow {
+    source_slot: StackSlot,
+    source_offset: u32,
+    slot: StackSlot,
+    offsets: Vec<u32>,
+    variants: Vec<(u32, Vec<u32>)>,
+}
 
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
@@ -65,12 +74,13 @@ pub(crate) struct FunctionTranslator<'a> {
 
     pub(crate) layouts: Layouts,
 
-    /// Per-local nullable shadow words, one for each distinct GC payload offset.
-    pub(crate) union_roots: ArenaMap<Idx<Local>, (StackSlot, Vec<u32>)>,
+    /// Per-local nullable shadows for a union or unions inside a record.
+    pub(crate) union_roots: ArenaMap<Idx<Local>, Vec<UnionShadow>>,
 
     /// Partially constructed records remain mapped only until copied to their
     /// destination local. Each field is initialized to null before publication.
     active_record_roots: Vec<(StackSlot, Vec<u32>)>,
+    active_union_roots: Vec<UnionShadow>,
 
     /// Scalar GC arguments produced while evaluating a call are not MIR
     /// locals, so they need temporary slots until the call completes.
@@ -102,6 +112,7 @@ impl<'a> FunctionTranslator<'a> {
             layouts: Layouts::new(context.core_types()),
             union_roots: Default::default(),
             active_record_roots: Vec::new(),
+            active_union_roots: Vec::new(),
             active_argument_roots: Vec::new(),
             statuses: Default::default(),
             next_var_idx: 0,
@@ -168,13 +179,15 @@ impl FunctionTranslator<'_> {
                     );
                 }
             }
-            for (_, (shadow, offsets)) in self.union_roots.iter() {
-                for index in 0..offsets.len() {
-                    self.builder.ins().stack_store(
-                        zero,
-                        *shadow,
-                        Offset32::new((index as u32 * WORD_SIZE) as i32),
-                    );
+            for (_, shadows) in self.union_roots.iter() {
+                for shadow in shadows {
+                    for index in 0..shadow.offsets.len() {
+                        self.builder.ins().stack_store(
+                            zero,
+                            shadow.slot,
+                            Offset32::new((index as u32 * WORD_SIZE) as i32),
+                        );
+                    }
                 }
             }
             entry_block
@@ -331,20 +344,10 @@ impl FunctionTranslator<'_> {
                     layout: layout_idx,
                 };
                 self.places.insert(local_idx, place);
-                if !layout.gc_variant_roots.is_empty() {
-                    let mut offsets: Vec<u32> = layout
-                        .gc_variant_roots
-                        .iter()
-                        .flat_map(|(_, offsets)| offsets.iter().copied())
-                        .collect();
-                    offsets.sort_unstable();
-                    offsets.dedup();
-                    let root = self.builder.create_sized_stack_slot(StackSlotData::new(
-                        StackSlotKind::ExplicitSlot,
-                        offsets.len() as u32 * WORD_SIZE,
-                        3,
-                    ));
-                    self.union_roots.insert(local_idx, (root, offsets));
+                let layout = layout.clone();
+                let shadows = self.create_union_shadows(slot, &layout);
+                if !shadows.is_empty() {
+                    self.union_roots.insert(local_idx, shadows);
                 }
             }
         }
@@ -505,13 +508,18 @@ impl FunctionTranslator<'_> {
                 })
             })
             .collect();
-        let union_roots = self.union_roots.iter().flat_map(|(_, (slot, offsets))| {
-            (0..offsets.len()).map(move |index| UserStackMapEntry {
-                ty: I64,
-                slot: *slot,
-                offset: index as u32 * WORD_SIZE,
-            })
-        });
+        let union_roots = self
+            .union_roots
+            .iter()
+            .flat_map(|(_, shadows)| shadows.iter())
+            .chain(self.active_union_roots.iter())
+            .flat_map(|shadow| {
+                (0..shadow.offsets.len()).map(|index| UserStackMapEntry {
+                    ty: I64,
+                    slot: shadow.slot,
+                    offset: index as u32 * WORD_SIZE,
+                })
+            });
         let temporary_roots = self.active_record_roots.iter().flat_map(|(slot, offsets)| {
             offsets.iter().map(|&offset| UserStackMapEntry {
                 ty: I64,
@@ -537,31 +545,62 @@ impl FunctionTranslator<'_> {
         );
     }
 
+    fn create_union_shadows(&mut self, slot: StackSlot, layout: &Layout) -> Vec<UnionShadow> {
+        let mut sites = layout.gc_union_fields.clone();
+        if !layout.gc_variant_roots.is_empty() {
+            sites.push(GcUnionField {
+                offset: 0,
+                variants: layout.gc_variant_roots.clone(),
+            });
+        }
+        sites
+            .into_iter()
+            .map(|site| {
+                let mut offsets: Vec<u32> = site
+                    .variants
+                    .iter()
+                    .flat_map(|(_, offsets)| offsets.iter().copied())
+                    .collect();
+                offsets.sort_unstable();
+                offsets.dedup();
+                let shadow_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    offsets.len() as u32 * WORD_SIZE,
+                    3,
+                ));
+                UnionShadow {
+                    source_slot: slot,
+                    source_offset: site.offset,
+                    slot: shadow_slot,
+                    offsets,
+                    variants: site.variants,
+                }
+            })
+            .collect()
+    }
+
     /// Publish only active-variant references, clearing all inactive shadow words.
     fn sync_union_root(&mut self, local: Idx<Local>) {
-        let Some((shadow, offsets)) = self.union_roots.get(local).cloned() else {
-            return;
-        };
-        let CPlace::Address {
-            pointer: Pointer::Stack { slot, offset },
-            layout,
-        } = &self.places[local]
-        else {
-            unreachable!("GC union local must live in a stack slot")
-        };
-        let (slot, base) = (*slot, i32::from(*offset));
-        let variants = self.layouts[*layout].gc_variant_roots.clone();
-        let tag = self
-            .builder
-            .ins()
-            .stack_load(I64, slot, Offset32::new(base));
+        if let Some(shadows) = self.union_roots.get(local).cloned() {
+            for shadow in &shadows {
+                self.sync_union_shadow(shadow);
+            }
+        }
+    }
+
+    fn sync_union_shadow(&mut self, shadow: &UnionShadow) {
+        let tag = self.builder.ins().stack_load(
+            I64,
+            shadow.source_slot,
+            Offset32::new(shadow.source_offset as i32),
+        );
         let zero = self.builder.ins().iconst(I64, 0);
-        for (index, offset) in offsets.into_iter().enumerate() {
-            let tags = variants
+        for (index, &offset) in shadow.offsets.iter().enumerate() {
+            let mut tags = shadow
+                .variants
                 .iter()
                 .filter(|(_, fields)| fields.contains(&offset))
                 .map(|(tag, _)| *tag);
-            let mut tags = tags;
             let first = tags.next().expect("shadow word must belong to a variant");
             let mut is_gc = self.builder.ins().icmp_imm(IntCC::Equal, tag, first as i64);
             for variant in tags {
@@ -572,7 +611,6 @@ impl FunctionTranslator<'_> {
                 is_gc = self.builder.ins().bor(is_gc, match_tag);
             }
             // Only the active variant's field is initialized by the ABI.
-            // Do not eagerly load an inactive, possibly uninitialized word.
             let live = self.builder.create_block();
             let inactive = self.builder.create_block();
             let join = self.builder.create_block();
@@ -580,10 +618,11 @@ impl FunctionTranslator<'_> {
             self.builder.ins().brif(is_gc, live, &[], inactive, &[]);
             self.builder.switch_to_block(live);
             self.builder.seal_block(live);
-            let payload =
-                self.builder
-                    .ins()
-                    .stack_load(I64, slot, Offset32::new(base + offset as i32));
+            let payload = self.builder.ins().stack_load(
+                I64,
+                shadow.source_slot,
+                Offset32::new((shadow.source_offset + offset) as i32),
+            );
             self.builder.ins().jump(join, &[BlockArg::Value(payload)]);
             self.builder.switch_to_block(inactive);
             self.builder.seal_block(inactive);
@@ -593,7 +632,7 @@ impl FunctionTranslator<'_> {
             let root = self.builder.block_params(join)[0];
             self.builder.ins().stack_store(
                 root,
-                shadow,
+                shadow.slot,
                 Offset32::new(index as i32 * WORD_SIZE as i32),
             );
         }
@@ -810,6 +849,7 @@ impl FunctionTranslator<'_> {
 
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
         let temporary_root_count = self.active_record_roots.len();
+        let temporary_union_count = self.active_union_roots.len();
         let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
@@ -956,6 +996,7 @@ impl FunctionTranslator<'_> {
         self.sync_union_root(place.local);
         // The constructed record has been copied into its mapped local slot.
         self.active_record_roots.truncate(temporary_root_count);
+        self.active_union_roots.truncate(temporary_union_count);
     }
 
     fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> CValue {
@@ -1522,6 +1563,21 @@ impl FunctionTranslator<'_> {
                 let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
                 let slot = self.builder.create_sized_stack_slot(slot_data);
 
+                let union_shadows = self.create_union_shadows(slot, &layout);
+                if !union_shadows.is_empty() {
+                    let zero = self.builder.ins().iconst(I64, 0);
+                    for shadow in &union_shadows {
+                        for index in 0..shadow.offsets.len() {
+                            self.builder.ins().stack_store(
+                                zero,
+                                shadow.slot,
+                                Offset32::new(index as i32 * WORD_SIZE as i32),
+                            );
+                        }
+                    }
+                    self.active_union_roots
+                        .extend(union_shadows.iter().cloned());
+                }
                 if !layout.gc_ref_offsets.is_empty() {
                     let zero = self.builder.ins().iconst(I64, 0);
                     for &offset in &layout.gc_ref_offsets {
@@ -1535,7 +1591,7 @@ impl FunctionTranslator<'_> {
 
                 // Store each field before evaluating the next: an allocation in
                 // the next operand must see every reference already produced.
-                for ((_field_key, field_operand), (field_index, _field_ty)) in
+                for ((_field_key, field_operand), (field_index, field_ty)) in
                     field_operands.iter().zip(field_info.iter())
                 {
                     let field_offset = offsets[*field_index as usize];
@@ -1603,6 +1659,16 @@ impl FunctionTranslator<'_> {
                                 true, // non-overlapping
                                 MemFlagsData::new(),
                             );
+                        }
+                    }
+                    // Publish roots for this field only after its entire value
+                    // has been stored. Other union fields are still uninitialized.
+                    let field_layout = self.layout_for_type(*field_ty);
+                    let field_end = field_offset.bytes() + self.layouts[field_layout].size.bytes();
+                    for shadow in &union_shadows {
+                        let position = shadow.source_offset as u64;
+                        if position >= field_offset.bytes() && position < field_end {
+                            self.sync_union_shadow(shadow);
                         }
                     }
                 }

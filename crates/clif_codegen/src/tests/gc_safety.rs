@@ -62,13 +62,14 @@ let main = fun () -> { Choice.text "live" }
 }
 
 #[test]
-fn rejects_record_containing_gc_union() {
-    assert_rejects_gc_aggregate(
+fn accepts_record_containing_gc_union() {
+    compile_module(
         r#"
 type Choice = (text: String | number: Int)
 let main = fun (choice: Choice) -> { [ choice = choice, number = 42 ] }
 "#,
-    );
+    )
+    .expect("union field has a separate nullable shadow root");
 }
 
 #[test]
@@ -88,6 +89,17 @@ fn rejects_nested_gc_union_variant() {
         r#"
 type Inner = (text: String | number: Int)
 type Outer = (nested: Inner | number: Int)
+let main = fun (choice: Outer) -> { 0 }
+"#,
+    );
+}
+
+#[test]
+fn rejects_gc_union_nested_in_union_record_payload() {
+    assert_rejects_gc_aggregate(
+        r#"
+type Inner = (text: String | number: Int)
+type Outer = (record: [ choice: Inner ] | number: Int)
 let main = fun (choice: Outer) -> { 0 }
 "#,
     );
