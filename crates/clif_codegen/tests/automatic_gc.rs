@@ -45,6 +45,65 @@ let main = fun () -> String {
     )
     .expect("record program to compile")["main"];
 
+    let active_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make = fun () -> Choice { Choice.text "active" }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    allocate ()
+    match choice {
+        .text value -> { value }
+        otherwise -> { "unexpected variant" }
+    }
+}
+"#,
+    )
+    .expect("active union program to compile")["main"];
+    let inactive_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make = fun () -> Choice { Choice.decimal 3.5 }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let keep = "keep"
+    let choice = make ()
+    let orphan = "orphan"
+    allocate ()
+    keep
+}
+"#,
+    )
+    .expect("inactive union program to compile")["main"];
+    let reassigned_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make_text = fun () -> Choice { Choice.text "dead" }
+let make_number = fun () -> Choice { Choice.number 42 }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let mut choice = make_text ()
+    let keep = "keep"
+    choice = make_number ()
+    let orphan = "orphan"
+    allocate ()
+    keep
+}
+"#,
+    )
+    .expect("reassigned union program to compile")["main"];
+
     // SAFETY: each entry is a registered, no-argument String-returning JIT
     // function. NativeRoot registers each result before releasing the gate.
     let baseline = unsafe { runtime::NativeRoot::call_no_arg_string(baseline_entry) };
@@ -91,6 +150,23 @@ let main = fun () -> String {
         let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
         assert_eq!(runtime::allocated_bytes_for_test(), 2 * object_size);
         assert!(runtime::heap_contains_address(result.as_raw() as usize));
+        drop(result);
+        runtime::collect_idle();
+        assert_eq!(runtime::allocated_bytes_for_test(), 0);
+    }
+
+    // A low threshold collects during union construction and in a younger
+    // Hopper frame, including when the active variant is not a GC reference.
+    for entry in [
+        active_union_entry,
+        inactive_union_entry,
+        reassigned_union_entry,
+    ] {
+        unsafe { runtime::configure_automatic_collection_for_test(object_size) };
+        let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
+        assert!(runtime::heap_contains_address(result.as_raw() as usize));
+        runtime::collect_idle();
+        assert_eq!(runtime::allocated_bytes_for_test(), object_size);
         drop(result);
         runtime::collect_idle();
         assert_eq!(runtime::allocated_bytes_for_test(), 0);

@@ -875,7 +875,7 @@ impl FunctionTranslator<'_> {
                 // Load a scalar from memory (stack or heap) into a local variable.
                 let var_layout = &self.layouts[*var_layout];
                 let loaded_val = match &var_layout.backend_repr {
-                    BackendRepr::Scalar(Scalar::Int) => match ptr {
+                    BackendRepr::Scalar(Scalar::Int | Scalar::GcRef) => match ptr {
                         Pointer::Stack { slot, offset } => {
                             self.builder.ins().stack_load(I64, *slot, *offset)
                         }
