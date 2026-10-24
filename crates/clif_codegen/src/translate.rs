@@ -1780,6 +1780,144 @@ impl FunctionTranslator<'_> {
         }
     }
 
+    fn translate_heap_record_aggregate(
+        &mut self,
+        record_ty: Idx<HType>,
+        layout_idx: Idx<Layout>,
+        layout: &Layout,
+        field_operands: &[(Key, Operand)],
+    ) -> CValue {
+        let offsets = match &layout.fields {
+            FieldsShape::Fields(fields) => &fields.offsets,
+            _ => panic!("Expected Fields layout for heap aggregate"),
+        };
+        let record_type = assert_matches!(self.context.type_(record_ty), HType::Product);
+        let descriptor = self.record_descriptor(layout);
+        let size = layout
+            .size
+            .bytes()
+            .checked_add(size_of::<runtime::GcHeader>() as u64)
+            .expect("record allocation size overflow");
+        let size_value = self.builder.ins().iconst(I64, size as i64);
+        let descriptor_value = self
+            .builder
+            .ins()
+            .iconst(I64, descriptor as *const _ as usize as i64);
+        let call = self.call_native_builtin(
+            builtins::ALLOC_OBJECT,
+            &[size_value, descriptor_value],
+        );
+        let gc_ref = self.builder.inst_results(call)[0];
+        let root_slot = self.builder.create_sized_stack_slot(
+            StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+        );
+        self.builder
+            .ins()
+            .stack_store(gc_ref, root_slot, Offset32::new(0));
+        self.active_argument_roots.push(root_slot);
+        let object_addr = self
+            .builder
+            .ins()
+            .iadd_imm(gc_ref, size_of::<runtime::GcHeader>() as i64);
+
+        let field_info: Vec<_> = field_operands
+            .iter()
+            .map(|(key, _)| record_type.fields[key])
+            .collect();
+        for ((_, field_operand), (field_index, field_ty)) in
+            field_operands.iter().zip(field_info.iter())
+        {
+            let field_offset = offsets[*field_index as usize];
+            let field_cval = self.translate_operand(field_operand);
+            let field_addr = if field_offset.bytes() == 0 {
+                object_addr
+            } else {
+                self.builder
+                    .ins()
+                    .iadd_imm(object_addr, field_offset.bytes() as i64)
+            };
+            match field_cval {
+                CValue::Val { val, .. } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), val, field_addr, Offset32::new(0));
+                }
+                CValue::ValPair { first, second, .. } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        second,
+                        field_addr,
+                        Offset32::new(WORD_SIZE as i32),
+                    );
+                }
+                CValue::ValTriple {
+                    first,
+                    second,
+                    third,
+                    ..
+                } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        second,
+                        field_addr,
+                        Offset32::new(WORD_SIZE as i32),
+                    );
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        third,
+                        field_addr,
+                        Offset32::new((WORD_SIZE * 2) as i32),
+                    );
+                }
+                CValue::Ref {
+                    ptr,
+                    layout: field_layout,
+                    ..
+                } => {
+                    let source_addr = match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_addr(I64, slot, offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            let offset: i32 = offset.into();
+                            if offset == 0 {
+                                addr
+                            } else {
+                                self.builder.ins().iadd_imm(addr, offset as i64)
+                            }
+                        }
+                    };
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        field_addr,
+                        source_addr,
+                        self.layouts[field_layout].size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+                }
+            }
+            let _ = field_ty;
+        }
+
+        CValue::Ref {
+            ptr: Pointer::Heap {
+                addr: object_addr,
+                offset: Offset32::new(0),
+            },
+            val: Some(gc_ref),
+            layout: layout_idx,
+        }
+    }
+
     fn translate_aggregate(&mut self, place: &Place, field_operands: &[(Key, Operand)]) -> CValue {
         let record_ty = place.type_idx_of(self.func);
         let layout_idx = self.layout_for_type(record_ty);
@@ -1797,6 +1935,17 @@ impl FunctionTranslator<'_> {
                 layout: layout_idx,
             },
             BackendRepr::StackSlot => {
+                if matches!(&self.places[place.local], CPlace::Heap { .. })
+                    && uses_heap_aggregate(&layout)
+                    && layout.gc_union_fields.is_empty()
+                {
+                    return self.translate_heap_record_aggregate(
+                        record_ty,
+                        layout_idx,
+                        &layout,
+                        field_operands,
+                    );
+                }
                 let offsets = match &layout.fields {
                     FieldsShape::Fields(fields) => &fields.offsets,
                     _ => panic!("Expected Fields layout for aggregate"),
