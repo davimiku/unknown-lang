@@ -2,10 +2,9 @@ use std::mem::size_of;
 use std::sync::{Mutex, OnceLock};
 
 use crate::errors::AllocError;
-use crate::memory_recycling::GcRef;
 use crate::string::HopperString;
 
-pub use crate::memory_recycling::Heap;
+pub use crate::memory_recycling::{GcRef, Heap, ObjectKind, TraceDescriptor, TypeDescriptor};
 pub use crate::native_roots::NativeRoot;
 pub use crate::stackmaps::{Safepoint, StackMapRegistry};
 use memory_recycling::{EmptyRootSet, RootSet, RootVisitor};
@@ -54,6 +53,34 @@ impl RootSet for CombinedRoots<'_> {
 }
 
 impl Runtime {
+    /// Allocate a descriptor-backed managed object through the global runtime.
+    ///
+    /// This is the common allocation path for managed objects other than the
+    /// String convenience type. The collection check happens here, rather than
+    /// in `Heap`, so collections include both the supplied Hopper roots and
+    /// registered native roots.
+    pub(crate) fn alloc_object(
+        &mut self,
+        size: usize,
+        descriptor: &'static TypeDescriptor,
+        stack_roots: &mut dyn RootSet,
+    ) -> Result<GcRef, AllocError> {
+        if self.automatic_collection_enabled && self.heap.collection_due_for(size) {
+            self.collect(stack_roots);
+        }
+
+        // The global heap's threshold is disabled: Runtime owns the policy so
+        // that every collection sees the complete combined root set.
+        self.heap.alloc_raw(
+            size,
+            descriptor,
+            &mut CombinedRoots {
+                stack: stack_roots,
+                native: &mut self.native_roots,
+            },
+        )
+    }
+
     /// Allocate a string through the global runtime's collection policy. New
     /// managed builtin allocators must also pass through a Runtime method so
     /// threshold collections see both Hopper and native roots.
@@ -62,20 +89,30 @@ impl Runtime {
         bytes: &[u8],
         stack_roots: &mut dyn RootSet,
     ) -> Result<GcRef, AllocError> {
-        if self.automatic_collection_enabled
-            && self.heap.collection_due_for(size_of::<HopperString>())
-        {
-            self.collect(stack_roots);
+        let len = bytes.len();
+        let mut copied = Vec::new();
+        copied
+            .try_reserve_exact(len)
+            .map_err(|_| AllocError::OutOfMemory)?;
+        copied.extend_from_slice(bytes);
+        let boxed = copied.into_boxed_slice();
+
+        let string_ref = self.alloc_object(
+            size_of::<HopperString>(),
+            &crate::string::HOPPER_STRING_DESCRIPTOR,
+            stack_roots,
+        )?;
+        let ptr = Box::into_raw(boxed) as *mut u8;
+
+        // No collection can occur between alloc_object and initialization, so
+        // the newly allocated object is safe to initialize before publishing it
+        // to the caller.
+        unsafe {
+            let string = string_ref.as_ptr().cast::<HopperString>();
+            (*string).bytes = ptr;
+            (*string).len = len;
         }
-        // The global heap's own threshold is disabled: only Runtime decides
-        // when to collect, with both stack and native roots available.
-        self.heap.alloc_string(
-            bytes,
-            &mut CombinedRoots {
-                stack: stack_roots,
-                native: &mut self.native_roots,
-            },
-        )
+        Ok(string_ref)
     }
 
     /// Collect using both the supplied Hopper roots and registered native roots.
@@ -170,4 +207,47 @@ pub fn register_function_stack_maps(
         frame_to_fp_offset,
         safepoints,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::size_of;
+
+    use super::*;
+    use crate::memory_recycling::GcHeader;
+
+    unsafe fn destroy_test_object(_header: *mut GcHeader) {}
+
+    static TEST_OBJECT_DESCRIPTOR: TypeDescriptor = TypeDescriptor {
+        name: "TestObject",
+        kind: ObjectKind::Other,
+        trace: TraceDescriptor::None,
+        destroy: destroy_test_object,
+    };
+
+    #[test]
+    fn generic_runtime_allocation_uses_global_collection_policy() {
+        let mut runtime = Runtime::default();
+        runtime.heap.set_collection_threshold_for_test(size_of::<GcHeader>());
+
+        let first = runtime
+            .alloc_object(
+                size_of::<GcHeader>(),
+                &TEST_OBJECT_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+        let first_address = first.as_ptr() as usize;
+
+        runtime
+            .alloc_object(
+                size_of::<GcHeader>(),
+                &TEST_OBJECT_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+
+        assert!(!runtime.heap.contains_address(first_address));
+        assert_eq!(runtime.heap.allocated_bytes(), size_of::<GcHeader>());
+    }
 }
