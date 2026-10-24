@@ -24,6 +24,9 @@ let main = fun () -> String {
 
     // SAFETY: main takes no arguments and returns one GC String word.
     let main: extern "C" fn() -> usize = unsafe { std::mem::transmute(entries["main"]) };
+    runtime::ffi::force_collection_at_next_allocation_with_live_root();
     let result = main();
+    let collection = runtime::ffi::take_forced_collection().expect("collection during object allocation");
+    assert!(collection.bytes_after <= collection.bytes_before);
     assert!(runtime::heap_contains_address(result));
 }

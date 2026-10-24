@@ -325,6 +325,45 @@ pub(super) extern "C" fn alloc_object_impl(
         &runtime.stackmap_registry,
     );
 
+    #[cfg(debug_assertions)]
+    {
+        let has_older_live_root = roots.slots().iter().any(|root| {
+            root.return_address != return_address
+                && unsafe { root.slot.cast::<usize>().read() } != 0
+        });
+        let has_current_live_root = roots.slots().iter().any(|root| {
+            root.return_address == return_address
+                && unsafe { root.slot.cast::<usize>().read() } != 0
+        });
+        if (has_older_live_root && FORCE_NEXT_COLLECTION.with(|armed| armed.replace(false)))
+            || (has_current_live_root
+                && FORCE_NEXT_COLLECTION_WITH_LIVE_ROOT.with(|armed| armed.replace(false)))
+        {
+            LAST_PROBED_ROOTS.with(|last| {
+                *last.borrow_mut() = Some(ProbedRoots {
+                    return_address,
+                    roots: roots
+                        .slots()
+                        .iter()
+                        .map(|root| ProbedRoot {
+                            return_address: root.return_address,
+                            word: unsafe { root.slot.cast::<usize>().read() },
+                        })
+                        .collect(),
+                });
+            });
+            let bytes_before = runtime.heap.allocated_bytes();
+            runtime.collect(&mut roots);
+            let bytes_after = runtime.heap.allocated_bytes();
+            LAST_FORCED_COLLECTION.with(|last| {
+                last.set(Some(ForcedCollection {
+                    bytes_before,
+                    bytes_after,
+                }))
+            });
+        }
+    }
+
     // SAFETY: the generated caller supplies a valid descriptor pointer whose
     // allocation metadata outlives the generated code using it.
     let descriptor = unsafe { &*descriptor };
