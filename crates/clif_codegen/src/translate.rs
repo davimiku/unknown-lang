@@ -992,6 +992,10 @@ impl FunctionTranslator<'_> {
                     operand,
                     place.type_idx_of(self.func),
                     matches!(&self.places[place.local], CPlace::Heap { .. }),
+                    match &self.places[place.local] {
+                        CPlace::Heap { variable, .. } => Some(*variable),
+                        _ => None,
+                    },
                 )
             }
         };
@@ -1572,6 +1576,7 @@ impl FunctionTranslator<'_> {
         operand: &Operand,
         ty: Idx<HType>,
         direct_heap: bool,
+        destination_variable: Option<Variable>,
     ) -> CValue {
         // operand is the "arg", like the 16 in `Number.int 16` or the `f` in `Number.float f`
         // variant_idx is the numeric index
@@ -1618,13 +1623,10 @@ impl FunctionTranslator<'_> {
                         &[size_value, descriptor_value],
                     );
                     let gc_ref = self.builder.inst_results(call)[0];
-                    let root_slot = self.builder.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    self.builder.def_var(
+                        destination_variable.expect("heap union destination variable"),
+                        gc_ref,
                     );
-                    self.builder
-                        .ins()
-                        .stack_store(gc_ref, root_slot, Offset32::new(0));
-                    self.active_argument_roots.push(root_slot);
                     let object_addr = self.builder.ins().iadd_imm(
                         gc_ref,
                         size_of::<runtime::GcHeader>() as i64,
@@ -1912,6 +1914,7 @@ impl FunctionTranslator<'_> {
         record_ty: Idx<HType>,
         layout_idx: Idx<Layout>,
         layout: &Layout,
+        destination_variable: Variable,
         field_operands: &[(Key, Operand)],
     ) -> CValue {
         let offsets = match &layout.fields {
@@ -1935,13 +1938,7 @@ impl FunctionTranslator<'_> {
             &[size_value, descriptor_value],
         );
         let gc_ref = self.builder.inst_results(call)[0];
-        let root_slot = self.builder.create_sized_stack_slot(
-            StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
-        );
-        self.builder
-            .ins()
-            .stack_store(gc_ref, root_slot, Offset32::new(0));
-        self.active_argument_roots.push(root_slot);
+        self.builder.def_var(destination_variable, gc_ref);
         let object_addr = self
             .builder
             .ins()
@@ -2070,6 +2067,10 @@ impl FunctionTranslator<'_> {
                         record_ty,
                         layout_idx,
                         &layout,
+                        match &self.places[place.local] {
+                            CPlace::Heap { variable, .. } => *variable,
+                            _ => unreachable!(),
+                        },
                         field_operands,
                     );
                 }
