@@ -987,7 +987,12 @@ impl FunctionTranslator<'_> {
             Rvalue::Aggregate(aggregate) => self.translate_aggregate(place, aggregate),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
             Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => {
-                self.translate_union_variant(*idx, operand, place.type_idx_of(self.func))
+                self.translate_union_variant(
+                    *idx,
+                    operand,
+                    place.type_idx_of(self.func),
+                    matches!(&self.places[place.local], CPlace::Heap { .. }),
+                )
             }
         };
         let cplace = self.places[place.local].clone();
@@ -1566,6 +1571,7 @@ impl FunctionTranslator<'_> {
         variant_idx: VariantIdx,
         operand: &Operand,
         ty: Idx<HType>,
+        direct_heap: bool,
     ) -> CValue {
         // operand is the "arg", like the 16 in `Number.int 16` or the `f` in `Number.float f`
         // variant_idx is the numeric index
@@ -1595,6 +1601,127 @@ impl FunctionTranslator<'_> {
             }
 
             BackendRepr::StackSlot => {
+                if direct_heap && uses_heap_aggregate(&layout) {
+                    let descriptor = self.union_descriptor(&layout);
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("union allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    let root_slot = self.builder.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    );
+                    self.builder
+                        .ins()
+                        .stack_store(gc_ref, root_slot, Offset32::new(0));
+                    self.active_argument_roots.push(root_slot);
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        discriminant,
+                        object_addr,
+                        Offset32::new(0),
+                    );
+
+                    let payload_cval = self.translate_operand(operand);
+                    let payload_addr = self.builder.ins().iadd_imm(
+                        object_addr,
+                        WORD_SIZE as i64,
+                    );
+                    match payload_cval {
+                        CValue::Val { val, .. } => {
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                val,
+                                payload_addr,
+                                Offset32::new(0),
+                            );
+                        }
+                        CValue::ValPair { first, second, .. } => {
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                first,
+                                payload_addr,
+                                Offset32::new(0),
+                            );
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                second,
+                                payload_addr,
+                                Offset32::new(WORD_SIZE as i32),
+                            );
+                        }
+                        CValue::ValTriple {
+                            first,
+                            second,
+                            third,
+                            ..
+                        } => {
+                            for (value, offset) in [
+                                (first, 0),
+                                (second, WORD_SIZE as i32),
+                                (third, (WORD_SIZE * 2) as i32),
+                            ] {
+                                self.builder.ins().store(
+                                    MemFlagsData::new(),
+                                    value,
+                                    payload_addr,
+                                    Offset32::new(offset),
+                                );
+                            }
+                        }
+                        CValue::Ref {
+                            ptr,
+                            layout: payload_layout,
+                            ..
+                        } => {
+                            let source_addr = match ptr {
+                                Pointer::Stack { slot, offset } => {
+                                    self.builder.ins().stack_addr(I64, slot, offset)
+                                }
+                                Pointer::Heap { addr, offset } => {
+                                    let offset: i32 = offset.into();
+                                    if offset == 0 {
+                                        addr
+                                    } else {
+                                        self.builder.ins().iadd_imm(addr, offset as i64)
+                                    }
+                                }
+                            };
+                            self.builder.emit_small_memory_copy(
+                                self.module.target_config(),
+                                payload_addr,
+                                source_addr,
+                                self.layouts[payload_layout].size.bytes(),
+                                1,
+                                1,
+                                true,
+                                MemFlagsData::new(),
+                            );
+                        }
+                    }
+                    return CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: Some(gc_ref),
+                        layout: layout_idx,
+                    };
+                }
                 // For stack-allocated unions, we need to:
                 // 1. Create a temporary stack slot to hold the result
                 // 2. Write the discriminant at offset 0
