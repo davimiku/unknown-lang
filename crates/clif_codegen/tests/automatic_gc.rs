@@ -255,7 +255,10 @@ let main = fun () -> String {
     for entry in [call_arguments_entry, record_entry] {
         unsafe { runtime::configure_automatic_collection_for_test(2 * object_size) };
         let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
-        assert_eq!(runtime::allocated_bytes_for_test(), 2 * object_size);
+        // Record construction now also creates a managed record object. The
+        // exact total therefore depends on the record layout, but both String
+        // objects must still be present before the idle collection.
+        assert!(runtime::allocated_bytes_for_test() >= 2 * object_size);
         assert!(runtime::heap_contains_address(result.as_raw() as usize));
         drop(result);
         runtime::collect_idle();

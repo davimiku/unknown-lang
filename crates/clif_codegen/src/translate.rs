@@ -9,6 +9,7 @@
 mod arithmetic;
 
 use std::collections::HashMap;
+use std::mem::size_of;
 use std::ops::Deref;
 
 use cranelift::codegen::ir::immediates::Offset32;
@@ -41,6 +42,8 @@ use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
 const WORD_SIZE: u32 = 8;
+
+unsafe fn destroy_heap_record(_header: *mut runtime::GcHeader) {}
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
@@ -850,6 +853,7 @@ impl FunctionTranslator<'_> {
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
         let temporary_root_count = self.active_record_roots.len();
         let temporary_union_count = self.active_union_roots.len();
+        let temporary_argument_root_count = self.active_argument_roots.len();
         let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
@@ -997,6 +1001,8 @@ impl FunctionTranslator<'_> {
         // The constructed record has been copied into its mapped local slot.
         self.active_record_roots.truncate(temporary_root_count);
         self.active_union_roots.truncate(temporary_union_count);
+        self.active_argument_roots
+            .truncate(temporary_argument_root_count);
     }
 
     fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> CValue {
@@ -1673,13 +1679,83 @@ impl FunctionTranslator<'_> {
                     }
                 }
 
-                CValue::Ref {
-                    ptr: Pointer::Stack {
+                if !layout.gc_ref_offsets.is_empty() && layout.gc_union_fields.is_empty() {
+                    let trace_offsets: &'static [u32] = Box::leak(
+                        layout
+                            .gc_ref_offsets
+                            .iter()
+                            .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice(),
+                    );
+                    let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+                        runtime::TypeDescriptor {
+                            name: "Record",
+                            kind: runtime::ObjectKind::Record,
+                            trace: runtime::TraceDescriptor::Fields(trace_offsets),
+                            destroy: destroy_heap_record,
+                        },
+                    ));
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("record allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    let root_slot = self.builder.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    );
+                    self.builder
+                        .ins()
+                        .stack_store(gc_ref, root_slot, Offset32::new(0));
+                    self.active_argument_roots.push(root_slot);
+
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    let source_addr = self.builder.ins().stack_addr(
+                        I64,
                         slot,
-                        offset: Offset32::new(0),
-                    },
-                    val: None,
-                    layout: layout_idx,
+                        Offset32::new(0),
+                    );
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        object_addr,
+                        source_addr,
+                        layout.size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+
+                    CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
+                } else {
+                    CValue::Ref {
+                        ptr: Pointer::Stack {
+                            slot,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
                 }
             }
             _ => unreachable!(

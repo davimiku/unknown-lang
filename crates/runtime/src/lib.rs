@@ -4,7 +4,9 @@ use std::sync::{Mutex, OnceLock};
 use crate::errors::AllocError;
 use crate::string::HopperString;
 
-pub use crate::memory_recycling::{GcRef, Heap, ObjectKind, TraceDescriptor, TypeDescriptor};
+pub use crate::memory_recycling::{
+    GcHeader, GcRef, Heap, ObjectKind, TraceDescriptor, TypeDescriptor,
+};
 pub use crate::native_roots::NativeRoot;
 pub use crate::stackmaps::{Safepoint, StackMapRegistry};
 use memory_recycling::{EmptyRootSet, RootSet, RootVisitor};
