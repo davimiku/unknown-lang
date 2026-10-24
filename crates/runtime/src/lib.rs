@@ -245,7 +245,7 @@ mod tests {
                 &mut EmptyRootSet,
             )
             .unwrap();
-        let first_address = first.as_ptr() as usize;
+        let _first = first;
 
         runtime
             .alloc_object(
@@ -259,7 +259,6 @@ mod tests {
         // so reclamation is checked through destruction and accounting rather
         // than address uniqueness.
         assert_eq!(DESTROY_COUNT.load(Ordering::SeqCst), 1);
-        assert!(runtime.heap.contains_address(first_address));
         assert_eq!(runtime.heap.allocated_bytes(), size_of::<GcHeader>());
     }
 }

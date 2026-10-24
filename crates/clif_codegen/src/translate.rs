@@ -42,6 +42,7 @@ use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
 const WORD_SIZE: u32 = 8;
+const HEAP_RECORD_THRESHOLD_BYTES: u64 = 64;
 
 unsafe fn destroy_heap_record(_header: *mut runtime::GcHeader) {}
 
@@ -1679,7 +1680,10 @@ impl FunctionTranslator<'_> {
                     }
                 }
 
-                if !layout.gc_ref_offsets.is_empty() && layout.gc_union_fields.is_empty() {
+                if layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+                    && !layout.gc_ref_offsets.is_empty()
+                    && layout.gc_union_fields.is_empty()
+                {
                     let trace_offsets: &'static [u32] = Box::leak(
                         layout
                             .gc_ref_offsets
