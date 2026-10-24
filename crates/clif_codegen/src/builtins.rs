@@ -69,6 +69,7 @@ pub(crate) const PRINT_FLOAT: &str = "__print_float";
 pub(crate) const PRINT_BOOL: &str = "__print_bool";
 
 pub(crate) const ALLOC_STRING: &str = "__alloc_string";
+pub(crate) const ALLOC_OBJECT: &str = "__alloc_object";
 pub(crate) const PRINT_STRING: &str = "__print_string";
 pub(crate) const ENTER_FRAME: &str = "__hopper_enter_frame";
 pub(crate) const LEAVE_FRAME: &str = "__hopper_leave_frame";
@@ -102,7 +103,7 @@ pub(crate) struct NativeBuiltin {
 ///
 /// This may change in the future, we don't yet have a way for users to
 /// register custom native entry points and it's not prioritized at the moment
-pub(crate) fn native_builtins() -> [NativeBuiltin; 7] {
+pub(crate) fn native_builtins() -> [NativeBuiltin; 8] {
     [
         NativeBuiltin {
             name: ENTER_FRAME,
@@ -121,6 +122,12 @@ pub(crate) fn native_builtins() -> [NativeBuiltin; 7] {
             params: &[I64, I64],
             returns: &[I64],
             entry: NativeEntry::MayCollect(runtime::ffi::alloc_string_entry()),
+        },
+        NativeBuiltin {
+            name: ALLOC_OBJECT,
+            params: &[I64, I64],
+            returns: &[I64],
+            entry: NativeEntry::MayCollect(runtime::ffi::alloc_object_entry()),
         },
         NativeBuiltin {
             name: PRINT_STRING,
@@ -198,7 +205,7 @@ mod tests {
                 collecting.push(builtin.name);
             }
         }
-        assert_eq!(collecting, [ALLOC_STRING]);
+        assert_eq!(collecting, [ALLOC_STRING, ALLOC_OBJECT]);
 
         let string_allocator = native_builtins()
             .into_iter()
@@ -209,6 +216,17 @@ mod tests {
         assert_eq!(
             string_allocator.entry.address(),
             runtime::ffi::alloc_string_entry().as_ptr()
+        );
+
+        let object_allocator = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == ALLOC_OBJECT)
+            .unwrap();
+        assert_eq!(object_allocator.params, &[I64, I64]);
+        assert_eq!(object_allocator.returns, &[I64]);
+        assert_eq!(
+            object_allocator.entry.address(),
+            runtime::ffi::alloc_object_entry().as_ptr()
         );
     }
 }
