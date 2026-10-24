@@ -45,6 +45,172 @@ let main = fun () -> String {
     )
     .expect("record program to compile")["main"];
 
+    let active_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make = fun () -> Choice { Choice.text "active" }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    allocate ()
+    match choice {
+        .text value -> { value }
+        otherwise -> { "unexpected variant" }
+    }
+}
+"#,
+    )
+    .expect("active union program to compile")["main"];
+    let inactive_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make = fun () -> Choice { Choice.decimal 3.5 }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let keep = "keep"
+    let choice = make ()
+    let orphan = "orphan"
+    allocate ()
+    keep
+}
+"#,
+    )
+    .expect("inactive union program to compile")["main"];
+    let reassigned_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int | decimal: Float)
+let make_text = fun () -> Choice { Choice.text "dead" }
+let make_number = fun () -> Choice { Choice.number 42 }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let mut choice = make_text ()
+    let keep = "keep"
+    choice = make_number ()
+    let orphan = "orphan"
+    allocate ()
+    keep
+}
+"#,
+    )
+    .expect("reassigned union program to compile")["main"];
+
+    let record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (record: [ first: String, second: String ] | other: [ count: Int, text: String ] | number: Int)
+let make = fun () -> Choice {
+    let value = [ first = "first", second = "second" ]
+    Choice.record value
+}
+
+let consume = fun (choice: Choice) -> String {
+    let child = "child"
+    match choice {
+        .record value -> { value.second }
+        .other value -> { value.text }
+        otherwise -> { "unexpected variant" }
+    }
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    consume choice
+}
+
+"#,
+    )
+    .expect("record-payload union program to compile")["main"];
+    let other_record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (record: [ first: String, second: String ] | other: [ count: Int, text: String ] | number: Int)
+let make = fun () -> Choice {
+    let value = [ count = 42, text = "other" ]
+    Choice.other value
+}
+let main = fun () -> String {
+    let choice = make ()
+    let orphan = "orphan"
+    let child = "child"
+    match choice {
+        .other value -> { value.text }
+        otherwise -> { "unexpected variant" }
+    }
+}
+"#,
+    )
+    .expect("alternate record-payload union program to compile")["main"];
+
+    let record_with_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int)
+type Wrapped = [ choice: Choice, later: String ]
+let make = fun () -> Choice { Choice.text "first" }
+let use_wrapped = fun (value: Wrapped) -> String {
+    let child = "child"
+    let choice = value.choice
+    match choice {
+        .text text -> { text }
+        otherwise -> { value.later }
+    }
+}
+let main = fun () -> String {
+    let choice = make ()
+    let wrapped = [ choice = choice, later = "later" ]
+    let copy = wrapped
+    use_wrapped copy
+}
+"#,
+    )
+    .expect("record containing active union to compile")["main"];
+    let inactive_record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int)
+type Wrapped = [ choice: Choice, later: String ]
+let make = fun () -> Choice { Choice.number 42 }
+let use_wrapped = fun (value: Wrapped) -> String {
+    let child = "child"
+    value.later
+}
+let main = fun () -> String {
+    let choice = make ()
+    let wrapped = [ choice = choice, later = "later" ]
+    use_wrapped wrapped
+}
+"#,
+    )
+    .expect("record containing inactive union to compile")["main"];
+
+    let reassigned_record_union_entry = clif_codegen::compile_module(
+        r#"
+type Choice = (text: String | number: Int)
+type Wrapped = [ choice: Choice, later: String ]
+let make_text = fun () -> Choice { Choice.text "old" }
+let make_number = fun () -> Choice { Choice.number 42 }
+let allocate = fun () -> Int {
+    let child = "child"
+    0
+}
+let main = fun () -> String {
+    let initial = make_text ()
+    let mut wrapped: Wrapped = [ choice = initial, later = "previous" ]
+    let replacement = make_number ()
+    wrapped = [ choice = replacement, later = "current" ]
+    allocate ()
+    wrapped.later
+}
+"#,
+    )
+    .expect("reassigned record union to compile")["main"];
+
     // SAFETY: each entry is a registered, no-argument String-returning JIT
     // function. NativeRoot registers each result before releasing the gate.
     let baseline = unsafe { runtime::NativeRoot::call_no_arg_string(baseline_entry) };
@@ -89,8 +255,39 @@ let main = fun () -> String {
     for entry in [call_arguments_entry, record_entry] {
         unsafe { runtime::configure_automatic_collection_for_test(2 * object_size) };
         let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
-        assert_eq!(runtime::allocated_bytes_for_test(), 2 * object_size);
+        // Record construction now also creates a managed record object. The
+        // exact total therefore depends on the record layout, but both String
+        // objects must still be present before the idle collection.
+        assert!(runtime::allocated_bytes_for_test() >= 2 * object_size);
         assert!(runtime::heap_contains_address(result.as_raw() as usize));
+        drop(result);
+        runtime::collect_idle();
+        assert_eq!(runtime::allocated_bytes_for_test(), 0);
+    }
+
+    // A low threshold collects during union construction and in a younger
+    // Hopper frame, including when the active variant is not a GC reference.
+    for (case, entry) in [
+        active_union_entry,
+        inactive_union_entry,
+        reassigned_union_entry,
+        record_union_entry,
+        other_record_union_entry,
+        record_with_union_entry,
+        inactive_record_union_entry,
+        reassigned_record_union_entry,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        unsafe { runtime::configure_automatic_collection_for_test(object_size) };
+        let result = unsafe { runtime::NativeRoot::call_no_arg_string(entry) };
+        assert!(
+            runtime::heap_contains_address(result.as_raw() as usize),
+            "union case {case} returned a collected object"
+        );
+        runtime::collect_idle();
+        assert_eq!(runtime::allocated_bytes_for_test(), object_size);
         drop(result);
         runtime::collect_idle();
         assert_eq!(runtime::allocated_bytes_for_test(), 0);

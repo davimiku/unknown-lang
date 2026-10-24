@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::slice;
 
 use crate::frame_walk::StackRootSet;
-use crate::memory_recycling::GcHeader;
+use crate::memory_recycling::{GcHeader, TypeDescriptor};
 use crate::string::HopperString;
 
 pub type RawGcRef = *mut GcHeader;
@@ -77,6 +77,15 @@ impl GcEntryAddress {
 /// The two-argument string allocator's root-capturing JIT entry point.
 pub fn alloc_string_entry() -> GcEntryAddress {
     GcEntryAddress(alloc_entry::address())
+}
+
+/// A descriptor-aware managed-object allocator entry point.
+///
+/// The Hopper-visible ABI is `(size: Int, descriptor: pointer) -> GcRef`.
+/// `descriptor` must point to a live `TypeDescriptor` whose trace offsets and
+/// destructor remain valid for the lifetime of the compiled code.
+pub fn alloc_object_entry() -> GcEntryAddress {
+    GcEntryAddress(alloc_entry::object_address())
 }
 
 /// Captured from the Hopper call site, before entering any Rust stack frames
@@ -282,6 +291,89 @@ pub(super) extern "C" fn alloc_string_impl(
         });
 
     gc_ref.as_ptr()
+}
+
+// Called only by the object allocation assembly shim; its extra arguments are
+// not part of the Hopper-visible allocator ABI.
+pub(super) extern "C" fn alloc_object_impl(
+    size: i64,
+    descriptor: *const TypeDescriptor,
+    caller_sp: usize,
+    return_address: usize,
+    caller_fp: usize,
+) -> RawGcRef {
+    let size = usize::try_from(size).unwrap_or_else(|_| {
+        eprintln!("Hopper managed-object allocation: negative size");
+        std::process::abort();
+    });
+    if descriptor.is_null() {
+        eprintln!("Hopper managed-object allocation: null descriptor");
+        std::process::abort();
+    }
+
+    let runtime = crate::runtime();
+    let mut runtime = runtime.lock().unwrap_or_else(|_| {
+        eprintln!("Hopper managed-object allocation: runtime lock poisoned");
+        std::process::abort();
+    });
+    let mut roots = StackRootSet::new(
+        AllocationCallSite {
+            caller_sp,
+            return_address,
+            caller_fp,
+        },
+        &runtime.stackmap_registry,
+    );
+
+    #[cfg(debug_assertions)]
+    {
+        let has_older_live_root = roots.slots().iter().any(|root| {
+            root.return_address != return_address
+                && unsafe { root.slot.cast::<usize>().read() } != 0
+        });
+        let has_current_live_root = roots.slots().iter().any(|root| {
+            root.return_address == return_address
+                && unsafe { root.slot.cast::<usize>().read() } != 0
+        });
+        if (has_older_live_root && FORCE_NEXT_COLLECTION.with(|armed| armed.replace(false)))
+            || (has_current_live_root
+                && FORCE_NEXT_COLLECTION_WITH_LIVE_ROOT.with(|armed| armed.replace(false)))
+        {
+            LAST_PROBED_ROOTS.with(|last| {
+                *last.borrow_mut() = Some(ProbedRoots {
+                    return_address,
+                    roots: roots
+                        .slots()
+                        .iter()
+                        .map(|root| ProbedRoot {
+                            return_address: root.return_address,
+                            word: unsafe { root.slot.cast::<usize>().read() },
+                        })
+                        .collect(),
+                });
+            });
+            let bytes_before = runtime.heap.allocated_bytes();
+            runtime.collect(&mut roots);
+            let bytes_after = runtime.heap.allocated_bytes();
+            LAST_FORCED_COLLECTION.with(|last| {
+                last.set(Some(ForcedCollection {
+                    bytes_before,
+                    bytes_after,
+                }))
+            });
+        }
+    }
+
+    // SAFETY: the generated caller supplies a valid descriptor pointer whose
+    // allocation metadata outlives the generated code using it.
+    let descriptor = unsafe { &*descriptor };
+    runtime
+        .alloc_object(size, descriptor, &mut roots)
+        .unwrap_or_else(|error| {
+            eprintln!("Hopper managed-object allocation failed: {error:?}");
+            std::process::abort();
+        })
+        .as_ptr()
 }
 
 pub extern "C" fn print_string(gc_ref: RawGcRef) {

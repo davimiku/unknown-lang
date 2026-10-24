@@ -86,14 +86,21 @@ impl Heap {
             return Err(AllocError::InvalidSize);
         }
         // Reject invalid trace layouts before collection or allocation.
-        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
-            for &offset in offsets {
-                let offset = offset as usize;
-                if offset < size_of::<GcHeader>()
-                    || offset % align_of::<GcRef>() != 0
-                    || offset
-                        .checked_add(size_of::<GcRef>())
-                        .is_none_or(|end| end > size)
+        match descriptor.trace {
+            TraceDescriptor::None => {}
+            TraceDescriptor::Fields(offsets) => {
+                if !valid_trace_offsets(offsets, size) {
+                    return Err(AllocError::InvalidSize);
+                }
+            }
+            TraceDescriptor::TaggedFields {
+                tag_offset,
+                variants,
+            } => {
+                if !valid_trace_offsets(std::slice::from_ref(&tag_offset), size)
+                    || variants
+                        .iter()
+                        .any(|(_, offsets)| !valid_trace_offsets(offsets, size))
                 {
                     return Err(AllocError::InvalidSize);
                 }
@@ -124,16 +131,33 @@ impl Heap {
             });
         }
 
-        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
-            for &offset in offsets {
-                // SAFETY: offsets were validated above; these words are within
-                // the owned allocation and have GC-pointer alignment.
-                unsafe {
-                    ptr.as_ptr()
-                        .cast::<u8>()
-                        .add(offset as usize)
-                        .cast::<*mut GcHeader>()
-                        .write(std::ptr::null_mut());
+        match descriptor.trace {
+            TraceDescriptor::None => {}
+            TraceDescriptor::Fields(offsets) => {
+                for &offset in offsets {
+                    // SAFETY: offsets were validated above; these words are
+                    // within the owned allocation and have GC-pointer alignment.
+                    unsafe {
+                        ptr.as_ptr()
+                            .cast::<u8>()
+                            .add(offset as usize)
+                            .cast::<*mut GcHeader>()
+                            .write(std::ptr::null_mut());
+                    }
+                }
+            }
+            TraceDescriptor::TaggedFields { variants, .. } => {
+                for (_, offsets) in variants {
+                    for &offset in *offsets {
+                        // SAFETY: offsets were validated above.
+                        unsafe {
+                            ptr.as_ptr()
+                                .cast::<u8>()
+                                .add(offset as usize)
+                                .cast::<*mut GcHeader>()
+                                .write(std::ptr::null_mut());
+                        }
+                    }
                 }
             }
         }
@@ -162,8 +186,11 @@ impl Heap {
     /// The global runtime's threshold policy collects through `Runtime`, not
     /// through this standalone-heap method.
     pub fn collect(&mut self, roots: &mut dyn RootSet) {
-        let mut marker = Marker;
+        let mut marker = Marker {
+            pending: Vec::new(),
+        };
         roots.visit_roots(&mut marker);
+        marker.drain();
         self.sweep();
 
         if self.allocated_bytes >= self.next_gc_threshold / GC_THRESHOLD_FACTOR {
@@ -200,21 +227,71 @@ impl Heap {
     }
 }
 
-struct Marker;
+struct Marker {
+    pending: Vec<NonNull<GcHeader>>,
+}
 
-impl RootVisitor for Marker {
-    fn visit_gc_ref(&mut self, root: *mut GcRef) {
+impl Marker {
+    fn mark_slot(&mut self, root: *mut GcRef) {
         if root.is_null() {
             return;
         }
-
-        // A stack record may not have been initialized yet. Read its root
-        // word as a raw pointer so a null (empty) slot is not interpreted as
-        // a non-null GcRef, which would be undefined behavior.
+        // Traced fields and not-yet-initialized stack slots may contain null.
+        // Read the pointer representation rather than a non-null Rust GcRef.
         let address = unsafe { root.cast::<*mut GcHeader>().read() };
         if let Some(header) = NonNull::new(address) {
-            mark_object(GcRef::new(header));
+            // SAFETY: root slots refer to live GC allocations while collection
+            // is stopped; the marker alone mutates the header's mark bit.
+            unsafe {
+                if !(*header.as_ptr()).marked {
+                    (*header.as_ptr()).marked = true;
+                    self.pending.push(header);
+                }
+            }
         }
+    }
+
+    fn drain(&mut self) {
+        while let Some(header) = self.pending.pop() {
+            // SAFETY: every queued header was marked while still allocated.
+            // Field offsets were checked when the object was allocated.
+            unsafe {
+                match (*header.as_ptr()).descriptor.trace {
+                    TraceDescriptor::None => {}
+                    TraceDescriptor::Fields(offsets) => {
+                        for &offset in offsets {
+                            let field = header.as_ptr().cast::<u8>().add(offset as usize).cast();
+                            self.mark_slot(field);
+                        }
+                    }
+                    TraceDescriptor::TaggedFields {
+                        tag_offset,
+                        variants,
+                    } => {
+                        let tag = header
+                            .as_ptr()
+                            .cast::<u8>()
+                            .add(tag_offset as usize)
+                            .cast::<usize>()
+                            .read();
+                        if let Some((_, offsets)) =
+                            variants.iter().find(|(variant, _)| *variant as usize == tag)
+                        {
+                            for &offset in *offsets {
+                                let field = header.as_ptr().cast::<u8>().add(offset as usize).cast();
+                                self.mark_slot(field);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl RootVisitor for Marker {
+    fn visit_gc_ref(&mut self, root: *mut GcRef) {
+        self.mark_slot(root);
     }
 }
 
@@ -269,6 +346,7 @@ pub enum ObjectKind {
     String,
     Array,
     Record,
+    Union,
     Closure,
     Other,
 }
@@ -285,44 +363,28 @@ pub enum TraceDescriptor {
     /// offsets are byte offsets from the start of the object
     /// to inline `GcRef` fields
     Fields(&'static [u32]),
+    /// A tag-selected set of inline `GcRef` fields. The tag and field offsets
+    /// are byte offsets from the start of the object.
+    TaggedFields {
+        tag_offset: u32,
+        variants: &'static [(u32, &'static [u32])],
+    },
+}
+
+fn valid_trace_offsets(offsets: &[u32], size: usize) -> bool {
+    offsets.iter().all(|&offset| {
+        let offset = offset as usize;
+        offset >= size_of::<GcHeader>()
+            && offset % align_of::<GcRef>() == 0
+            && offset
+                .checked_add(size_of::<GcRef>())
+                .is_some_and(|end| end <= size)
+    })
 }
 
 /// utility/helper to get a Layout with the assumed alignment of GcHeader
 fn layout_for_size(size: usize) -> Layout {
     Layout::from_size_align(size, align_of::<GcHeader>()).expect("valid GC allocation layout")
-}
-
-fn mark_object(gc_ref: GcRef) {
-    let header = gc_ref.as_ptr();
-    unsafe {
-        if (*header).marked {
-            return;
-        }
-        (*header).marked = true;
-
-        match (*header).descriptor.trace {
-            TraceDescriptor::None => {}
-            TraceDescriptor::Fields(offsets) => {
-                for &offset in offsets {
-                    let field = header.cast::<u8>().add(offset as usize).cast::<GcRef>();
-                    mark_root_slot(field);
-                }
-            }
-        }
-    }
-}
-
-fn mark_root_slot(root: *mut GcRef) {
-    if root.is_null() {
-        return;
-    }
-
-    // Traced fields are initialized to null before publication. Read the
-    // pointer representation, not a non-null GcRef, until a value is stored.
-    let address = unsafe { root.cast::<*mut GcHeader>().read() };
-    if let Some(header) = NonNull::new(address) {
-        mark_object(GcRef::new(header));
-    }
 }
 
 #[cfg(test)]
@@ -343,6 +405,13 @@ mod tests {
         child: GcRef,
     }
 
+    #[repr(C)]
+    struct TestTagged {
+        header: GcHeader,
+        tag: usize,
+        child: GcRef,
+    }
+
     static DESTROY_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     unsafe fn destroy_test_object(_header: *mut GcHeader) {
@@ -360,6 +429,16 @@ mod tests {
         name: "TestParent",
         kind: ObjectKind::Other,
         trace: TraceDescriptor::Fields(&[offset_of!(TestParent, child) as u32]),
+        destroy: destroy_test_object,
+    };
+
+    static TEST_TAGGED_DESCRIPTOR: TypeDescriptor = TypeDescriptor {
+        name: "TestTagged",
+        kind: ObjectKind::Other,
+        trace: TraceDescriptor::TaggedFields {
+            tag_offset: offset_of!(TestTagged, tag) as u32,
+            variants: &[(0, &[offset_of!(TestTagged, child) as u32])],
+        },
         destroy: destroy_test_object,
     };
 
@@ -455,6 +534,38 @@ mod tests {
         assert_eq!(heap.allocated_bytes, size_of::<TestParent>());
         heap.collect(&mut EmptyRootSet);
         assert_eq!(heap.allocated_bytes, 0);
+    }
+
+    #[test]
+    fn marks_deep_heap_graph_without_recursing() {
+        let mut heap = Heap::default();
+        heap.disable_automatic_collection();
+        let mut root = heap
+            .alloc_raw(
+                size_of::<TestParent>(),
+                &TEST_PARENT_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+        let mut current = root;
+        for _ in 0..16_384 {
+            let child = heap
+                .alloc_raw(
+                    size_of::<TestParent>(),
+                    &TEST_PARENT_DESCRIPTOR,
+                    &mut EmptyRootSet,
+                )
+                .unwrap();
+            // SAFETY: the parent is allocated, its child field is aligned, and
+            // this test holds the heap exclusively during graph construction.
+            unsafe { (*current.as_ptr().cast::<TestParent>()).child = child };
+            current = child;
+        }
+        let total = heap.allocated_bytes();
+        heap.collect(&mut SlotRootSet::new(vec![&mut root]));
+        assert_eq!(heap.allocated_bytes(), total);
+        heap.collect(&mut EmptyRootSet);
+        assert_eq!(heap.allocated_bytes(), 0);
     }
 
     #[test]
@@ -561,15 +672,6 @@ mod tests {
             assert_eq!((*parent_ptr).child.as_ptr(), child.as_ptr());
         }
 
-        mark_object(parent);
-
-        unsafe {
-            assert!((*parent.as_ptr()).marked);
-            assert!((*child.as_ptr()).marked);
-            (*parent.as_ptr()).marked = false;
-            (*child.as_ptr()).marked = false;
-        }
-
         let mut parent_root = parent;
         let mut roots = SlotRootSet::new(vec![&mut parent_root as *mut GcRef]);
 
@@ -580,5 +682,33 @@ mod tests {
             heap.allocated_bytes,
             size_of::<TestLeaf>() + size_of::<TestParent>()
         );
+    }
+
+    #[test]
+    fn tagged_trace_descriptor_only_marks_active_variant_fields() {
+        let mut heap = Heap::default();
+        let child = heap
+            .alloc_raw(size_of::<TestLeaf>(), &TEST_LEAF_DESCRIPTOR, &mut EmptyRootSet)
+            .unwrap();
+        let tagged = heap
+            .alloc_raw(
+                size_of::<TestTagged>(),
+                &TEST_TAGGED_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+
+        unsafe {
+            let tagged_ptr = tagged.as_ptr().cast::<TestTagged>();
+            (*tagged_ptr).tag = 1;
+            (*tagged_ptr).child = child;
+        }
+
+        let mut tagged_root = tagged;
+        heap.collect(&mut SlotRootSet::new(vec![&mut tagged_root]));
+        assert_eq!(heap.allocated_bytes(), size_of::<TestTagged>());
+
+        heap.collect(&mut EmptyRootSet);
+        assert_eq!(heap.allocated_bytes(), 0);
     }
 }

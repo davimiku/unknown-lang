@@ -10,7 +10,17 @@ let allocate = fun () -> Int {
     0
 }
 let main = fun () -> {
-    let record = [ number = 42, text = "first" ]
+    let record = [
+        first_number = 1,
+        second_number = 2,
+        third_number = 3,
+        fourth_number = 4,
+        fifth_number = 5,
+        sixth_number = 6,
+        seventh_number = 7,
+        eighth_number = 8,
+        text = "first"
+    ]
     let orphan = "orphan"
     allocate ()
     record.text
@@ -31,8 +41,11 @@ let main = fun () -> {
         observed
             .roots
             .iter()
-            .any(|root| { root.word == first && root.return_address != observed.return_address }),
-        "expected record field in older Hopper frame: {observed:?}"
+            .any(|root| {
+                root.return_address != observed.return_address
+                    && runtime::heap_contains_address(root.word)
+            }),
+        "expected heap record root in older Hopper frame: {observed:?}"
     );
     assert!(
         collection.bytes_after < collection.bytes_before,

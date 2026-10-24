@@ -62,21 +62,45 @@ let main = fun () -> { Choice.text "live" }
 }
 
 #[test]
-fn rejects_record_containing_gc_union() {
-    assert_rejects_gc_aggregate(
+fn accepts_record_containing_gc_union() {
+    compile_module(
         r#"
 type Choice = (text: String | number: Int)
 let main = fun (choice: Choice) -> { [ choice = choice, number = 42 ] }
+"#,
+    )
+    .expect("union field has a separate nullable shadow root");
+}
+
+#[test]
+fn accepts_union_with_nested_record_string_payload() {
+    compile_module(
+        r#"
+type Choice = (record: [ first: String, inner: [ second: String ] ] | number: Int)
+let main = fun (choice: Choice) -> { 0 }
+"#,
+    )
+    .expect("record variant references have per-variant shadow roots");
+}
+
+#[test]
+fn rejects_nested_gc_union_variant() {
+    assert_rejects_gc_aggregate(
+        r#"
+type Inner = (text: String | number: Int)
+type Outer = (nested: Inner | number: Int)
+let main = fun (choice: Outer) -> { 0 }
 "#,
     );
 }
 
 #[test]
-fn rejects_union_with_nested_record_string_payload() {
+fn rejects_gc_union_nested_in_union_record_payload() {
     assert_rejects_gc_aggregate(
         r#"
-type Choice = (record: [ text: String ] | number: Int)
-let main = fun (choice: Choice) -> { 0 }
+type Inner = (text: String | number: Int)
+type Outer = (record: [ choice: Inner ] | number: Int)
+let main = fun (choice: Outer) -> { 0 }
 "#,
     );
 }
@@ -120,4 +144,45 @@ let main = fun () -> { [ x = 3, y = 42 ] }
 "#,
     )
     .expect("pointer-free aggregates should still compile");
+}
+
+#[test]
+fn large_heap_records_support_parameters_returns_and_nested_values() {
+    compile_module(
+        r#"
+type Value = [ one: Int, two: Int, three: Int, four: Int, five: Int, six: Int, seven: Int, eight: Int, text: String ]
+let make = fun (text: String) -> Value {
+    [ one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, text = text ]
+}
+let use_value = fun (value: Value) -> Value {
+    let child = "child"
+    value
+}
+let main = fun () -> String {
+    let value = make "first"
+    let nested = [ one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, text = value.text ]
+    let result = use_value nested
+    result.text
+}
+"#,
+    )
+    .expect("large heap records to support aggregate ABI paths");
+}
+
+#[test]
+fn large_heap_records_support_reassignment() {
+    compile_module(
+        r#"
+type Value = [ one: Int, two: Int, three: Int, four: Int, five: Int, six: Int, seven: Int, eight: Int, text: String ]
+let make = fun (text: String) -> Value {
+    [ one = 1, two = 2, three = 3, four = 4, five = 5, six = 6, seven = 7, eight = 8, text = text ]
+}
+let main = fun () -> String {
+    let mut value = make "old"
+    value = make "new"
+    value.text
+}
+"#,
+    )
+    .expect("large heap record reassignment to compile");
 }

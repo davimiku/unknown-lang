@@ -15,7 +15,7 @@ use crate::ext::jit_builder::JITBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
 use crate::layout::unsupported_gc_aggregate;
 use crate::stackmaps::{PendingFunctionStackMap, PendingSafepoint};
-use crate::translate::FunctionTranslator;
+use crate::translate::{FunctionTranslator, ManagedDescriptorCache};
 use crate::{builtins, CompileErrors, FunctionErrors};
 
 /// The basic JIT class.
@@ -40,6 +40,7 @@ pub struct JIT {
     pub(crate) builtins: HashMap<String, FuncId>,
 
     pub(crate) pending_stack_maps: HashMap<FuncId, PendingFunctionStackMap>,
+    pub(crate) managed_descriptors: ManagedDescriptorCache,
     // Map between MIR functions and CLIF functions
     // pub(crate) func_id_map: HashMap<mir::FuncId, FuncId>,
 }
@@ -57,6 +58,7 @@ impl Default for JIT {
             data_description: DataDescription::new(),
             builtins: Default::default(),
             pending_stack_maps: Default::default(),
+            managed_descriptors: ManagedDescriptorCache::default(),
         }
     }
 }
@@ -142,7 +144,14 @@ impl JIT {
             let mut fn_builder_ctx = FunctionBuilderContext::new();
             let builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
             let translator =
-                FunctionTranslator::new(builder, &mut self.module, func, func_map, hir_context);
+                FunctionTranslator::new(
+                    builder,
+                    &mut self.module,
+                    func,
+                    func_map,
+                    hir_context,
+                    &mut self.managed_descriptors,
+                );
 
             translator.translate_function();
         }

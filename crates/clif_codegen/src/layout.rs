@@ -28,7 +28,8 @@ impl Layouts {
             backend_repr: BackendRepr::None,
             size: Size::ZERO,
             gc_ref_offsets: vec![],
-            gc_variant_tags: vec![],
+            gc_variant_roots: vec![],
+            gc_union_fields: vec![],
         });
         map.insert(core_types.unit, unit_layout);
 
@@ -40,7 +41,8 @@ impl Layouts {
             backend_repr: BackendRepr::Scalar(Scalar::Int),
             size: Size::ONE_WORD,
             gc_ref_offsets: vec![],
-            gc_variant_tags: vec![],
+            gc_variant_roots: vec![],
+            gc_union_fields: vec![],
         });
         map.insert(core_types.int, int_layout);
 
@@ -52,7 +54,8 @@ impl Layouts {
             backend_repr: BackendRepr::Scalar(Scalar::Float),
             size: Size::ONE_WORD,
             gc_ref_offsets: vec![],
-            gc_variant_tags: vec![],
+            gc_variant_roots: vec![],
+            gc_union_fields: vec![],
         });
         map.insert(core_types.float, float_layout);
 
@@ -64,7 +67,8 @@ impl Layouts {
             backend_repr: BackendRepr::Scalar(Scalar::GcRef),
             size: Size::ONE_WORD,
             gc_ref_offsets: vec![],
-            gc_variant_tags: vec![],
+            gc_variant_roots: vec![],
+            gc_union_fields: vec![],
         });
         map.insert(core_types.string, ptr_layout);
 
@@ -93,8 +97,8 @@ impl Layouts {
 }
 
 /// Records have precise field roots, including while constructing a temporary.
-/// Tagged unions with scalar String/Int/Float variants use a nullable shadow
-/// root. More complex GC-bearing unions and arrays remain rejected.
+/// Tagged unions with scalar or record payloads use nullable per-variant
+/// shadow roots. Nested GC-bearing unions and arrays remain gated.
 pub(crate) fn unsupported_gc_aggregate(context: &Context, ty: Idx<HType>) -> bool {
     fn ref_count(
         context: &Context,
@@ -134,28 +138,37 @@ pub(crate) fn unsupported_gc_aggregate(context: &Context, ty: Idx<HType>) -> boo
         count
     }
 
-    match context.type_(ty) {
-        HType::Product(_) => ref_count(context, ty, &mut HashSet::new()).is_none(),
-        HType::Sum(sum) => {
-            let has_gc = sum.variants.iter().any(|(_, ty)| {
-                matches!(context.type_(*ty), HType::String | HType::StringLiteral(_))
-            });
-            if has_gc {
-                sum.variants.iter().any(|(_, ty)| {
-                    !matches!(
-                        context.type_(*ty),
-                        HType::String
-                            | HType::StringLiteral(_)
-                            | HType::Int
-                            | HType::IntLiteral(_)
-                            | HType::Float
-                            | HType::FloatLiteral(_)
-                    )
-                })
-            } else {
-                ref_count(context, ty, &mut HashSet::new()).is_none()
-            }
+    fn supported_record(
+        context: &Context,
+        ty: Idx<HType>,
+        visiting: &mut HashSet<Idx<HType>>,
+    ) -> bool {
+        if !visiting.insert(ty) {
+            return false;
         }
+        let supported = match context.type_(ty) {
+            HType::Product(product) => product
+                .fields
+                .values()
+                .all(|(_, field)| supported_record(context, *field, visiting)),
+            HType::Sum(sum) => sum.variants.iter().all(|(_, variant)| {
+                // The union's payload must have a fixed reference shape.
+                ref_count(context, *variant, &mut HashSet::new()).is_some()
+            }),
+            _ => ref_count(context, ty, &mut HashSet::new()).is_some(),
+        };
+        visiting.remove(&ty);
+        supported
+    }
+
+    match context.type_(ty) {
+        HType::Product(_) => !supported_record(context, ty, &mut HashSet::new()),
+        HType::Sum(sum) => sum.variants.iter().any(|(_, variant)| {
+            // Nested tagged payloads need their own tag-dependent tracing.
+            // Leaf records (including records nested inside records) have
+            // fixed reference offsets and can use this union's shadow roots.
+            ref_count(context, *variant, &mut HashSet::new()).is_none()
+        }),
         _ => false,
     }
 }
@@ -246,22 +259,30 @@ impl FunctionTranslator<'_> {
                 backend_repr: BackendRepr::Scalar(Scalar::Int),
                 size: Size::ONE_WORD,
                 gc_ref_offsets: vec![],
-                gc_variant_tags: vec![],
+                gc_variant_roots: vec![],
+                gc_union_fields: vec![],
             }
         } else {
             // Union with payload - use stack allocation
             // Tag (1 word) + payload
             // e.g., `type Number = (int: Int | float: Float)` or nested unions
             let total_size = Size::ONE_WORD + max_payload_size;
-            let gc_variant_tags = variant_layouts
+            let gc_variant_roots = variant_layouts
                 .iter()
                 .enumerate()
                 .filter_map(|(tag, idx)| {
-                    matches!(
-                        self.layouts[*idx].backend_repr,
-                        BackendRepr::Scalar(Scalar::GcRef)
-                    )
-                    .then_some(tag as u32)
+                    let variant = &self.layouts[*idx];
+                    let offsets =
+                        if matches!(variant.backend_repr, BackendRepr::Scalar(Scalar::GcRef)) {
+                            vec![Size::ONE_WORD.bytes() as u32]
+                        } else {
+                            variant
+                                .gc_ref_offsets
+                                .iter()
+                                .map(|&offset| Size::ONE_WORD.bytes() as u32 + offset)
+                                .collect()
+                        };
+                    (!offsets.is_empty()).then_some((tag as u32, offsets))
                 })
                 .collect();
             Layout {
@@ -273,7 +294,8 @@ impl FunctionTranslator<'_> {
                 backend_repr: BackendRepr::StackSlot,
                 size: total_size,
                 gc_ref_offsets: vec![],
-                gc_variant_tags,
+                gc_variant_roots,
+                gc_union_fields: vec![],
             }
         }
     }
@@ -289,13 +311,15 @@ impl FunctionTranslator<'_> {
                 backend_repr: BackendRepr::None,
                 size: Size::ZERO,
                 gc_ref_offsets: vec![],
-                gc_variant_tags: vec![],
+                gc_variant_roots: vec![],
+                gc_union_fields: vec![],
             };
         }
 
         let fields = product_type.canonical_fields();
         let mut offsets = Vec::with_capacity(fields.len());
         let mut gc_ref_offsets = Vec::new();
+        let mut gc_union_fields = Vec::new();
         let mut current_offset = Size::ZERO;
 
         for (_field_key, _field_idx, field_ty) in &fields {
@@ -310,6 +334,18 @@ impl FunctionTranslator<'_> {
             }
             for offset in &field_layout.gc_ref_offsets {
                 gc_ref_offsets.push(current_offset.bytes() as u32 + offset);
+            }
+            if !field_layout.gc_variant_roots.is_empty() {
+                gc_union_fields.push(GcUnionField {
+                    offset: current_offset.bytes() as u32,
+                    variants: field_layout.gc_variant_roots.clone(),
+                });
+            }
+            for site in &field_layout.gc_union_fields {
+                gc_union_fields.push(GcUnionField {
+                    offset: current_offset.bytes() as u32 + site.offset,
+                    variants: site.variants.clone(),
+                });
             }
             current_offset = current_offset + field_layout.size;
         }
@@ -326,7 +362,8 @@ impl FunctionTranslator<'_> {
             backend_repr: BackendRepr::StackSlot,
             size: total_size,
             gc_ref_offsets,
-            gc_variant_tags: vec![],
+            gc_variant_roots: vec![],
+            gc_union_fields,
         }
     }
 }
@@ -353,13 +390,22 @@ pub(crate) struct Layout {
     /// Total size of this layout (bytes)
     pub size: Size,
 
-    /// Byte offsets of managed references in a stack record (including nested
-    /// records). GC-bearing unions are not yet supported.
+    /// Byte offsets of unconditional managed references in a stack record
+    /// (including nested records). Union fields use separate shadow roots.
     pub gc_ref_offsets: Vec<u32>,
 
-    /// Tags whose payload is a GcRef. Kept in a separate shadow root so an
-    /// inactive union payload is never interpreted as a managed pointer.
-    pub gc_variant_tags: Vec<u32>,
+    /// Active tag and managed-reference offsets (from the union's start).
+    /// Only the matching variant is copied into nullable shadow roots.
+    pub gc_variant_roots: Vec<(u32, Vec<u32>)>,
+
+    /// Union sites nested inside stack records; offsets are from record start.
+    pub gc_union_fields: Vec<GcUnionField>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GcUnionField {
+    pub offset: u32,
+    pub variants: Vec<(u32, Vec<u32>)>,
 }
 
 /// The size of something, in number of bytes

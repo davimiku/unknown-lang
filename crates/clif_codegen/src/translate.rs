@@ -9,6 +9,7 @@
 mod arithmetic;
 
 use std::collections::HashMap;
+use std::mem::size_of;
 use std::ops::Deref;
 
 use cranelift::codegen::ir::immediates::Offset32;
@@ -36,13 +37,42 @@ use util_macros::assert_matches;
 use crate::builtins;
 use crate::ext::function_builder::FunctionBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
-use crate::layout::{BackendRepr, FieldsShape, Layouts, Scalar};
+use crate::layout::{BackendRepr, FieldsShape, GcUnionField, Layout, Layouts, Scalar};
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
 const WORD_SIZE: u32 = 8;
+const HEAP_RECORD_THRESHOLD_BYTES: u64 = 64;
+
+unsafe fn destroy_heap_record(_header: *mut runtime::GcHeader) {}
+
+fn uses_heap_aggregate(layout: &Layout) -> bool {
+    layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+        && (!layout.gc_ref_offsets.is_empty() || !layout.gc_variant_roots.is_empty())
+        && layout.gc_union_fields.is_empty()
+}
 
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
+
+#[derive(Clone)]
+pub(crate) struct UnionShadow {
+    source_slot: StackSlot,
+    source_offset: u32,
+    slot: StackSlot,
+    offsets: Vec<u32>,
+    variants: Vec<(u32, Vec<u32>)>,
+}
+
+/// Descriptors are shared by all functions in one JIT module. The descriptor
+/// data is intentionally leaked because returned raw JIT entry points may
+/// outlive the `JIT` host value; reclaiming it requires code-unregistration and
+/// descriptor lifetime coordination. This cache prevents repeated aggregate
+/// constructions from creating duplicate metadata within a module.
+#[derive(Default)]
+pub(crate) struct ManagedDescriptorCache {
+    records: HashMap<Vec<u32>, &'static runtime::TypeDescriptor>,
+    unions: HashMap<Vec<(u32, Vec<u32>)>, &'static runtime::TypeDescriptor>,
+}
 
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
@@ -65,16 +95,19 @@ pub(crate) struct FunctionTranslator<'a> {
 
     pub(crate) layouts: Layouts,
 
-    /// Per-local nullable root for tagged unions with a GC payload.
-    pub(crate) union_roots: ArenaMap<Idx<Local>, StackSlot>,
+    /// Per-local nullable shadows for a union or unions inside a record.
+    pub(crate) union_roots: ArenaMap<Idx<Local>, Vec<UnionShadow>>,
 
     /// Partially constructed records remain mapped only until copied to their
     /// destination local. Each field is initialized to null before publication.
     active_record_roots: Vec<(StackSlot, Vec<u32>)>,
+    active_union_roots: Vec<UnionShadow>,
 
     /// Scalar GC arguments produced while evaluating a call are not MIR
     /// locals, so they need temporary slots until the call completes.
     active_argument_roots: Vec<StackSlot>,
+
+    descriptors: &'a mut ManagedDescriptorCache,
 
     pub(crate) statuses: TranslateStatus,
 
@@ -91,6 +124,7 @@ impl<'a> FunctionTranslator<'a> {
         func: &'a mir::Function,
         func_map: &'a HashMap<mir::FuncId, FuncId>,
         context: &'a hir::Context,
+        descriptors: &'a mut ManagedDescriptorCache,
     ) -> Self {
         Self {
             func,
@@ -102,7 +136,9 @@ impl<'a> FunctionTranslator<'a> {
             layouts: Layouts::new(context.core_types()),
             union_roots: Default::default(),
             active_record_roots: Vec::new(),
+            active_union_roots: Vec::new(),
             active_argument_roots: Vec::new(),
+            descriptors,
             statuses: Default::default(),
             next_var_idx: 0,
             sret_var: None,
@@ -111,6 +147,76 @@ impl<'a> FunctionTranslator<'a> {
 }
 
 impl FunctionTranslator<'_> {
+    fn record_descriptor(
+        &mut self,
+        layout: &Layout,
+    ) -> &'static runtime::TypeDescriptor {
+        let key = layout.gc_ref_offsets.clone();
+        if let Some(descriptor) = self.descriptors.records.get(&key) {
+            return descriptor;
+        }
+
+        let trace_offsets: &'static [u32] = Box::leak(
+            layout
+                .gc_ref_offsets
+                .iter()
+                .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+            runtime::TypeDescriptor {
+                name: "Record",
+                kind: runtime::ObjectKind::Record,
+                trace: runtime::TraceDescriptor::Fields(trace_offsets),
+                destroy: destroy_heap_record,
+            },
+        ));
+        self.descriptors.records.insert(key, descriptor);
+        descriptor
+    }
+
+    fn union_descriptor(
+        &mut self,
+        layout: &Layout,
+    ) -> &'static runtime::TypeDescriptor {
+        let key = layout.gc_variant_roots.clone();
+        if let Some(descriptor) = self.descriptors.unions.get(&key) {
+            return descriptor;
+        }
+
+        let variants: &'static [(u32, &'static [u32])] = Box::leak(
+            layout
+                .gc_variant_roots
+                .iter()
+                .map(|(tag, offsets)| {
+                    let offsets: &'static [u32] = Box::leak(
+                        offsets
+                            .iter()
+                            .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice(),
+                    );
+                    (*tag, offsets)
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+            runtime::TypeDescriptor {
+                name: "Union",
+                kind: runtime::ObjectKind::Union,
+                trace: runtime::TraceDescriptor::TaggedFields {
+                    tag_offset: size_of::<runtime::GcHeader>() as u32,
+                    variants,
+                },
+                destroy: destroy_heap_record,
+            },
+        ));
+        self.descriptors.unions.insert(key, descriptor);
+        descriptor
+    }
+
     pub(crate) fn translate_function(mut self) {
         let mir::Function {
             blocks,
@@ -168,10 +274,16 @@ impl FunctionTranslator<'_> {
                     );
                 }
             }
-            for (_, shadow) in self.union_roots.iter() {
-                self.builder
-                    .ins()
-                    .stack_store(zero, *shadow, Offset32::new(0));
+            for (_, shadows) in self.union_roots.iter() {
+                for shadow in shadows {
+                    for index in 0..shadow.offsets.len() {
+                        self.builder.ins().stack_store(
+                            zero,
+                            shadow.slot,
+                            Offset32::new((index as u32 * WORD_SIZE) as i32),
+                        );
+                    }
+                }
             }
             entry_block
         };
@@ -194,6 +306,11 @@ impl FunctionTranslator<'_> {
                     let val = self.builder.block_params(entry_block)[i];
                     i += 1;
                     self.builder.def_var(second, val);
+                }
+                CPlace::Heap { variable, .. } => {
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(variable, val);
                 }
                 CPlace::Address { pointer, layout } => {
                     // Stack-allocated values: copy from parameter to our stack slot
@@ -230,7 +347,9 @@ impl FunctionTranslator<'_> {
             let return_ty = self.func.return_ty();
             let return_layout_idx = self.layout_for_type(return_ty);
             let return_layout = &self.layouts[return_layout_idx];
-            if matches!(return_layout.backend_repr, BackendRepr::StackSlot) {
+            if matches!(return_layout.backend_repr, BackendRepr::StackSlot)
+                && !uses_heap_aggregate(return_layout)
+            {
                 let sret_var = self.builder.declare_var(I64);
                 let sret_ptr = self.builder.block_params(entry_block)[i];
                 self.builder.def_var(sret_var, sret_ptr);
@@ -284,6 +403,19 @@ impl FunctionTranslator<'_> {
 
         let layout_idx = self.layout_for_type(local.type_idx());
         let layout = &self.layouts[layout_idx];
+        if uses_heap_aggregate(layout) {
+            let variable = self.builder.declare_var(I64);
+            self.builder.declare_var_needs_stack_map(variable);
+            self.places.insert(
+                local_idx,
+                CPlace::Heap {
+                    local,
+                    variable,
+                    layout: layout_idx,
+                },
+            );
+            return;
+        }
         match layout.backend_repr.clone() {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
@@ -327,13 +459,10 @@ impl FunctionTranslator<'_> {
                     layout: layout_idx,
                 };
                 self.places.insert(local_idx, place);
-                if !layout.gc_variant_tags.is_empty() {
-                    let root = self.builder.create_sized_stack_slot(StackSlotData::new(
-                        StackSlotKind::ExplicitSlot,
-                        WORD_SIZE,
-                        3,
-                    ));
-                    self.union_roots.insert(local_idx, root);
+                let layout = layout.clone();
+                let shadows = self.create_union_shadows(slot, &layout);
+                if !shadows.is_empty() {
+                    self.union_roots.insert(local_idx, shadows);
                 }
             }
         }
@@ -346,6 +475,10 @@ impl FunctionTranslator<'_> {
         for ty_idx in &self.func.params {
             let layout_idx = self.layout_for_type(*ty_idx);
             let layout = &self.layouts[layout_idx];
+            if uses_heap_aggregate(layout) {
+                self.builder.func.signature.params.push(AbiParam::new(I64));
+                continue;
+            }
             match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
@@ -376,7 +509,9 @@ impl FunctionTranslator<'_> {
 
             let layout_idx = self.layout_for_type(return_ty);
             let layout = &self.layouts[layout_idx];
-            match layout.backend_repr.clone() {
+            if uses_heap_aggregate(layout) {
+                self.builder.func.signature.returns.push(AbiParam::new(I64));
+            } else { match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
                     let abi_param = self.translate_scalar_to_abi_param(scalar);
@@ -397,7 +532,7 @@ impl FunctionTranslator<'_> {
                     let abi_param = AbiParam::new(I64);
                     self.builder.func.signature.params.push(abi_param);
                 }
-            }
+            } }
         }
     }
 
@@ -494,11 +629,18 @@ impl FunctionTranslator<'_> {
                 })
             })
             .collect();
-        let union_roots = self.union_roots.iter().map(|(_, &slot)| UserStackMapEntry {
-            ty: I64,
-            slot,
-            offset: 0,
-        });
+        let union_roots = self
+            .union_roots
+            .iter()
+            .flat_map(|(_, shadows)| shadows.iter())
+            .chain(self.active_union_roots.iter())
+            .flat_map(|shadow| {
+                (0..shadow.offsets.len()).map(|index| UserStackMapEntry {
+                    ty: I64,
+                    slot: shadow.slot,
+                    offset: index as u32 * WORD_SIZE,
+                })
+            });
         let temporary_roots = self.active_record_roots.iter().flat_map(|(slot, offsets)| {
             offsets.iter().map(|&offset| UserStackMapEntry {
                 ty: I64,
@@ -524,46 +666,97 @@ impl FunctionTranslator<'_> {
         );
     }
 
-    /// Refresh a union's nullable shadow root after writing the full tagged value.
-    fn sync_union_root(&mut self, local: Idx<Local>) {
-        let Some(&shadow) = self.union_roots.get(local) else {
-            return;
-        };
-        let CPlace::Address {
-            pointer: Pointer::Stack { slot, offset },
-            layout,
-        } = &self.places[local]
-        else {
-            unreachable!("GC union local must live in a stack slot")
-        };
-        let (slot, base) = (*slot, i32::from(*offset));
-        let tags = self.layouts[*layout].gc_variant_tags.clone();
-        let tag = self
-            .builder
-            .ins()
-            .stack_load(I64, slot, Offset32::new(base));
-        // Supported variants always initialize the payload word. The select
-        // publishes null, never an integer or float payload, for other tags.
-        let payload =
-            self.builder
-                .ins()
-                .stack_load(I64, slot, Offset32::new(base + WORD_SIZE as i32));
-        let mut is_gc = self
-            .builder
-            .ins()
-            .icmp_imm(IntCC::Equal, tag, tags[0] as i64);
-        for &variant in &tags[1..] {
-            let match_tag = self
-                .builder
-                .ins()
-                .icmp_imm(IntCC::Equal, tag, variant as i64);
-            is_gc = self.builder.ins().bor(is_gc, match_tag);
+    fn create_union_shadows(&mut self, slot: StackSlot, layout: &Layout) -> Vec<UnionShadow> {
+        let mut sites = layout.gc_union_fields.clone();
+        if !layout.gc_variant_roots.is_empty() {
+            sites.push(GcUnionField {
+                offset: 0,
+                variants: layout.gc_variant_roots.clone(),
+            });
         }
+        sites
+            .into_iter()
+            .map(|site| {
+                let mut offsets: Vec<u32> = site
+                    .variants
+                    .iter()
+                    .flat_map(|(_, offsets)| offsets.iter().copied())
+                    .collect();
+                offsets.sort_unstable();
+                offsets.dedup();
+                let shadow_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    offsets.len() as u32 * WORD_SIZE,
+                    3,
+                ));
+                UnionShadow {
+                    source_slot: slot,
+                    source_offset: site.offset,
+                    slot: shadow_slot,
+                    offsets,
+                    variants: site.variants,
+                }
+            })
+            .collect()
+    }
+
+    /// Publish only active-variant references, clearing all inactive shadow words.
+    fn sync_union_root(&mut self, local: Idx<Local>) {
+        if let Some(shadows) = self.union_roots.get(local).cloned() {
+            for shadow in &shadows {
+                self.sync_union_shadow(shadow);
+            }
+        }
+    }
+
+    fn sync_union_shadow(&mut self, shadow: &UnionShadow) {
+        let tag = self.builder.ins().stack_load(
+            I64,
+            shadow.source_slot,
+            Offset32::new(shadow.source_offset as i32),
+        );
         let zero = self.builder.ins().iconst(I64, 0);
-        let root = self.builder.ins().select(is_gc, payload, zero);
-        self.builder
-            .ins()
-            .stack_store(root, shadow, Offset32::new(0));
+        for (index, &offset) in shadow.offsets.iter().enumerate() {
+            let mut tags = shadow
+                .variants
+                .iter()
+                .filter(|(_, fields)| fields.contains(&offset))
+                .map(|(tag, _)| *tag);
+            let first = tags.next().expect("shadow word must belong to a variant");
+            let mut is_gc = self.builder.ins().icmp_imm(IntCC::Equal, tag, first as i64);
+            for variant in tags {
+                let match_tag = self
+                    .builder
+                    .ins()
+                    .icmp_imm(IntCC::Equal, tag, variant as i64);
+                is_gc = self.builder.ins().bor(is_gc, match_tag);
+            }
+            // Only the active variant's field is initialized by the ABI.
+            let live = self.builder.create_block();
+            let inactive = self.builder.create_block();
+            let join = self.builder.create_block();
+            self.builder.append_block_param(join, I64);
+            self.builder.ins().brif(is_gc, live, &[], inactive, &[]);
+            self.builder.switch_to_block(live);
+            self.builder.seal_block(live);
+            let payload = self.builder.ins().stack_load(
+                I64,
+                shadow.source_slot,
+                Offset32::new((shadow.source_offset + offset) as i32),
+            );
+            self.builder.ins().jump(join, &[BlockArg::Value(payload)]);
+            self.builder.switch_to_block(inactive);
+            self.builder.seal_block(inactive);
+            self.builder.ins().jump(join, &[BlockArg::Value(zero)]);
+            self.builder.seal_block(join);
+            self.builder.switch_to_block(join);
+            let root = self.builder.block_params(join)[0];
+            self.builder.ins().stack_store(
+                root,
+                shadow.slot,
+                Offset32::new(index as i32 * WORD_SIZE as i32),
+            );
+        }
     }
 
     fn translate_call_terminator(
@@ -653,6 +846,7 @@ impl FunctionTranslator<'_> {
         match returns.len() {
             0 => {}
             1 => {
+                let return_value = returns[0];
                 // FIXME: use projections
                 let cplace = &self.places[destination.local];
                 if let CPlace::Var {
@@ -661,8 +855,11 @@ impl FunctionTranslator<'_> {
                     layout,
                 } = cplace
                 {
-                    self.builder.def_var(*variable, returns[0]);
+                    self.builder.def_var(*variable, return_value);
                 };
+                if let CPlace::Heap { variable, .. } = cplace {
+                    self.builder.def_var(*variable, return_value);
+                }
             }
             2 => {}
             _ => unreachable!("3+ returns?"),
@@ -731,6 +928,11 @@ impl FunctionTranslator<'_> {
                     self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
                     self.builder.ins().return_(&[first_val, second_val]);
                 }
+                CPlace::Heap { variable, .. } => {
+                    let value = self.builder.use_var(*variable);
+                    self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
+                    self.builder.ins().return_(&[value]);
+                }
                 CPlace::Address {
                     pointer: Pointer::Stack { slot, offset },
                     layout,
@@ -777,6 +979,8 @@ impl FunctionTranslator<'_> {
 
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
         let temporary_root_count = self.active_record_roots.len();
+        let temporary_union_count = self.active_union_roots.len();
+        let temporary_argument_root_count = self.active_argument_roots.len();
         let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
@@ -784,7 +988,16 @@ impl FunctionTranslator<'_> {
             Rvalue::Aggregate(aggregate) => self.translate_aggregate(place, aggregate),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
             Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => {
-                self.translate_union_variant(*idx, operand, place.type_idx_of(self.func))
+                self.translate_union_variant(
+                    *idx,
+                    operand,
+                    place.type_idx_of(self.func),
+                    matches!(&self.places[place.local], CPlace::Heap { .. }),
+                    match &self.places[place.local] {
+                        CPlace::Heap { variable, .. } => Some(*variable),
+                        _ => None,
+                    },
+                )
             }
         };
         let cplace = self.places[place.local].clone();
@@ -846,6 +1059,12 @@ impl FunctionTranslator<'_> {
                 self.builder.ins().stack_store(*val, *slot, *offset);
             }
             (
+                CPlace::Heap { variable, .. },
+                CValue::Ref { val: Some(root), .. },
+            ) => {
+                self.builder.def_var(*variable, *root);
+            }
+            (
                 CPlace::Address {
                     pointer: Pointer::Stack { slot, offset },
                     ..
@@ -875,7 +1094,7 @@ impl FunctionTranslator<'_> {
                 // Load a scalar from memory (stack or heap) into a local variable.
                 let var_layout = &self.layouts[*var_layout];
                 let loaded_val = match &var_layout.backend_repr {
-                    BackendRepr::Scalar(Scalar::Int) => match ptr {
+                    BackendRepr::Scalar(Scalar::Int | Scalar::GcRef) => match ptr {
                         Pointer::Stack { slot, offset } => {
                             self.builder.ins().stack_load(I64, *slot, *offset)
                         }
@@ -923,6 +1142,9 @@ impl FunctionTranslator<'_> {
         self.sync_union_root(place.local);
         // The constructed record has been copied into its mapped local slot.
         self.active_record_roots.truncate(temporary_root_count);
+        self.active_union_roots.truncate(temporary_union_count);
+        self.active_argument_roots
+            .truncate(temporary_argument_root_count);
     }
 
     fn translate_binary_op(&mut self, binop: &BinOpKind, ops: &(Operand, Operand)) -> CValue {
@@ -1023,6 +1245,17 @@ impl FunctionTranslator<'_> {
                                             offset: payload_offset,
                                         });
                                     }
+                                    CPlace::Heap { variable, .. } => {
+                                        let root = self.builder.use_var(*variable);
+                                        let addr = self.builder.ins().iadd_imm(
+                                            root,
+                                            size_of::<runtime::GcHeader>() as i64,
+                                        );
+                                        ptr = Some(Pointer::Heap {
+                                            addr,
+                                            offset: Offset32::new(WORD_SIZE as i32),
+                                        });
+                                    }
                                     _ => {
                                         // DowncastVariant is always expected to be on an Address
                                         unreachable!(
@@ -1041,6 +1274,15 @@ impl FunctionTranslator<'_> {
                                     let base_place = &self.places[place.local];
                                     if let CPlace::Address { pointer, .. } = base_place {
                                         *pointer
+                                    } else if let CPlace::Heap { variable, .. } = base_place {
+                                        let root = self.builder.use_var(*variable);
+                                        Pointer::Heap {
+                                            addr: self.builder.ins().iadd_imm(
+                                                root,
+                                                size_of::<runtime::GcHeader>() as i64,
+                                            ),
+                                            offset: Offset32::new(0),
+                                        }
                                     } else {
                                         unreachable!(
                                             "Internal Compiler Error (CLIF): Field projection on non-address place: {:?}",
@@ -1164,6 +1406,23 @@ impl FunctionTranslator<'_> {
                         second: self.builder.use_var(*second),
                         layout: *layout,
                     },
+                    CPlace::Heap {
+                        variable, layout, ..
+                    } => {
+                        let root = self.builder.use_var(*variable);
+                        let payload = self.builder.ins().iadd_imm(
+                            root,
+                            size_of::<runtime::GcHeader>() as i64,
+                        );
+                        CValue::Ref {
+                            ptr: Pointer::Heap {
+                                addr: payload,
+                                offset: Offset32::new(0),
+                            },
+                            val: Some(root),
+                            layout: *layout,
+                        }
+                    }
                     CPlace::Address { pointer, layout } => CValue::Ref {
                         ptr: *pointer,
                         val: None,
@@ -1294,6 +1553,21 @@ impl FunctionTranslator<'_> {
                     layout: self.layouts.int,
                 }
             }
+            CPlace::Heap { variable, .. } => {
+                let root = self.builder.use_var(*variable);
+                let payload = self.builder.ins().iadd_imm(
+                    root,
+                    size_of::<runtime::GcHeader>() as i64,
+                );
+                let val = self
+                    .builder
+                    .ins()
+                    .load(I64, MemFlagsData::new(), payload, Offset32::new(0));
+                CValue::Val {
+                    val,
+                    layout: self.layouts.int,
+                }
+            }
         }
     }
 
@@ -1302,6 +1576,8 @@ impl FunctionTranslator<'_> {
         variant_idx: VariantIdx,
         operand: &Operand,
         ty: Idx<HType>,
+        direct_heap: bool,
+        destination_variable: Option<Variable>,
     ) -> CValue {
         // operand is the "arg", like the 16 in `Number.int 16` or the `f` in `Number.float f`
         // variant_idx is the numeric index
@@ -1331,6 +1607,124 @@ impl FunctionTranslator<'_> {
             }
 
             BackendRepr::StackSlot => {
+                if direct_heap && uses_heap_aggregate(&layout) {
+                    let descriptor = self.union_descriptor(&layout);
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("union allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    self.builder.def_var(
+                        destination_variable.expect("heap union destination variable"),
+                        gc_ref,
+                    );
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        discriminant,
+                        object_addr,
+                        Offset32::new(0),
+                    );
+
+                    let payload_cval = self.translate_operand(operand);
+                    let payload_addr = self.builder.ins().iadd_imm(
+                        object_addr,
+                        WORD_SIZE as i64,
+                    );
+                    match payload_cval {
+                        CValue::Val { val, .. } => {
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                val,
+                                payload_addr,
+                                Offset32::new(0),
+                            );
+                        }
+                        CValue::ValPair { first, second, .. } => {
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                first,
+                                payload_addr,
+                                Offset32::new(0),
+                            );
+                            self.builder.ins().store(
+                                MemFlagsData::new(),
+                                second,
+                                payload_addr,
+                                Offset32::new(WORD_SIZE as i32),
+                            );
+                        }
+                        CValue::ValTriple {
+                            first,
+                            second,
+                            third,
+                            ..
+                        } => {
+                            for (value, offset) in [
+                                (first, 0),
+                                (second, WORD_SIZE as i32),
+                                (third, (WORD_SIZE * 2) as i32),
+                            ] {
+                                self.builder.ins().store(
+                                    MemFlagsData::new(),
+                                    value,
+                                    payload_addr,
+                                    Offset32::new(offset),
+                                );
+                            }
+                        }
+                        CValue::Ref {
+                            ptr,
+                            layout: payload_layout,
+                            ..
+                        } => {
+                            let source_addr = match ptr {
+                                Pointer::Stack { slot, offset } => {
+                                    self.builder.ins().stack_addr(I64, slot, offset)
+                                }
+                                Pointer::Heap { addr, offset } => {
+                                    let offset: i32 = offset.into();
+                                    if offset == 0 {
+                                        addr
+                                    } else {
+                                        self.builder.ins().iadd_imm(addr, offset as i64)
+                                    }
+                                }
+                            };
+                            self.builder.emit_small_memory_copy(
+                                self.module.target_config(),
+                                payload_addr,
+                                source_addr,
+                                self.layouts[payload_layout].size.bytes(),
+                                1,
+                                1,
+                                true,
+                                MemFlagsData::new(),
+                            );
+                        }
+                    }
+                    return CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: Some(gc_ref),
+                        layout: layout_idx,
+                    };
+                }
                 // For stack-allocated unions, we need to:
                 // 1. Create a temporary stack slot to hold the result
                 // 2. Write the discriminant at offset 0
@@ -1341,7 +1735,22 @@ impl FunctionTranslator<'_> {
                 let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
                 let slot = self.builder.create_sized_stack_slot(slot_data);
 
-                // Write discriminant at offset 0
+                // Initialize all possible reference words before copying this
+                // variant: an inactive, shorter payload must never leave an
+                // uninitialized word for the shadow-root refresh to read.
+                let zero = self.builder.ins().iconst(I64, 0);
+                let mut offsets: Vec<_> = layout
+                    .gc_variant_roots
+                    .iter()
+                    .flat_map(|(_, offsets)| offsets.iter().copied())
+                    .collect();
+                offsets.sort_unstable();
+                offsets.dedup();
+                for offset in offsets {
+                    self.builder
+                        .ins()
+                        .stack_store(zero, slot, Offset32::new(offset as i32));
+                }
                 self.builder
                     .ins()
                     .stack_store(discriminant, slot, Offset32::new(0));
@@ -1426,16 +1835,211 @@ impl FunctionTranslator<'_> {
                     }
                 }
 
-                // Return a reference to our stack slot
-                CValue::Ref {
-                    ptr: Pointer::Stack {
-                        slot,
-                        offset: Offset32::new(0),
-                    },
-                    val: None,
-                    layout: layout_idx,
+                if layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+                    && !layout.gc_variant_roots.is_empty()
+                {
+                    let union_shadows = self.create_union_shadows(slot, &layout);
+                    for shadow in &union_shadows {
+                        self.sync_union_shadow(shadow);
+                    }
+                    self.active_union_roots.extend(union_shadows);
+
+                    let descriptor = self.union_descriptor(&layout);
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("union allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    let root_slot = self.builder.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    );
+                    self.builder
+                        .ins()
+                        .stack_store(gc_ref, root_slot, Offset32::new(0));
+                    self.active_argument_roots.push(root_slot);
+
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    let source_addr = self
+                        .builder
+                        .ins()
+                        .stack_addr(I64, slot, Offset32::new(0));
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        object_addr,
+                        source_addr,
+                        layout.size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+
+                    CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: Some(gc_ref),
+                        layout: layout_idx,
+                    }
+                } else {
+                    // Return a reference to our stack slot.
+                    CValue::Ref {
+                        ptr: Pointer::Stack {
+                            slot,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
                 }
             }
+        }
+    }
+
+    fn translate_heap_record_aggregate(
+        &mut self,
+        record_ty: Idx<HType>,
+        layout_idx: Idx<Layout>,
+        layout: &Layout,
+        destination_variable: Variable,
+        field_operands: &[(Key, Operand)],
+    ) -> CValue {
+        let offsets = match &layout.fields {
+            FieldsShape::Fields(fields) => &fields.offsets,
+            _ => panic!("Expected Fields layout for heap aggregate"),
+        };
+        let record_type = assert_matches!(self.context.type_(record_ty), HType::Product);
+        let descriptor = self.record_descriptor(layout);
+        let size = layout
+            .size
+            .bytes()
+            .checked_add(size_of::<runtime::GcHeader>() as u64)
+            .expect("record allocation size overflow");
+        let size_value = self.builder.ins().iconst(I64, size as i64);
+        let descriptor_value = self
+            .builder
+            .ins()
+            .iconst(I64, descriptor as *const _ as usize as i64);
+        let call = self.call_native_builtin(
+            builtins::ALLOC_OBJECT,
+            &[size_value, descriptor_value],
+        );
+        let gc_ref = self.builder.inst_results(call)[0];
+        self.builder.def_var(destination_variable, gc_ref);
+        let object_addr = self
+            .builder
+            .ins()
+            .iadd_imm(gc_ref, size_of::<runtime::GcHeader>() as i64);
+
+        let field_info: Vec<_> = field_operands
+            .iter()
+            .map(|(key, _)| record_type.fields[key])
+            .collect();
+        for ((_, field_operand), (field_index, field_ty)) in
+            field_operands.iter().zip(field_info.iter())
+        {
+            let field_offset = offsets[*field_index as usize];
+            let field_cval = self.translate_operand(field_operand);
+            let field_addr = if field_offset.bytes() == 0 {
+                object_addr
+            } else {
+                self.builder
+                    .ins()
+                    .iadd_imm(object_addr, field_offset.bytes() as i64)
+            };
+            match field_cval {
+                CValue::Val { val, .. } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), val, field_addr, Offset32::new(0));
+                }
+                CValue::ValPair { first, second, .. } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        second,
+                        field_addr,
+                        Offset32::new(WORD_SIZE as i32),
+                    );
+                }
+                CValue::ValTriple {
+                    first,
+                    second,
+                    third,
+                    ..
+                } => {
+                    self.builder
+                        .ins()
+                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        second,
+                        field_addr,
+                        Offset32::new(WORD_SIZE as i32),
+                    );
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        third,
+                        field_addr,
+                        Offset32::new((WORD_SIZE * 2) as i32),
+                    );
+                }
+                CValue::Ref {
+                    ptr,
+                    layout: field_layout,
+                    ..
+                } => {
+                    let source_addr = match ptr {
+                        Pointer::Stack { slot, offset } => {
+                            self.builder.ins().stack_addr(I64, slot, offset)
+                        }
+                        Pointer::Heap { addr, offset } => {
+                            let offset: i32 = offset.into();
+                            if offset == 0 {
+                                addr
+                            } else {
+                                self.builder.ins().iadd_imm(addr, offset as i64)
+                            }
+                        }
+                    };
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        field_addr,
+                        source_addr,
+                        self.layouts[field_layout].size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+                }
+            }
+            let _ = field_ty;
+        }
+
+        CValue::Ref {
+            ptr: Pointer::Heap {
+                addr: object_addr,
+                offset: Offset32::new(0),
+            },
+            val: Some(gc_ref),
+            layout: layout_idx,
         }
     }
 
@@ -1456,6 +2060,21 @@ impl FunctionTranslator<'_> {
                 layout: layout_idx,
             },
             BackendRepr::StackSlot => {
+                if matches!(&self.places[place.local], CPlace::Heap { .. })
+                    && uses_heap_aggregate(&layout)
+                    && layout.gc_union_fields.is_empty()
+                {
+                    return self.translate_heap_record_aggregate(
+                        record_ty,
+                        layout_idx,
+                        &layout,
+                        match &self.places[place.local] {
+                            CPlace::Heap { variable, .. } => *variable,
+                            _ => unreachable!(),
+                        },
+                        field_operands,
+                    );
+                }
                 let offsets = match &layout.fields {
                     FieldsShape::Fields(fields) => &fields.offsets,
                     _ => panic!("Expected Fields layout for aggregate"),
@@ -1474,6 +2093,21 @@ impl FunctionTranslator<'_> {
                 let slot_data = StackSlotData::new(StackSlotKind::ExplicitSlot, size, 3); // align 8
                 let slot = self.builder.create_sized_stack_slot(slot_data);
 
+                let union_shadows = self.create_union_shadows(slot, &layout);
+                if !union_shadows.is_empty() {
+                    let zero = self.builder.ins().iconst(I64, 0);
+                    for shadow in &union_shadows {
+                        for index in 0..shadow.offsets.len() {
+                            self.builder.ins().stack_store(
+                                zero,
+                                shadow.slot,
+                                Offset32::new(index as i32 * WORD_SIZE as i32),
+                            );
+                        }
+                    }
+                    self.active_union_roots
+                        .extend(union_shadows.iter().cloned());
+                }
                 if !layout.gc_ref_offsets.is_empty() {
                     let zero = self.builder.ins().iconst(I64, 0);
                     for &offset in &layout.gc_ref_offsets {
@@ -1487,7 +2121,7 @@ impl FunctionTranslator<'_> {
 
                 // Store each field before evaluating the next: an allocation in
                 // the next operand must see every reference already produced.
-                for ((_field_key, field_operand), (field_index, _field_ty)) in
+                for ((_field_key, field_operand), (field_index, field_ty)) in
                     field_operands.iter().zip(field_info.iter())
                 {
                     let field_offset = offsets[*field_index as usize];
@@ -1557,15 +2191,83 @@ impl FunctionTranslator<'_> {
                             );
                         }
                     }
+                    // Publish roots for this field only after its entire value
+                    // has been stored. Other union fields are still uninitialized.
+                    let field_layout = self.layout_for_type(*field_ty);
+                    let field_end = field_offset.bytes() + self.layouts[field_layout].size.bytes();
+                    for shadow in &union_shadows {
+                        let position = shadow.source_offset as u64;
+                        if position >= field_offset.bytes() && position < field_end {
+                            self.sync_union_shadow(shadow);
+                        }
+                    }
                 }
 
-                CValue::Ref {
-                    ptr: Pointer::Stack {
+                if layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+                    && !layout.gc_ref_offsets.is_empty()
+                    && layout.gc_union_fields.is_empty()
+                {
+                    let descriptor = self.record_descriptor(&layout);
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("record allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    let root_slot = self.builder.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    );
+                    self.builder
+                        .ins()
+                        .stack_store(gc_ref, root_slot, Offset32::new(0));
+                    self.active_argument_roots.push(root_slot);
+
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    let source_addr = self.builder.ins().stack_addr(
+                        I64,
                         slot,
-                        offset: Offset32::new(0),
-                    },
-                    val: None,
-                    layout: layout_idx,
+                        Offset32::new(0),
+                    );
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        object_addr,
+                        source_addr,
+                        layout.size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+
+                    CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: Some(gc_ref),
+                        layout: layout_idx,
+                    }
+                } else {
+                    CValue::Ref {
+                        ptr: Pointer::Stack {
+                            slot,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
                 }
             }
             _ => unreachable!(
