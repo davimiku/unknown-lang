@@ -63,10 +63,11 @@ pub(crate) struct UnionShadow {
     variants: Vec<(u32, Vec<u32>)>,
 }
 
-/// Descriptors are shared by all functions in one JIT module. The leaked
-/// descriptor data is intentionally stable for the lifetime of generated code;
-/// this cache prevents repeated aggregate constructions from creating duplicate
-/// metadata.
+/// Descriptors are shared by all functions in one JIT module. The descriptor
+/// data is intentionally leaked because returned raw JIT entry points may
+/// outlive the `JIT` host value; reclaiming it requires code-unregistration and
+/// descriptor lifetime coordination. This cache prevents repeated aggregate
+/// constructions from creating duplicate metadata within a module.
 #[derive(Default)]
 pub(crate) struct ManagedDescriptorCache {
     records: HashMap<Vec<u32>, &'static runtime::TypeDescriptor>,
@@ -204,7 +205,7 @@ impl FunctionTranslator<'_> {
         let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
             runtime::TypeDescriptor {
                 name: "Union",
-                kind: runtime::ObjectKind::Other,
+                kind: runtime::ObjectKind::Union,
                 trace: runtime::TraceDescriptor::TaggedFields {
                     tag_offset: size_of::<runtime::GcHeader>() as u32,
                     variants,

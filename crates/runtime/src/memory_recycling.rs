@@ -346,6 +346,7 @@ pub enum ObjectKind {
     String,
     Array,
     Record,
+    Union,
     Closure,
     Other,
 }
