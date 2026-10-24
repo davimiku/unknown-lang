@@ -90,6 +90,10 @@ pub(crate) struct FunctionTranslator<'a> {
     /// locals, so they need temporary slots until the call completes.
     active_argument_roots: Vec<StackSlot>,
 
+    /// Stable descriptors reused for repeated aggregate layouts in a function.
+    record_descriptors: HashMap<Idx<Layout>, &'static runtime::TypeDescriptor>,
+    union_descriptors: HashMap<Idx<Layout>, &'static runtime::TypeDescriptor>,
+
     pub(crate) statuses: TranslateStatus,
 
     pub(crate) next_var_idx: usize,
@@ -118,6 +122,8 @@ impl<'a> FunctionTranslator<'a> {
             active_record_roots: Vec::new(),
             active_union_roots: Vec::new(),
             active_argument_roots: Vec::new(),
+            record_descriptors: HashMap::new(),
+            union_descriptors: HashMap::new(),
             statuses: Default::default(),
             next_var_idx: 0,
             sret_var: None,
@@ -126,6 +132,76 @@ impl<'a> FunctionTranslator<'a> {
 }
 
 impl FunctionTranslator<'_> {
+    fn record_descriptor(
+        &mut self,
+        layout_idx: Idx<Layout>,
+        layout: &Layout,
+    ) -> &'static runtime::TypeDescriptor {
+        if let Some(descriptor) = self.record_descriptors.get(&layout_idx) {
+            return descriptor;
+        }
+
+        let trace_offsets: &'static [u32] = Box::leak(
+            layout
+                .gc_ref_offsets
+                .iter()
+                .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+            runtime::TypeDescriptor {
+                name: "Record",
+                kind: runtime::ObjectKind::Record,
+                trace: runtime::TraceDescriptor::Fields(trace_offsets),
+                destroy: destroy_heap_record,
+            },
+        ));
+        self.record_descriptors.insert(layout_idx, descriptor);
+        descriptor
+    }
+
+    fn union_descriptor(
+        &mut self,
+        layout_idx: Idx<Layout>,
+        layout: &Layout,
+    ) -> &'static runtime::TypeDescriptor {
+        if let Some(descriptor) = self.union_descriptors.get(&layout_idx) {
+            return descriptor;
+        }
+
+        let variants: &'static [(u32, &'static [u32])] = Box::leak(
+            layout
+                .gc_variant_roots
+                .iter()
+                .map(|(tag, offsets)| {
+                    let offsets: &'static [u32] = Box::leak(
+                        offsets
+                            .iter()
+                            .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice(),
+                    );
+                    (*tag, offsets)
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
+        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+            runtime::TypeDescriptor {
+                name: "Union",
+                kind: runtime::ObjectKind::Other,
+                trace: runtime::TraceDescriptor::TaggedFields {
+                    tag_offset: size_of::<runtime::GcHeader>() as u32,
+                    variants,
+                },
+                destroy: destroy_heap_record,
+            },
+        ));
+        self.union_descriptors.insert(layout_idx, descriptor);
+        descriptor
+    }
+
     pub(crate) fn translate_function(mut self) {
         let mir::Function {
             blocks,
@@ -1531,36 +1607,7 @@ impl FunctionTranslator<'_> {
                     }
                     self.active_union_roots.extend(union_shadows);
 
-                    let variants: &'static [(u32, &'static [u32])] = Box::leak(
-                        layout
-                            .gc_variant_roots
-                            .iter()
-                            .map(|(tag, offsets)| {
-                                let offsets: &'static [u32] = Box::leak(
-                                    offsets
-                                        .iter()
-                                        .map(|offset| {
-                                            *offset + size_of::<runtime::GcHeader>() as u32
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into_boxed_slice(),
-                                );
-                                (*tag, offsets)
-                            })
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice(),
-                    );
-                    let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
-                        runtime::TypeDescriptor {
-                            name: "Union",
-                            kind: runtime::ObjectKind::Other,
-                            trace: runtime::TraceDescriptor::TaggedFields {
-                                tag_offset: size_of::<runtime::GcHeader>() as u32,
-                                variants,
-                            },
-                            destroy: destroy_heap_record,
-                        },
-                    ));
+                    let descriptor = self.union_descriptor(layout_idx, &layout);
                     let size = layout
                         .size
                         .bytes()
@@ -1775,22 +1822,7 @@ impl FunctionTranslator<'_> {
                     && !layout.gc_ref_offsets.is_empty()
                     && layout.gc_union_fields.is_empty()
                 {
-                    let trace_offsets: &'static [u32] = Box::leak(
-                        layout
-                            .gc_ref_offsets
-                            .iter()
-                            .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice(),
-                    );
-                    let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
-                        runtime::TypeDescriptor {
-                            name: "Record",
-                            kind: runtime::ObjectKind::Record,
-                            trace: runtime::TraceDescriptor::Fields(trace_offsets),
-                            destroy: destroy_heap_record,
-                        },
-                    ));
+                    let descriptor = self.record_descriptor(layout_idx, &layout);
                     let size = layout
                         .size
                         .bytes()
