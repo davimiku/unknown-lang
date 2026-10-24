@@ -46,6 +46,12 @@ const HEAP_RECORD_THRESHOLD_BYTES: u64 = 64;
 
 unsafe fn destroy_heap_record(_header: *mut runtime::GcHeader) {}
 
+fn uses_heap_aggregate(layout: &Layout) -> bool {
+    layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+        && (!layout.gc_ref_offsets.is_empty() || !layout.gc_variant_roots.is_empty())
+        && layout.gc_union_fields.is_empty()
+}
+
 type BlockMap = ArenaMap<Idx<mir::BasicBlock>, ClifBlock>;
 
 #[derive(Clone)]
@@ -300,6 +306,11 @@ impl FunctionTranslator<'_> {
                     i += 1;
                     self.builder.def_var(second, val);
                 }
+                CPlace::Heap { variable, .. } => {
+                    let val = self.builder.block_params(entry_block)[i];
+                    i += 1;
+                    self.builder.def_var(variable, val);
+                }
                 CPlace::Address { pointer, layout } => {
                     // Stack-allocated values: copy from parameter to our stack slot
                     let (slot, offset) = match pointer {
@@ -335,7 +346,9 @@ impl FunctionTranslator<'_> {
             let return_ty = self.func.return_ty();
             let return_layout_idx = self.layout_for_type(return_ty);
             let return_layout = &self.layouts[return_layout_idx];
-            if matches!(return_layout.backend_repr, BackendRepr::StackSlot) {
+            if matches!(return_layout.backend_repr, BackendRepr::StackSlot)
+                && !uses_heap_aggregate(return_layout)
+            {
                 let sret_var = self.builder.declare_var(I64);
                 let sret_ptr = self.builder.block_params(entry_block)[i];
                 self.builder.def_var(sret_var, sret_ptr);
@@ -389,6 +402,19 @@ impl FunctionTranslator<'_> {
 
         let layout_idx = self.layout_for_type(local.type_idx());
         let layout = &self.layouts[layout_idx];
+        if uses_heap_aggregate(layout) {
+            let variable = self.builder.declare_var(I64);
+            self.builder.declare_var_needs_stack_map(variable);
+            self.places.insert(
+                local_idx,
+                CPlace::Heap {
+                    local,
+                    variable,
+                    layout: layout_idx,
+                },
+            );
+            return;
+        }
         match layout.backend_repr.clone() {
             BackendRepr::None => {}
             BackendRepr::Scalar(scalar) => {
@@ -448,6 +474,10 @@ impl FunctionTranslator<'_> {
         for ty_idx in &self.func.params {
             let layout_idx = self.layout_for_type(*ty_idx);
             let layout = &self.layouts[layout_idx];
+            if uses_heap_aggregate(layout) {
+                self.builder.func.signature.params.push(AbiParam::new(I64));
+                continue;
+            }
             match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
@@ -478,7 +508,9 @@ impl FunctionTranslator<'_> {
 
             let layout_idx = self.layout_for_type(return_ty);
             let layout = &self.layouts[layout_idx];
-            match layout.backend_repr.clone() {
+            if uses_heap_aggregate(layout) {
+                self.builder.func.signature.returns.push(AbiParam::new(I64));
+            } else { match layout.backend_repr.clone() {
                 BackendRepr::None => {}
                 BackendRepr::Scalar(scalar) => {
                     let abi_param = self.translate_scalar_to_abi_param(scalar);
@@ -499,7 +531,7 @@ impl FunctionTranslator<'_> {
                     let abi_param = AbiParam::new(I64);
                     self.builder.func.signature.params.push(abi_param);
                 }
-            }
+            } }
         }
     }
 
@@ -813,6 +845,7 @@ impl FunctionTranslator<'_> {
         match returns.len() {
             0 => {}
             1 => {
+                let return_value = returns[0];
                 // FIXME: use projections
                 let cplace = &self.places[destination.local];
                 if let CPlace::Var {
@@ -821,8 +854,11 @@ impl FunctionTranslator<'_> {
                     layout,
                 } = cplace
                 {
-                    self.builder.def_var(*variable, returns[0]);
+                    self.builder.def_var(*variable, return_value);
                 };
+                if let CPlace::Heap { variable, .. } = cplace {
+                    self.builder.def_var(*variable, return_value);
+                }
             }
             2 => {}
             _ => unreachable!("3+ returns?"),
@@ -890,6 +926,11 @@ impl FunctionTranslator<'_> {
                     let second_val = self.builder.use_var(*second);
                     self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
                     self.builder.ins().return_(&[first_val, second_val]);
+                }
+                CPlace::Heap { variable, .. } => {
+                    let value = self.builder.use_var(*variable);
+                    self.call_native_builtin(builtins::LEAVE_FRAME, &[]);
+                    self.builder.ins().return_(&[value]);
                 }
                 CPlace::Address {
                     pointer: Pointer::Stack { slot, offset },
@@ -1006,6 +1047,12 @@ impl FunctionTranslator<'_> {
             ) => {
                 // Store a scalar value into a stack slot (e.g., storing discriminant)
                 self.builder.ins().stack_store(*val, *slot, *offset);
+            }
+            (
+                CPlace::Heap { variable, .. },
+                CValue::Ref { val: Some(root), .. },
+            ) => {
+                self.builder.def_var(*variable, *root);
             }
             (
                 CPlace::Address {
@@ -1188,6 +1235,17 @@ impl FunctionTranslator<'_> {
                                             offset: payload_offset,
                                         });
                                     }
+                                    CPlace::Heap { variable, .. } => {
+                                        let root = self.builder.use_var(*variable);
+                                        let addr = self.builder.ins().iadd_imm(
+                                            root,
+                                            size_of::<runtime::GcHeader>() as i64,
+                                        );
+                                        ptr = Some(Pointer::Heap {
+                                            addr,
+                                            offset: Offset32::new(WORD_SIZE as i32),
+                                        });
+                                    }
                                     _ => {
                                         // DowncastVariant is always expected to be on an Address
                                         unreachable!(
@@ -1206,6 +1264,15 @@ impl FunctionTranslator<'_> {
                                     let base_place = &self.places[place.local];
                                     if let CPlace::Address { pointer, .. } = base_place {
                                         *pointer
+                                    } else if let CPlace::Heap { variable, .. } = base_place {
+                                        let root = self.builder.use_var(*variable);
+                                        Pointer::Heap {
+                                            addr: self.builder.ins().iadd_imm(
+                                                root,
+                                                size_of::<runtime::GcHeader>() as i64,
+                                            ),
+                                            offset: Offset32::new(0),
+                                        }
                                     } else {
                                         unreachable!(
                                             "Internal Compiler Error (CLIF): Field projection on non-address place: {:?}",
@@ -1329,6 +1396,23 @@ impl FunctionTranslator<'_> {
                         second: self.builder.use_var(*second),
                         layout: *layout,
                     },
+                    CPlace::Heap {
+                        variable, layout, ..
+                    } => {
+                        let root = self.builder.use_var(*variable);
+                        let payload = self.builder.ins().iadd_imm(
+                            root,
+                            size_of::<runtime::GcHeader>() as i64,
+                        );
+                        CValue::Ref {
+                            ptr: Pointer::Heap {
+                                addr: payload,
+                                offset: Offset32::new(0),
+                            },
+                            val: Some(root),
+                            layout: *layout,
+                        }
+                    }
                     CPlace::Address { pointer, layout } => CValue::Ref {
                         ptr: *pointer,
                         val: None,
@@ -1454,6 +1538,21 @@ impl FunctionTranslator<'_> {
                     .builder
                     .ins()
                     .load(I64, MemFlagsData::new(), *addr, *offset);
+                CValue::Val {
+                    val,
+                    layout: self.layouts.int,
+                }
+            }
+            CPlace::Heap { variable, .. } => {
+                let root = self.builder.use_var(*variable);
+                let payload = self.builder.ins().iadd_imm(
+                    root,
+                    size_of::<runtime::GcHeader>() as i64,
+                );
+                let val = self
+                    .builder
+                    .ins()
+                    .load(I64, MemFlagsData::new(), payload, Offset32::new(0));
                 CValue::Val {
                     val,
                     layout: self.layouts.int,
@@ -1663,7 +1762,7 @@ impl FunctionTranslator<'_> {
                             addr: object_addr,
                             offset: Offset32::new(0),
                         },
-                        val: None,
+                        val: Some(gc_ref),
                         layout: layout_idx,
                     }
                 } else {
@@ -1879,7 +1978,7 @@ impl FunctionTranslator<'_> {
                             addr: object_addr,
                             offset: Offset32::new(0),
                         },
-                        val: None,
+                        val: Some(gc_ref),
                         layout: layout_idx,
                     }
                 } else {

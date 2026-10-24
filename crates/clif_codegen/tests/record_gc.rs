@@ -41,8 +41,11 @@ let main = fun () -> {
         observed
             .roots
             .iter()
-            .any(|root| { root.word == first && root.return_address != observed.return_address }),
-        "expected record field in older Hopper frame: {observed:?}"
+            .any(|root| {
+                root.return_address != observed.return_address
+                    && runtime::heap_contains_address(root.word)
+            }),
+        "expected heap record root in older Hopper frame: {observed:?}"
     );
     assert!(
         collection.bytes_after < collection.bytes_before,

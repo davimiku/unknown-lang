@@ -36,6 +36,12 @@ pub(crate) enum CPlace {
         pointer: Pointer,
         layout: Idx<Layout>,
     },
+    /// A GC-managed aggregate represented by its header pointer.
+    Heap {
+        local: Local,
+        variable: Variable,
+        layout: Idx<Layout>,
+    },
 }
 
 impl CPlace {
@@ -44,7 +50,7 @@ impl CPlace {
         match self {
             CPlace::Var { variable, .. } => vec![*variable],
             CPlace::VarPair { first, second, .. } => vec![*first, *second],
-            CPlace::Address { .. } => vec![],
+            CPlace::Address { .. } | CPlace::Heap { .. } => vec![],
         }
     }
 }
