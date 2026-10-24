@@ -648,6 +648,9 @@ impl Builder {
         // if the match is exhaustive, it puts an "unreachable" no-op
         // should evaluate if/why we would want to do the same thing
         let mut otherwise = None;
+        // Keep the fallback for exhaustive matches when there is no
+        // standalone catch-all arm
+        let mut exhaustive_fallback = None;
         for arm in match_expr.arms.iter() {
             self.current_block = self.new_block();
             match_arm_blocks.push(self.current_block);
@@ -657,6 +660,7 @@ impl Builder {
                 &scrutinee_place,
                 &mut branches,
                 &mut otherwise,
+                &mut exhaustive_fallback,
                 context,
             );
             self.construct_block(arm.expr, None, assign_to, context);
@@ -679,7 +683,7 @@ impl Builder {
 
         let targets = BranchIntTargets {
             branches: branches.into(),
-            otherwise,
+            otherwise: otherwise.or(exhaustive_fallback),
         };
 
         self.construct_branch_terminator(source_block, discriminant, targets);
@@ -693,6 +697,7 @@ impl Builder {
         scrutinee_place: &Place,
         branches: &mut Vec<BranchTarget>,
         otherwise: &mut Option<BlockTarget>,
+        exhaustive_fallback: &mut Option<BlockTarget>,
         context: &Context,
     ) {
         let scrutinee_ty = scrutinee_place.type_idx_of(self.current_function());
@@ -721,10 +726,19 @@ impl Builder {
                     Some(binding.symbol),
                 );
 
-                otherwise.get_or_insert(BlockTarget {
-                    target: self.current_block,
-                    args: vec![],
-                });
+                if binding.variant.is_some() {
+                    exhaustive_fallback.get_or_insert(BlockTarget {
+                        target: self.current_block,
+                        args: vec![],
+                    });
+                } else {
+                    // Only a standalone binding (e.g. `otherwise`) handles
+                    // unmatched discriminants.
+                    otherwise.get_or_insert(BlockTarget {
+                        target: self.current_block,
+                        args: vec![],
+                    });
+                }
             }
             hir::Pattern::Variant { meta: _, pattern } => {
                 let sum_type = assert_matches!(scrutinee_ty, hir::Type::Sum);
@@ -748,6 +762,7 @@ impl Builder {
                         &scrutinee_place,
                         branches,
                         otherwise,
+                        exhaustive_fallback,
                         context,
                     );
                 }

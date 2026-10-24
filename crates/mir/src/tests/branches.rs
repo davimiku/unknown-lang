@@ -1,6 +1,45 @@
 use super::check_module;
 
 #[test]
+fn catch_all_arm_reads_record_field() {
+    let input = r#"
+type Choice = (text: String | number: Int)
+type Wrapped = [ choice: Choice, other: String ]
+let main = fun (value: Wrapped) -> String {
+    let choice = value.choice
+    match choice {
+        .text text -> { text }
+        otherwise -> { value.other }
+    }
+}
+"#;
+    let expected = "
+fun main:
+    params: _1
+    mut _0: String
+    _1: Wrapped~1.1
+    _2: Choice~1.0
+    _3: Int
+    _4: String
+    _5: Choice~1.0
+
+    BB0():
+        _2 := copy _1.0
+        _3 := discriminant(_2)
+        BranchInt(copy _3): [0 -> BB1(), else -> BB2()]
+    BB1():
+        _4 := copy _2.text
+        _0 := copy _4
+        Return _0 ->
+    BB2():
+        _5 := copy _2
+        _0 := copy _1.1
+        Return _0 ->";
+
+    check_module(input, expected);
+}
+
+#[test]
 fn basic_match() {
     let input = "
 let main = fun (condition: Bool) -> Int {
