@@ -1522,14 +1522,105 @@ impl FunctionTranslator<'_> {
                     }
                 }
 
-                // Return a reference to our stack slot
-                CValue::Ref {
-                    ptr: Pointer::Stack {
-                        slot,
-                        offset: Offset32::new(0),
-                    },
-                    val: None,
-                    layout: layout_idx,
+                if layout.size.bytes() > HEAP_RECORD_THRESHOLD_BYTES
+                    && !layout.gc_variant_roots.is_empty()
+                {
+                    let union_shadows = self.create_union_shadows(slot, &layout);
+                    for shadow in &union_shadows {
+                        self.sync_union_shadow(shadow);
+                    }
+                    self.active_union_roots.extend(union_shadows);
+
+                    let variants: &'static [(u32, &'static [u32])] = Box::leak(
+                        layout
+                            .gc_variant_roots
+                            .iter()
+                            .map(|(tag, offsets)| {
+                                let offsets: &'static [u32] = Box::leak(
+                                    offsets
+                                        .iter()
+                                        .map(|offset| {
+                                            *offset + size_of::<runtime::GcHeader>() as u32
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into_boxed_slice(),
+                                );
+                                (*tag, offsets)
+                            })
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice(),
+                    );
+                    let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
+                        runtime::TypeDescriptor {
+                            name: "Union",
+                            kind: runtime::ObjectKind::Other,
+                            trace: runtime::TraceDescriptor::TaggedFields {
+                                tag_offset: size_of::<runtime::GcHeader>() as u32,
+                                variants,
+                            },
+                            destroy: destroy_heap_record,
+                        },
+                    ));
+                    let size = layout
+                        .size
+                        .bytes()
+                        .checked_add(size_of::<runtime::GcHeader>() as u64)
+                        .expect("union allocation size overflow");
+                    let size_value = self.builder.ins().iconst(I64, size as i64);
+                    let descriptor_value = self
+                        .builder
+                        .ins()
+                        .iconst(I64, descriptor as *const _ as usize as i64);
+                    let call = self.call_native_builtin(
+                        builtins::ALLOC_OBJECT,
+                        &[size_value, descriptor_value],
+                    );
+                    let gc_ref = self.builder.inst_results(call)[0];
+                    let root_slot = self.builder.create_sized_stack_slot(
+                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
+                    );
+                    self.builder
+                        .ins()
+                        .stack_store(gc_ref, root_slot, Offset32::new(0));
+                    self.active_argument_roots.push(root_slot);
+
+                    let object_addr = self.builder.ins().iadd_imm(
+                        gc_ref,
+                        size_of::<runtime::GcHeader>() as i64,
+                    );
+                    let source_addr = self
+                        .builder
+                        .ins()
+                        .stack_addr(I64, slot, Offset32::new(0));
+                    self.builder.emit_small_memory_copy(
+                        self.module.target_config(),
+                        object_addr,
+                        source_addr,
+                        layout.size.bytes(),
+                        1,
+                        1,
+                        true,
+                        MemFlagsData::new(),
+                    );
+
+                    CValue::Ref {
+                        ptr: Pointer::Heap {
+                            addr: object_addr,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
+                } else {
+                    // Return a reference to our stack slot.
+                    CValue::Ref {
+                        ptr: Pointer::Stack {
+                            slot,
+                            offset: Offset32::new(0),
+                        },
+                        val: None,
+                        layout: layout_idx,
+                    }
                 }
             }
         }

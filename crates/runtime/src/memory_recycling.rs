@@ -86,14 +86,21 @@ impl Heap {
             return Err(AllocError::InvalidSize);
         }
         // Reject invalid trace layouts before collection or allocation.
-        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
-            for &offset in offsets {
-                let offset = offset as usize;
-                if offset < size_of::<GcHeader>()
-                    || offset % align_of::<GcRef>() != 0
-                    || offset
-                        .checked_add(size_of::<GcRef>())
-                        .is_none_or(|end| end > size)
+        match descriptor.trace {
+            TraceDescriptor::None => {}
+            TraceDescriptor::Fields(offsets) => {
+                if !valid_trace_offsets(offsets, size) {
+                    return Err(AllocError::InvalidSize);
+                }
+            }
+            TraceDescriptor::TaggedFields {
+                tag_offset,
+                variants,
+            } => {
+                if !valid_trace_offsets(std::slice::from_ref(&tag_offset), size)
+                    || variants
+                        .iter()
+                        .any(|(_, offsets)| !valid_trace_offsets(offsets, size))
                 {
                     return Err(AllocError::InvalidSize);
                 }
@@ -124,16 +131,33 @@ impl Heap {
             });
         }
 
-        if let TraceDescriptor::Fields(offsets) = descriptor.trace {
-            for &offset in offsets {
-                // SAFETY: offsets were validated above; these words are within
-                // the owned allocation and have GC-pointer alignment.
-                unsafe {
-                    ptr.as_ptr()
-                        .cast::<u8>()
-                        .add(offset as usize)
-                        .cast::<*mut GcHeader>()
-                        .write(std::ptr::null_mut());
+        match descriptor.trace {
+            TraceDescriptor::None => {}
+            TraceDescriptor::Fields(offsets) => {
+                for &offset in offsets {
+                    // SAFETY: offsets were validated above; these words are
+                    // within the owned allocation and have GC-pointer alignment.
+                    unsafe {
+                        ptr.as_ptr()
+                            .cast::<u8>()
+                            .add(offset as usize)
+                            .cast::<*mut GcHeader>()
+                            .write(std::ptr::null_mut());
+                    }
+                }
+            }
+            TraceDescriptor::TaggedFields { variants, .. } => {
+                for (_, offsets) in variants {
+                    for &offset in *offsets {
+                        // SAFETY: offsets were validated above.
+                        unsafe {
+                            ptr.as_ptr()
+                                .cast::<u8>()
+                                .add(offset as usize)
+                                .cast::<*mut GcHeader>()
+                                .write(std::ptr::null_mut());
+                        }
+                    }
                 }
             }
         }
@@ -240,6 +264,25 @@ impl Marker {
                             self.mark_slot(field);
                         }
                     }
+                    TraceDescriptor::TaggedFields {
+                        tag_offset,
+                        variants,
+                    } => {
+                        let tag = header
+                            .as_ptr()
+                            .cast::<u8>()
+                            .add(tag_offset as usize)
+                            .cast::<usize>()
+                            .read();
+                        if let Some((_, offsets)) =
+                            variants.iter().find(|(variant, _)| *variant as usize == tag)
+                        {
+                            for &offset in *offsets {
+                                let field = header.as_ptr().cast::<u8>().add(offset as usize).cast();
+                                self.mark_slot(field);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -319,6 +362,23 @@ pub enum TraceDescriptor {
     /// offsets are byte offsets from the start of the object
     /// to inline `GcRef` fields
     Fields(&'static [u32]),
+    /// A tag-selected set of inline `GcRef` fields. The tag and field offsets
+    /// are byte offsets from the start of the object.
+    TaggedFields {
+        tag_offset: u32,
+        variants: &'static [(u32, &'static [u32])],
+    },
+}
+
+fn valid_trace_offsets(offsets: &[u32], size: usize) -> bool {
+    offsets.iter().all(|&offset| {
+        let offset = offset as usize;
+        offset >= size_of::<GcHeader>()
+            && offset % align_of::<GcRef>() == 0
+            && offset
+                .checked_add(size_of::<GcRef>())
+                .is_some_and(|end| end <= size)
+    })
 }
 
 /// utility/helper to get a Layout with the assumed alignment of GcHeader
@@ -344,6 +404,13 @@ mod tests {
         child: GcRef,
     }
 
+    #[repr(C)]
+    struct TestTagged {
+        header: GcHeader,
+        tag: usize,
+        child: GcRef,
+    }
+
     static DESTROY_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     unsafe fn destroy_test_object(_header: *mut GcHeader) {
@@ -361,6 +428,16 @@ mod tests {
         name: "TestParent",
         kind: ObjectKind::Other,
         trace: TraceDescriptor::Fields(&[offset_of!(TestParent, child) as u32]),
+        destroy: destroy_test_object,
+    };
+
+    static TEST_TAGGED_DESCRIPTOR: TypeDescriptor = TypeDescriptor {
+        name: "TestTagged",
+        kind: ObjectKind::Other,
+        trace: TraceDescriptor::TaggedFields {
+            tag_offset: offset_of!(TestTagged, tag) as u32,
+            variants: &[(0, &[offset_of!(TestTagged, child) as u32])],
+        },
         destroy: destroy_test_object,
     };
 
@@ -604,5 +681,33 @@ mod tests {
             heap.allocated_bytes,
             size_of::<TestLeaf>() + size_of::<TestParent>()
         );
+    }
+
+    #[test]
+    fn tagged_trace_descriptor_only_marks_active_variant_fields() {
+        let mut heap = Heap::default();
+        let child = heap
+            .alloc_raw(size_of::<TestLeaf>(), &TEST_LEAF_DESCRIPTOR, &mut EmptyRootSet)
+            .unwrap();
+        let tagged = heap
+            .alloc_raw(
+                size_of::<TestTagged>(),
+                &TEST_TAGGED_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
+            .unwrap();
+
+        unsafe {
+            let tagged_ptr = tagged.as_ptr().cast::<TestTagged>();
+            (*tagged_ptr).tag = 1;
+            (*tagged_ptr).child = child;
+        }
+
+        let mut tagged_root = tagged;
+        heap.collect(&mut SlotRootSet::new(vec![&mut tagged_root]));
+        assert_eq!(heap.allocated_bytes(), size_of::<TestTagged>());
+
+        heap.collect(&mut EmptyRootSet);
+        assert_eq!(heap.allocated_bytes(), 0);
     }
 }
