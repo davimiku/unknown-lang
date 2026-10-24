@@ -57,6 +57,16 @@ pub(crate) struct UnionShadow {
     variants: Vec<(u32, Vec<u32>)>,
 }
 
+/// Descriptors are shared by all functions in one JIT module. The leaked
+/// descriptor data is intentionally stable for the lifetime of generated code;
+/// this cache prevents repeated aggregate constructions from creating duplicate
+/// metadata.
+#[derive(Default)]
+pub(crate) struct ManagedDescriptorCache {
+    records: HashMap<Vec<u32>, &'static runtime::TypeDescriptor>,
+    unions: HashMap<Vec<(u32, Vec<u32>)>, &'static runtime::TypeDescriptor>,
+}
+
 /// A collection of state used for translating from toy-language AST nodes
 /// into Cranelift IR.
 pub(crate) struct FunctionTranslator<'a> {
@@ -90,9 +100,7 @@ pub(crate) struct FunctionTranslator<'a> {
     /// locals, so they need temporary slots until the call completes.
     active_argument_roots: Vec<StackSlot>,
 
-    /// Stable descriptors reused for repeated aggregate layouts in a function.
-    record_descriptors: HashMap<Idx<Layout>, &'static runtime::TypeDescriptor>,
-    union_descriptors: HashMap<Idx<Layout>, &'static runtime::TypeDescriptor>,
+    descriptors: &'a mut ManagedDescriptorCache,
 
     pub(crate) statuses: TranslateStatus,
 
@@ -109,6 +117,7 @@ impl<'a> FunctionTranslator<'a> {
         func: &'a mir::Function,
         func_map: &'a HashMap<mir::FuncId, FuncId>,
         context: &'a hir::Context,
+        descriptors: &'a mut ManagedDescriptorCache,
     ) -> Self {
         Self {
             func,
@@ -122,8 +131,7 @@ impl<'a> FunctionTranslator<'a> {
             active_record_roots: Vec::new(),
             active_union_roots: Vec::new(),
             active_argument_roots: Vec::new(),
-            record_descriptors: HashMap::new(),
-            union_descriptors: HashMap::new(),
+            descriptors,
             statuses: Default::default(),
             next_var_idx: 0,
             sret_var: None,
@@ -134,10 +142,10 @@ impl<'a> FunctionTranslator<'a> {
 impl FunctionTranslator<'_> {
     fn record_descriptor(
         &mut self,
-        layout_idx: Idx<Layout>,
         layout: &Layout,
     ) -> &'static runtime::TypeDescriptor {
-        if let Some(descriptor) = self.record_descriptors.get(&layout_idx) {
+        let key = layout.gc_ref_offsets.clone();
+        if let Some(descriptor) = self.descriptors.records.get(&key) {
             return descriptor;
         }
 
@@ -157,16 +165,16 @@ impl FunctionTranslator<'_> {
                 destroy: destroy_heap_record,
             },
         ));
-        self.record_descriptors.insert(layout_idx, descriptor);
+        self.descriptors.records.insert(key, descriptor);
         descriptor
     }
 
     fn union_descriptor(
         &mut self,
-        layout_idx: Idx<Layout>,
         layout: &Layout,
     ) -> &'static runtime::TypeDescriptor {
-        if let Some(descriptor) = self.union_descriptors.get(&layout_idx) {
+        let key = layout.gc_variant_roots.clone();
+        if let Some(descriptor) = self.descriptors.unions.get(&key) {
             return descriptor;
         }
 
@@ -198,7 +206,7 @@ impl FunctionTranslator<'_> {
                 destroy: destroy_heap_record,
             },
         ));
-        self.union_descriptors.insert(layout_idx, descriptor);
+        self.descriptors.unions.insert(key, descriptor);
         descriptor
     }
 
@@ -1607,7 +1615,7 @@ impl FunctionTranslator<'_> {
                     }
                     self.active_union_roots.extend(union_shadows);
 
-                    let descriptor = self.union_descriptor(layout_idx, &layout);
+                    let descriptor = self.union_descriptor(&layout);
                     let size = layout
                         .size
                         .bytes()
@@ -1822,7 +1830,7 @@ impl FunctionTranslator<'_> {
                     && !layout.gc_ref_offsets.is_empty()
                     && layout.gc_union_fields.is_empty()
                 {
-                    let descriptor = self.record_descriptor(layout_idx, &layout);
+                    let descriptor = self.record_descriptor(&layout);
                     let size = layout
                         .size
                         .bytes()
