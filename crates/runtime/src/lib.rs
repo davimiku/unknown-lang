@@ -212,11 +212,16 @@ pub fn register_function_stack_maps(
 #[cfg(test)]
 mod tests {
     use std::mem::size_of;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
     use crate::memory_recycling::GcHeader;
 
-    unsafe fn destroy_test_object(_header: *mut GcHeader) {}
+    static DESTROY_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe fn destroy_test_object(_header: *mut GcHeader) {
+        DESTROY_COUNT.fetch_add(1, Ordering::SeqCst);
+    }
 
     static TEST_OBJECT_DESCRIPTOR: TypeDescriptor = TypeDescriptor {
         name: "TestObject",
@@ -227,6 +232,7 @@ mod tests {
 
     #[test]
     fn generic_runtime_allocation_uses_global_collection_policy() {
+        DESTROY_COUNT.store(0, Ordering::SeqCst);
         let mut runtime = Runtime::default();
         runtime.heap.set_collection_threshold_for_test(size_of::<GcHeader>());
 
@@ -247,7 +253,11 @@ mod tests {
             )
             .unwrap();
 
-        assert!(!runtime.heap.contains_address(first_address));
+        // The allocator may reuse the reclaimed address for the second object,
+        // so reclamation is checked through destruction and accounting rather
+        // than address uniqueness.
+        assert_eq!(DESTROY_COUNT.load(Ordering::SeqCst), 1);
+        assert!(runtime.heap.contains_address(first_address));
         assert_eq!(runtime.heap.allocated_bytes(), size_of::<GcHeader>());
     }
 }
