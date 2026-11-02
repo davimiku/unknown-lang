@@ -1064,13 +1064,13 @@ impl Context {
     }
 
     fn lower_type_call(&mut self, ast: ast::expr::CallExpr) -> TypeExpr {
-        // let path = ast.path().unwrap();
-        // let mut idents = path.ident_strings();
-
-        // TODO: handle multiple idents in a Path
-        // let name = idents.next().unwrap();
-
-        let name = String::new();
+        let name = ast
+            .callee()
+            .and_then(|callee| match callee {
+                ast::Expr::Ident(ident) => Some(ident.as_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
 
         if let Some(call_args) = ast.args() {
             let args = call_args
@@ -1086,7 +1086,14 @@ impl Context {
     }
 
     fn lower_type_path(&mut self, path: ast::TypePathExpr) -> TypeExpr {
-        todo!()
+        // The parser currently represents a type constructor's bare callee as
+        // a single-segment path in some contexts (for example `List (Int)`).
+        // Preserve that segment as a normal type identifier.
+        if path.member().is_none() {
+            let idx = self.lower_type_expr(path.subject(), None);
+            return self.type_expr(idx).clone();
+        }
+        todo!("qualified type paths are not implemented")
         // TODO: handling proper paths, i.e. `a.b.1`
         // let name = path.ident_strings().next().unwrap();
         // let key = self.interner.intern(&name);

@@ -57,7 +57,6 @@ impl TypeAllocation for hir::Type {
             hir::Type::String => todo!(),
             hir::Type::Sum(sum_type) => sum_type.word_size(context),
             hir::Type::Function(function_type) => todo!(),
-            hir::Type::Array(array_type) => todo!(),
             hir::Type::Top | hir::Type::Bottom | hir::Type::Unknown | hir::Type::Error => {
                 unreachable!(
                     "Internal Compiler Error (CLIF): Invalid type for size calculation: {self:?}",

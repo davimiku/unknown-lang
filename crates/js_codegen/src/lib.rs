@@ -130,17 +130,8 @@ impl Codegen {
                         Type::StringLiteral(_) | Type::String => {
                             self.write_binary("+", &args, context)
                         }
-                        Type::Array(_) => {
-                            let subject = args[0];
-                            self.write_method_call(
-                                subject,
-                                "concat",
-                                args.into_iter().skip(1),
-                                context,
-                            )
-                        }
                         _ => panic!(
-                            "compiler error! expected String or Array types for concat operator"
+                            "compiler error! expected String type for concat operator"
                         ),
                     }
                 }

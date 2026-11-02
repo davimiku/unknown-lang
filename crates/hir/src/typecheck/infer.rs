@@ -18,12 +18,9 @@ use crate::expr::{
     VarRefExpr,
 };
 use crate::interner::Key;
-use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr, UnionTypeExpr};
+use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr};
 use crate::typecheck::types::UnionNamespaceType;
-use crate::{
-    ArrayType, CallExpr, Context, ContextDisplay, FunctionType, Module, Pattern, ProductType,
-    VariantIdx,
-};
+use crate::{CallExpr, Context, FunctionType, ListType, Module, Pattern};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -203,7 +200,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
         TE::Unit => context.type_database.core.unit.into(),
 
         TE::VarDef(type_var_def) => infer_type_var_def(&type_var_def, context),
-        TE::Call(_) => todo!(),
+        TE::Call(call) => infer_type_call(&call, context),
         TE::Union(union) => {
             let mut result = TypeResult::new(&context.type_database);
 
@@ -488,6 +485,16 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
     let mut result = TypeResult::new(&context.type_database);
     result.chain(infer_expr(*callee, context));
 
+    // These are compiler-privileged functions rather than ordinary
+    // polymorphic functions for now. Their element type relation is checked
+    // here until the language has generic function types.
+    if let Expr::VarRef(var_ref) = context.expr(*callee) {
+        let name = context.value_symbol_str(var_ref.symbol).to_owned();
+        if matches!(name.as_str(), "list_new" | "list_push" | "list_len") {
+            return infer_list_builtin(expr_idx, &name, args, result, context);
+        }
+    }
+
     let result_type = context.type_(result.ty).clone();
     if let Type::Function(FunctionType { signatures, .. }) = result_type {
         if signatures.len() == 1 {
@@ -556,6 +563,64 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
     } else {
         result.push_diag(TypeDiagnostic::expected_function(result.ty, range));
         result.ty = context.core_types().error
+    }
+    result
+}
+
+fn infer_list_builtin(
+    expr_idx: Idx<Expr>,
+    name: &str,
+    args: &[Idx<Expr>],
+    mut result: TypeResult,
+    context: &mut Context,
+) -> TypeResult {
+    let range = context.database.range_of_expr(expr_idx);
+    let expected_args = match name {
+        "list_new" => 0,
+        "list_push" => 2,
+        "list_len" => 1,
+        _ => unreachable!(),
+    };
+    if args.len() != expected_args {
+        result.push_diag(TypeDiagnostic::num_args_mismatch(
+            expected_args,
+            args.len(),
+            range,
+        ));
+        result.ty = context.core_types().error;
+        return result;
+    }
+
+    if name == "list_new" {
+        result.ty = context.type_database.alloc_type(Type::List(ListType {
+            of: context.core_types().unknown,
+        }));
+        return result;
+    }
+
+    let list_result = infer_expr(args[0], context);
+    result.chain(list_result);
+    let list_ty = result.ty;
+    let element_ty = match context.type_(list_ty) {
+        Type::List(list) => list.of,
+        _ => {
+            result.push_diag(TypeDiagnostic::mismatch(
+                context.type_database.alloc_type(Type::List(ListType {
+                    of: context.core_types().unknown,
+                })),
+                list_ty,
+                range,
+            ));
+            result.ty = context.core_types().error;
+            return result;
+        }
+    };
+
+    if name == "list_push" {
+        result.check(args[1], element_ty, context);
+        result.ty = context.core_types().unit;
+    } else {
+        result.ty = context.core_types().int;
     }
     result
 }
@@ -685,14 +750,30 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
     if result.is_ok() {
         match context.type_(result.ty) {
             // TODO: the index expr needs to be an Int also
-            Type::Array(ArrayType { of }) => result.ty = *of,
-
             _ => {
                 // TODO: add diagnostic
                 // TODO: mutate result.ty to error
                 todo!()
             }
         }
+    }
+    result
+}
+
+fn infer_type_call(call: &crate::type_expr::CallExpr, context: &mut Context) -> TypeResult {
+    let mut result = TypeResult::new(&context.type_database);
+    if call.path == "List" && call.args.len() == 1 {
+        let element = infer_type_expr(call.args[0], context);
+        result.chain(element);
+        if result.is_ok() {
+            result.ty = context
+                .type_database
+                .alloc_type(Type::List(ListType { of: result.ty }));
+        }
+    } else {
+        result.ty = context.core_types().error;
+        // The unresolved-type diagnostic infrastructure is not yet expressive
+        // enough for type applications; keep this localized until it is.
     }
     result
 }
@@ -922,7 +1003,7 @@ fn infer_unary(expr_idx: Idx<Expr>, expr: &UnaryExpr, context: &mut Context) -> 
             | Type::Float
             | Type::Int
             // | Type::Function(_)
-            // | Type::Array(_)
+            // List indexing will be added with the List MIR operations.
             | Type::String=> result.ty = context.core_types().string,
 
             _ => result.push_diag(TypeDiagnostic {

@@ -36,7 +36,10 @@ pub enum Type {
     // Product
     Product(ProductType),
     Function(FunctionType),
-    Array(ArrayType),
+
+    // Other compiler builtins, that may later be implemented in userspace
+    /// Dynamic array backed list, nominally typed, homogeneous, i.e. `List 'a`
+    List(ListType),
     // TODO: consider arena allocating larger variants
     // and could consider making this Copy - but would need a custom impl of PartialEq?
 }
@@ -205,7 +208,7 @@ impl ContextDisplay for Type {
             Type::Product(product_type) => product_type.display(context),
 
             Type::Function(func) => func.display(context),
-            Type::Array(arr) => arr.display(context),
+            Type::List(list) => list.display(context),
 
             Type::Unit => "()".to_owned(),
             Type::Top => "{top}".to_owned(),
@@ -467,12 +470,12 @@ impl ContextDisplay for FuncSignature {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayType {
+pub struct ListType {
     pub of: Idx<Type>,
 }
 
-impl ContextDisplay for ArrayType {
+impl ContextDisplay for ListType {
     fn display(&self, context: &Context) -> String {
-        format!("[]{}", self.of.display(context))
+        format!("List {}", self.of.display(context))
     }
 }

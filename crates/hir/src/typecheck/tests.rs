@@ -76,6 +76,27 @@ fn infer_unit() {
 }
 
 #[test]
+fn infer_nominal_list_and_builtin_operations() {
+    let input = "{
+        let values: List (Int) = list_new ()
+        list_push (values, 42)
+        list_len values
+    }";
+
+    check_infer_type(input, &Type::Int);
+}
+
+#[test]
+fn infer_list_type_application() {
+    let mut context = Context::new(Interner::default());
+    let result = check("let values: List (String) = list_new ()", &mut context);
+
+    let Type::Unit = context.type_(result.ty) else {
+        panic!("list declaration should have unit type")
+    };
+}
+
+#[test]
 fn infer_let_binding() {
     let input = "let a = 1";
     let expected = Type::Unit; // the let binding itself is Unit

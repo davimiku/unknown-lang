@@ -61,6 +61,14 @@ pub struct CoreKeys {
 
     /// `print`
     pub print: Key,
+    /// `List`
+    pub list: Key,
+    /// `list_new`
+    pub list_new: Key,
+    /// `list_push`
+    pub list_push: Key,
+    /// `list_len`
+    pub list_len: Key,
     /// `args`
     pub args: Key,
     /// `main`
@@ -121,6 +129,11 @@ impl CoreKeys {
             le: interner.intern("<="),
             gt: interner.intern(">"),
             ge: interner.intern(">="),
+
+            list: interner.intern("List"),
+            list_new: interner.intern("list_new"),
+            list_push: interner.intern("list_push"),
+            list_len: interner.intern("list_len"),
         }
     }
 }

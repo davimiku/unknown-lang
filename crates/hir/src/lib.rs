@@ -23,7 +23,7 @@ pub use expr::{
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use typecheck::{
-    ArrayType, CoreTypes, FuncSignature, FunctionType, ProductType, SumType, Type, VariantIdx,
+    CoreTypes, FuncSignature, FunctionType, ListType, ProductType, SumType, Type, VariantIdx,
     VecVariantIdx,
 };
 
