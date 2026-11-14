@@ -61,6 +61,20 @@ pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
     if !p.at(TokenKind::Equals) {
         parse_ident(p);
 
+        // generic declaration syntax - `type List 'A = ...`
+        while p.at(TokenKind::TypeParameter) {
+            p.bump();
+        }
+
+        // multi-parameters - `type Result ('A, 'Err) = ...`
+        if p.bump_if_at(TokenKind::LParen) {
+            while p.at(TokenKind::TypeParameter) {
+                p.bump();
+                p.bump_if_at(TokenKind::Comma);
+            }
+            p.expect(TokenKind::RParen);
+        }
+
         p.expect(TokenKind::Equals);
     } else {
         // invalid syntax but parse gracefully anyways

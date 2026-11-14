@@ -6,6 +6,10 @@ use crate::scope::ModuleScopes;
 use crate::typecheck::{CoreTypes, TypeDatabase};
 use crate::{FuncSignature, Interner, IntrinsicExpr, Key, Type};
 
+pub const INT: &'static str = "Int";
+pub const FLOAT: &'static str = "Float";
+pub const STRING: &'static str = "String";
+pub const LIST: &'static str = "List";
 fn insert_value(
     database: &mut Database,
     type_database: &mut TypeDatabase,
@@ -49,7 +53,13 @@ pub(crate) fn insert_core_values(
 
     // core function - Print
     // eventually could be removed in favor of a Display trait
-    insert_value(database, type_database, scopes, keys.print, Type::func(print_signatures(&t)));
+    insert_value(
+        database,
+        type_database,
+        scopes,
+        keys.print,
+        Type::func(print_signatures(&t)),
+    );
 
     // false, true
     // like if this was at the top of every module:

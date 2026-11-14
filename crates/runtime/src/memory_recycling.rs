@@ -105,6 +105,19 @@ impl Heap {
                     return Err(AllocError::InvalidSize);
                 }
             }
+            TraceDescriptor::Array {
+                length_offset,
+                elements_offset,
+                stride,
+                element_offsets,
+            } => {
+                if !valid_trace_offsets(std::slice::from_ref(&length_offset), size)
+                    || stride == 0
+                    || !valid_array_trace(elements_offset, stride, element_offsets, size)
+                {
+                    return Err(AllocError::InvalidSize);
+                }
+            }
         }
 
         if self.automatic_collection_enabled && self.collection_due_for(size) {
@@ -158,6 +171,26 @@ impl Heap {
                                 .write(std::ptr::null_mut());
                         }
                     }
+                }
+            }
+            TraceDescriptor::Array {
+                elements_offset,
+                stride,
+                element_offsets,
+                ..
+            } => {
+                let mut base = elements_offset as usize;
+                while base + stride as usize <= size {
+                    for &offset in element_offsets {
+                        unsafe {
+                            ptr.as_ptr()
+                                .cast::<u8>()
+                                .add(base + offset as usize)
+                                .cast::<*mut GcHeader>()
+                                .write(std::ptr::null_mut());
+                        }
+                    }
+                    base += stride as usize;
                 }
             }
         }
@@ -274,11 +307,38 @@ impl Marker {
                             .add(tag_offset as usize)
                             .cast::<usize>()
                             .read();
-                        if let Some((_, offsets)) =
-                            variants.iter().find(|(variant, _)| *variant as usize == tag)
+                        if let Some((_, offsets)) = variants
+                            .iter()
+                            .find(|(variant, _)| *variant as usize == tag)
                         {
                             for &offset in *offsets {
-                                let field = header.as_ptr().cast::<u8>().add(offset as usize).cast();
+                                let field =
+                                    header.as_ptr().cast::<u8>().add(offset as usize).cast();
+                                self.mark_slot(field);
+                            }
+                        }
+                    }
+                    TraceDescriptor::Array {
+                        length_offset,
+                        elements_offset,
+                        stride,
+                        element_offsets,
+                    } => {
+                        let length = header
+                            .as_ptr()
+                            .cast::<u8>()
+                            .add(length_offset as usize)
+                            .cast::<usize>()
+                            .read();
+                        for index in 0..length {
+                            let base =
+                                elements_offset as usize + index.saturating_mul(stride as usize);
+                            for &offset in element_offsets {
+                                let field = header
+                                    .as_ptr()
+                                    .cast::<u8>()
+                                    .add(base + offset as usize)
+                                    .cast();
                                 self.mark_slot(field);
                             }
                         }
@@ -369,6 +429,14 @@ pub enum TraceDescriptor {
         tag_offset: u32,
         variants: &'static [(u32, &'static [u32])],
     },
+    /// Length-driven homogeneous storage. Offsets are relative to each
+    /// element and `stride` is the element size in bytes.
+    Array {
+        length_offset: u32,
+        elements_offset: u32,
+        stride: u32,
+        element_offsets: &'static [u32],
+    },
 }
 
 fn valid_trace_offsets(offsets: &[u32], size: usize) -> bool {
@@ -379,6 +447,17 @@ fn valid_trace_offsets(offsets: &[u32], size: usize) -> bool {
             && offset
                 .checked_add(size_of::<GcRef>())
                 .is_some_and(|end| end <= size)
+    })
+}
+
+fn valid_array_trace(
+    elements_offset: u32,
+    stride: u32,
+    element_offsets: &[u32],
+    size: usize,
+) -> bool {
+    element_offsets.iter().all(|&offset| {
+        offset < stride && valid_trace_offsets(&[elements_offset.saturating_add(offset)], size)
     })
 }
 
@@ -688,7 +767,11 @@ mod tests {
     fn tagged_trace_descriptor_only_marks_active_variant_fields() {
         let mut heap = Heap::default();
         let child = heap
-            .alloc_raw(size_of::<TestLeaf>(), &TEST_LEAF_DESCRIPTOR, &mut EmptyRootSet)
+            .alloc_raw(
+                size_of::<TestLeaf>(),
+                &TEST_LEAF_DESCRIPTOR,
+                &mut EmptyRootSet,
+            )
             .unwrap();
         let tagged = heap
             .alloc_raw(

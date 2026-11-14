@@ -5,12 +5,27 @@ use logos::Logos;
 #[derive(Logos, PartialEq, Eq, Debug, Clone, Copy)]
 #[logos(subpattern decimal = r"[0-9][_0-9]*")]
 pub enum TokenKind {
+    /// Identifiers are ASCII, and must start with a letter
+    /// Subsequent characters may be letters, numbers, or underscore
     #[regex("[A-Za-z][A-Za-z0-9_]*")]
     Ident,
 
+    /// Identifiers may not start with underscores,
+    /// but we still tokenize it for better error messages
     #[regex("_[A-Za-z0-9_]*", priority = 3)]
     InvalidLeadingUnderscore,
 
+    /// Type parameters begin with an apostrophe (single quote) and
+    /// then follow the identifier rules
+    #[regex(r"'[A-Za-z][A-Za-z0-9_]*")]
+    TypeParameter,
+
+    /// Attributes begin with a 'at' symbol (@) and then follow the
+    /// identifier rules
+    #[regex(r"@[A-Za-z][A-Za-z0-9_]*")]
+    Attribute,
+
+    ///
     #[token("_")]
     Underscore,
 
@@ -95,20 +110,13 @@ pub enum TokenKind {
     #[token("type")]
     Type,
 
+    /// `intrinsic` (compiler-provided declarations)
+    #[token("intrinsic")]
+    Intrinsic,
+
     /// `while`
     #[token("while")]
     While,
-
-    // ==========
-    // Well-known values
-    // ==========
-    /// `false`
-    // #[token("false")]
-    // False,
-
-    // /// `true`
-    // #[token("true")]
-    // True,
 
     // ==========
     // Delimiters
@@ -245,6 +253,9 @@ pub enum TokenKind {
     })]
     Comment,
 
+    #[regex(r"//[^\n]*")]
+    CommentLine,
+
     #[regex(" +")]
     Emptyspace,
 
@@ -259,7 +270,7 @@ pub enum TokenKind {
 
 impl TokenKind {
     pub fn is_trivia(self) -> bool {
-        matches!(self, Self::Emptyspace | Self::Comment)
+        matches!(self, Self::Emptyspace | Self::Comment | Self::CommentLine)
     }
 }
 
@@ -267,7 +278,9 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Ident => "identifier",
+            Self::TypeParameter => "type parameter",
             Self::InvalidLeadingUnderscore => "_invalid_identifier",
+            Self::Attribute => "attribute",
 
             // Keywords
             Self::And => "‘and’",
@@ -287,6 +300,7 @@ impl fmt::Display for TokenKind {
             Self::Struct => "‘struct’",
             Self::Try => "‘try’",
             Self::Type => "‘type’",
+            Self::Intrinsic => "‘intrinsic’",
             Self::While => "‘while’",
 
             // Literals
@@ -339,6 +353,7 @@ impl fmt::Display for TokenKind {
             Self::Emptyspace => "emptyspace",
             Self::Newline => "newline",
             Self::Comment => "comment",
+            Self::CommentLine => "comment",
             Self::Error => "unrecognized token",
 
             Self::Root => "root",

@@ -100,6 +100,13 @@ impl From<TypeDiagnostic> for Diagnostic {
 }
 
 impl TypeDiagnostic {
+    pub fn list_element_type_unknown(range: TextRange) -> Self {
+        Self {
+            variant: TypeDiagnosticVariant::ListElementTypeUnknown,
+            range,
+        }
+    }
+
     pub fn mismatch(expected: Idx<Type>, actual: Idx<Type>, range: TextRange) -> Self {
         Self {
             variant: TypeDiagnosticVariant::TypeMismatch { expected, actual },
@@ -144,6 +151,9 @@ impl TypeDiagnostic {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeDiagnosticVariant {
+    /// A List constructor was used without enough context to determine `List 'A`.
+    ListElementTypeUnknown,
+
     /// The number of arguments provided to the function call does not match the
     /// expected number of arguments.
     ArgsMismatch {

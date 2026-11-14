@@ -39,9 +39,11 @@ const PATTERN_START: [lexer::TokenKind; 6] = [
     T::FloatLiteral,
     T::StringLiteral,
     T::Underscore,
-    // TODO - LBracket, probably, for record destructuring
+    // TODO - LBracket, probably, for record destructuring, i.e.
+    // ```
     // type Point = [x: Float, y: Float]
     // let [x, y] = point
+    // ```
 ];
 
 pub(super) fn parse_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -152,7 +154,9 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::IntLiteral => parse_int_literal(p),
         T::FloatLiteral => parse_float_literal(p),
         T::StringLiteral => parse_string_literal(p),
+        T::Intrinsic => parse_intrinsic_expr(p),
         T::Ident => parse_path_ident(p),
+        T::Attribute => parse_attribute(p),
 
         T::Dash => parse_negation_expr(p),
         T::Bang => parse_not_expr(p),
@@ -181,6 +185,13 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     };
 
     Some(cm)
+}
+
+fn parse_intrinsic_expr(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::Intrinsic);
+    let m = p.start();
+    p.bump();
+    m.complete(p, SyntaxKind::IntrinsicExpr)
 }
 
 fn parse_int_literal(p: &mut Parser) -> CompletedMarker {
@@ -266,6 +277,14 @@ pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.expect(T::Ident);
     m.complete(p, SyntaxKind::Ident)
+}
+
+// WIP: only simple attribute like `@export` is supported, later want to support
+// like `@serialize foo=bar` or something like that (maybe resembling a Call actually)
+pub(crate) fn parse_attribute(p: &mut Parser) -> CompletedMarker {
+    let m = p.start();
+    p.expect(T::Attribute);
+    m.complete(p, SyntaxKind::Attribute)
 }
 
 fn parse_call_arguments(p: &mut Parser) -> CompletedMarker {

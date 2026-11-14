@@ -28,6 +28,9 @@ impl ContextDisplay for TypeDiagnosticVariant {
     fn display(&self, context: &Context) -> String {
         use TypeDiagnosticVariant as V;
         match self {
+            V::ListElementTypeUnknown => {
+                "Cannot infer List element type; add an explicit List (T) annotation".to_owned()
+            }
             V::ArgsMismatch { expected, actual } => args_mismatch_message(*expected, *actual),
             V::BinaryMismatch { op, lhs, rhs } => {
                 binary_mismatch_message(*op, &lhs.display(context), &rhs.display(context))

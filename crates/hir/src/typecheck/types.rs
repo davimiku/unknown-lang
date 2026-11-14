@@ -6,6 +6,7 @@ use std::ops::{Index, IndexMut};
 use itertools::Itertools;
 use la_arena::Idx;
 
+use crate::intrinsics::{FLOAT, INT, STRING};
 use crate::type_expr::TypeSymbol;
 use crate::{Context, ContextDisplay, Key, ValueSymbol};
 
@@ -193,14 +194,14 @@ impl ContextDisplay for Idx<Type> {
 impl ContextDisplay for Type {
     fn display(&self, context: &Context) -> String {
         match self {
-            Type::Float => "Float".to_owned(),
+            Type::Float => FLOAT.to_owned(),
             Type::FloatLiteral(f) => {
                 let mut buf = ryu::Buffer::new();
                 buf.format_finite(*f).to_owned()
             }
-            Type::Int => "Int".to_owned(),
+            Type::Int => INT.to_owned(),
             Type::IntLiteral(i) => i.to_string(),
-            Type::String => "String".to_owned(),
+            Type::String => STRING.to_owned(),
             Type::StringLiteral(key) => format!("\"{}\"", context.lookup(*key)),
 
             Type::Sum(sum_type) => sum_type.display(context),

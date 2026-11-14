@@ -1,2 +1,0 @@
-let arr = [20, 30, 40]
-let result = arr.3

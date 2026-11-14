@@ -203,7 +203,7 @@ impl FunctionTranslator<'_> {
             HType::UnionNamespace(_) => todo!("something like a product type, maybe"),
             HType::Product(product_type) => self.compute_product_type_layout(product_type),
             HType::Function(_function_type) => todo!(),
-            HType::List(_) => todo!("List layout is not implemented yet"),
+            HType::List(_) => self.layouts[self.layouts.ptr].clone(),
             HType::Unit => {
                 panic!();
             }

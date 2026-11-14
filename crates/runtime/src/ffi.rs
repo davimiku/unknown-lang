@@ -88,6 +88,10 @@ pub fn alloc_object_entry() -> GcEntryAddress {
     GcEntryAddress(alloc_entry::object_address())
 }
 
+pub fn list_push_entry() -> GcEntryAddress {
+    GcEntryAddress(alloc_entry::list_push_address())
+}
+
 /// Captured from the Hopper call site, before entering any Rust stack frames
 #[derive(Clone, Copy, Debug)]
 pub struct AllocationCallSite {
@@ -210,7 +214,6 @@ pub(super) extern "C" fn alloc_string_impl(
         },
         &runtime.stackmap_registry,
     );
-
     #[cfg(debug_assertions)]
     if PROBE_ROOTS.with(|armed| armed.get())
         && roots
@@ -374,6 +377,102 @@ pub(super) extern "C" fn alloc_object_impl(
             std::process::abort();
         })
         .as_ptr()
+}
+
+pub(super) extern "C" fn list_push_impl(
+    list: RawGcRef,
+    value: *const u8,
+    element_size: i64,
+    descriptor: *const TypeDescriptor,
+    caller_sp: usize,
+    return_address: usize,
+    caller_fp: usize,
+) -> RawGcRef {
+    let element_size = usize::try_from(element_size).unwrap_or_else(|_| {
+        eprintln!("Hopper List allocation: invalid element size");
+        std::process::abort();
+    });
+    if list.is_null() || value.is_null() || descriptor.is_null() || element_size == 0 {
+        eprintln!("Hopper List push: invalid arguments");
+        std::process::abort();
+    }
+
+    let runtime = crate::runtime();
+    let mut runtime = runtime.lock().unwrap_or_else(|_| {
+        eprintln!("Hopper List push: runtime lock poisoned");
+        std::process::abort();
+    });
+    let mut roots = StackRootSet::new(
+        AllocationCallSite {
+            caller_sp,
+            return_address,
+            caller_fp,
+        },
+        &runtime.stackmap_registry,
+    );
+    #[cfg(debug_assertions)]
+    {
+        let has_current_live_root = roots.slots().iter().any(|root| {
+            root.return_address == return_address
+                && unsafe { root.slot.cast::<usize>().read() } != 0
+        });
+        if has_current_live_root
+            && FORCE_NEXT_COLLECTION_WITH_LIVE_ROOT.with(|armed| armed.replace(false))
+        {
+            let bytes_before = runtime.heap.allocated_bytes();
+            runtime.collect(&mut roots);
+            let bytes_after = runtime.heap.allocated_bytes();
+            LAST_FORCED_COLLECTION.with(|last| {
+                last.set(Some(ForcedCollection {
+                    bytes_before,
+                    bytes_after,
+                }))
+            });
+        }
+    }
+
+    // Keep only raw field snapshots across allocation. `alloc_object` may run
+    // collection and mutate the heap, so a Rust reference into the heap must
+    // not remain live across that call.
+    let list_ptr = list.cast::<crate::list::HopperList>();
+    let (length, capacity, elements) = unsafe {
+        (
+            (*list_ptr).length,
+            (*list_ptr).capacity,
+            (*list_ptr).elements.as_mut_ptr(),
+        )
+    };
+    if length < capacity {
+        unsafe {
+            std::ptr::copy_nonoverlapping(value, elements.add(length * element_size), element_size);
+            (*list_ptr).length = length + 1;
+        }
+        return list;
+    }
+
+    let new_capacity = capacity.saturating_mul(2).max(1);
+    let size = crate::list::LIST_ELEMENTS_OFFSET
+        .checked_add(new_capacity.saturating_mul(element_size))
+        .unwrap_or_else(|| {
+            eprintln!("Hopper List push: allocation size overflow");
+            std::process::abort();
+        });
+    let descriptor = unsafe { &*descriptor };
+    let new_list = runtime
+        .alloc_object(size, descriptor, &mut roots)
+        .unwrap_or_else(|error| {
+            eprintln!("Hopper List push allocation failed: {error:?}");
+            std::process::abort();
+        });
+    let new_ptr = new_list.as_ptr().cast::<crate::list::HopperList>();
+    let new_elements = unsafe { (*new_ptr).elements.as_mut_ptr() };
+    unsafe {
+        std::ptr::copy_nonoverlapping(elements, new_elements, length * element_size);
+        std::ptr::copy_nonoverlapping(value, new_elements.add(length * element_size), element_size);
+        (*new_ptr).length = length + 1;
+        (*new_ptr).capacity = new_capacity;
+    }
+    new_list.as_ptr()
 }
 
 pub extern "C" fn print_string(gc_ref: RawGcRef) {

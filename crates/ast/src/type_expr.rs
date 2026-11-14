@@ -17,6 +17,7 @@ pub enum TypeExpr {
     StringLiteral(StringLiteral),
     Union(Union),
     Record(Record),
+    Intrinsic(Intrinsic),
     // Unary(Unary), // parameterize to work on either Expr | TypeExpr
 }
 
@@ -43,6 +44,7 @@ impl TypeExpr {
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::RecordType => Self::Record(Record(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
+            SyntaxKind::IntrinsicTypeExpr => Self::Intrinsic(Intrinsic(node)),
 
             _ => return None,
         })
@@ -63,6 +65,7 @@ impl TypeExpr {
             T::StringLiteral(e) => e.range(),
             T::Union(e) => e.range(),
             T::Record(e) => e.range(),
+            T::Intrinsic(e) => e.range(),
             // Unary(e) => e.range(),
         }
     }
@@ -76,6 +79,15 @@ impl TypeExpr {
             todo!()
             // Self::Binary(Binary(node))
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Intrinsic(SyntaxNode);
+
+impl Intrinsic {
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 

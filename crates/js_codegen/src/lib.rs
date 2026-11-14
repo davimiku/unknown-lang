@@ -55,6 +55,7 @@ impl Codegen {
             Expr::FloatLiteral(f) => self.push(f.to_string()),
             Expr::IntLiteral(i) => self.push(i.to_string()),
             Expr::StringLiteral(key) => self.push(format!("\"{}\"", context.lookup(*key))),
+            Expr::Intrinsic(_) => todo!("compiler intrinsic"),
             Expr::Unary(_) => unreachable!("will be removed, in favor of Call"),
             Expr::Block(block) => self.write_block(block, assign_to, context),
             Expr::Call(call) => self.write_call_expr(call, context),

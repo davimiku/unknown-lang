@@ -73,7 +73,7 @@ let main = fun (p: Point) -> { p.x }";
 fun main:
     params: _1
     mut _0: Int
-    _1: Point~1.0
+    _1: Point~13.0
 
     BB0():
         _0 := copy _1.0
@@ -114,7 +114,7 @@ let main = fun (p: Point) -> { p.y }";
 fun main:
     params: _1
     mut _0: Int
-    _1: Point~1.0
+    _1: Point~13.0
 
     BB0():
         _0 := copy _1.1
@@ -134,7 +134,7 @@ let main = fun (r: Record) -> { r.a }";
 fun main:
     params: _1
     mut _0: Int
-    _1: Record~1.0
+    _1: Record~13.0
 
     BB0():
         _0 := copy _1.0
@@ -154,7 +154,7 @@ let main = fun (r: Record) -> { r.m }";
 fun main:
     params: _1
     mut _0: Int
-    _1: Record~1.0
+    _1: Record~13.0
 
     BB0():
         _0 := copy _1.1

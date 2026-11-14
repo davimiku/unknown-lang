@@ -48,9 +48,27 @@ fn parameterized_type() {
                   Ident@0..6 "Option"
                   Emptyspace@6..7 " "
                 CallArgs@7..10
-                  PathExpr@7..10
-                    Ident@7..10
-                      Ident@7..10 "Int""#]],
+                  Ident@7..10
+                    Ident@7..10 "Int""#]],
+    )
+}
+
+#[test]
+fn parameterized_type_with_parenthesized_argument() {
+    let input = "List (Int)";
+    check(
+        input,
+        expect![[r#"
+            TypeExpr@0..10
+              Call@0..10
+                Ident@0..5
+                  Ident@0..4 "List"
+                  Emptyspace@4..5 " "
+                CallArgs@5..10
+                  LParen@5..6 "("
+                  Ident@6..9
+                    Ident@6..9 "Int"
+                  RParen@9..10 ")""#]],
     )
 }
 

@@ -64,6 +64,7 @@ let main = fun (a: Int) -> Int {
         7
     }
 }
+
 ";
 
     let expected = "
@@ -95,6 +96,33 @@ fun main:
         _0 := const 7
         Jump -> BB4(_0)
     BB4(_0):
+        Return _0 ->
+";
+
+    check_module(input, expected);
+}
+
+#[test]
+fn list_builtins_lower_to_list_mir_operations() {
+    let input = "
+    let main = fun () -> {
+        let values: List Int = list_new ()
+        list_push (values, 42)
+        list_len values
+    }
+    ";
+
+    let expected = "
+fun main:
+    params: {none}
+    mut _0: Int
+    _1: List Int
+    _2: ()
+
+    BB0():
+        _1 := list_new ()
+        list_push copy _1, const 42
+        _0 := list_len copy _1
         Return _0 ->
 ";
 
