@@ -26,6 +26,7 @@ pub enum SyntaxKind {
     StructKw,
     TryKw,
     TypeKw,
+    IntrinsicKw,
     WhileKw,
 
     // Literals
@@ -119,6 +120,7 @@ pub enum SyntaxKind {
     IfExpr,
     InfixExpr,
     IntLiteralExpr,
+    IntrinsicExpr,
     LoopExpr,
     MatchExpr,
     NegationExpr,
@@ -131,6 +133,7 @@ pub enum SyntaxKind {
     IntoStringExpr,
     TypeExpr,
     UnionTypeExpr,
+    IntrinsicTypeExpr,
 
     // Supplemental
     ParenExprItem,
@@ -168,6 +171,13 @@ pub enum SyntaxKind {
     StringLiteralPattern,
     WildcardPattern,
     Ident,
+
+    // Related to idents
+    TypeParameter,
+
+    // TODO - don't know yet whether this should be Ident (like `@export`)
+    // or maybe Call `@export root`? Or leave bespoke to have custom syntax
+    Attribute,
 
     Call,
     CallArgs,
@@ -214,12 +224,13 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Struct => Self::StructKw,
             TokenKind::Try => Self::TryKw,
             TokenKind::Type => Self::TypeKw,
+            TokenKind::Intrinsic => Self::IntrinsicKw,
             TokenKind::While => Self::WhileKw,
 
             // Literals
             TokenKind::Ident => Self::Ident,
-            // TokenKind::False => Self::FalseLiteral,
-            // TokenKind::True => Self::TrueLiteral,
+            TokenKind::TypeParameter => Self::Ident, // FIXME: use new variant?
+            TokenKind::Attribute => Self::Attribute,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
             TokenKind::StringLiteral => Self::StringLiteralExpr,
@@ -255,6 +266,7 @@ impl From<TokenKind> for SyntaxKind {
 
             TokenKind::Equals => Self::Equals,
             TokenKind::Comment => Self::Comment,
+            TokenKind::CommentLine => Self::Comment,
             TokenKind::LAngle => Self::LAngle,
             TokenKind::LAngleEquals => Self::LAngleEquals,
             TokenKind::RAngle => Self::RAngle,

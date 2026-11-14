@@ -68,6 +68,7 @@ fn fmt_expr(s: &mut String, expr: &Expr, context: &Context, indent: &mut usize) 
         }
         Expr::IntLiteral(i) => s.push_str(&i.to_string()),
         Expr::StringLiteral(key) => s.push_str(&format!(r#""{}""#, key.display(context))),
+        Expr::Intrinsic(_) => s.push_str("intrinsic"),
 
         Expr::Call(call) => fmt_call_expr(s, call, context, indent),
         Expr::Unary(unary) => fmt_unary_expr(s, unary, context, indent),

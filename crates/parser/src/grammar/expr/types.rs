@@ -5,8 +5,8 @@ use crate::parser::Parser;
 use crate::SyntaxKind;
 
 use super::{
-    parse_call_arguments, parse_ident, parse_int_literal, parse_string_literal, BinaryOp,
-    CALL_ARG_START, PATH_RIGHT_BINDING_POWER,
+    parse_ident, parse_int_literal, parse_string_literal, BinaryOp, CALL_ARG_START,
+    PATH_RIGHT_BINDING_POWER,
 };
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
@@ -77,12 +77,38 @@ fn type_expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<
         // can have a CallExpr with callee and args
         let m = lhs.precede(p);
 
-        parse_call_arguments(p);
+        parse_type_call_arguments(p);
 
         lhs = m.complete(p, SyntaxKind::Call);
     }
 
     Some(lhs)
+}
+
+/// Parse arguments to a type application.
+///
+/// A single type argument can omit parentheses ex. `List Int`,
+/// otherwise parentheses are used for multiple arguments ex. `Result (Int, String)`
+fn parse_type_call_arguments(p: &mut Parser) -> CompletedMarker {
+    debug_assert!(p.at_set(&CALL_ARG_START));
+    let m = p.start();
+
+    if !p.at(T::LParen) {
+        type_expr_binding_power(p, 0);
+    } else {
+        p.bump();
+
+        while p.at_set(&CALL_ARG_START) {
+            type_expr_binding_power(p, 0);
+
+            if p.at(T::Comma) {
+                p.bump();
+            }
+        }
+        p.expect(T::RParen);
+    }
+
+    m.complete(p, SyntaxKind::CallArgs)
 }
 
 fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
@@ -92,6 +118,12 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_string_literal(p)
     } else if p.at(T::Ident) {
         parse_compound_type_item(p)
+    } else if p.at(T::TypeParameter) {
+        parse_type_parameter(p)
+    } else if p.at(T::Intrinsic) {
+        let m = p.start();
+        p.bump();
+        m.complete(p, SyntaxKind::IntrinsicTypeExpr)
     } else if p.at(T::LParen) {
         parse_paren_expr(p)
     } else if p.at(T::LBracket) {
@@ -102,6 +134,16 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
     };
 
     Some(cm)
+}
+
+/// Type parameters, ex. the `'A` part of `List 'A`
+/// These are represented as identifiers for now; semantic generic substitution will be
+/// added with the module/type-application work.
+fn parse_type_parameter(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::TypeParameter);
+    let m = p.start();
+    p.bump();
+    m.complete(p, SyntaxKind::Ident)
 }
 
 /// Parses a type expression beginning with a LParen
@@ -178,67 +220,6 @@ fn parse_record_type(p: &mut Parser) -> CompletedMarker {
     p.expect(T::RBracket);
 
     m.complete(p, SyntaxKind::RecordType)
-}
-
-fn parse_struct(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::Struct);
-
-    let m = p.start();
-    p.bump();
-    parse_compound_type_block(p);
-    m.complete(p, SyntaxKind::StructTypeExpr)
-}
-
-/// Parses a "compound type block"
-///
-/// This is a parenthesized list of identifiers with optional
-/// type expressions after a colon.
-///
-/// ```text
-/// union ( a, b )
-///       ^^^^^^^^
-///
-/// union ( a, b: B )
-///       ^^^^^^^^^^^
-/// ```
-///
-/// TODO: remove the notes below after syntax of default parameters is finalized
-/// Note that this could potentially be reused as function parameter syntax,
-/// but there is an open design decision on default parameters
-/// ```ignore
-/// fun (a: Int = 42) -> { ... }
-/// ```
-///
-/// This likely could be re-used given that the `= X` is optional and could
-/// even be useful for default initialization of struct members.
-///
-/// ```ignore
-/// type A = struct ( a: Int = 42 )
-///
-/// let a1 = A (a=1)
-/// let a42 = A ()
-/// ```
-// TODO: better name?
-fn parse_compound_type_block(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::LParen);
-
-    let m = p.start();
-    p.bump();
-    loop {
-        if p.bump_all_if_at(T::RParen) {
-            break;
-        }
-
-        parse_compound_type_item(p);
-
-        if p.bump_all_if_at(T::RParen) {
-            break;
-        }
-
-        p.expect(T::Comma);
-    }
-
-    m.complete(p, SyntaxKind::CompoundTypeBlock)
 }
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {

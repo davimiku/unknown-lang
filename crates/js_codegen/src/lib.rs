@@ -55,6 +55,7 @@ impl Codegen {
             Expr::FloatLiteral(f) => self.push(f.to_string()),
             Expr::IntLiteral(i) => self.push(i.to_string()),
             Expr::StringLiteral(key) => self.push(format!("\"{}\"", context.lookup(*key))),
+            Expr::Intrinsic(_) => todo!("compiler intrinsic"),
             Expr::Unary(_) => unreachable!("will be removed, in favor of Call"),
             Expr::Block(block) => self.write_block(block, assign_to, context),
             Expr::Call(call) => self.write_call_expr(call, context),
@@ -130,17 +131,8 @@ impl Codegen {
                         Type::StringLiteral(_) | Type::String => {
                             self.write_binary("+", &args, context)
                         }
-                        Type::Array(_) => {
-                            let subject = args[0];
-                            self.write_method_call(
-                                subject,
-                                "concat",
-                                args.into_iter().skip(1),
-                                context,
-                            )
-                        }
                         _ => panic!(
-                            "compiler error! expected String or Array types for concat operator"
+                            "compiler error! expected String type for concat operator"
                         ),
                     }
                 }

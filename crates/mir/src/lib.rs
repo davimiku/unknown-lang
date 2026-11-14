@@ -42,7 +42,11 @@ pub use syntax::{
 use crate::{builder::Builder, optimize::optimize};
 
 pub fn construct(input: &str) -> (Module, Context) {
-    let (hir_module, context) = hir::lower(input);
+    let mut context = hir::Context::new(hir::Interner::default());
+    context
+        .load_stdlib()
+        .expect("standard library to be available during MIR construction");
+    let hir_module = context.load_module(input, hir::SourceKind::User);
     if !context.diagnostics.is_empty() {
         for diagnostic in context.diagnostics.iter() {
             eprintln!("{}", diagnostic.display(&context));

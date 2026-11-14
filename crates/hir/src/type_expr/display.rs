@@ -22,6 +22,7 @@ impl ContextDisplay for TypeExpr {
             TypeExpr::StringLiteral(key) => format!(r#""{}""#, key.display(context)),
 
             TypeExpr::Unit => "()".to_string(),
+            TypeExpr::Intrinsic(_) => "intrinsic".to_string(),
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
             TypeExpr::UnresolvedVarRef { .. } => todo!(),
 

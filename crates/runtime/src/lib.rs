@@ -18,6 +18,7 @@ mod frame_walk;
 mod memory_recycling;
 mod native_roots;
 mod stackmaps;
+pub mod list;
 mod string;
 
 static RUNTIME: OnceLock<Mutex<Runtime>> = OnceLock::new();

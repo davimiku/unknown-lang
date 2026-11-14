@@ -67,6 +67,18 @@ fn lex_invalid_identifier_start_with_underscore() {
 }
 
 #[test]
+fn lex_type_parameter() {
+    check("'A", TokenKind::TypeParameter);
+    check("'Type", TokenKind::TypeParameter);
+}
+
+#[test]
+fn lex_attribute() {
+    check("@a", TokenKind::Attribute);
+    check("@export", TokenKind::Attribute);
+}
+
+#[test]
 fn lex_integer() {
     check("123456", TokenKind::IntLiteral);
 }

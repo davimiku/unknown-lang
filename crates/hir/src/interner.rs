@@ -1,6 +1,9 @@
 use lasso::{Rodeo, Spur};
 
-use crate::ContextDisplay;
+use crate::{
+    intrinsics::{FLOAT, INT, LIST, STRING},
+    ContextDisplay,
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key(Spur);
@@ -61,6 +64,12 @@ pub struct CoreKeys {
 
     /// `print`
     pub print: Key,
+    /// `List`
+    pub list: Key,
+    /// `list_new`
+    pub list_new: Key,
+    /// `list_push`
+    pub list_push: Key,
     /// `args`
     pub args: Key,
     /// `main`
@@ -96,9 +105,9 @@ pub struct CoreKeys {
 impl CoreKeys {
     fn new(interner: &mut Interner) -> Self {
         Self {
-            int: interner.intern("Int"),
-            float: interner.intern("Float"),
-            string: interner.intern("String"),
+            int: interner.intern(INT),
+            float: interner.intern(FLOAT),
+            string: interner.intern(STRING),
 
             bool: interner.intern("Bool"),
             r#false: interner.intern("false"),
@@ -121,6 +130,10 @@ impl CoreKeys {
             le: interner.intern("<="),
             gt: interner.intern(">"),
             ge: interner.intern(">="),
+
+            list: interner.intern(LIST),
+            list_new: interner.intern("list_new"),
+            list_push: interner.intern("list_push"),
         }
     }
 }

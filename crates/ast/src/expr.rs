@@ -17,6 +17,7 @@ pub enum Expr {
     Ident(Ident),
     If(If),
     IntLiteral(IntLiteral),
+    Intrinsic(Intrinsic),
     LetBinding(LetBinding),
     RecordLiteral(RecordLiteral),
     Loop(Loop),
@@ -48,6 +49,7 @@ impl Expr {
             SyntaxKind::IfExpr => Self::If(If(node)),
             SyntaxKind::InfixExpr => cast_infix(node),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::IntrinsicExpr => Self::Intrinsic(Intrinsic(node)),
             SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::MatchExpr => Self::Match(Match(node)),
@@ -78,6 +80,7 @@ impl Expr {
             E::Ident(e) => e.range(),
             E::If(e) => e.range(),
             E::IntLiteral(e) => e.range(),
+            E::Intrinsic(e) => e.range(),
             E::LetBinding(e) => e.range(),
             E::Loop(e) => e.range(),
             E::Match(e) => e.range(),
@@ -89,6 +92,15 @@ impl Expr {
             E::TypeBinding(e) => e.range(),
             E::Unary(e) => e.range(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Intrinsic(SyntaxNode);
+
+impl Intrinsic {
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
     }
 }
 
@@ -493,6 +505,10 @@ impl LetBinding {
             .children()
             .find(|child| child.kind() == SyntaxKind::Ident)
             .and_then(|ident| ident.first_token())
+    }
+
+    pub fn name_range(&self) -> Option<text_size::TextRange> {
+        self.name().map(|name| name.text_range())
     }
 
     pub fn mutability(&self) -> Mutability {
@@ -913,6 +929,10 @@ impl TypeBinding {
             .children()
             .find(|child| child.kind() == SyntaxKind::Ident)
             .and_then(|ident| ident.first_token())
+    }
+
+    pub fn name_range(&self) -> Option<text_size::TextRange> {
+        self.name().map(|name| name.text_range())
     }
 
     /*

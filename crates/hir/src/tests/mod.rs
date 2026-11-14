@@ -19,7 +19,7 @@ use util_macros::assert_matches;
 
 use crate::diagnostic::TypeDiagnosticVariant;
 use crate::display::display_module;
-use crate::{lower, ContextDisplay, Diagnostic};
+use crate::{lower, Context, ContextDisplay, Diagnostic, Interner, SourceKind};
 
 fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     let (module, context) = lower(input);
@@ -80,6 +80,30 @@ fn let_binding() {
     let input = "let a = 10";
 
     check(input, "a~1.0 : 10 = 10;", &[("a~1.0", "10")]);
+}
+
+#[test]
+fn standard_library_prelude_loads_with_definition_ranges() {
+    let mut context = Context::new(Interner::default());
+    let modules = context.load_stdlib().unwrap();
+
+    assert!(!modules.is_empty());
+    assert_eq!(modules[0].source_kind, SourceKind::StandardLibrary);
+    assert_eq!(modules[0].id, 1);
+    assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
+}
+
+#[test]
+fn standard_library_list_len_is_a_builtin_declaration() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let _module = context.load_module(
+        "let values: List Int = list_new ()
+        let length = list_len values",
+        SourceKind::User,
+    );
+
+    assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
 }
 
 #[test]

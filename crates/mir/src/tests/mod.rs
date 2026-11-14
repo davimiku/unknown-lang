@@ -20,16 +20,20 @@ use crate::construct_module;
 ///
 /// Uses "normal mode" which represents a module
 fn check_module(input: &str, expected: &str) {
-    let (module, context) = hir::lower(input);
+    let mut context = hir::Context::new(hir::Interner::default());
+    context
+        .load_stdlib()
+        .expect("standard library to be available during MIR tests");
+    let hir_module = context.load_module(input, hir::SourceKind::User);
     if !context.diagnostics.is_empty() {
-        for diagnostic in &context.diagnostics {
+        for diagnostic in context.diagnostics.iter() {
             let range = diagnostic.range();
             println!("expr: `{}`", &input[range]);
             println!("error: '{}'", diagnostic.display(&context));
         }
         assert_eq!(context.diagnostics, vec![]);
     }
-    let (module, context) = construct_module(&module, &context);
+    let (module, context) = construct_module(&hir_module, &context);
 
     check(module, context, expected)
 }

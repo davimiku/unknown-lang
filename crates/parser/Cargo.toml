@@ -6,12 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-drop_bomb = "0.1.5"
 lexer = { path = "../lexer" }
-num-derive = "0.3.3"
-num-traits = "0.2.15"
-rowan = "0.15.10"
-text-size = "1.1.1"
+
+drop_bomb = { version = "0.1.5" }
+num-derive = { version = "0.5.1" }
+num-traits = { version = "0.2.19" }
+rowan = { version = "0.17.0" }
+text-size = { version = "1.1.1" }
 
 [dev-dependencies]
-expect-test = "1.4.0"
+expect-test = { version = "1.4.0" }

@@ -73,6 +73,7 @@ pub(crate) const ALLOC_OBJECT: &str = "__alloc_object";
 pub(crate) const PRINT_STRING: &str = "__print_string";
 pub(crate) const ENTER_FRAME: &str = "__hopper_enter_frame";
 pub(crate) const LEAVE_FRAME: &str = "__hopper_leave_frame";
+pub(crate) const LIST_PUSH: &str = "__list_push";
 
 /// Only `MayCollect` entries may invoke the collector.
 /// Its entry address can only come from a runtime shim that captures the Hopper caller.
@@ -103,7 +104,7 @@ pub(crate) struct NativeBuiltin {
 ///
 /// This may change in the future, we don't yet have a way for users to
 /// register custom native entry points and it's not prioritized at the moment
-pub(crate) fn native_builtins() -> [NativeBuiltin; 8] {
+pub(crate) fn native_builtins() -> [NativeBuiltin; 9] {
     [
         NativeBuiltin {
             name: ENTER_FRAME,
@@ -152,6 +153,12 @@ pub(crate) fn native_builtins() -> [NativeBuiltin; 8] {
             params: &[I64],
             returns: &[],
             entry: NativeEntry::NoGc(print_bool as *const u8),
+        },
+        NativeBuiltin {
+            name: LIST_PUSH,
+            params: &[I64, I64, I64, I64],
+            returns: &[I64],
+            entry: NativeEntry::MayCollect(runtime::ffi::list_push_entry()),
         },
     ]
 }
@@ -205,7 +212,7 @@ mod tests {
                 collecting.push(builtin.name);
             }
         }
-        assert_eq!(collecting, [ALLOC_STRING, ALLOC_OBJECT]);
+        assert_eq!(collecting, [ALLOC_STRING, ALLOC_OBJECT, LIST_PUSH]);
 
         let string_allocator = native_builtins()
             .into_iter()
@@ -227,6 +234,17 @@ mod tests {
         assert_eq!(
             object_allocator.entry.address(),
             runtime::ffi::alloc_object_entry().as_ptr()
+        );
+
+        let list_push = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == LIST_PUSH)
+            .unwrap();
+        assert_eq!(list_push.params, &[I64, I64, I64, I64]);
+        assert_eq!(list_push.returns, &[I64]);
+        assert_eq!(
+            list_push.entry.address(),
+            runtime::ffi::list_push_entry().as_ptr()
         );
     }
 }

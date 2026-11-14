@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use la_arena::{Arena, ArenaMap, Idx};
 pub use types::{
-    ArrayType, FuncSignature, FunctionType, ProductType, SumType, Type, VariantIdx, VecVariantIdx,
+    FuncSignature, FunctionType, ListType, ProductType, SumType, Type, VariantIdx, VecVariantIdx,
 };
 
 use crate::diagnostic::{Diagnostic, TypeDiagnostic, TypeDiagnosticVariant};

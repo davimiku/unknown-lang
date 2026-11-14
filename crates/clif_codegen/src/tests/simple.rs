@@ -134,3 +134,37 @@ fn bool_return_identity() {
     assert_eq!(code_fn((TRUE,)), TRUE);
     assert_eq!(code_fn((FALSE,)), FALSE);
 }
+
+#[test]
+fn list_push_and_len() {
+    let code = r#"
+let main = fun () -> Int {
+    let values: List Int = list_new ()
+    list_push (values, 10)
+    list_push (values, 20)
+    list_len values
+}
+"#;
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    assert_eq!(code_fn(()), 2);
+}
+
+#[test]
+fn list_push_inlines_record_elements() {
+    let code = r#"
+let main = fun () -> Int {
+    let points: List [ x: Int, y: Int ] = list_new ()
+    let first = [ x = 1, y = 2 ]
+    let second = [ x = 3, y = 4 ]
+    let third = [ x = 5, y = 6 ]
+    list_push (points, first)
+    list_push (points, second)
+    list_push (points, third)
+    42
+}
+"#;
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    assert_eq!(code_fn(()), 42);
+}

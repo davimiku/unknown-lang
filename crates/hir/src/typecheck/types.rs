@@ -6,6 +6,7 @@ use std::ops::{Index, IndexMut};
 use itertools::Itertools;
 use la_arena::Idx;
 
+use crate::intrinsics::{FLOAT, INT, STRING};
 use crate::type_expr::TypeSymbol;
 use crate::{Context, ContextDisplay, Key, ValueSymbol};
 
@@ -36,7 +37,10 @@ pub enum Type {
     // Product
     Product(ProductType),
     Function(FunctionType),
-    Array(ArrayType),
+
+    // Other compiler builtins, that may later be implemented in userspace
+    /// Dynamic array backed list, nominally typed, homogeneous, i.e. `List 'a`
+    List(ListType),
     // TODO: consider arena allocating larger variants
     // and could consider making this Copy - but would need a custom impl of PartialEq?
 }
@@ -190,14 +194,14 @@ impl ContextDisplay for Idx<Type> {
 impl ContextDisplay for Type {
     fn display(&self, context: &Context) -> String {
         match self {
-            Type::Float => "Float".to_owned(),
+            Type::Float => FLOAT.to_owned(),
             Type::FloatLiteral(f) => {
                 let mut buf = ryu::Buffer::new();
                 buf.format_finite(*f).to_owned()
             }
-            Type::Int => "Int".to_owned(),
+            Type::Int => INT.to_owned(),
             Type::IntLiteral(i) => i.to_string(),
-            Type::String => "String".to_owned(),
+            Type::String => STRING.to_owned(),
             Type::StringLiteral(key) => format!("\"{}\"", context.lookup(*key)),
 
             Type::Sum(sum_type) => sum_type.display(context),
@@ -205,7 +209,7 @@ impl ContextDisplay for Type {
             Type::Product(product_type) => product_type.display(context),
 
             Type::Function(func) => func.display(context),
-            Type::Array(arr) => arr.display(context),
+            Type::List(list) => list.display(context),
 
             Type::Unit => "()".to_owned(),
             Type::Top => "{top}".to_owned(),
@@ -467,12 +471,12 @@ impl ContextDisplay for FuncSignature {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArrayType {
+pub struct ListType {
     pub of: Idx<Type>,
 }
 
-impl ContextDisplay for ArrayType {
+impl ContextDisplay for ListType {
     fn display(&self, context: &Context) -> String {
-        format!("[]{}", self.of.display(context))
+        format!("List {}", self.of.display(context))
     }
 }

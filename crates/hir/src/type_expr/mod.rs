@@ -50,6 +50,9 @@ pub enum TypeExpr {
 
     /// Expression evaluating to the unit type, such as `()`
     Unit,
+
+    /// Compiler-provided type declaration, such as `type Int = intrinsic`
+    Intrinsic(TypeSymbol),
     // Call(CallExpr),
     // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?

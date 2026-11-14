@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use crate::interner::Key;
 use crate::type_expr::TypeSymbol;
+use crate::BuiltinId;
 use crate::{Context, ContextDisplay, Expr, IntrinsicExpr, Pattern, TypeExpr, ValueSymbol};
 use ast::Mutability;
 use la_arena::{Arena, ArenaMap, Idx};
 use text_size::TextRange;
 
-// TODO: remove pub(crate) ?
 #[derive(Debug, Default)]
 pub struct Database {
     /// Allocated expressions
@@ -39,6 +39,16 @@ pub struct Database {
     /// Reverse mapping between every symbol defining a type (i.e. type variable)
     /// and its interned string name.
     pub(crate) type_names: HashMap<TypeSymbol, Key>,
+
+    /// Source ranges of term definition names
+    pub(crate) value_definition_ranges: HashMap<ValueSymbol, TextRange>,
+    /// Source ranges of type definition names
+    pub(crate) type_definition_ranges: HashMap<TypeSymbol, TextRange>,
+
+    /// Parsed value symbols that are builtins
+    pub(crate) value_builtins: HashMap<ValueSymbol, BuiltinId>,
+    /// Parsed type symbols that are builtins
+    pub(crate) type_builtins: HashMap<TypeSymbol, BuiltinId>,
 
     /// Tracks the mutability of all ValueSymbols in this module
     pub(crate) mutabilities: HashMap<ValueSymbol, Mutability>,

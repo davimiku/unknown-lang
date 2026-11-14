@@ -1,3 +1,4 @@
+mod attributes;
 mod binary;
 mod bindings;
 mod blocks;
@@ -12,6 +13,7 @@ mod parens;
 mod path;
 mod records;
 mod scalar_literals;
+mod strings;
 mod types;
 mod unary;
 mod unions;
