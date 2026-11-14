@@ -30,6 +30,17 @@ global_asm!(
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 global_asm!(
+    ".globl _hopper_list_push_entry",
+    "_hopper_list_push_entry:",
+    "mov x4, sp",
+    "mov x5, x30",
+    "mov x6, x29",
+    "b {impl_fn}",
+    impl_fn = sym super::list_push_impl,
+);
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+global_asm!(
     ".globl _hopper_alloc_object_entry",
     "_hopper_alloc_object_entry:",
     "mov x2, sp",
@@ -37,6 +48,17 @@ global_asm!(
     "mov x4, x29",
     "b {impl_fn}",
     impl_fn = sym super::alloc_object_impl,
+);
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+global_asm!(
+    ".globl _hopper_list_push_entry",
+    "_hopper_list_push_entry:",
+    "lea r8, [rsp + 8]",
+    "mov r9, [rsp]",
+    "mov [rsp + 8], rbp",
+    "jmp {impl_fn}",
+    impl_fn = sym super::list_push_impl,
 );
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
@@ -50,6 +72,17 @@ global_asm!(
     impl_fn = sym super::alloc_string_impl,
 );
 
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+global_asm!(
+    ".globl hopper_list_push_entry",
+    "hopper_list_push_entry:",
+    "mov x4, sp",
+    "mov x5, x30",
+    "mov x6, x29",
+    "b {impl_fn}",
+    impl_fn = sym super::list_push_impl,
+);
+
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 global_asm!(
     ".globl _hopper_alloc_object_entry",
@@ -59,6 +92,17 @@ global_asm!(
     "mov r8, rbp",
     "jmp {impl_fn}",
     impl_fn = sym super::alloc_object_impl,
+);
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+global_asm!(
+    ".globl hopper_list_push_entry",
+    "hopper_list_push_entry:",
+    "lea r8, [rsp + 8]",
+    "mov r9, [rsp]",
+    "mov [rsp + 8], rbp",
+    "jmp {impl_fn}",
+    impl_fn = sym super::list_push_impl,
 );
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
@@ -119,4 +163,18 @@ pub(super) fn address() -> *const u8 {
 
 pub(super) fn object_address() -> *const u8 {
     alloc_object_entry_symbol as *const u8
+}
+
+unsafe extern "C" {
+    #[link_name = "hopper_list_push_entry"]
+    fn list_push_entry_symbol(
+        list: *mut u8,
+        value: *const u8,
+        element_size: i64,
+        descriptor: *const u8,
+    ) -> *mut u8;
+}
+
+pub(super) fn list_push_address() -> *const u8 {
+    list_push_entry_symbol as *const u8
 }

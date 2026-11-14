@@ -6,6 +6,24 @@ use crate::scope::ModuleScopes;
 use crate::typecheck::{CoreTypes, TypeDatabase};
 use crate::{FuncSignature, Interner, IntrinsicExpr, Key, Type};
 
+pub const INT: &'static str = "Int";
+pub const FLOAT: &'static str = "Float";
+pub const STRING: &'static str = "String";
+pub const LIST: &'static str = "List";
+
+fn insert_value(
+    database: &mut Database,
+    type_database: &mut TypeDatabase,
+    scopes: &mut ModuleScopes,
+    key: Key,
+    fn_type: Type,
+) {
+    let symbol = scopes.insert_value(key);
+    database.value_names.insert(symbol, key);
+    let ty = type_database.alloc_type(fn_type);
+    type_database.insert_value_symbol(symbol, ty);
+}
+
 pub(crate) fn insert_core_values(
     database: &mut Database,
     type_database: &mut TypeDatabase,
@@ -23,7 +41,7 @@ pub(crate) fn insert_core_values(
         symbol
     };
 
-    // core types - Bool, Int, Float, String
+    // core types - Bool, Int, Float, String, List
     insert_type(keys.int, t.int);
     insert_type(keys.float, t.float);
     insert_type(keys.string, t.string);
@@ -34,18 +52,15 @@ pub(crate) fn insert_core_values(
     let bool_ty = assert_matches!(bool_ty, Type::Sum);
     bool_ty.name = Some(bool_symbol);
 
-    let mut insert_value = |key: Key, fn_type: Type| {
-        let symbol = scopes.insert_value(key);
-        database.value_names.insert(symbol, key);
-        let ty = type_database.alloc_type(fn_type);
-        type_database.insert_value_symbol(symbol, ty);
-
-        symbol
-    };
-
     // core function - Print
     // eventually could be removed in favor of a Display trait
-    insert_value(keys.print, Type::func(print_signatures(&t)));
+    insert_value(
+        database,
+        type_database,
+        scopes,
+        keys.print,
+        Type::func(print_signatures(&t)),
+    );
 
     // false, true
     // like if this was at the top of every module:
@@ -95,6 +110,27 @@ pub(crate) fn insert_core_values(
     insert_intrinsic(keys.le, Type::func(num_cmp_signatures(&t)), IE::Le);
     insert_intrinsic(keys.gt, Type::func(num_cmp_signatures(&t)), IE::Gt);
     insert_intrinsic(keys.ge, Type::func(num_cmp_signatures(&t)), IE::Ge);
+
+    // List operations are compiler-privileged builtins. Their signatures use
+    // placeholders; infer_call applies the element-type relation.
+    let unknown_list = type_database.alloc_type(Type::List(crate::ListType { of: t.unknown }));
+    insert_value(
+        database,
+        type_database,
+        scopes,
+        keys.list_new,
+        Type::func(vec![FuncSignature {
+            params: Box::new([]),
+            return_ty: unknown_list,
+        }]),
+    );
+    insert_value(
+        database,
+        type_database,
+        scopes,
+        keys.list_push,
+        Type::func(vec![((t.top, t.top), t.unit).into()]),
+    );
 }
 
 fn print_signatures(types: &CoreTypes) -> Vec<FuncSignature> {

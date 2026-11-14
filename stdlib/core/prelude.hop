@@ -1,0 +1,23 @@
+/// 64-bit signed integer
+type Int = intrinsic
+
+/// 64-bit IEEE-754 double-width precision floating point
+type Float = intrinsic
+
+/// UTF-8 encoded arbitrary length text
+type String = intrinsic
+
+/// A dynamically growable list of items. The list is homogenous, all items are of type 'A
+type List 'A = intrinsic
+
+type Bool = false | true
+
+let false = Bool.false
+let true = Bool.true
+
+/// A value that may or may not exist
+type Option 'A = none | some: 'A
+
+/// A value that may represent the outcome of an operation, either the failure value
+/// or success
+type Result ('A, 'Err) = error: 'Err | ok: 'A

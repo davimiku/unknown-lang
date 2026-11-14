@@ -25,8 +25,8 @@ let main = fun (c: Color) -> { c }";
     let expected = "
 fun main:
     params: _1
-    mut _0: Color~1.0
-    _1: Color~1.0
+    mut _0: Color~13.0
+    _1: Color~13.0
 
     BB0():
         _0 := copy _1
@@ -45,7 +45,7 @@ let main = fun () -> { Color.green }";
     let expected = "
 fun main:
     params: {none}
-    mut _0: Color~1.0
+    mut _0: Color~13.0
 
     BB0():
         _0 := const 1
@@ -65,7 +65,7 @@ let main = fun (i: Int) -> { Number.int i }
     let expected = "
 fun main:
     params: _1
-    mut _0: Number~1.0
+    mut _0: Number~13.0
     _1: Int
 
     BB0():
@@ -83,7 +83,7 @@ let main = fun (f: Float) -> { Number.float f }
     let expected = "
 fun main:
     params: _1
-    mut _0: Number~1.0
+    mut _0: Number~13.0
     _1: Float
 
     BB0():
@@ -106,8 +106,8 @@ let main = fun (n: Number) -> {
 
     let expected = "fun main:
     params: _1
-    mut _0: Number~1.0
-    _1: Number~1.0
+    mut _0: Number~13.0
+    _1: Number~13.0
     _2: Int
     _3: Int
     _4: Int
@@ -142,7 +142,7 @@ let main = fun () -> { Number.float 1.23 }
     let expected = "
 fun main:
     params: {none}
-    mut _0: Number~1.0
+    mut _0: Number~13.0
 
     BB0():
         _0 := Number.float$1(const 1.23)

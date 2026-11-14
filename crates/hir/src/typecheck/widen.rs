@@ -1,6 +1,6 @@
 use la_arena::Idx;
 
-use crate::{ArrayType, Context, Type};
+use crate::{Context, Type};
 
 /// Given a Type, if it is a literal then widen to the corresponding scalar.
 /// For compound types, this is applied recursively to the inner types.
@@ -19,14 +19,6 @@ pub(super) fn widen_to_scalar(ty_idx: Idx<Type>, context: &mut Context) -> Idx<T
         Type::StringLiteral(_) | Type::String => context.core_types().string,
 
         // Sum types...? Don't think so
-        Type::Array(ArrayType { of }) => {
-            let of = widen_to_scalar(*of, context);
-            // TODO: pre-allocate `Array Bool`, `Array Float`, `Array Int`, `Array String`
-            context
-                .type_database
-                .alloc_type(Type::Array(ArrayType { of }))
-        }
-
         _ => ty_idx,
     }
 }

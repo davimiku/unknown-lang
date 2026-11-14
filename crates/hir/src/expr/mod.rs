@@ -29,6 +29,9 @@ pub enum Expr {
     /// String literal value, ex. `"hello"`, `"world"`
     StringLiteral(Key),
 
+    /// A standard-library declaration implemented by the compiler.
+    Intrinsic(ValueSymbol),
+
     /// Unary expression, ex. `-a`, `!b`
     // TODO: remove and use a Call instead (unary function call)
     Unary(UnaryExpr),

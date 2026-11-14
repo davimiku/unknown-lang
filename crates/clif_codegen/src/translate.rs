@@ -72,6 +72,7 @@ pub(crate) struct UnionShadow {
 pub(crate) struct ManagedDescriptorCache {
     records: HashMap<Vec<u32>, &'static runtime::TypeDescriptor>,
     unions: HashMap<Vec<(u32, Vec<u32>)>, &'static runtime::TypeDescriptor>,
+    lists: HashMap<(u32, Vec<u32>), &'static runtime::TypeDescriptor>,
 }
 
 /// A collection of state used for translating from toy-language AST nodes
@@ -147,10 +148,7 @@ impl<'a> FunctionTranslator<'a> {
 }
 
 impl FunctionTranslator<'_> {
-    fn record_descriptor(
-        &mut self,
-        layout: &Layout,
-    ) -> &'static runtime::TypeDescriptor {
+    fn record_descriptor(&mut self, layout: &Layout) -> &'static runtime::TypeDescriptor {
         let key = layout.gc_ref_offsets.clone();
         if let Some(descriptor) = self.descriptors.records.get(&key) {
             return descriptor;
@@ -164,22 +162,18 @@ impl FunctionTranslator<'_> {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         );
-        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
-            runtime::TypeDescriptor {
+        let descriptor: &'static runtime::TypeDescriptor =
+            Box::leak(Box::new(runtime::TypeDescriptor {
                 name: "Record",
                 kind: runtime::ObjectKind::Record,
                 trace: runtime::TraceDescriptor::Fields(trace_offsets),
                 destroy: destroy_heap_record,
-            },
-        ));
+            }));
         self.descriptors.records.insert(key, descriptor);
         descriptor
     }
 
-    fn union_descriptor(
-        &mut self,
-        layout: &Layout,
-    ) -> &'static runtime::TypeDescriptor {
+    fn union_descriptor(&mut self, layout: &Layout) -> &'static runtime::TypeDescriptor {
         let key = layout.gc_variant_roots.clone();
         if let Some(descriptor) = self.descriptors.unions.get(&key) {
             return descriptor;
@@ -202,8 +196,8 @@ impl FunctionTranslator<'_> {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         );
-        let descriptor: &'static runtime::TypeDescriptor = Box::leak(Box::new(
-            runtime::TypeDescriptor {
+        let descriptor: &'static runtime::TypeDescriptor =
+            Box::leak(Box::new(runtime::TypeDescriptor {
                 name: "Union",
                 kind: runtime::ObjectKind::Union,
                 trace: runtime::TraceDescriptor::TaggedFields {
@@ -211,9 +205,42 @@ impl FunctionTranslator<'_> {
                     variants,
                 },
                 destroy: destroy_heap_record,
-            },
-        ));
+            }));
         self.descriptors.unions.insert(key, descriptor);
+        descriptor
+    }
+
+    fn list_descriptor(&mut self, element_layout: &Layout) -> &'static runtime::TypeDescriptor {
+        assert!(
+            element_layout.gc_variant_roots.is_empty() && element_layout.gc_union_fields.is_empty(),
+            "List elements with variant-dependent GC references are not supported"
+        );
+        let mut offsets = element_layout.gc_ref_offsets.clone();
+        if matches!(
+            element_layout.backend_repr,
+            BackendRepr::Scalar(Scalar::GcRef)
+        ) {
+            offsets.push(0);
+        }
+        let stride = element_layout.size.bytes().max(WORD_SIZE as u64) as u32;
+        let key = (stride, offsets.clone());
+        if let Some(descriptor) = self.descriptors.lists.get(&key) {
+            return descriptor;
+        }
+        let offsets: &'static [u32] = Box::leak(offsets.into_boxed_slice());
+        let descriptor: &'static runtime::TypeDescriptor =
+            Box::leak(Box::new(runtime::TypeDescriptor {
+                name: "List",
+                kind: runtime::ObjectKind::Array,
+                trace: runtime::TraceDescriptor::Array {
+                    length_offset: size_of::<runtime::GcHeader>() as u32,
+                    elements_offset: runtime::list::LIST_ELEMENTS_OFFSET as u32,
+                    stride,
+                    element_offsets: offsets,
+                },
+                destroy: destroy_heap_record,
+            }));
+        self.descriptors.lists.insert(key, descriptor);
         descriptor
     }
 
@@ -511,28 +538,30 @@ impl FunctionTranslator<'_> {
             let layout = &self.layouts[layout_idx];
             if uses_heap_aggregate(layout) {
                 self.builder.func.signature.returns.push(AbiParam::new(I64));
-            } else { match layout.backend_repr.clone() {
-                BackendRepr::None => {}
-                BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar);
-                    self.builder.func.signature.returns.push(abi_param);
-                }
-                BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first);
-                    self.builder.func.signature.returns.push(first_abi_param);
+            } else {
+                match layout.backend_repr.clone() {
+                    BackendRepr::None => {}
+                    BackendRepr::Scalar(scalar) => {
+                        let abi_param = self.translate_scalar_to_abi_param(scalar);
+                        self.builder.func.signature.returns.push(abi_param);
+                    }
+                    BackendRepr::ScalarPair(first, second) => {
+                        let first_abi_param = self.translate_scalar_to_abi_param(first);
+                        self.builder.func.signature.returns.push(first_abi_param);
 
-                    let second_abi_param = self.translate_scalar_to_abi_param(second);
-                    self.builder.func.signature.returns.push(second_abi_param);
+                        let second_abi_param = self.translate_scalar_to_abi_param(second);
+                        self.builder.func.signature.returns.push(second_abi_param);
+                    }
+                    BackendRepr::StackSlot => {
+                        // Stack-allocated returns: caller provides a pointer where we write
+                        // the return value. We use a regular i64 parameter instead of
+                        // ArgumentPurpose::StructReturn to avoid ABI complications with
+                        // different calling conventions.
+                        let abi_param = AbiParam::new(I64);
+                        self.builder.func.signature.params.push(abi_param);
+                    }
                 }
-                BackendRepr::StackSlot => {
-                    // Stack-allocated returns: caller provides a pointer where we write
-                    // the return value. We use a regular i64 parameter instead of
-                    // ArgumentPurpose::StructReturn to avoid ABI complications with
-                    // different calling conventions.
-                    let abi_param = AbiParam::new(I64);
-                    self.builder.func.signature.params.push(abi_param);
-                }
-            } }
+            }
         }
     }
 
@@ -572,7 +601,140 @@ impl FunctionTranslator<'_> {
             Statement::StorageLive(_) => todo!(),
             Statement::StorageDead(_) => todo!(),
             Statement::Intrinsic(_) => todo!(),
+            Statement::ListPush {
+                list,
+                value,
+                destination,
+            } => self.translate_list_push(list, value, destination),
         }
+    }
+
+    fn translate_list_push(&mut self, list: &Operand, value: &Operand, destination: &Place) {
+        let prior_argument_roots = self.active_argument_roots.len();
+        let prior_record_roots = self.active_record_roots.len();
+        let list_value = self
+            .translate_operand(list)
+            .as_val()
+            .expect("List should be a GC reference scalar");
+        // The List is passed through a register to the native shim. Keep an
+        // explicit stack-map root live while evaluating the element and during
+        // the shim's possible growth allocation.
+        let list_root = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            WORD_SIZE as u32,
+            3,
+        ));
+        self.builder
+            .ins()
+            .stack_store(list_value, list_root, Offset32::new(0));
+        self.active_argument_roots.push(list_root);
+        let list_ty = destination.type_idx_of(self.func);
+        let element_ty = match self.context.type_(list_ty) {
+            HType::List(list) => list.of,
+            other => panic!("expected List type, got {other:?}"),
+        };
+        let element_layout_idx = self.layout_for_type(element_ty);
+        let element_layout = self.layouts[element_layout_idx].clone();
+        let stride = element_layout.size.bytes().max(WORD_SIZE as u64);
+        let value = self.translate_operand(value);
+
+        // The runtime shim receives a pointer to a by-value copy. This supports
+        // scalar and arbitrary-sized aggregate elements without boxing records.
+        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            stride as u32,
+            3,
+        ));
+        let value_ptr = self.builder.ins().stack_addr(I64, slot, Offset32::new(0));
+        let mut root_offsets = element_layout.gc_ref_offsets.clone();
+        if matches!(
+            element_layout.backend_repr,
+            BackendRepr::Scalar(Scalar::GcRef)
+        ) {
+            root_offsets.push(0);
+        }
+        if !root_offsets.is_empty() {
+            let zero = self.builder.ins().iconst(I64, 0);
+            for &offset in &root_offsets {
+                self.builder
+                    .ins()
+                    .stack_store(zero, slot, Offset32::new(offset as i32));
+            }
+            self.active_record_roots.push((slot, root_offsets));
+        }
+        match &value {
+            CValue::Val { val, .. } => {
+                self.builder.ins().stack_store(*val, slot, Offset32::new(0));
+            }
+            CValue::Ref { ptr, .. } => {
+                let source = match ptr {
+                    Pointer::Stack { slot, offset } => {
+                        self.builder.ins().stack_addr(I64, *slot, *offset)
+                    }
+                    Pointer::Heap { addr, offset } => {
+                        let offset: i32 = (*offset).into();
+                        if offset == 0 {
+                            *addr
+                        } else {
+                            self.builder.ins().iadd_imm(*addr, offset as i64)
+                        }
+                    }
+                };
+                self.builder.emit_small_memory_copy(
+                    self.module.target_config(),
+                    value_ptr,
+                    source,
+                    element_layout.size.bytes(),
+                    1,
+                    1,
+                    true,
+                    MemFlagsData::new(),
+                );
+            }
+            CValue::ValPair { first, second, .. } => {
+                self.builder
+                    .ins()
+                    .stack_store(*first, slot, Offset32::new(0));
+                self.builder
+                    .ins()
+                    .stack_store(*second, slot, Offset32::new(WORD_SIZE as i32));
+            }
+            CValue::ValTriple {
+                first,
+                second,
+                third,
+                ..
+            } => {
+                for (value, offset) in [
+                    (first, 0),
+                    (second, WORD_SIZE as i32),
+                    (third, (WORD_SIZE * 2) as i32),
+                ] {
+                    self.builder
+                        .ins()
+                        .stack_store(*value, slot, Offset32::new(offset));
+                }
+            }
+        }
+
+        let descriptor = self.list_descriptor(&element_layout);
+        let stride_value = self.builder.ins().iconst(I64, stride as i64);
+        let descriptor_value = self
+            .builder
+            .ins()
+            .iconst(I64, descriptor as *const _ as usize as i64);
+        let call = self.call_native_builtin(
+            builtins::LIST_PUSH,
+            &[list_value, value_ptr, stride_value, descriptor_value],
+        );
+        let new_list = self.builder.inst_results(call)[0];
+        if let CPlace::Var { variable, .. } = self.places[destination.local] {
+            self.builder.def_var(variable, new_list);
+        } else {
+            todo!("List push destination representation");
+        }
+        self.active_record_roots.truncate(prior_record_roots);
+        self.active_argument_roots.truncate(prior_argument_roots);
     }
 
     fn translate_terminator(&mut self, terminator: &Terminator, block_map: &BlockMap) {
@@ -977,18 +1139,84 @@ impl FunctionTranslator<'_> {
             .collect()
     }
 
+    fn translate_list_new(&mut self, place: &Place) -> CValue {
+        let ty = place.type_idx_of(self.func);
+        let element_ty = match self.context.type_(ty) {
+            HType::List(list) => list.of,
+            other => panic!("expected List type, got {other:?}"),
+        };
+        let element_ty = if element_ty == self.context.core_types().unknown {
+            self.context.core_types().int
+        } else {
+            element_ty
+        };
+        let element_layout_idx = self.layout_for_type(element_ty);
+        let element_layout = self.layouts[element_layout_idx].clone();
+        let descriptor = self.list_descriptor(&element_layout);
+        let element_stride = element_layout.size.bytes().max(WORD_SIZE as u64);
+        let size = runtime::list::LIST_ELEMENTS_OFFSET as u64 + element_stride;
+        let size_value = self.builder.ins().iconst(I64, size as i64);
+        let descriptor_value = self
+            .builder
+            .ins()
+            .iconst(I64, descriptor as *const _ as usize as i64);
+        let call =
+            self.call_native_builtin(builtins::ALLOC_OBJECT, &[size_value, descriptor_value]);
+        let root = self.builder.inst_results(call)[0];
+        let payload = self
+            .builder
+            .ins()
+            .iadd_imm(root, size_of::<runtime::GcHeader>() as i64);
+        let zero = self.builder.ins().iconst(I64, 0);
+        self.builder
+            .ins()
+            .store(MemFlagsData::new(), zero, payload, Offset32::new(0));
+        let one = self.builder.ins().iconst(I64, 1);
+        self.builder.ins().store(
+            MemFlagsData::new(),
+            one,
+            payload,
+            Offset32::new(WORD_SIZE as i32),
+        );
+        CValue::Val {
+            val: root,
+            layout: self.layouts.ptr,
+        }
+    }
+
+    fn translate_list_len(&mut self, operand: &Operand) -> CValue {
+        let list = self
+            .translate_operand(operand)
+            .as_val()
+            .expect("List should be represented as a GC reference scalar");
+        let payload = self
+            .builder
+            .ins()
+            .iadd_imm(list, size_of::<runtime::GcHeader>() as i64);
+        let length = self
+            .builder
+            .ins()
+            .load(I64, MemFlagsData::new(), payload, Offset32::new(0));
+        CValue::Val {
+            val: length,
+            layout: self.layouts.int,
+        }
+    }
+
     fn translate_rvalue(&mut self, place: &Place, rvalue: &Rvalue) {
         let temporary_root_count = self.active_record_roots.len();
         let temporary_union_count = self.active_union_roots.len();
         let temporary_argument_root_count = self.active_argument_roots.len();
         let cval = match rvalue {
             Rvalue::Use(op) => self.translate_operand(op),
+            Rvalue::ListNew => self.translate_list_new(place),
+            Rvalue::ListLen(op) => self.translate_list_len(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(_unop, _op) => todo!(),
             Rvalue::Aggregate(aggregate) => self.translate_aggregate(place, aggregate),
             Rvalue::Discriminant(place) => self.translate_discriminant(place),
-            Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => {
-                self.translate_union_variant(
+            Rvalue::UnionVariant(RvalueUnionVariant { idx, operand, .. }) => self
+                .translate_union_variant(
                     *idx,
                     operand,
                     place.type_idx_of(self.func),
@@ -997,8 +1225,7 @@ impl FunctionTranslator<'_> {
                         CPlace::Heap { variable, .. } => Some(*variable),
                         _ => None,
                     },
-                )
-            }
+                ),
         };
         let cplace = self.places[place.local].clone();
         match (&cplace, &cval) {
@@ -1060,7 +1287,9 @@ impl FunctionTranslator<'_> {
             }
             (
                 CPlace::Heap { variable, .. },
-                CValue::Ref { val: Some(root), .. },
+                CValue::Ref {
+                    val: Some(root), ..
+                },
             ) => {
                 self.builder.def_var(*variable, *root);
             }
@@ -1247,10 +1476,10 @@ impl FunctionTranslator<'_> {
                                     }
                                     CPlace::Heap { variable, .. } => {
                                         let root = self.builder.use_var(*variable);
-                                        let addr = self.builder.ins().iadd_imm(
-                                            root,
-                                            size_of::<runtime::GcHeader>() as i64,
-                                        );
+                                        let addr = self
+                                            .builder
+                                            .ins()
+                                            .iadd_imm(root, size_of::<runtime::GcHeader>() as i64);
                                         ptr = Some(Pointer::Heap {
                                             addr,
                                             offset: Offset32::new(WORD_SIZE as i32),
@@ -1410,10 +1639,10 @@ impl FunctionTranslator<'_> {
                         variable, layout, ..
                     } => {
                         let root = self.builder.use_var(*variable);
-                        let payload = self.builder.ins().iadd_imm(
-                            root,
-                            size_of::<runtime::GcHeader>() as i64,
-                        );
+                        let payload = self
+                            .builder
+                            .ins()
+                            .iadd_imm(root, size_of::<runtime::GcHeader>() as i64);
                         CValue::Ref {
                             ptr: Pointer::Heap {
                                 addr: payload,
@@ -1555,14 +1784,14 @@ impl FunctionTranslator<'_> {
             }
             CPlace::Heap { variable, .. } => {
                 let root = self.builder.use_var(*variable);
-                let payload = self.builder.ins().iadd_imm(
-                    root,
-                    size_of::<runtime::GcHeader>() as i64,
-                );
-                let val = self
+                let payload = self
                     .builder
                     .ins()
-                    .load(I64, MemFlagsData::new(), payload, Offset32::new(0));
+                    .iadd_imm(root, size_of::<runtime::GcHeader>() as i64);
+                let val =
+                    self.builder
+                        .ins()
+                        .load(I64, MemFlagsData::new(), payload, Offset32::new(0));
                 CValue::Val {
                     val,
                     layout: self.layouts.int,
@@ -1628,10 +1857,10 @@ impl FunctionTranslator<'_> {
                         destination_variable.expect("heap union destination variable"),
                         gc_ref,
                     );
-                    let object_addr = self.builder.ins().iadd_imm(
-                        gc_ref,
-                        size_of::<runtime::GcHeader>() as i64,
-                    );
+                    let object_addr = self
+                        .builder
+                        .ins()
+                        .iadd_imm(gc_ref, size_of::<runtime::GcHeader>() as i64);
                     self.builder.ins().store(
                         MemFlagsData::new(),
                         discriminant,
@@ -1640,10 +1869,7 @@ impl FunctionTranslator<'_> {
                     );
 
                     let payload_cval = self.translate_operand(operand);
-                    let payload_addr = self.builder.ins().iadd_imm(
-                        object_addr,
-                        WORD_SIZE as i64,
-                    );
+                    let payload_addr = self.builder.ins().iadd_imm(object_addr, WORD_SIZE as i64);
                     match payload_cval {
                         CValue::Val { val, .. } => {
                             self.builder.ins().store(
@@ -1860,22 +2086,21 @@ impl FunctionTranslator<'_> {
                         &[size_value, descriptor_value],
                     );
                     let gc_ref = self.builder.inst_results(call)[0];
-                    let root_slot = self.builder.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
-                    );
+                    let root_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        WORD_SIZE,
+                        3,
+                    ));
                     self.builder
                         .ins()
                         .stack_store(gc_ref, root_slot, Offset32::new(0));
                     self.active_argument_roots.push(root_slot);
 
-                    let object_addr = self.builder.ins().iadd_imm(
-                        gc_ref,
-                        size_of::<runtime::GcHeader>() as i64,
-                    );
-                    let source_addr = self
+                    let object_addr = self
                         .builder
                         .ins()
-                        .stack_addr(I64, slot, Offset32::new(0));
+                        .iadd_imm(gc_ref, size_of::<runtime::GcHeader>() as i64);
+                    let source_addr = self.builder.ins().stack_addr(I64, slot, Offset32::new(0));
                     self.builder.emit_small_memory_copy(
                         self.module.target_config(),
                         object_addr,
@@ -1934,10 +2159,8 @@ impl FunctionTranslator<'_> {
             .builder
             .ins()
             .iconst(I64, descriptor as *const _ as usize as i64);
-        let call = self.call_native_builtin(
-            builtins::ALLOC_OBJECT,
-            &[size_value, descriptor_value],
-        );
+        let call =
+            self.call_native_builtin(builtins::ALLOC_OBJECT, &[size_value, descriptor_value]);
         let gc_ref = self.builder.inst_results(call)[0];
         self.builder.def_var(destination_variable, gc_ref);
         let object_addr = self
@@ -1963,14 +2186,20 @@ impl FunctionTranslator<'_> {
             };
             match field_cval {
                 CValue::Val { val, .. } => {
-                    self.builder
-                        .ins()
-                        .store(MemFlagsData::new(), val, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        val,
+                        field_addr,
+                        Offset32::new(0),
+                    );
                 }
                 CValue::ValPair { first, second, .. } => {
-                    self.builder
-                        .ins()
-                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        first,
+                        field_addr,
+                        Offset32::new(0),
+                    );
                     self.builder.ins().store(
                         MemFlagsData::new(),
                         second,
@@ -1984,9 +2213,12 @@ impl FunctionTranslator<'_> {
                     third,
                     ..
                 } => {
-                    self.builder
-                        .ins()
-                        .store(MemFlagsData::new(), first, field_addr, Offset32::new(0));
+                    self.builder.ins().store(
+                        MemFlagsData::new(),
+                        first,
+                        field_addr,
+                        Offset32::new(0),
+                    );
                     self.builder.ins().store(
                         MemFlagsData::new(),
                         second,
@@ -2223,23 +2455,21 @@ impl FunctionTranslator<'_> {
                         &[size_value, descriptor_value],
                     );
                     let gc_ref = self.builder.inst_results(call)[0];
-                    let root_slot = self.builder.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot, WORD_SIZE, 3),
-                    );
+                    let root_slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        WORD_SIZE,
+                        3,
+                    ));
                     self.builder
                         .ins()
                         .stack_store(gc_ref, root_slot, Offset32::new(0));
                     self.active_argument_roots.push(root_slot);
 
-                    let object_addr = self.builder.ins().iadd_imm(
-                        gc_ref,
-                        size_of::<runtime::GcHeader>() as i64,
-                    );
-                    let source_addr = self.builder.ins().stack_addr(
-                        I64,
-                        slot,
-                        Offset32::new(0),
-                    );
+                    let object_addr = self
+                        .builder
+                        .ins()
+                        .iadd_imm(gc_ref, size_of::<runtime::GcHeader>() as i64);
+                    let source_addr = self.builder.ins().stack_addr(I64, slot, Offset32::new(0));
                     self.builder.emit_small_memory_copy(
                         self.module.target_config(),
                         object_addr,

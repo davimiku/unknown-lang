@@ -287,7 +287,9 @@ impl Builder {
             }
 
             Expr::Call(call) => {
-                if let Some(binop) = try_get_binop(call, context) {
+                if list_builtin_name(call, context).is_some() {
+                    self.construct_list_call(call, assign_to, context);
+                } else if let Some(binop) = try_get_binop(call, context) {
                     let rvalue = self.construct_binop(&binop, context);
                     if let Some(assign_place) = assign_to {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
@@ -492,7 +494,9 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> OperandOrPlace {
-        let place = if let Some(binop) = try_get_binop(call, context) {
+        let place = if list_builtin_name(call, context).is_some() {
+            return OperandOrPlace::from(self.construct_list_call(call, assign_to, context));
+        } else if let Some(binop) = try_get_binop(call, context) {
             let assign_place = match assign_to {
                 Some(assign_place) => assign_place.clone(),
                 // New / temp local to hold the Rvalue
@@ -516,6 +520,78 @@ impl Builder {
         };
 
         OperandOrPlace::from(place)
+    }
+
+    /// Lower compiler-provided List operations without inventing function IDs
+    /// for functions that do not exist as user-defined MIR functions.
+    fn construct_list_call(
+        &mut self,
+        call: &CallExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Place {
+        let name = list_builtin_name(call, context).expect("List builtin name");
+
+        match name.as_str() {
+            "list_new" => {
+                let return_ty = call.return_ty(context);
+                let destination = assign_to.clone().unwrap_or_else(|| {
+                    self.construct_local(return_ty, call.symbol, Mutability::Not)
+                        .into()
+                });
+                self.current_block_mut()
+                    .statements
+                    .push(Statement::assign(destination.clone(), Rvalue::ListNew));
+                self.def_local(destination.local);
+                destination
+            }
+            "list_len" => {
+                let return_ty = context.core_types().int;
+                let destination = assign_to.clone().unwrap_or_else(|| {
+                    self.construct_local(return_ty, call.symbol, Mutability::Not)
+                        .into()
+                });
+                let list = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                self.current_block_mut().statements.push(Statement::assign(
+                    destination.clone(),
+                    Rvalue::ListLen(list),
+                ));
+                self.def_local(destination.local);
+                destination
+            }
+            "list_push" => {
+                let destination = match context.expr(call.args[0]) {
+                    Expr::VarRef(var_ref) => self.find_symbol(var_ref.symbol, context).into(),
+                    _ => panic!("ListPush currently requires a List variable"),
+                };
+                let list = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                let value = Operand::from_op_or_place(
+                    self.construct_operand(call.args[1], &None, context),
+                    context,
+                );
+                self.current_block_mut()
+                    .statements
+                    .push(Statement::ListPush {
+                        list,
+                        value,
+                        destination,
+                    });
+
+                // List push returns Unit. There is no runtime value to assign,
+                // but returning a place keeps operand construction uniform.
+                assign_to.clone().unwrap_or_else(|| {
+                    self.construct_local(context.core_types().unit, call.symbol, Mutability::Not)
+                        .into()
+                })
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn construct_callee(
@@ -1166,6 +1242,21 @@ impl Builder {
         self.def_local(local);
 
         local
+    }
+}
+
+// temporary until List functions (the symbols, at least) are moved to real function definitions
+fn list_builtin_name(call: &CallExpr, context: &Context) -> Option<String> {
+    let Expr::VarRef(var_ref) = context.expr(call.callee) else {
+        return None;
+    };
+    let name = context.value_symbol_str(var_ref.symbol);
+    if matches!(name, "list_new" | "list_push") {
+        Some(name.to_owned())
+    } else if context.builtin_id(var_ref.symbol) == Some(hir::BuiltinId::ListLen) {
+        Some("list_len".to_owned())
+    } else {
+        None
     }
 }
 

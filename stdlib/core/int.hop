@@ -1,0 +1,8 @@
+/// Returns the maximum of two integers
+let max = fun (a: Int, b: Int) -> Int {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}

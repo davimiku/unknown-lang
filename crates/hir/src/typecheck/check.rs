@@ -62,7 +62,19 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         (Type::StringLiteral(_), Type::String) => true,
         (Type::StringLiteral(a), Type::StringLiteral(b)) => a == b,
 
-        (Type::Array(a), Type::Array(b)) => is_subtype(a.of, b.of, context),
+        (Type::List(a), Type::List(b)) => {
+            // Unknown is used by list_new until we implement more complete type inference
+            // i.e.
+            // ```
+            // let ints = list_new ()
+            // ints.push 123   // should allow infering `ints` as `List Int`
+            // ```
+            if a.of == context.core_types().unknown || b.of == context.core_types().unknown {
+                true
+            } else {
+                is_subtype(a.of, b.of, context)
+            }
+        }
 
         (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
 

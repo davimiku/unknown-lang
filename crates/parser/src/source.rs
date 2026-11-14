@@ -23,7 +23,7 @@ impl<'t, 'input> Source<'t, 'input> {
         Some(token)
     }
 
-    pub(crate) fn peek_token(&mut self) -> Option<&Token> {
+    pub(crate) fn peek_token(&mut self) -> Option<&Token<'_>> {
         self.eat_trivia();
         self.peek_token_raw()
     }
@@ -34,7 +34,7 @@ impl<'t, 'input> Source<'t, 'input> {
         self.peek_kind_raw()
     }
 
-    pub(super) fn peek_next(&mut self) -> Option<&Token> {
+    pub(super) fn peek_next(&mut self) -> Option<&Token<'_>> {
         self.eat_trivia();
         let next_idx = self.cursor + 1;
 
@@ -63,7 +63,7 @@ impl<'t, 'input> Source<'t, 'input> {
         self.tokens.get(self.cursor).map(|Token { kind, .. }| *kind)
     }
 
-    pub(super) fn peek_token_raw(&self) -> Option<&Token> {
+    pub(super) fn peek_token_raw(&self) -> Option<&Token<'_>> {
         self.tokens.get(self.cursor)
     }
 }

@@ -222,6 +222,13 @@ pub enum Statement {
     // TODO: decide if we need this, was copied from rustc
     // Intrinsic(Box<NonDivergingIntrinsic>),
     Intrinsic(Box<()>),
+
+    /// Appends `value` to a compiler-provided `List 'A`.
+    ListPush {
+        list: Operand,
+        value: Operand,
+        destination: Place,
+    },
     // / This statement exists to preserve a trace of a scrutinee matched against a wildcard binding.
     // / This is especially useful for `let _ = PLACE;` bindings that desugar to a single
     // / `PlaceMention(PLACE)`.
@@ -545,6 +552,12 @@ impl FieldIdx {
 pub enum Rvalue {
     /// Yields the operand unchanged
     Use(Operand),
+
+    /// Creates an empty compiler-provided `List 'A`.
+    ListNew,
+
+    /// Reads the length of a compiler-provided `List 'A`.
+    ListLen(Operand),
 
     ///
     UnionVariant(RvalueUnionVariant),
