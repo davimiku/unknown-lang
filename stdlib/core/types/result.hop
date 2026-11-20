@@ -1,0 +1,4 @@
+/// A value that may represent the outcome of an operation,
+/// either the failure value or success
+// TODO - not implemented yet
+// type Result ('A, 'Err) = error: 'Err | ok: 'A

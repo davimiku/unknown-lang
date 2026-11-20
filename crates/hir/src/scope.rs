@@ -13,7 +13,7 @@ use id_tree::{InsertBehavior, Node, Tree};
 
 use crate::interner::Key;
 use crate::type_expr::TypeSymbol;
-use crate::{Context, ContextDisplay, ValueSymbol};
+use crate::{Context, ContextDisplay, ModuleId, ValueSymbol};
 
 #[derive(Debug, Default)]
 pub struct Scope {
@@ -27,6 +27,9 @@ pub struct Scope {
 
     /// Associates the name with the unique id for the type
     types: HashMap<Key, TypeSymbol>,
+
+    /// Module namespace aliases introduced by `module Name = @path`
+    modules: HashMap<Key, ModuleId>,
 }
 
 impl ContextDisplay for Scope {
@@ -63,6 +66,10 @@ impl Scope {
     pub(crate) fn get_local_type(&self, key: Key) -> Option<TypeSymbol> {
         self.types.get(&key).copied()
     }
+
+    pub(crate) fn get_local_module(&self, key: Key) -> Option<ModuleId> {
+        self.modules.get(&key).copied()
+    }
 }
 
 /// Holds the tree of Scope structs for a given module
@@ -90,7 +97,7 @@ pub(crate) struct ModuleScopes {
     // of assigning a unique id to each type variable
     // type_ids: SymbolMap,
     /// Unique id of the current module being compiled
-    module_id: u32,
+    module_id: ModuleId,
 }
 
 impl ContextDisplay for ModuleScopes {
@@ -142,6 +149,15 @@ impl ModuleScopes {
             .find_map(|scope| scope.data().get_local_type(name)))
     }
 
+    pub(crate) fn find_module(&self, name: Key) -> Option<ModuleId> {
+        self.current().get_local_module(name).or_else(|| {
+            self.tree
+                .ancestors(&self.current_node_id)
+                .unwrap()
+                .find_map(|scope| scope.data().get_local_module(name))
+        })
+    }
+
     fn current(&self) -> &Scope {
         self.tree.get(&self.current_node_id).unwrap().data()
     }
@@ -174,24 +190,37 @@ impl ModuleScopes {
     /// Inserts a name for a variable def into the current scope and returns
     /// a key that uniquely identifies that particular variable.
     pub(crate) fn insert_value(&mut self, name: Key) -> ValueSymbol {
-        let symbol = ValueSymbol::new(self.module_id, self.value_count);
+        let symbol = ValueSymbol::new(self.module_id.as_u32(), self.value_count);
         self.value_count += 1;
 
         self.current_mut().values.insert(name, symbol);
         symbol
     }
 
+    /// Adds another local name for an existing value symbol
+    pub(crate) fn insert_value_alias(&mut self, name: Key, symbol: ValueSymbol) {
+        self.current_mut().values.insert(name, symbol);
+    }
+
     pub(crate) fn insert_type(&mut self, name: Key) -> TypeSymbol {
-        let symbol = TypeSymbol::new(self.module_id, self.type_count);
+        let symbol = TypeSymbol::new(self.module_id.as_u32(), self.type_count);
         self.type_count += 1;
 
         self.current_mut().types.insert(name, symbol);
         symbol
     }
+
+    pub(crate) fn insert_type_alias(&mut self, name: Key, symbol: TypeSymbol) {
+        self.current_mut().types.insert(name, symbol);
+    }
+
+    pub(crate) fn insert_module_alias(&mut self, name: Key, module: ModuleId) {
+        self.current_mut().modules.insert(name, module);
+    }
 }
 
 impl ModuleScopes {
-    pub(crate) fn new(module_id: u32) -> Self {
+    pub(crate) fn new(module_id: ModuleId) -> Self {
         let root = Node::new(Scope::default());
         let mut tree = Tree::new();
         let root = tree.insert(root, InsertBehavior::AsRoot).unwrap();

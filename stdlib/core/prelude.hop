@@ -1,23 +1,19 @@
-/// 64-bit signed integer
-type Int = intrinsic
+// This prelude is a special module, the symbols defined here are
+// automatically injected into all modules for symbol resolution
 
-/// 64-bit IEEE-754 double-width precision floating point
-type Float = intrinsic
+#export type Int = @core/math/int/Int
 
-/// UTF-8 encoded arbitrary length text
-type String = intrinsic
+#export type Float = @core/math/float/Float
 
-/// A dynamically growable list of items. The list is homogenous, all items are of type 'A
-type List 'A = intrinsic
+#export type String = @core/text/string/String
 
-type Bool = false | true
+#export type List = @core/collections/list/List
 
-let false = Bool.false
-let true = Bool.true
+// Bool re-exports
+#export type Bool = @core/types/bool/Bool
+#export let false = Bool.false
+#export let true = Bool.true
 
-/// A value that may or may not exist
-type Option 'A = none | some: 'A
-
-/// A value that may represent the outcome of an operation, either the failure value
-/// or success
-type Result ('A, 'Err) = error: 'Err | ok: 'A
+// TODO - other type exports
+// #export type Option 'A = @core/types/option/Option
+// #export type Result ('A, 'Err) = @core/types/result/Result

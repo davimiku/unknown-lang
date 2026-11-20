@@ -14,7 +14,14 @@ impl ContextDisplay for Diagnostic {
 
 impl ContextDisplay for LoweringDiagnostic {
     fn display(&self, context: &Context) -> String {
-        todo!()
+        match &self.variant {
+            super::LoweringDiagnosticVariant::BreakOutsideLoop => {
+                "break used outside of a loop".to_owned()
+            }
+            super::LoweringDiagnosticVariant::UnresolvedImport { path } => {
+                format!("Unable to resolve import ‘{path}’")
+            }
+        }
     }
 }
 

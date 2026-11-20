@@ -78,11 +78,19 @@ impl LoweringDiagnostic {
             range,
         }
     }
+
+    pub fn unresolved_import(path: String, range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::UnresolvedImport { path },
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum LoweringDiagnosticVariant {
     BreakOutsideLoop,
+    UnresolvedImport { path: String },
     // ReturnOutsideFunction
 }
 

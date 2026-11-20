@@ -11,7 +11,7 @@ use crate::parser::marker::CompletedMarker;
 use crate::parser::Parser;
 use crate::SyntaxKind;
 
-use self::bindings::{parse_let_binding, parse_type_binding};
+use self::bindings::{parse_import_binding, parse_let_binding, parse_type_binding};
 use self::types::parse_type_expr;
 
 /// Tokens that may be the start of a call argument
@@ -157,6 +157,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::Intrinsic => parse_intrinsic_expr(p),
         T::Ident => parse_path_ident(p),
         T::Attribute => parse_attribute(p),
+        T::ModuleName => parse_module_path(p),
 
         T::Dash => parse_negation_expr(p),
         T::Bang => parse_not_expr(p),
@@ -168,6 +169,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::Loop => parse_loop_expr(p),
 
         T::Let => parse_let_binding(p),
+        T::Module => parse_import_binding(p),
         T::Type => parse_type_binding(p),
 
         T::Break => parse_break(p),
@@ -232,6 +234,19 @@ fn parse_path_ident(p: &mut Parser) -> CompletedMarker {
     }
 }
 
+pub(super) fn parse_module_path(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::ModuleName);
+
+    let m = p.start();
+    p.expect(T::ModuleName);
+
+    while p.bump_if_at(T::Slash) {
+        parse_ident(p);
+    }
+
+    m.complete(p, SyntaxKind::ModulePathExpr)
+}
+
 pub(crate) fn parse_pattern(p: &mut Parser) -> CompletedMarker {
     p.debug_assert_at_set(&PATTERN_START);
 
@@ -279,7 +294,7 @@ pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::Ident)
 }
 
-// WIP: only simple attribute like `@export` is supported, later want to support
+// WIP: only simple attribute like `#export` is supported, later want to support
 // like `@serialize foo=bar` or something like that (maybe resembling a Call actually)
 pub(crate) fn parse_attribute(p: &mut Parser) -> CompletedMarker {
     let m = p.start();

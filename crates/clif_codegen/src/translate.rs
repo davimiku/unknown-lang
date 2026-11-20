@@ -159,7 +159,7 @@ impl FunctionTranslator<'_> {
                 .gc_ref_offsets
                 .iter()
                 .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
-                .collect::<Vec<_>>()
+                .collect_vec()
                 .into_boxed_slice(),
         );
         let descriptor: &'static runtime::TypeDescriptor =
@@ -188,12 +188,12 @@ impl FunctionTranslator<'_> {
                         offsets
                             .iter()
                             .map(|offset| *offset + size_of::<runtime::GcHeader>() as u32)
-                            .collect::<Vec<_>>()
+                            .collect_vec()
                             .into_boxed_slice(),
                     );
                     (*tag, offsets)
                 })
-                .collect::<Vec<_>>()
+                .collect_vec()
                 .into_boxed_slice(),
         );
         let descriptor: &'static runtime::TypeDescriptor =

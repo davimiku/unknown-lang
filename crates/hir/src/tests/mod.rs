@@ -88,8 +88,15 @@ fn standard_library_prelude_loads_with_definition_ranges() {
     let modules = context.load_stdlib().unwrap();
 
     assert!(!modules.is_empty());
-    assert_eq!(modules[0].source_kind, SourceKind::StandardLibrary);
-    assert_eq!(modules[0].id, 1);
+    let prelude = modules
+        .iter()
+        .find(|module| {
+            module
+                .name
+                .is_some_and(|name| context.lookup(name) == "prelude")
+        })
+        .expect("stdlib prelude module to be loaded");
+    assert_eq!(prelude.source_kind, SourceKind::StandardLibrary);
     assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
 }
 
@@ -98,12 +105,124 @@ fn standard_library_list_len_is_a_builtin_declaration() {
     let mut context = Context::new(Interner::default());
     context.load_stdlib().unwrap();
     let _module = context.load_module(
-        "let values: List Int = list_new ()
+        "let list_len = @core/collections/list/list_len
+        let values: List Int = list_new ()
         let length = list_len values",
         SourceKind::User,
     );
 
     assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
+}
+
+#[test]
+fn value_and_type_imports_resolve_exported_symbols() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let _module = context.load_module(
+        r#"
+        let length = @core/collections/list/list_len
+        type MyInt = @core/math/int/Int
+        let values: List MyInt = list_new ()
+        length values
+        "#,
+        SourceKind::User,
+    );
+
+    assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
+}
+
+#[test]
+fn module_alias_resolves_exported_members() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let _module = context.load_module(
+        r#"
+        #export module List = @core/collections/list
+        let values: List Int = list_new ()
+        List.list_len values
+        "#,
+        SourceKind::User,
+    );
+
+    assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
+    let module_alias = context.interner.intern("List");
+    assert!(context
+        .module(_module.id)
+        .unwrap()
+        .exports
+        .modules
+        .contains_key(&module_alias));
+}
+
+#[test]
+fn stdlib_files_load_under_core_directory_modules() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+
+    let path = ["core", "collections", "list"].map(|segment| context.interner.intern(segment));
+    let list_module = context
+        .resolve_module_path(crate::ModuleId::BOOTSTRAP, &path)
+        .expect("list module to be loaded under core::collections");
+
+    let exported_len = context.interner.intern("list_len");
+    assert!(context.exported_value(list_module, exported_len).is_some());
+
+    let prelude_path = ["core", "prelude"].map(|segment| context.interner.intern(segment));
+    let prelude = context
+        .resolve_module_path(crate::ModuleId::BOOTSTRAP, &prelude_path)
+        .expect("prelude module to be a child of core");
+    assert!(context.module(prelude).is_some());
+}
+
+#[test]
+fn module_imports_can_be_reexported() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let module = context.load_module(
+        "#export module Lists = @core/collections/list",
+        SourceKind::User,
+    );
+
+    let alias = context.interner.intern("Lists");
+    assert!(context
+        .module(module.id)
+        .unwrap()
+        .exports
+        .modules
+        .contains_key(&alias));
+}
+
+#[test]
+fn export_attribute_records_module_value_exports() {
+    let mut context = Context::new(Interner::default());
+    let source = r#"
+        #export
+        let foo = 1
+        let private_value = 2"#;
+    let module = context.load_module(source, SourceKind::User);
+
+    let foo = context.interner.intern("foo");
+    let private_value = context.interner.intern("private_value");
+    let exports = &context.module(module.id).unwrap().exports.values;
+
+    assert!(exports.contains_key(&foo));
+    assert!(!exports.contains_key(&private_value));
+}
+
+#[test]
+fn child_modules_do_not_implicitly_see_parent_exports() {
+    let mut context = Context::new(Interner::default());
+    let parent = context.load_module("#export\nlet foo = 1", SourceKind::User);
+    let child_name = context.interner.intern("child");
+    let child = context.load_module_in(
+        parent.id,
+        child_name,
+        "let from_parent = foo",
+        SourceKind::User,
+    );
+
+    assert_eq!(context.diagnostics.len(), 1);
+    assert_eq!(context.module(child.id).unwrap().parent, Some(parent.id));
 }
 
 #[test]

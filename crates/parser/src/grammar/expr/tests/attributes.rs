@@ -4,12 +4,14 @@ use crate::grammar::check;
 
 #[test]
 fn parse_attribute_on_let_binding() {
-    let input = "@export
+    let input = "#export
         let foo = bar";
-    check(input, expect![[r#"
+    check(
+        input,
+        expect![[r##"
         Root@0..29
           Attribute@0..7
-            Attribute@0..7 "@export"
+            Attribute@0..7 "#export"
           Newline@7..16
             Newline@7..8 "\n"
             Emptyspace@8..16 "        "
@@ -23,5 +25,6 @@ fn parse_attribute_on_let_binding() {
             Emptyspace@25..26 " "
             PathExpr@26..29
               Ident@26..29
-                Ident@26..29 "bar""#]]);
+                Ident@26..29 "bar""##]],
+    );
 }

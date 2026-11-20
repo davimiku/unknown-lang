@@ -53,7 +53,7 @@ pub fn construct(input: &str) -> (Module, Context) {
         }
         assert_eq!(context.diagnostics, vec![]);
     }
-    let builder = Builder::new(hir_module.id, &context);
+    let builder = Builder::new(hir_module.id.as_u32(), &context);
 
     let mut module = builder.construct_module(&hir_module, &context);
 
@@ -66,7 +66,7 @@ pub fn construct_module<'hir>(
     context: &'hir Context,
 ) -> (Module, &'hir Context) {
     assert_eq!(context.diagnostics, vec![]);
-    let builder = Builder::new(hir_module.id, context);
+    let builder = Builder::new(hir_module.id.as_u32(), context);
 
     let module = builder.construct_module(hir_module, context);
 

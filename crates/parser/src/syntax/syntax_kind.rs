@@ -175,9 +175,11 @@ pub enum SyntaxKind {
     // Related to idents
     TypeParameter,
 
-    // TODO - don't know yet whether this should be Ident (like `@export`)
-    // or maybe Call `@export root`? Or leave bespoke to have custom syntax
+    // TODO - don't know yet whether this should be Ident (like `#export`)
+    // or maybe Call `#export root`? Or leave bespoke to have custom syntax
     Attribute,
+    ModuleName,
+    ModulePathExpr,
 
     Call,
     CallArgs,
@@ -231,6 +233,7 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Ident => Self::Ident,
             TokenKind::TypeParameter => Self::Ident, // FIXME: use new variant?
             TokenKind::Attribute => Self::Attribute,
+            TokenKind::ModuleName => Self::ModuleName,
             TokenKind::FloatLiteral => Self::FloatLiteral,
             TokenKind::IntLiteral => Self::IntLiteral,
             TokenKind::StringLiteral => Self::StringLiteralExpr,

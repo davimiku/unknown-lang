@@ -6,6 +6,7 @@ mod expr;
 mod interner;
 mod intrinsics;
 mod lowering_context;
+mod module_tree;
 mod scope;
 mod type_expr;
 mod typecheck;
@@ -23,8 +24,8 @@ pub use expr::{
     IndexIntExpr, IntrinsicExpr, LoopExpr, MatchExpr, PathExpr, Pattern, ReAssignment, UnaryExpr,
     UnaryOp, ValueSymbol, VarDefExpr, VarRefExpr,
 };
-use itertools::Itertools;
 pub use lowering_context::{Context, COMPILER_BRAND};
+pub use module_tree::{ModuleExports, ModuleId, ModuleNode};
 pub use typecheck::{
     CoreTypes, FuncSignature, FunctionType, ListType, ProductType, SumType, Type, VariantIdx,
     VecVariantIdx,
@@ -34,7 +35,6 @@ use database::Database;
 
 pub use interner::{Interner, Key};
 use la_arena::Idx;
-use scope::ModuleScopes;
 use std::path::{Path, PathBuf};
 use type_expr::TypeExpr;
 
@@ -50,7 +50,9 @@ pub enum SourceKind {
 }
 
 pub struct Module {
-    pub id: u32,
+    pub id: ModuleId,
+    pub parent: Option<ModuleId>,
+    pub name: Option<Key>,
 
     pub source_kind: SourceKind,
 
@@ -64,21 +66,56 @@ pub fn lower(input: &str) -> (Module, Context) {
     (module, context)
 }
 
+/// File name of the module that is the special "prelude" module
+const PRELUDE: &'static str = "prelude";
+
 impl Context {
+    pub fn module(&self, id: ModuleId) -> Option<&ModuleNode> {
+        self.module_tree.get(id)
+    }
+
     /// Loads and type-checks one source file in the current compiler context.
     ///
     /// Module hierarchy and imports are deliberately not part of this API yet.
     /// Each loaded source receives a distinct module id so introducing those
     /// concepts later does not require changing the basic loading boundary.
     pub fn load_module(&mut self, input: &str, source_kind: SourceKind) -> Module {
-        if self.loaded_module_count > 0 {
-            self.current_module_id += 1;
-            self.module_scopes
-                .push(ModuleScopes::new(self.current_module_id));
-        }
+        let (module_id, parent, name) = if self.loaded_module_count > 0 {
+            let module_id = self.module_tree.allocate(None, None, source_kind);
+            (module_id, None, None)
+        } else {
+            (self.current_module_id, None, None)
+        };
+
+        self.load_module_at(input, source_kind, module_id, parent, name)
+    }
+
+    /// Loads a named module as a child of an existing module.
+    pub fn load_module_in(
+        &mut self,
+        parent: ModuleId,
+        name: Key,
+        input: &str,
+        source_kind: SourceKind,
+    ) -> Module {
+        let module_id = self
+            .module_tree
+            .allocate(Some(parent), Some(name), source_kind);
+        self.load_module_at(input, source_kind, module_id, Some(parent), Some(name))
+    }
+
+    fn load_module_at(
+        &mut self,
+        input: &str,
+        source_kind: SourceKind,
+        module_id: ModuleId,
+        parent: Option<ModuleId>,
+        name: Option<Key>,
+    ) -> Module {
+        self.current_module_id = module_id;
 
         let ast = parse(input);
-        let module_id = self.current_module_id;
+        self.module_tree.set_source_kind(module_id, source_kind);
 
         let exprs: Vec<Idx<Expr>> = ast
             .exprs()
@@ -88,26 +125,15 @@ impl Context {
         let module = Module {
             exprs: exprs.into(),
             id: module_id,
+            parent,
+            name,
             source_kind,
         };
 
-        if source_kind == SourceKind::StandardLibrary {
-            let exports = self
-                .database
-                .value_builtins
-                .iter()
-                .filter(|(symbol, _)| {
-                    let (symbol_module, _) = (**symbol).into();
-                    symbol_module == module_id
-                })
-                .filter_map(|(symbol, _)| {
-                    self.database
-                        .value_names
-                        .get(symbol)
-                        .map(|key| (*key, *symbol))
-                })
-                .collect_vec();
-            self.stdlib_builtins.extend(exports);
+        if source_kind == SourceKind::StandardLibrary
+            && name.is_some_and(|name| self.lookup(name) == PRELUDE)
+        {
+            self.stdlib_prelude = Some(module_id);
         }
 
         self.type_check_module(&module);
@@ -118,19 +144,82 @@ impl Context {
 
     /// Loads all files in the repository standard-library tree.
     ///
-    /// The prelude is loaded first so it can serve as the root declarations,
-    /// otherwise modules are just loaded in traversal order (no guaranteed order)
+    /// The `core` directory is the public library root. Directory names become
+    /// modules; a file named after its containing directory supplies that
+    /// directory module's body. The prelude is compiled after the modules it
+    /// imports so their exports are available during lowering.
     pub fn load_stdlib(&mut self) -> std::io::Result<Vec<Module>> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
+        let stdlib_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
+        let core_root = stdlib_root.join("core");
         let mut paths = Vec::new();
-        collect_hopper_files(&root, &mut paths)?;
+        collect_hopper_files(&core_root, &mut paths)?;
         paths.sort();
-        paths.sort_by_key(|path| !is_prelude(path));
+        // The prelude imports/re-exports declarations from the other core
+        // modules, so compile it after their exports have been collected.
+        paths.sort_by_key(|path| is_prelude(path));
 
-        paths
-            .into_iter()
-            .map(|path| self.load_module_file(&path, SourceKind::StandardLibrary))
-            .collect()
+        let core_key = self.interner.intern("core");
+        let core_module = self.module_tree.ensure_child(
+            ModuleId::BOOTSTRAP,
+            core_key,
+            SourceKind::StandardLibrary,
+        );
+        let mut planned = Vec::with_capacity(paths.len());
+
+        for path in paths {
+            let relative = path
+                .strip_prefix(&core_root)
+                .expect("stdlib file to be below core root");
+
+            let mut directory_module = core_module;
+            let parent_path = relative.parent().unwrap_or_else(|| Path::new(""));
+            for component in parent_path.components() {
+                let key = self
+                    .interner
+                    .intern(&component.as_os_str().to_string_lossy());
+                directory_module = self.module_tree.ensure_child(
+                    directory_module,
+                    key,
+                    SourceKind::StandardLibrary,
+                );
+            }
+
+            let stem = path
+                .file_stem()
+                .expect("stdlib file to have a stem")
+                .to_string_lossy();
+            let stem_key = self.interner.intern(&stem);
+            let parent_dir_name = parent_path.file_name().map(|name| name.to_string_lossy());
+
+            // A same-named file is like if the parent directory had a
+            // module (for example `collections/list/list.hop`) can be imported without
+            // the double "list"
+            let module_id = if parent_dir_name.as_deref() == Some(stem.as_ref()) {
+                directory_module
+            } else {
+                self.module_tree.ensure_child(
+                    directory_module,
+                    stem_key,
+                    SourceKind::StandardLibrary,
+                )
+            };
+            let node = self.module_tree.get(module_id).expect("module to exist");
+            planned.push((path, module_id, node.parent, node.name));
+        }
+
+        let mut modules = Vec::with_capacity(planned.len());
+        for (path, module_id, parent, name) in planned {
+            let input = std::fs::read_to_string(&path)?;
+            modules.push(self.load_module_at(
+                &input,
+                SourceKind::StandardLibrary,
+                module_id,
+                parent,
+                name,
+            ));
+        }
+
+        Ok(modules)
     }
 
     /// Load a source file through the normal module loader
@@ -141,6 +230,18 @@ impl Context {
     ) -> std::io::Result<Module> {
         let input = std::fs::read_to_string(path)?;
         Ok(self.load_module(&input, source_kind))
+    }
+
+    pub fn load_module_file_in(
+        &mut self,
+        parent: ModuleId,
+        name: Key,
+        path: &Path,
+        source_kind: SourceKind,
+    ) -> std::io::Result<Module> {
+        let input = std::fs::read_to_string(path)?;
+        let module_id = self.module_tree.ensure_child(parent, name, source_kind);
+        Ok(self.load_module_at(&input, source_kind, module_id, Some(parent), Some(name)))
     }
 }
 

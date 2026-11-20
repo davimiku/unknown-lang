@@ -17,7 +17,7 @@
 use lexer::TokenKind;
 
 use crate::grammar::expr::types::parse_type_expr;
-use crate::grammar::expr::{parse_expr, parse_ident};
+use crate::grammar::expr::{parse_expr, parse_ident, parse_module_path};
 use crate::parser::{marker::CompletedMarker, Parser};
 use crate::SyntaxKind;
 
@@ -84,4 +84,16 @@ pub(super) fn parse_type_binding(p: &mut Parser) -> CompletedMarker {
     parse_type_expr(p);
 
     m.complete(p, SyntaxKind::TypeBinding)
+}
+
+pub(super) fn parse_import_binding(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(TokenKind::Module);
+    let m = p.start();
+    p.bump();
+
+    parse_ident(p);
+    p.expect(TokenKind::Equals);
+    parse_module_path(p);
+
+    m.complete(p, SyntaxKind::ImportBinding)
 }
