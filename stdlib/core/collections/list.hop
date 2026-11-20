@@ -1,0 +1,17 @@
+/// A dynamically growable list of items. The list is homogenous, all items are of type 'A
+#export
+type List 'A = intrinsic
+
+// maybe eventually like this so that more List operations can be in stdlib instead of native
+//
+// ```
+// type List 'A = [ len: Int, cap: Int, items: intrinsic ]
+// ```
+
+/// Returns the number of elements in a list.
+// #export
+// let list_len = intrinsic
+
+/// Creates a new List
+// #export
+// let list_new = intrinsic

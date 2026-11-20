@@ -1,0 +1,6 @@
+/// 64-bit IEEE-754 double-width precision floating point
+#export
+type Float = intrinsic
+
+// later - when we have traits like Add, Sub, Mul, etc. they can
+// be defined here as `intrinsic`

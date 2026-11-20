@@ -20,10 +20,13 @@ pub enum TokenKind {
     #[regex(r"'[A-Za-z][A-Za-z0-9_]*")]
     TypeParameter,
 
-    /// Attributes begin with a 'at' symbol (@) and then follow the
-    /// identifier rules
-    #[regex(r"@[A-Za-z][A-Za-z0-9_]*")]
+    /// Attributes begin with a 'pound' symbol (#) and then follow the identifier rules
+    #[regex(r"#[A-Za-z][A-Za-z0-9_]*")]
     Attribute,
+
+    /// Module paths begin with a 'at' symbol (@) and then follow the identifier rules
+    #[regex(r"@[A-Za-z][A-Za-z0-9_]*")]
+    ModuleName,
 
     ///
     #[token("_")]
@@ -281,6 +284,7 @@ impl fmt::Display for TokenKind {
             Self::TypeParameter => "type parameter",
             Self::InvalidLeadingUnderscore => "_invalid_identifier",
             Self::Attribute => "attribute",
+            Self::ModuleName => "module name",
 
             // Keywords
             Self::And => "‘and’",

@@ -225,7 +225,7 @@ impl ValueSymbol {
     // pub fn synthetic_anonymous() -> Self { ... }
 
     pub fn in_core_module(&self) -> bool {
-        self.module_id == CORE_MODULE_ID
+        self.module_id == CORE_MODULE_ID.as_u32()
     }
 }
 

@@ -74,8 +74,13 @@ fn lex_type_parameter() {
 
 #[test]
 fn lex_attribute() {
-    check("@a", TokenKind::Attribute);
-    check("@export", TokenKind::Attribute);
+    check("#a", TokenKind::Attribute);
+    check("#export", TokenKind::Attribute);
+}
+
+#[test]
+fn lex_module_path() {
+    check("@core", TokenKind::ModuleName);
 }
 
 #[test]
@@ -136,6 +141,11 @@ fn lex_in_keyword() {
 #[test]
 fn lex_let_keyword() {
     check("let", TokenKind::Let);
+}
+
+#[test]
+fn lex_module_keyword() {
+    check("module", TokenKind::Module);
 }
 
 #[test]

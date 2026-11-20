@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
-use crate::TypeExpr;
+use crate::{attributes::has_export_attribute, TypeExpr};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -18,7 +18,9 @@ pub enum Expr {
     If(If),
     IntLiteral(IntLiteral),
     Intrinsic(Intrinsic),
+    ImportBinding(ImportBinding),
     LetBinding(LetBinding),
+    ModulePath(ModulePathExpr),
     RecordLiteral(RecordLiteral),
     Loop(Loop),
     Match(Match),
@@ -50,7 +52,9 @@ impl Expr {
             SyntaxKind::InfixExpr => cast_infix(node),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
             SyntaxKind::IntrinsicExpr => Self::Intrinsic(Intrinsic(node)),
+            SyntaxKind::ImportBinding => Self::ImportBinding(ImportBinding(node)),
             SyntaxKind::LetBinding => Self::LetBinding(LetBinding(node)),
+            SyntaxKind::ModulePathExpr => Self::ModulePath(ModulePathExpr(node)),
             SyntaxKind::LoopExpr => Self::Loop(Loop(node)),
             SyntaxKind::MatchExpr => Self::Match(Match(node)),
             SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
@@ -81,7 +85,9 @@ impl Expr {
             E::If(e) => e.range(),
             E::IntLiteral(e) => e.range(),
             E::Intrinsic(e) => e.range(),
+            E::ImportBinding(e) => e.range(),
             E::LetBinding(e) => e.range(),
+            E::ModulePath(e) => e.range(),
             E::Loop(e) => e.range(),
             E::Match(e) => e.range(),
             E::Paren(e) => e.range(),
@@ -511,6 +517,11 @@ impl LetBinding {
         self.name().map(|name| name.text_range())
     }
 
+    /// Whether this binding is preceded by the `#export` attribute
+    pub fn is_exported(&self) -> bool {
+        has_export_attribute(&self.0)
+    }
+
     pub fn mutability(&self) -> Mutability {
         match self
             .0
@@ -541,6 +552,40 @@ impl LetBinding {
             .skip(1) // consume the Equals
             .filter_map(SyntaxElement::into_node)
             .find_map(Expr::cast)
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
+/// A module alias binding, for example `module Collections = @core/collections`.
+#[derive(Debug, Clone)]
+pub struct ImportBinding(SyntaxNode);
+
+impl ImportBinding {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::ImportBinding).then_some(Self(node))
+    }
+
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.0
+            .children()
+            .find(|child| child.kind() == SyntaxKind::Ident)
+            .and_then(|ident| ident.first_token())
+    }
+
+    /// The full module namespace being imported (without the leading `@`).
+    pub fn namespace(&self) -> Option<Vec<String>> {
+        self.0
+            .children()
+            .find_map(ModulePathExpr::cast)
+            .map(|path| path.segments())
+    }
+
+    /// Whether this module alias is re-exported from the current module.
+    pub fn is_exported(&self) -> bool {
+        has_export_attribute(&self.0)
     }
 
     pub fn range(&self) -> TextRange {
@@ -882,6 +927,65 @@ impl PathExpr {
     }
 }
 
+/// A slash-delimited reference to a symbol in another module, such as
+/// `@core/collections/List`.
+///
+/// The initial `@name` and any intermediate path components form the module
+/// path; the final slash-delimited identifier is the referenced symbol.
+#[derive(Debug, Clone)]
+pub struct ModulePathExpr(SyntaxNode);
+
+impl ModulePathExpr {
+    pub fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::ModulePathExpr).then_some(Self(node))
+    }
+
+    /// The module path leading to the referenced symbol, without the `@`.
+    pub fn module_path(&self) -> Vec<String> {
+        let mut parts = Vec::new();
+        if let Some(token) = self.0.first_token() {
+            parts.push(token.text().trim_start_matches('@').to_owned());
+        }
+
+        let identifiers: Vec<_> = self.0.children().filter_map(Ident::cast).collect();
+        parts.extend(
+            identifiers
+                .iter()
+                .take(identifiers.len().saturating_sub(1))
+                .map(Ident::as_string),
+        );
+        parts
+    }
+
+    /// All slash-delimited path components, including the initial module name.
+    pub fn segments(&self) -> Vec<String> {
+        let mut parts = Vec::new();
+        if let Some(token) = self.0.first_token() {
+            parts.push(token.text().trim_start_matches('@').to_owned());
+        }
+        parts.extend(
+            self.0
+                .children()
+                .filter_map(Ident::cast)
+                .map(|ident| ident.as_string()),
+        );
+        parts
+    }
+
+    /// The final slash-delimited identifier, when one is present.
+    pub fn symbol(&self) -> Option<String> {
+        self.0
+            .children()
+            .filter_map(Ident::cast)
+            .last()
+            .map(|ident| ident.as_string())
+    }
+
+    pub fn range(&self) -> TextRange {
+        self.0.text_range()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ReturnStatement(SyntaxNode);
 
@@ -935,14 +1039,10 @@ impl TypeBinding {
         self.name().map(|name| name.text_range())
     }
 
-    /*
-    TODO: type parameters? i.e.
-
-    type Option 'A = none | some: 'A
-                ^^
-    type Result ('Err, 'Ok) = err: 'Err | ok: 'Ok
-                ^^^^^^^^^^^
-     */
+    /// Whether this binding is preceded by the `#export` attribute
+    pub fn is_exported(&self) -> bool {
+        has_export_attribute(&self.0)
+    }
 
     /// Type Expression i.e. the RHS of this binding
     ///

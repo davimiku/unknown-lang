@@ -1,3 +1,4 @@
+mod attributes;
 pub mod expr;
 mod type_expr;
 
@@ -5,8 +6,8 @@ mod type_expr;
 mod tests;
 
 pub use expr::{
-    Binary, Block, Expr, Function, Ident, LetBinding, Mutability, PathExpr, Pattern, ReAssignment,
-    TypeBinding, Unary,
+    Binary, Block, Expr, Function, Ident, ImportBinding, LetBinding, ModulePathExpr, Mutability,
+    PathExpr, Pattern, ReAssignment, TypeBinding, Unary,
 };
 pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 pub use expr::{FloatLiteral, IntLiteral, RecordLiteral, StringLiteral};

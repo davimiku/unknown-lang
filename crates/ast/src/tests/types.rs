@@ -107,3 +107,16 @@ fn union_type_three() {
     let b_type_ident = assert_matches!(b_type, TypeExpr::Ident);
     assert_eq!(b_type_ident.as_string(), "B");
 }
+
+#[test]
+fn type_binding_can_import_a_type() {
+    let parsed = parse_expr("type List = @core/collections/List");
+    let binding = assert_matches!(parsed, Expr::TypeBinding);
+    let path = assert_matches!(assert_some!(binding.type_expr()), TypeExpr::ModulePath);
+
+    assert_eq!(
+        path.module_path(),
+        vec!["core".to_owned(), "collections".to_owned()]
+    );
+    assert_eq!(path.symbol().as_deref(), Some("List"));
+}

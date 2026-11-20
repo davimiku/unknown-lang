@@ -1,0 +1,3 @@
+/// A value that may or may not exist
+// TODO - not implemented yet
+// type Option 'A = none | some: 'A

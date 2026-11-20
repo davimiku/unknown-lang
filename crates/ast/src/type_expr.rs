@@ -1,7 +1,7 @@
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxNodeExt};
 use text_size::TextRange;
 
-use crate::expr::{CallExpr, FloatLiteral, Ident, IntLiteral, StringLiteral};
+use crate::expr::{CallExpr, FloatLiteral, Ident, IntLiteral, ModulePathExpr, StringLiteral};
 
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
@@ -9,6 +9,7 @@ pub enum TypeExpr {
     FloatLiteral(FloatLiteral),
     Function(Function),
     Path(PathExpr),
+    ModulePath(ModulePathExpr),
     Call(CallExpr),
     Ident(Ident),
     // If(IfExpr), // todo
@@ -41,6 +42,9 @@ impl TypeExpr {
             // SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             // SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
+            SyntaxKind::ModulePathExpr => {
+                Self::ModulePath(ModulePathExpr::cast(node).expect("module path node"))
+            }
             SyntaxKind::ParenExpr => Self::Paren(ParenExpr(node)),
             SyntaxKind::RecordType => Self::Record(Record(node)),
             SyntaxKind::StringLiteralExpr => Self::StringLiteral(StringLiteral(node)),
@@ -60,6 +64,7 @@ impl TypeExpr {
             T::Ident(e) => e.range(),
             T::IntLiteral(e) => e.range(),
             T::Path(e) => e.range(),
+            T::ModulePath(e) => e.range(),
             // If(e) => e.range(),
             T::Paren(e) => e.range(),
             T::StringLiteral(e) => e.range(),

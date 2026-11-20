@@ -1,0 +1,6 @@
+/// 64-bit signed integer
+#export
+type Int = intrinsic
+
+// later - when we have traits like Add, Sub, Mul, etc. they can
+// be defined here as `intrinsic`

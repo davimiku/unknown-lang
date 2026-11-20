@@ -75,3 +75,28 @@ fn int_let_mut_binding_with_type_annotation() {
     let value = assert_matches!(value, Expr::IntLiteral);
     assert_eq!(value.as_i64(), Some(1));
 }
+
+#[test]
+fn let_binding_can_import_a_value() {
+    let parsed = parse_expr("let sqrt = @core/math/sqrt");
+    let binding = assert_matches!(parsed, Expr::LetBinding);
+    assert_eq!(binding.name().unwrap().text(), "sqrt");
+
+    let path = assert_matches!(assert_some!(binding.value()), Expr::ModulePath);
+    assert_eq!(
+        path.module_path(),
+        vec!["core".to_owned(), "math".to_owned()]
+    );
+    assert_eq!(path.symbol().as_deref(), Some("sqrt"));
+}
+
+#[test]
+fn module_binding_imports_a_namespace() {
+    let parsed = parse_expr("module Collections = @core/collections");
+    let binding = assert_matches!(parsed, Expr::ImportBinding);
+    assert_eq!(binding.name().unwrap().text(), "Collections");
+    assert_eq!(
+        binding.namespace().unwrap(),
+        vec!["core".to_owned(), "collections".to_owned()]
+    );
+}

@@ -9,6 +9,7 @@ mod functions;
 mod if_else;
 mod loops;
 mod r#match;
+mod module_path;
 mod parens;
 mod path;
 mod records;
