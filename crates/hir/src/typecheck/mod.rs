@@ -26,6 +26,7 @@ use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::{Context, ContextDisplay, Expr, Interner, ValueSymbol};
 
 pub(crate) use self::check::check_expr;
+pub(crate) use self::infer::substitute_type;
 pub(crate) use self::infer::{infer_expr, infer_module};
 
 #[derive(Debug)]
@@ -77,10 +78,11 @@ pub struct TypeDatabase {
     /// `Point` local type definition is mapped here to `Type::Struct { ... }`
     type_symbols: HashMap<TypeSymbol, Idx<Type>>,
 
+    /// Generic aliases retain their uninstantiated body and parameter list
+    type_aliases: HashMap<TypeSymbol, TypeAlias>,
+
     /// Core types that are builtin to all programs
     pub(crate) core: CoreTypes,
-    // TODO - keep a map/list of core symbols, like "false" and "true"?
-    // pub(crate) core_symbols:
 }
 
 impl TypeDatabase {
@@ -121,6 +123,7 @@ impl TypeDatabase {
             type_expr_types: Default::default(),
             value_symbols: Default::default(),
             type_symbols: Default::default(),
+            type_aliases: Default::default(),
         }
     }
 }
@@ -182,6 +185,14 @@ impl TypeDatabase {
         self.expr_types[idx]
     }
 
+    pub(crate) fn iter_expr_types(&self) -> impl Iterator<Item = (Idx<Expr>, Idx<Type>)> + '_ {
+        self.expr_types.iter().map(|(expr, ty)| (expr, *ty))
+    }
+
+    pub(crate) fn iter_value_types(&self) -> impl Iterator<Item = (ValueSymbol, Idx<Type>)> + '_ {
+        self.value_symbols.iter().map(|(symbol, ty)| (*symbol, *ty))
+    }
+
     pub(super) fn set_expr_type(&mut self, idx: Idx<Expr>, ty: Idx<Type>) {
         self.expr_types.insert(idx, ty);
     }
@@ -212,9 +223,24 @@ impl TypeDatabase {
         self.type_symbols.insert(key, ty);
     }
 
+    pub(super) fn insert_type_alias(
+        &mut self,
+        key: TypeSymbol,
+        params: Box<[TypeSymbol]>,
+        body: Idx<Type>,
+    ) {
+        self.type_aliases.insert(key, TypeAlias { params, body });
+    }
+
     pub(super) fn alloc_type(&mut self, ty: Type) -> Idx<Type> {
         self.types.alloc(ty)
     }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TypeAlias {
+    pub params: Box<[TypeSymbol]>,
+    pub body: Idx<Type>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -260,13 +286,6 @@ impl TypeResult {
         Self {
             ty: error_ty,
             diagnostics: vec![diagnostic],
-        }
-    }
-
-    fn from_ty(ty: Idx<Type>) -> Self {
-        Self {
-            ty,
-            diagnostics: vec![],
         }
     }
 

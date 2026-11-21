@@ -334,6 +334,30 @@ impl Function {
             .expect("function to have parameter list")
     }
 
+    /// Type parameters are either declared explicitly like `fun ['A, 'B](...)`
+    /// or inferred type annotations that start with a single quote.
+    pub fn type_params(&self) -> Vec<String> {
+        let explicit = self
+            .0
+            .children()
+            .find(|child| child.kind() == SyntaxKind::FunTypeParams);
+
+        let mut params = Vec::new();
+        if let Some(explicit) = explicit {
+            collect_type_params(&explicit, &mut params);
+        } else {
+            for child in self.0.children().filter(|child| {
+                matches!(
+                    child.kind(),
+                    SyntaxKind::FunParamList | SyntaxKind::TypeExpr
+                )
+            }) {
+                collect_type_params(&child, &mut params);
+            }
+        }
+        params
+    }
+
     pub fn return_type(&self) -> Option<TypeExpr> {
         self.0.children().find_map(TypeExpr::cast)
     }
@@ -352,6 +376,21 @@ impl Function {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+}
+
+fn collect_type_params(node: &SyntaxNode, params: &mut Vec<String>) {
+    for element in node.children_with_tokens() {
+        match element {
+            SyntaxElement::Node(child) => collect_type_params(&child, params),
+            SyntaxElement::Token(token) if token.text().starts_with('\'') => {
+                let name = token.text().to_owned();
+                if !params.contains(&name) {
+                    params.push(name);
+                }
+            }
+            SyntaxElement::Token(_) => {}
+        }
     }
 }
 
@@ -1037,6 +1076,18 @@ impl TypeBinding {
 
     pub fn name_range(&self) -> Option<text_size::TextRange> {
         self.name().map(|name| name.text_range())
+    }
+
+    /// Generic parameters declared after the type name.
+    ///
+    /// For example, this returns `["'A"]` for `type Box 'A = ...`.
+    pub fn type_params(&self) -> Vec<String> {
+        self.0
+            .children_with_tokens()
+            .filter_map(SyntaxElement::into_token)
+            .filter(|token| token.text().starts_with('\''))
+            .map(|token| token.text().to_owned())
+            .collect()
     }
 
     /// Whether this binding is preceded by the `#export` attribute

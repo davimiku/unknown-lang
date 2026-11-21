@@ -5,6 +5,7 @@ use std::slice;
 use crate::frame_walk::StackRootSet;
 use crate::memory_recycling::{GcHeader, TypeDescriptor};
 use crate::string::HopperString;
+use crate::{execution, list, runtime};
 
 pub type RawGcRef = *mut GcHeader;
 
@@ -22,13 +23,13 @@ pub fn leave_frame_entry() -> *const u8 {
 }
 
 pub(super) extern "C" fn enter_frame_impl(parent_return_address: usize) {
-    let gate = crate::execution::gate();
+    let gate = execution::gate();
     let owns_gate = gate.owned_by_current_thread().unwrap_or_else(|error| {
         eprintln!("Hopper execution boundary: {error}");
         std::process::abort();
     });
     let parent_is_hopper = {
-        let runtime_mutex = crate::runtime();
+        let runtime_mutex = runtime();
         // A native callback could hold this mutex on the same thread.
         // We can't block on it until the gate can reject unsupported re-entry.
         let runtime = if owns_gate {
@@ -49,14 +50,14 @@ pub(super) extern "C" fn enter_frame_impl(parent_return_address: usize) {
             .function_containing(parent_return_address)
             .is_some()
     };
-    if let Err(error) = crate::execution::gate().enter(parent_is_hopper) {
+    if let Err(error) = execution::gate().enter(parent_is_hopper) {
         eprintln!("Hopper execution boundary: {error}");
         std::process::abort();
     }
 }
 
 extern "C" fn leave_frame_impl() {
-    if let Err(error) = crate::execution::gate().leave() {
+    if let Err(error) = execution::gate().leave() {
         eprintln!("Hopper execution boundary: {error}");
         std::process::abort();
     }
@@ -200,7 +201,7 @@ pub(super) extern "C" fn alloc_string_impl(
         std::process::abort();
     }
 
-    let runtime = crate::runtime();
+    let runtime = runtime();
     let mut runtime = runtime.lock().unwrap_or_else(|_| {
         eprintln!("Hopper string allocation: runtime lock poisoned");
         std::process::abort();
@@ -314,7 +315,7 @@ pub(super) extern "C" fn alloc_object_impl(
         std::process::abort();
     }
 
-    let runtime = crate::runtime();
+    let runtime = runtime();
     let mut runtime = runtime.lock().unwrap_or_else(|_| {
         eprintln!("Hopper managed-object allocation: runtime lock poisoned");
         std::process::abort();
@@ -397,7 +398,7 @@ pub(super) extern "C" fn list_push_impl(
         std::process::abort();
     }
 
-    let runtime = crate::runtime();
+    let runtime = runtime();
     let mut runtime = runtime.lock().unwrap_or_else(|_| {
         eprintln!("Hopper List push: runtime lock poisoned");
         std::process::abort();
@@ -434,7 +435,7 @@ pub(super) extern "C" fn list_push_impl(
     // Keep only raw field snapshots across allocation. `alloc_object` may run
     // collection and mutate the heap, so a Rust reference into the heap must
     // not remain live across that call.
-    let list_ptr = list.cast::<crate::list::HopperList>();
+    let list_ptr = list.cast::<list::HopperList>();
     let (length, capacity, elements) = unsafe {
         (
             (*list_ptr).length,
@@ -451,7 +452,7 @@ pub(super) extern "C" fn list_push_impl(
     }
 
     let new_capacity = capacity.saturating_mul(2).max(1);
-    let size = crate::list::LIST_ELEMENTS_OFFSET
+    let size = list::LIST_ELEMENTS_OFFSET
         .checked_add(new_capacity.saturating_mul(element_size))
         .unwrap_or_else(|| {
             eprintln!("Hopper List push: allocation size overflow");
@@ -464,7 +465,7 @@ pub(super) extern "C" fn list_push_impl(
             eprintln!("Hopper List push allocation failed: {error:?}");
             std::process::abort();
         });
-    let new_ptr = new_list.as_ptr().cast::<crate::list::HopperList>();
+    let new_ptr = new_list.as_ptr().cast::<list::HopperList>();
     let new_elements = unsafe { (*new_ptr).elements.as_mut_ptr() };
     unsafe {
         std::ptr::copy_nonoverlapping(elements, new_elements, length * element_size);

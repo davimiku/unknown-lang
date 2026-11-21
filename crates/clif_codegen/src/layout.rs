@@ -207,7 +207,11 @@ impl FunctionTranslator<'_> {
             HType::Unit => {
                 panic!();
             }
-            HType::Bottom | HType::Top | HType::Error | HType::Unknown => {
+            HType::Bottom
+            | HType::Top
+            | HType::Error
+            | HType::Unknown
+            | HType::TypeParameter(_) => {
                 unreachable!(
                     "Internal Compiler Error (CLIF): Attempted to compute layout for {}",
                     ty.display(self.context)

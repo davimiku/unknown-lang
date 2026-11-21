@@ -26,6 +26,7 @@ pub use expr::{
 };
 pub use lowering_context::{Context, COMPILER_BRAND};
 pub use module_tree::{ModuleExports, ModuleId, ModuleNode};
+pub use type_expr::TypeSymbol;
 pub use typecheck::{
     CoreTypes, FuncSignature, FunctionType, ListType, ProductType, SumType, Type, VariantIdx,
     VecVariantIdx,
@@ -142,12 +143,13 @@ impl Context {
         module
     }
 
-    /// Loads all files in the repository standard-library tree.
+    /// Loads all files in the standard library tree.
     ///
-    /// The `core` directory is the public library root. Directory names become
-    /// modules; a file named after its containing directory supplies that
-    /// directory module's body. The prelude is compiled after the modules it
-    /// imports so their exports are available during lowering.
+    /// The `core` directory is the root of the public library root.
+    /// Directory names become module namespaces (ex. "/collections" -> Collections namespace)
+    /// A file with the same name as its parent directory makes that namespace also a module
+    /// with a real body (ex. "/collections/list/list.hop" -> List module).
+    /// The prelude is compiled last so its re-exports are ready.
     pub fn load_stdlib(&mut self) -> std::io::Result<Vec<Module>> {
         let stdlib_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
         let core_root = stdlib_root.join("core");
@@ -302,6 +304,7 @@ pub fn lower_script(input: &str) -> (Idx<Expr>, Context) {
     let function = Expr::Function(FunctionExprGroup {
         // FIXME: `args: Array String` for CLI scripts?
         overloads: Box::new([FunctionExpr {
+            type_params: Box::new([]),
             params,
             body,
             return_type_annotation,

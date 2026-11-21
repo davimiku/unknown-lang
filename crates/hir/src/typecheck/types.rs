@@ -38,6 +38,9 @@ pub enum Type {
     Product(ProductType),
     Function(FunctionType),
 
+    /// A type variable introduced by a generic type or function annotation
+    TypeParameter(TypeSymbol),
+
     // Other compiler builtins, that may later be implemented in userspace
     /// Dynamic array backed list, nominally typed, homogeneous, i.e. `List 'a`
     List(ListType),
@@ -210,6 +213,9 @@ impl ContextDisplay for Type {
 
             Type::Function(func) => func.display(context),
             Type::List(list) => list.display(context),
+            Type::TypeParameter(symbol) => context
+                .lookup(context.database.type_names[symbol])
+                .to_owned(),
 
             Type::Unit => "()".to_owned(),
             Type::Top => "{top}".to_owned(),
@@ -420,6 +426,7 @@ impl ContextDisplay for FunctionType {
 pub struct FuncSignature {
     pub params: Box<[Idx<Type>]>,
     pub return_ty: Idx<Type>,
+    pub type_params: Box<[TypeSymbol]>,
 }
 
 impl From<((), Idx<Type>)> for FuncSignature {
@@ -428,6 +435,7 @@ impl From<((), Idx<Type>)> for FuncSignature {
         Self {
             params: Box::new([]),
             return_ty,
+            type_params: Box::new([]),
         }
     }
 }
@@ -438,6 +446,7 @@ impl From<((Idx<Type>,), Idx<Type>)> for FuncSignature {
         Self {
             params: Box::new([params.0]),
             return_ty,
+            type_params: Box::new([]),
         }
     }
 }
@@ -448,6 +457,7 @@ impl From<((Idx<Type>, Idx<Type>), Idx<Type>)> for FuncSignature {
         Self {
             params: Box::new([params.0, params.1]),
             return_ty,
+            type_params: Box::new([]),
         }
     }
 }
@@ -456,6 +466,14 @@ impl ContextDisplay for FuncSignature {
     fn display(&self, context: &Context) -> String {
         let mut s = String::new();
 
+        if !self.type_params.is_empty() {
+            let params = self
+                .type_params
+                .iter()
+                .map(|param| context.lookup(context.database.type_names[param]))
+                .join(", ");
+            s.push_str(&format!("[{params}]"));
+        }
         s.push('(');
         let params = self
             .params

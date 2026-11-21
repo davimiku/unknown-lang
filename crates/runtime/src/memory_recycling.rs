@@ -468,6 +468,8 @@ fn layout_for_size(size: usize) -> Layout {
 
 #[cfg(test)]
 mod tests {
+    use crate::Runtime;
+
     use super::*;
     use std::mem::offset_of;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -558,7 +560,7 @@ mod tests {
 
     #[test]
     fn global_runtime_heap_cannot_collect_without_combined_roots() {
-        let mut heap = crate::Runtime::default().heap;
+        let mut heap = Runtime::default().heap;
         heap.next_gc_threshold = 0;
         let mut roots = EmptyRootSet;
 

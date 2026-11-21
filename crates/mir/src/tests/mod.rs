@@ -33,7 +33,7 @@ fn check_module(input: &str, expected: &str) {
         }
         assert_eq!(context.diagnostics, vec![]);
     }
-    let (module, context) = construct_module(&hir_module, &context);
+    let (module, context) = construct_module(&hir_module, &mut context);
 
     check(module, context, expected)
 }

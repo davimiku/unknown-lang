@@ -60,8 +60,16 @@ pub enum TypeExpr {
 }
 
 impl TypeExpr {
-    pub(crate) fn type_variable_def(symbol: TypeSymbol, type_expr: Idx<TypeExpr>) -> Self {
-        Self::VarDef(TypeVarDefExpr { symbol, type_expr })
+    pub(crate) fn type_variable_def(
+        symbol: TypeSymbol,
+        params: Box<[TypeSymbol]>,
+        type_expr: Idx<TypeExpr>,
+    ) -> Self {
+        Self::VarDef(TypeVarDefExpr {
+            symbol,
+            params,
+            type_expr,
+        })
     }
 }
 
@@ -82,6 +90,9 @@ pub struct BinaryTypeExpr {
 pub struct CallExpr {
     // TODO: create a Path struct to handle multiple
     pub path: String,
+
+    /// Resolved type constructor, if this is a local or imported type alias
+    pub symbol: Option<TypeSymbol>,
 
     /// Arguments to the parametric type
     pub args: Vec<Idx<TypeExpr>>,
@@ -128,6 +139,9 @@ pub struct RecordTypeExpr {
 pub struct TypeVarDefExpr {
     pub symbol: TypeSymbol,
 
+    /// Type parameters declared by this alias, in declaration order.
+    pub params: Box<[TypeSymbol]>,
+
     /// Expression value assigned to the type
     pub type_expr: Idx<TypeExpr>,
 }
@@ -142,7 +156,7 @@ pub struct TypeSymbol {
 }
 
 impl TypeSymbol {
-    pub fn new(module_id: u32, symbol_id: u32) -> Self {
+    pub const fn new(module_id: u32, symbol_id: u32) -> Self {
         Self {
             module_id,
             symbol_id,

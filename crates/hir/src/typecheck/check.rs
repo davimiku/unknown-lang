@@ -4,7 +4,7 @@
 
 use la_arena::Idx;
 
-use super::infer::infer_expr;
+use super::infer::infer_expr_expected;
 use super::types::{FuncSignature, SumType};
 use super::{Type, TypeDiagnostic};
 use crate::{Context, Expr, FunctionType, ProductType};
@@ -18,10 +18,15 @@ pub(crate) fn check_expr(
     expected: Idx<Type>,
     context: &mut Context,
 ) -> Result<(), Vec<TypeDiagnostic>> {
-    let infer_result: Result<_, _> = infer_expr(expr, context).into();
+    let infer_result: Result<_, _> = infer_expr_expected(expr, expected, context).into();
     let actual = infer_result?;
 
     if is_subtype(actual, expected, context) {
+        Ok(())
+    } else if let Some(specialized) =
+        super::infer::specialize_generic_sum(actual, expected, context)
+    {
+        context.type_database.set_expr_type(expr, specialized);
         Ok(())
     } else {
         let range = context.database.range_of_expr(expr);
@@ -50,8 +55,10 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
     // TODO: consider widening `a` with `widen_to_scalar`, would that simplify the conditions below?
     // would require mutable reference to TypeDatabase
     match (a, b) {
+        (Type::Bottom, _) => true,
         (_, Type::Top) => true,
         (_, Type::Bottom) => false,
+        (Type::TypeParameter(a), Type::TypeParameter(b)) => a == b,
 
         (Type::FloatLiteral(_), Type::Float) => true,
         (Type::FloatLiteral(a), Type::FloatLiteral(b)) => a == b,
@@ -62,19 +69,7 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         (Type::StringLiteral(_), Type::String) => true,
         (Type::StringLiteral(a), Type::StringLiteral(b)) => a == b,
 
-        (Type::List(a), Type::List(b)) => {
-            // Unknown is used by list_new until we implement more complete type inference
-            // i.e.
-            // ```
-            // let ints = list_new ()
-            // ints.push 123   // should allow infering `ints` as `List Int`
-            // ```
-            if a.of == context.core_types().unknown || b.of == context.core_types().unknown {
-                true
-            } else {
-                is_subtype(a.of, b.of, context)
-            }
-        }
+        (Type::List(a), Type::List(b)) => is_subtype(a.of, b.of, context),
 
         (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
 

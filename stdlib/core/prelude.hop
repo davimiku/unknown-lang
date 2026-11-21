@@ -8,6 +8,9 @@
 #export type String = @core/text/string/String
 
 #export type List = @core/collections/list/List
+#export let list_new = @core/collections/list/list_new
+#export let list_push = @core/collections/list/list_push
+#export let list_len = @core/collections/list/list_len
 
 // Bool re-exports
 #export type Bool = @core/types/bool/Bool

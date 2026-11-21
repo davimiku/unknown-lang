@@ -17,11 +17,11 @@ let main = fun (value: Wrapped) -> String {
 fun main:
     params: _1
     mut _0: String
-    _1: Wrapped~13.1
-    _2: Choice~13.0
+    _1: Wrapped~24.1
+    _2: Choice~24.0
     _3: Int
     _4: String
-    _5: Choice~13.0
+    _5: Choice~24.0
 
     BB0():
         _2 := copy _1.0
@@ -53,7 +53,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: Bool~0.3
+    _1: Bool~20.0
     _2: Int
 
     BB0():
@@ -85,7 +85,7 @@ let main = fun (condition: Color) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: Color~13.0
+    _1: Color~24.0
     _2: Int
 
     BB0():
@@ -119,9 +119,9 @@ let main = fun (condition: Color) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: Color~13.0
+    _1: Color~24.0
     _2: Int
-    _3: Color~13.0
+    _3: Color~24.0
 
     BB0():
         _2 := discriminant(_1)
@@ -151,10 +151,10 @@ let main = fun (condition: Color) -> Color {
     let expected = "
 fun main:
     params: _1
-    mut _0: Color~13.0
-    _1: Color~13.0
+    mut _0: Color~24.0
+    _1: Color~24.0
     _2: Int
-    _3: Color~13.0
+    _3: Color~24.0
 
     BB0():
         _2 := discriminant(_1)
@@ -185,7 +185,7 @@ let main = fun (ti: TwoInts) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: TwoInts~13.0
+    _1: TwoInts~24.0
     _2: Int
     _3: Int
     _4: Int
@@ -226,10 +226,10 @@ let main = fun (u: OuterUnion) -> Int {
     let expected = "fun main:
     params: _1
     mut _0: Int
-    _1: OuterUnion~13.1
+    _1: OuterUnion~24.1
     _2: Int
     _3: Int
-    _4: InnerUnion~13.0
+    _4: InnerUnion~24.0
     _5: Int
     _6: Int
     _7: Int
@@ -274,8 +274,8 @@ let main = fun (n: Number) -> Number {
     let expected = "
 fun main:
     params: _1
-    mut _0: Number~13.0
-    _1: Number~13.0
+    mut _0: Number~24.0
+    _1: Number~24.0
     _2: Int
     _3: Int
     _4: Float
@@ -309,7 +309,7 @@ let main = fun (condition: Bool) -> Int {
 fun main:
     params: _1
     mut _0: Int
-    _1: Bool~0.3
+    _1: Bool~20.0
 
     BB0():
         BranchInt(copy _1): [0 -> BB2(), else -> BB1()]
@@ -342,7 +342,7 @@ let main = fun (condition: Bool, b: Float) -> Float {
 fun main:
     params: _1, _2
     mut _0: Float
-    _1: Bool~0.3
+    _1: Bool~20.0
     _2: Float
     _3: Float
 
@@ -373,7 +373,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: Bool~0.3
+    _1: Bool~20.0
     _2: Int
 
     BB0():
@@ -398,7 +398,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 fun main:
     params: _1, _2
     mut _0: Int
-    _1: Bool~0.3
+    _1: Bool~20.0
     _2: Int
     _3: 1
 

@@ -108,9 +108,9 @@ impl From<TypeDiagnostic> for Diagnostic {
 }
 
 impl TypeDiagnostic {
-    pub fn list_element_type_unknown(range: TextRange) -> Self {
+    pub fn cannot_infer_type_arguments(range: TextRange) -> Self {
         Self {
-            variant: TypeDiagnosticVariant::ListElementTypeUnknown,
+            variant: TypeDiagnosticVariant::CannotInferTypeArguments,
             range,
         }
     }
@@ -159,8 +159,9 @@ impl TypeDiagnostic {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeDiagnosticVariant {
-    /// A List constructor was used without enough context to determine `List 'A`.
-    ListElementTypeUnknown,
+    /// A generic call has type parameters which could not be determined from
+    /// its arguments or expected result type.
+    CannotInferTypeArguments,
 
     /// The number of arguments provided to the function call does not match the
     /// expected number of arguments.

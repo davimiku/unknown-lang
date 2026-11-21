@@ -9,7 +9,7 @@ use util_macros::assert_matches;
 
 use crate::interner::Key;
 use crate::lowering_context::CORE_MODULE_ID;
-use crate::type_expr::TypeExpr;
+use crate::type_expr::{TypeExpr, TypeSymbol};
 use crate::typecheck::VariantIdx;
 use crate::{Context, Type};
 
@@ -150,6 +150,7 @@ impl Expr {
             args,
             symbol,
             signature_index: None, // gets set later in type checking
+            type_args: Box::new([]),
         })
     }
 }
@@ -278,6 +279,9 @@ pub struct CallExpr {
     pub symbol: Option<ValueSymbol>,
 
     pub signature_index: Option<u32>,
+
+    /// Concrete type arguments selected for a parameterized function call (ordered)
+    pub type_args: Box<[Idx<Type>]>,
 }
 
 impl CallExpr {
@@ -315,6 +319,10 @@ pub struct FunctionExprGroup {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionExpr {
+    /// Generic type parameters declared or inferred from this function's
+    /// annotations.
+    pub type_params: Box<[TypeSymbol]>,
+
     /// Parameters to the function
     pub params: Box<[FunctionParam]>,
 

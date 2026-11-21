@@ -19,7 +19,7 @@ use util_macros::assert_matches;
 
 use crate::diagnostic::TypeDiagnosticVariant;
 use crate::display::display_module;
-use crate::{lower, Context, ContextDisplay, Diagnostic, Interner, SourceKind};
+use crate::{lower, Context, ContextDisplay, Diagnostic, Interner, ModuleId, SourceKind};
 
 fn check(input: &str, expected_content: &str, expected_vars: &[(&str, &str)]) {
     let (module, context) = lower(input);
@@ -161,7 +161,7 @@ fn stdlib_files_load_under_core_directory_modules() {
 
     let path = ["core", "collections", "list"].map(|segment| context.interner.intern(segment));
     let list_module = context
-        .resolve_module_path(crate::ModuleId::BOOTSTRAP, &path)
+        .resolve_module_path(ModuleId::BOOTSTRAP, &path)
         .expect("list module to be loaded under core::collections");
 
     let exported_len = context.interner.intern("list_len");
@@ -169,7 +169,7 @@ fn stdlib_files_load_under_core_directory_modules() {
 
     let prelude_path = ["core", "prelude"].map(|segment| context.interner.intern(segment));
     let prelude = context
-        .resolve_module_path(crate::ModuleId::BOOTSTRAP, &prelude_path)
+        .resolve_module_path(ModuleId::BOOTSTRAP, &prelude_path)
         .expect("prelude module to be a child of core");
     assert!(context.module(prelude).is_some());
 }

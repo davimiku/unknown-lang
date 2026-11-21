@@ -4,14 +4,18 @@
 //! the expression and recursively calls infer when necessary. Base cases are
 //! for value literals and types that have already been inferred.
 
+use std::collections::HashMap;
+
 use itertools::Itertools;
 use la_arena::Idx;
 use text_size::TextRange;
 use util_macros::assert_matches;
 
+use super::check::is_subtype;
 use super::types::FuncSignature;
 use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
+use crate::builtins::signature;
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
     LoopExpr, MatchExpr, PathExpr, ReAssignment, RecordLiteralExpr, UnaryExpr, UnaryOp, VarDefExpr,
@@ -19,9 +23,9 @@ use crate::expr::{
 };
 use crate::interner::Key;
 use crate::intrinsics::{FLOAT, INT, LIST, STRING};
-use crate::type_expr::{TypeExpr, TypeRefExpr, TypeVarDefExpr};
+use crate::type_expr::{CallExpr as TypeCallExpr, TypeExpr, TypeRefExpr, TypeVarDefExpr};
 use crate::typecheck::types::UnionNamespaceType;
-use crate::{CallExpr, Context, FunctionType, ListType, Module, Pattern};
+use crate::{CallExpr, Context, FunctionType, ListType, Module, Pattern, TypeSymbol};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -75,9 +79,34 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
                 .get(&symbol)
                 .copied()
                 .expect("intrinsic expression to have a builtin id");
-            result.ty = context
+            let list_element_ty = context
                 .type_database
-                .alloc_type(crate::builtins::signature(builtin, context.core_types()));
+                .type_symbols
+                .get(&crate::builtins::LIST_ELEMENT_TYPE_PARAMETER)
+                .copied()
+                .unwrap_or_else(|| {
+                    let ty = context.type_database.alloc_type(Type::TypeParameter(
+                        crate::builtins::LIST_ELEMENT_TYPE_PARAMETER,
+                    ));
+                    context
+                        .type_database
+                        .insert_type_symbol(crate::builtins::LIST_ELEMENT_TYPE_PARAMETER, ty);
+                    let key = context.interner.core_keys().list_element_type_parameter;
+                    context
+                        .database
+                        .type_names
+                        .insert(crate::builtins::LIST_ELEMENT_TYPE_PARAMETER, key);
+                    ty
+                });
+            let list_ty = context.type_database.alloc_type(Type::List(ListType {
+                of: list_element_ty,
+            }));
+            result.ty = context.type_database.alloc_type(signature(
+                builtin,
+                context.core_types(),
+                list_element_ty,
+                list_ty,
+            ));
         }
 
         Expr::VarRef(var_ref) => result.chain(infer_var_ref(&var_ref, context)),
@@ -88,7 +117,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
 
         Expr::Unary(unary) => result.chain(infer_unary(expr_idx, &unary, context)),
         Expr::Block(block) => result.chain(infer_block(&block, context)),
-        Expr::Call(call) => result.chain(infer_call(expr_idx, &call, context)),
+        Expr::Call(call) => result.chain(infer_call(expr_idx, &call, None, context)),
         Expr::Function(function) => result.chain(infer_function(&function, context)),
         Expr::VarDef(var_def) => result.chain(infer_var_def(&var_def, context)),
         Expr::ReAssignment(reassignment) => {
@@ -135,6 +164,7 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
             let signature = FuncSignature {
                 params: Box::new([variant_ty]),
                 return_ty: union_ty,
+                type_params: Box::new([]),
             };
 
             result.ty = context.type_database.alloc_type(Type::union_variant_func(
@@ -170,6 +200,54 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
     result
 }
 
+/// Infers an expression with an expected type when that context can constrain
+/// generic arguments of a call.
+pub(crate) fn infer_expr_expected(
+    expr_idx: Idx<Expr>,
+    expected: Idx<Type>,
+    context: &mut Context,
+) -> TypeResult {
+    let expr = context.expr(expr_idx).clone();
+    let result = match expr {
+        Expr::Call(call) => infer_call(expr_idx, &call, Some(expected), context),
+        Expr::ReturnStatement(value) => {
+            let mut result = infer_expr_expected(value, expected, context);
+            result.ty = context.core_types().bottom;
+            result
+        }
+        Expr::If(if_expr) => infer_if_expr_expected(&if_expr, Some(expected), context),
+        Expr::Match(match_expr) => infer_match_expr_expected(&match_expr, Some(expected), context),
+        Expr::RecordLiteral(record_expr) if matches!(context.type_(expected), Type::Product(_)) => {
+            infer_record_expr_expected(&record_expr, expected, context)
+        }
+        Expr::Block(BlockExpr::NonEmpty { exprs }) if !exprs.is_empty() => {
+            let mut result = TypeResult::new(&context.type_database);
+            for expr in exprs.iter().take(exprs.len() - 1) {
+                result.chain(infer_expr(*expr, context));
+            }
+
+            let tail_idx = *exprs.last().expect("non-empty block has a tail");
+            let tail_expr = context.expr(tail_idx).clone();
+            if let Expr::Statement(inner) = tail_expr {
+                let tail_result = infer_expr_expected(inner, expected, context);
+                let tail_ty = tail_result.ty;
+                result.chain(tail_result);
+                result.ty = tail_ty;
+                context
+                    .type_database
+                    .set_expr_type(tail_idx, context.core_types().unit);
+            } else {
+                result.chain(infer_expr(tail_idx, context));
+                result.ty = context.core_types().unit;
+            }
+            result
+        }
+        _ => infer_expr(expr_idx, context),
+    };
+    context.type_database.set_expr_type(expr_idx, result.ty);
+    result
+}
+
 /// Infers a type, and if it is a literal type, then widen to the
 /// corresponding scalar type.
 ///
@@ -201,20 +279,44 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
             .alloc_type(Type::StringLiteral(s))
             .into(),
 
-        TE::VarRef(TypeRefExpr { symbol, .. }) => context
-            .type_database
-            .get_type_from_typesymbol(&symbol)
-            .into(),
-        TE::UnresolvedVarRef { key } => {
-            // TODO: Generic declaration parameters currently have no substitution environment
-            // Keep them type-checkable as top until generic aliases are implemented
-            if context.lookup(key).starts_with('\'') {
-                context.type_database.core.top.into()
+        TE::VarRef(TypeRefExpr { key, symbol }) => {
+            if let Some(alias) = context.type_database.type_aliases.get(&symbol) {
+                if !alias.params.is_empty() {
+                    TypeResult::from_diag(
+                        TypeDiagnostic::num_args_mismatch(
+                            alias.params.len(),
+                            0,
+                            context.database.range_of_type_expr(idx),
+                        ),
+                        context.core_types().error,
+                    )
+                } else if let Some(ty) = context.type_database.type_symbols.get(&symbol).copied() {
+                    ty.into()
+                } else {
+                    context.core_types().error.into()
+                }
+            } else if let Some(ty) = context.type_database.type_symbols.get(&symbol).copied() {
+                ty.into()
+            } else if context.lookup(key).starts_with('\'') {
+                let ty = context
+                    .type_database
+                    .alloc_type(Type::TypeParameter(symbol));
+                context.type_database.insert_type_symbol(symbol, ty);
+                ty.into()
             } else {
-                println!("unresolved type key '{}'", context.lookup(key));
-                todo!()
+                context
+                    .type_database
+                    .get_type_from_typesymbol(&symbol)
+                    .into()
             }
         }
+        TE::UnresolvedVarRef { key } => TypeResult::from_diag(
+            TypeDiagnostic {
+                variant: TypeDiagnosticVariant::UnresolvedVarRef { key },
+                range: context.database.range_of_type_expr(idx),
+            },
+            context.core_types().error,
+        ),
         TE::Intrinsic(symbol) => {
             let name = context.lookup(context.database.type_names[&symbol]);
             let ty = match name {
@@ -231,7 +333,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
         TE::Unit => context.type_database.core.unit.into(),
 
         TE::VarDef(type_var_def) => infer_type_var_def(&type_var_def, context),
-        TE::Call(call) => infer_type_call(&call, context),
+        TE::Call(call) => infer_type_call(idx, &call, context),
         TE::Union(union) => {
             let mut result = TypeResult::new(&context.type_database);
 
@@ -262,6 +364,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                                 signatures: vec![FuncSignature {
                                     params: Box::new([*variant_ty]),
                                     return_ty: sum_type,
+                                    type_params: Box::new([]),
                                 }],
                                 variant: Some((*variant_ty, i.into(), *key)),
                             };
@@ -335,6 +438,7 @@ fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeRe
     let mut result = TypeResult::new(&context.type_database);
     for overload in function.overloads.iter() {
         let FunctionExpr {
+            type_params,
             params,
             body,
             return_type_annotation,
@@ -349,9 +453,6 @@ fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeRe
             })
             .collect();
 
-        // infer return type from function body
-        result.chain(infer_expr(*body, context));
-
         if let Some(annotation) = return_type_annotation {
             let expected = infer_type_expr(*annotation, context);
 
@@ -361,7 +462,14 @@ fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeRe
                     Ok(()) => result.ty = expected.ty,
                     Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
                 }
+            } else {
+                result.chain(expected);
             }
+        } else {
+            // Only infer the body directly when there is no expected return
+            // type. Checking first is essential for return-type-driven generic
+            // calls in annotated functions.
+            result.chain(infer_expr(*body, context));
         }
 
         let return_ty = result.ty;
@@ -369,6 +477,7 @@ fn infer_function(function: &FunctionExprGroup, context: &mut Context) -> TypeRe
         signatures.push(FuncSignature {
             params: param_tys,
             return_ty,
+            type_params: type_params.clone(),
         });
     }
 
@@ -416,18 +525,20 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
     if let Some(annotation_idx) = type_annotation {
         let expected = infer_type_expr(*annotation_idx, context);
 
-        // Bind the annotated type before checking the initializer. This is
-        // important for compiler-provided constructors such as `list_new`,
-        // whose result starts as `List Unknown` and is refined by context.
-        context
-            .type_database
-            .value_symbols
-            .insert(*symbol, expected.ty);
+        // Bind the annotated type before checking the initializer so generic
+        // calls in the value can use it as an inference constraint.
+        if expected.is_ok() {
+            context
+                .type_database
+                .value_symbols
+                .insert(*symbol, expected.ty);
 
-        // FIXME: doesn't work when `expected` itself errors
-        match check_expr(*value, expected.ty, context) {
-            Ok(_) => context.type_database.set_expr_type(*value, expected.ty),
-            Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
+            match check_expr(*value, expected.ty, context) {
+                Ok(_) => context.type_database.set_expr_type(*value, expected.ty),
+                Err(mut diagnostics) => result.diagnostics.append(&mut diagnostics),
+            }
+        } else {
+            result.chain(expected);
         }
     } else {
         let mut infer_result = infer_expr(*value, context);
@@ -436,15 +547,6 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
             context.type_database.set_expr_type(*value, infer_result.ty);
         }
         result.chain(infer_result);
-        if result.is_ok() {
-            if matches!(context.type_(result.ty), Type::List(list) if list.of == context.core_types().unknown)
-            {
-                result.push_diag(TypeDiagnostic::list_element_type_unknown(
-                    context.database.range_of_expr(*value),
-                ));
-                result.ty = context.core_types().error;
-            }
-        }
         if result.is_ok() {
             context
                 .type_database
@@ -459,16 +561,32 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
 }
 
 fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> TypeResult {
-    let TypeVarDefExpr { symbol, type_expr } = type_var_def;
+    let TypeVarDefExpr {
+        symbol,
+        params,
+        type_expr,
+    } = type_var_def;
 
+    for param in params.iter() {
+        let ty = context
+            .type_database
+            .alloc_type(Type::TypeParameter(*param));
+        context.type_database.insert_type_symbol(*param, ty);
+    }
     let inferred = infer_type_expr(*type_expr, context);
     context
         .type_database
         .type_symbols
         .insert(*symbol, inferred.ty);
+    context
+        .type_database
+        .insert_type_alias(*symbol, params.clone(), inferred.ty);
 
     // TODO for the "type statement" itself, unit or never?
-    TypeResult::from_ty(context.core_types().unit)
+    let mut result = TypeResult::new(&context.type_database);
+    result.chain(inferred);
+    result.ty = context.core_types().unit;
+    result
 }
 
 fn infer_reassignment(reassignment: &ReAssignment, context: &mut Context) -> TypeResult {
@@ -521,51 +639,31 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
     result
 }
 
-fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> TypeResult {
+fn infer_call(
+    expr_idx: Idx<Expr>,
+    expr: &CallExpr,
+    expected: Option<Idx<Type>>,
+    context: &mut Context,
+) -> TypeResult {
     let range = context.database.range_of_expr(expr_idx);
     let CallExpr { callee, args, .. } = expr;
 
     let mut result = TypeResult::new(&context.type_database);
-    let builtin_id = match context.expr(*callee) {
-        Expr::VarRef(var_ref) => context.builtin_id(var_ref.symbol),
-        Expr::Intrinsic(symbol) => context.builtin_id(*symbol),
-        _ => None,
-    };
-    if builtin_id.is_none() || matches!(context.expr(*callee), Expr::Intrinsic(_)) {
-        result.chain(infer_expr(*callee, context));
-    } else {
-        result.ty = context.core_types().top;
-    }
-
-    // These are compiler-privileged functions rather than ordinary
-    // polymorphic functions for now. Their element type relation is checked
-    // here until the language has generic function types.
-    if let Expr::VarRef(var_ref) = context.expr(*callee) {
-        let name = context.value_symbol_str(var_ref.symbol).to_owned();
-        if matches!(name.as_str(), "list_new" | "list_push" | "list_len")
-            || builtin_id == Some(crate::BuiltinId::ListLen)
-        {
-            let builtin_result = infer_list_builtin(expr_idx, &name, args, result, context);
-            if builtin_result.is_ok() {
-                let call = assert_matches!(context.expr_mut(expr_idx), Expr::Call);
-                call.signature_index = Some(0);
-            }
-            return builtin_result;
-        }
-    }
-    if builtin_id == Some(crate::BuiltinId::ListLen) {
-        let builtin_result = infer_list_builtin(expr_idx, "list_len", args, result, context);
-        if builtin_result.is_ok() {
-            let call = assert_matches!(context.expr_mut(expr_idx), Expr::Call);
-            call.signature_index = Some(0);
-        }
-        return builtin_result;
-    }
+    result.chain(infer_expr(*callee, context));
 
     let result_type = context.type_(result.ty).clone();
-    if let Type::Function(FunctionType { signatures, .. }) = result_type {
+    if let Type::Function(function) = result_type {
+        if function.signatures.len() == 1 && !function.signatures[0].type_params.is_empty() {
+            return infer_generic_function_call(
+                expr_idx, args, function, result, expected, context,
+            );
+        }
+
+        let signatures = function.signatures;
         if signatures.len() == 1 {
-            let FuncSignature { params, return_ty } = &signatures[0];
+            let FuncSignature {
+                params, return_ty, ..
+            } = &signatures[0];
             if args.len() != params.len() {
                 result.push_diag(TypeDiagnostic::num_args_mismatch(
                     params.len(),
@@ -596,7 +694,9 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
 
         // resolve signature if there are multiple possibilities
         for (i, signature) in signatures.iter().enumerate() {
-            let FuncSignature { params, return_ty } = signature;
+            let FuncSignature {
+                params, return_ty, ..
+            } = signature;
             // 1. compare number of args vs. params
             if params.len() != args.len() {
                 continue;
@@ -634,66 +734,310 @@ fn infer_call(expr_idx: Idx<Expr>, expr: &CallExpr, context: &mut Context) -> Ty
     result
 }
 
-fn infer_list_builtin(
+fn infer_generic_function_call(
     expr_idx: Idx<Expr>,
-    name: &str,
     args: &[Idx<Expr>],
+    function: FunctionType,
     mut result: TypeResult,
+    expected: Option<Idx<Type>>,
     context: &mut Context,
 ) -> TypeResult {
     let range = context.database.range_of_expr(expr_idx);
-    let expected_args = match name {
-        "list_new" => 0,
-        "list_push" => 2,
-        "list_len" => 1,
-        _ => unreachable!(),
+    let callee_idx = match context.expr(expr_idx) {
+        Expr::Call(call) => call.callee,
+        _ => unreachable!("generic-call inference called for a non-call expression"),
     };
-    if args.len() != expected_args {
+    let signature = &function.signatures[0];
+    if args.len() != signature.params.len() {
         result.push_diag(TypeDiagnostic::num_args_mismatch(
-            expected_args,
+            signature.params.len(),
             args.len(),
             range,
         ));
-        result.ty = context.core_types().error;
-        return result;
     }
 
-    if name == "list_new" {
-        result.ty = context.type_database.alloc_type(Type::List(ListType {
-            of: context.core_types().unknown,
-        }));
-        return result;
-    }
-
-    let list_result = infer_expr(args[0], context);
-    result.chain(list_result);
-    let list_ty = result.ty;
-    let element_ty = match context.type_(list_ty) {
-        Type::List(list) => list.of,
-        _ => {
-            result.push_diag(TypeDiagnostic::mismatch(
-                context.type_database.alloc_type(Type::List(ListType {
-                    of: context.core_types().unknown,
-                })),
-                list_ty,
-                range,
-            ));
-            result.ty = context.core_types().error;
-            return result;
+    let mut substitutions = HashMap::new();
+    if result.is_ok() {
+        if let Some(expected) = expected {
+            // Seed inference from the expected result before checking
+            // arguments. The resulting parameter types can in turn provide
+            // context to generic calls nested in those arguments.
+            let _ = constrain_generic_type(
+                signature.return_ty,
+                expected,
+                &signature.type_params,
+                &mut substitutions,
+                context,
+            );
         }
+    }
+
+    let mut deferred_args = Vec::new();
+    for (arg, param) in args.iter().zip(signature.params.iter()) {
+        let specialized_param = substitute_type(*param, &substitutions, context);
+        if contains_unresolved_type_parameters(specialized_param, &signature.type_params, context) {
+            let inferred = infer_expr(*arg, context);
+            if inferred.diagnostics.iter().all(|diagnostic| {
+                matches!(
+                    &diagnostic.variant,
+                    TypeDiagnosticVariant::CannotInferTypeArguments
+                )
+            }) && !inferred.is_ok()
+            {
+                deferred_args.push((*arg, *param));
+                continue;
+            }
+
+            let actual = inferred.ty;
+            if inferred.is_ok()
+                && !constrain_generic_type(
+                    *param,
+                    actual,
+                    &signature.type_params,
+                    &mut substitutions,
+                    context,
+                )
+            {
+                result.push_diag(TypeDiagnostic::mismatch(
+                    *param,
+                    actual,
+                    context.database.range_of_expr(*arg),
+                ));
+            }
+            result.chain(inferred);
+        } else {
+            let checked = check_expr(*arg, specialized_param, context);
+            if let Err(mut diagnostics) = checked {
+                result.diagnostics.append(&mut diagnostics);
+                continue;
+            }
+            let actual = context.expr_type_idx(*arg);
+            if !constrain_generic_type(
+                *param,
+                actual,
+                &signature.type_params,
+                &mut substitutions,
+                context,
+            ) {
+                result.push_diag(TypeDiagnostic::mismatch(
+                    *param,
+                    actual,
+                    context.database.range_of_expr(*arg),
+                ));
+            }
+        }
+    }
+
+    for (arg, param) in deferred_args {
+        let specialized_param = substitute_type(param, &substitutions, context);
+        let checked = check_expr(arg, specialized_param, context);
+        if let Err(mut diagnostics) = checked {
+            result.diagnostics.append(&mut diagnostics);
+            continue;
+        }
+        let actual = context.expr_type_idx(arg);
+        if !constrain_generic_type(
+            param,
+            actual,
+            &signature.type_params,
+            &mut substitutions,
+            context,
+        ) {
+            result.push_diag(TypeDiagnostic::mismatch(
+                param,
+                actual,
+                context.database.range_of_expr(arg),
+            ));
+        }
+    }
+
+    if result.is_ok() {
+        let unresolved = signature.type_params.iter().any(|param| {
+            substitutions.get(param).map_or(true, |ty| {
+                contains_unresolved_type_parameters(*ty, &signature.type_params, context)
+            })
+        });
+        if unresolved {
+            let return_ty = substitute_type(signature.return_ty, &substitutions, context);
+            if let Some(expected) = expected {
+                if !is_subtype(return_ty, expected, context) {
+                    result.push_diag(TypeDiagnostic::mismatch(expected, return_ty, range));
+                } else {
+                    result.push_diag(TypeDiagnostic::cannot_infer_type_arguments(range));
+                }
+            } else {
+                result.push_diag(TypeDiagnostic::cannot_infer_type_arguments(range));
+            }
+            result.ty = context.core_types().error;
+        }
+    }
+
+    let type_args = if result.is_ok() {
+        let args = signature
+            .type_params
+            .iter()
+            .map(|param| substitutions[param])
+            .collect_vec();
+        Some(args.into())
+    } else {
+        None
     };
 
-    if name == "list_push" {
-        if element_ty == context.core_types().unknown {
-            result.chain(infer_expr(args[1], context));
+    if result.is_ok() {
+        let callee_type = context.expr_type_idx(callee_idx);
+        let specialized_callee = substitute_type(callee_type, &substitutions, context);
+        if let Type::Function(mut specialized_function) = context.type_(specialized_callee).clone()
+        {
+            specialized_function.signatures[0].type_params = signature
+                .type_params
+                .iter()
+                .filter(|param| !substitutions.contains_key(param))
+                .copied()
+                .collect();
+            let specialized_function = context
+                .type_database
+                .alloc_type(Type::Function(specialized_function));
+            context
+                .type_database
+                .set_expr_type(callee_idx, specialized_function);
+            let Type::Function(specialized_function) = context.type_(specialized_function) else {
+                unreachable!()
+            };
+            result.ty = specialized_function.signatures[0].return_ty;
         } else {
-            result.check(args[1], element_ty, context);
+            result.ty = substitute_type(signature.return_ty, &substitutions, context);
         }
-        result.ty = context.core_types().unit;
+        if let Some(expected) = expected {
+            if !is_subtype(result.ty, expected, context) {
+                result.push_diag(TypeDiagnostic::mismatch(expected, result.ty, range));
+            }
+        }
     } else {
-        result.ty = context.core_types().int;
+        result.ty = context.core_types().error;
+    }
+
+    let call = assert_matches!(context.expr_mut(expr_idx), Expr::Call);
+    call.signature_index = Some(0);
+    if let Some(type_args) = type_args {
+        call.type_args = type_args;
     }
     result
+}
+
+fn contains_unresolved_type_parameters(
+    ty: Idx<Type>,
+    type_params: &[TypeSymbol],
+    context: &Context,
+) -> bool {
+    match context.type_(ty) {
+        Type::TypeParameter(symbol) => type_params.contains(symbol),
+        Type::Product(product) => product.fields.values().any(|(_, field_ty)| {
+            contains_unresolved_type_parameters(*field_ty, type_params, context)
+        }),
+        Type::Sum(sum) => sum.variants.iter().any(|(_, variant_ty)| {
+            contains_unresolved_type_parameters(*variant_ty, type_params, context)
+        }),
+        Type::Function(function) => function.signatures.iter().any(|signature| {
+            signature
+                .params
+                .iter()
+                .any(|param| contains_unresolved_type_parameters(*param, type_params, context))
+                || contains_unresolved_type_parameters(signature.return_ty, type_params, context)
+        }),
+        Type::List(list) => contains_unresolved_type_parameters(list.of, type_params, context),
+        _ => false,
+    }
+}
+
+/// Matches a generic function parameter type against an argument type,
+/// collecting substitutions for the function's rigid type parameters.
+fn constrain_generic_type(
+    pattern: Idx<Type>,
+    actual: Idx<Type>,
+    type_params: &[TypeSymbol],
+    substitutions: &mut HashMap<TypeSymbol, Idx<Type>>,
+    context: &mut Context,
+) -> bool {
+    let pattern_type = context.type_(pattern).clone();
+    if let Type::TypeParameter(symbol) = pattern_type {
+        if type_params.contains(&symbol) {
+            let actual = widen_to_scalar(actual, context);
+            if let Some(previous) = substitutions.get(&symbol).copied() {
+                if is_subtype(actual, previous, context) {
+                    return true;
+                }
+                if is_subtype(previous, actual, context) {
+                    substitutions.insert(symbol, actual);
+                    return true;
+                }
+                return false;
+            }
+            substitutions.insert(symbol, actual);
+            return true;
+        }
+    }
+
+    let pattern_type = context.type_(pattern).clone();
+    let actual_type = context.type_(actual).clone();
+    match (pattern_type, actual_type) {
+        (Type::Product(pattern), Type::Product(actual)) => {
+            if pattern.fields.len() != actual.fields.len() {
+                return false;
+            }
+            pattern.fields.iter().all(|(key, (_, pattern_field))| {
+                actual.fields.get(key).is_some_and(|(_, actual_field)| {
+                    constrain_generic_type(
+                        *pattern_field,
+                        *actual_field,
+                        type_params,
+                        substitutions,
+                        context,
+                    )
+                })
+            })
+        }
+        (Type::Sum(pattern), Type::Sum(actual)) => {
+            pattern.variants.len() == actual.variants.len()
+                && pattern.variants.iter().zip(actual.variants.iter()).all(
+                    |((pattern_key, pattern_ty), (actual_key, actual_ty))| {
+                        pattern_key == actual_key
+                            && constrain_generic_type(
+                                *pattern_ty,
+                                *actual_ty,
+                                type_params,
+                                substitutions,
+                                context,
+                            )
+                    },
+                )
+        }
+        (Type::List(pattern), Type::List(actual)) => {
+            constrain_generic_type(pattern.of, actual.of, type_params, substitutions, context)
+        }
+        _ => is_subtype(actual, pattern, context),
+    }
+}
+
+pub(super) fn specialize_generic_sum(
+    actual: Idx<Type>,
+    expected: Idx<Type>,
+    context: &mut Context,
+) -> Option<Idx<Type>> {
+    let Type::Sum(sum) = context.type_(actual).clone() else {
+        return None;
+    };
+    let symbol = sum.name?;
+    let alias = context.type_database.type_aliases.get(&symbol)?.clone();
+    if alias.params.is_empty() {
+        return None;
+    }
+
+    let mut substitutions = HashMap::new();
+    if !constrain_generic_type(actual, expected, &alias.params, &mut substitutions, context) {
+        return None;
+    }
+    let specialized = substitute_type(actual, &substitutions, context);
+    is_subtype(specialized, expected, context).then_some(specialized)
 }
 
 fn infer_float_literal(idx: Idx<Expr>, f: f64, context: &mut Context) -> TypeResult {
@@ -757,7 +1101,28 @@ fn infer_path_expr(expr_idx: Idx<Expr>, path_expr: &PathExpr, context: &mut Cont
                 Type::UnionNamespace(union_namespace) => {
                     match union_namespace.variant_constructors.get(&segment_expr.key) {
                         Some((_, variant_constructor_ty)) => {
-                            result.ty = *variant_constructor_ty;
+                            let generic_params = context
+                                .database
+                                .type_value_symbols
+                                .get(&union_namespace.name)
+                                .and_then(|type_symbol| {
+                                    context.type_database.type_aliases.get(type_symbol)
+                                })
+                                .map(|alias| alias.params.clone());
+
+                            result.ty = if let Some(params) =
+                                generic_params.filter(|params| !params.is_empty())
+                            {
+                                match context.type_(*variant_constructor_ty).clone() {
+                                    Type::Function(mut function) => {
+                                        function.signatures[0].type_params = params;
+                                        context.type_database.alloc_type(Type::Function(function))
+                                    }
+                                    _ => *variant_constructor_ty,
+                                }
+                            } else {
+                                *variant_constructor_ty
+                            };
                         }
                         None => {
                             let range = context.range_of_expr(expr_idx);
@@ -831,7 +1196,7 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
     result
 }
 
-fn infer_type_call(call: &crate::type_expr::CallExpr, context: &mut Context) -> TypeResult {
+fn infer_type_call(idx: Idx<TypeExpr>, call: &TypeCallExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
     if call.path == LIST && call.args.len() == 1 {
         let element = infer_type_expr(call.args[0], context);
@@ -841,6 +1206,34 @@ fn infer_type_call(call: &crate::type_expr::CallExpr, context: &mut Context) -> 
                 .type_database
                 .alloc_type(Type::List(ListType { of: result.ty }));
         }
+    } else if let Some(symbol) = call.symbol {
+        if let Some(alias) = context.type_database.type_aliases.get(&symbol).cloned() {
+            if alias.params.len() != call.args.len() {
+                result.push_diag(TypeDiagnostic::num_args_mismatch(
+                    alias.params.len(),
+                    call.args.len(),
+                    context.database.range_of_type_expr(idx),
+                ));
+                result.ty = context.core_types().error;
+                return result;
+            }
+
+            let mut substitutions = HashMap::new();
+            for (param, arg_expr) in alias.params.iter().zip(call.args.iter()) {
+                let arg = infer_type_expr(*arg_expr, context);
+                let arg_ty = arg.ty;
+                result.chain(arg);
+                substitutions.insert(*param, arg_ty);
+            }
+
+            if result.is_ok() {
+                result.ty = substitute_type(alias.body, &substitutions, context);
+            } else {
+                result.ty = context.core_types().error;
+            }
+        } else {
+            result.ty = context.core_types().error;
+        }
     } else {
         result.ty = context.core_types().error;
         // The unresolved-type diagnostic infrastructure is not yet expressive
@@ -849,7 +1242,126 @@ fn infer_type_call(call: &crate::type_expr::CallExpr, context: &mut Context) -> 
     result
 }
 
+pub(crate) fn substitute_type(
+    ty_idx: Idx<Type>,
+    substitutions: &HashMap<TypeSymbol, Idx<Type>>,
+    context: &mut Context,
+) -> Idx<Type> {
+    let ty = context.type_(ty_idx).clone();
+    match ty {
+        Type::TypeParameter(symbol) => substitutions.get(&symbol).copied().unwrap_or(ty_idx),
+        Type::Product(product) => {
+            let mut changed = false;
+            let fields = product
+                .canonical_fields()
+                .into_iter()
+                .map(|(key, _, field_ty)| {
+                    let substituted = substitute_type(field_ty, substitutions, context);
+                    changed |= substituted != field_ty;
+                    (key, substituted)
+                })
+                .collect_vec();
+            if !changed {
+                return ty_idx;
+            }
+            let substituted = Type::product(fields.into(), product.name, context);
+            context.type_database.alloc_type(substituted)
+        }
+        Type::Sum(sum) => {
+            let mut changed = false;
+            let variants = sum
+                .variants
+                .iter()
+                .map(|(key, variant_ty)| {
+                    let substituted = substitute_type(*variant_ty, substitutions, context);
+                    changed |= substituted != *variant_ty;
+                    (*key, substituted)
+                })
+                .collect_vec();
+            if !changed {
+                return ty_idx;
+            }
+            context
+                .type_database
+                .alloc_type(Type::sum(variants.into(), sum.name, sum.namespace_ty))
+        }
+        Type::Function(mut function) => {
+            let mut changed = false;
+            for signature in &mut function.signatures {
+                let params = signature
+                    .params
+                    .iter()
+                    .map(|param| {
+                        let substituted = substitute_type(*param, substitutions, context);
+                        changed |= substituted != *param;
+                        substituted
+                    })
+                    .collect();
+                signature.params = params;
+                let return_ty = substitute_type(signature.return_ty, substitutions, context);
+                changed |= return_ty != signature.return_ty;
+                signature.return_ty = return_ty;
+            }
+            if let Some((variant_ty, variant_idx, key)) = function.variant {
+                let substituted = substitute_type(variant_ty, substitutions, context);
+                changed |= substituted != variant_ty;
+                function.variant = Some((substituted, variant_idx, key));
+            }
+            if !changed {
+                return ty_idx;
+            }
+            context.type_database.alloc_type(Type::Function(function))
+        }
+        Type::List(mut list) => {
+            let substituted = substitute_type(list.of, substitutions, context);
+            if substituted == list.of {
+                return ty_idx;
+            }
+            list.of = substituted;
+            context.type_database.alloc_type(Type::List(list))
+        }
+        _ => ty_idx,
+    }
+}
+
+fn infer_record_expr_expected(
+    record_expr: &RecordLiteralExpr,
+    expected: Idx<Type>,
+    context: &mut Context,
+) -> TypeResult {
+    let Type::Product(expected_product) = context.type_(expected) else {
+        unreachable!("record contextual inference requires an expected product type")
+    };
+    let expected_fields = expected_product.fields.clone();
+    let mut result = TypeResult::new(&context.type_database);
+    let fields = record_expr
+        .fields
+        .iter()
+        .map(|(key, expr)| {
+            let field_result = match expected_fields.get(key) {
+                Some((_, expected_field)) => infer_expr_expected(*expr, *expected_field, context),
+                None => infer_expr(*expr, context),
+            };
+            let field_ty = field_result.ty;
+            result.chain(field_result);
+            (*key, field_ty)
+        })
+        .collect_vec();
+    result.ty = context
+        .type_database
+        .alloc_type(Type::product(fields.into(), None, context));
+    result
+}
+
 fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult {
+    infer_match_expr_expected(match_expr, None, context)
+}
+
+fn infer_match_expr_expected(
+    match_expr: &MatchExpr,
+    expected: Option<Idx<Type>>,
+    context: &mut Context,
+) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
 
     // TODO - should be 'check' instead of 'infer'? scrutinee must be SumType, IntLiteral, FloatLiteral, StringLiteral, etc.
@@ -866,16 +1378,24 @@ fn infer_match_expr(match_expr: &MatchExpr, context: &mut Context) -> TypeResult
             context,
         ));
 
-        let arm_ty = infer_expr_widened(arm.expr, context);
-        if arm_ty.is_ok() && overall_ty.is_none() {
-            overall_ty = Some(arm_ty.ty);
+        if let Some(expected) = expected {
+            result.check(arm.expr, expected, context);
+        } else {
+            let arm_ty = infer_expr_widened(arm.expr, context);
+            if arm_ty.is_ok() && overall_ty.is_none() {
+                overall_ty = Some(arm_ty.ty);
+            }
+            result.chain(arm_ty);
         }
-        result.chain(arm_ty);
     }
 
-    match overall_ty {
-        Some(ty) => result.ty = ty,
-        None => result.ty = context.core_types().error,
+    if let Some(expected) = expected {
+        result.ty = expected;
+    } else {
+        match overall_ty {
+            Some(ty) => result.ty = ty,
+            None => result.ty = context.core_types().error,
+        }
     }
 
     result
@@ -982,6 +1502,14 @@ fn infer_pattern(
 }
 
 fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
+    infer_if_expr_expected(if_expr, None, context)
+}
+
+fn infer_if_expr_expected(
+    if_expr: &IfExpr,
+    expected: Option<Idx<Type>>,
+    context: &mut Context,
+) -> TypeResult {
     let IfExpr {
         condition,
         then_branch,
@@ -992,12 +1520,23 @@ fn infer_if_expr(if_expr: &IfExpr, context: &mut Context) -> TypeResult {
 
     result.check(*condition, context.core_types().bool, context);
 
-    result.chain(infer_expr_widened(*then_branch, context));
-
-    if let Some(else_branch) = else_branch {
-        result.check(*else_branch, result.ty, context);
+    if let Some(expected) = expected {
+        if let Some(else_branch) = else_branch {
+            result.check(*then_branch, expected, context);
+            result.check(*else_branch, expected, context);
+            result.ty = expected;
+        } else {
+            result.chain(infer_expr_widened(*then_branch, context));
+            result.ty = context.core_types().unit;
+        }
     } else {
-        result.ty = context.core_types().unit;
+        result.chain(infer_expr_widened(*then_branch, context));
+
+        if let Some(else_branch) = else_branch {
+            result.check(*else_branch, result.ty, context);
+        } else {
+            result.ty = context.core_types().unit;
+        }
     }
     result
 }

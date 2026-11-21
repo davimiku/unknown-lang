@@ -119,6 +119,22 @@ pub(crate) struct FunctionTranslator<'a> {
 }
 
 impl<'a> FunctionTranslator<'a> {
+    pub(crate) fn signature_for_function(
+        func: &mir::Function,
+        module: &mut JITModule,
+        hir_context: &hir::Context,
+        descriptors: &mut ManagedDescriptorCache,
+    ) -> Signature {
+        let mut context = module.make_context();
+        let mut builder_context = FunctionBuilderContext::new();
+        let builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+        let func_map = HashMap::new();
+        let mut translator =
+            FunctionTranslator::new(builder, module, func, &func_map, hir_context, descriptors);
+        translator.translate_signature_abi_params();
+        translator.builder.func.signature.clone()
+    }
+
     pub(crate) fn new(
         builder: FunctionBuilder<'a>,
         module: &'a mut JITModule,

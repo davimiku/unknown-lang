@@ -114,6 +114,25 @@ impl JIT {
             }
         }
 
+        // Pass to declare every function so direct calls can refer to callees
+        // that appear later in MIR order (including monomorphized instances)
+        for (_, func) in module.functions.iter() {
+            let signature = FunctionTranslator::signature_for_function(
+                func,
+                &mut self.module,
+                hir_context,
+                &mut self.managed_descriptors,
+            );
+            let func_name = func.name.as_deref().map(str::to_owned).unwrap_or_else(|| {
+                let (module_id, function_id) = func.id.into();
+                format!("__anonymous_{module_id}_{function_id}")
+            });
+            let func_id = self
+                .module
+                .declare_function(&func_name, Linkage::Export, &signature)?;
+            func_map.insert(func.id, func_id);
+        }
+
         let mut errors: FunctionErrors = Default::default();
 
         for (_, func) in module.functions.iter() {
@@ -143,25 +162,19 @@ impl JIT {
         {
             let mut fn_builder_ctx = FunctionBuilderContext::new();
             let builder = FunctionBuilder::new(&mut self.ctx.func, &mut fn_builder_ctx);
-            let translator =
-                FunctionTranslator::new(
-                    builder,
-                    &mut self.module,
-                    func,
-                    func_map,
-                    hir_context,
-                    &mut self.managed_descriptors,
-                );
+            let translator = FunctionTranslator::new(
+                builder,
+                &mut self.module,
+                func,
+                func_map,
+                hir_context,
+                &mut self.managed_descriptors,
+            );
 
             translator.translate_function();
         }
 
-        let func_name = func.name.as_deref().unwrap_or("{anonymous}");
-
-        let func_id =
-            self.module
-                .declare_function(func_name, Linkage::Export, &self.ctx.func.signature)?;
-
+        let func_id = func_map[&func.id];
         self.module.define_function(func_id, &mut self.ctx)?;
 
         let compiled = self.ctx.compiled_code().expect("compiled code to exist");

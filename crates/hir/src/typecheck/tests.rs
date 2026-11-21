@@ -7,9 +7,10 @@
 use la_arena::Idx;
 use util_macros::assert_matches;
 
+use crate::diagnostic::{TypeDiagnostic, TypeDiagnosticVariant};
 use crate::typecheck::check::is_subtype;
 use crate::typecheck::TypeResult;
-use crate::{BlockExpr, Context, Expr, Interner, Type};
+use crate::{lower, BlockExpr, Context, Diagnostic, Expr, FunctionType, Interner, Type};
 
 use super::infer_expr;
 
@@ -39,6 +40,13 @@ fn check(input: &str, context: &mut Context) -> TypeResult {
     let result = infer_expr(root, context);
     assert!(result.is_ok());
     result
+}
+
+fn lower_with_stdlib(input: &str) -> (crate::Module, Context) {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let module = context.load_module(input, crate::SourceKind::User);
+    (module, context)
 }
 
 fn check_infer_type(input: &str, expected: &Type) {
@@ -92,23 +100,316 @@ fn infer_nominal_list_and_builtin_operations() {
 #[test]
 fn infer_list_type_application() {
     let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
     let result = check("let values: List String = list_new ()", &mut context);
 
     let Type::Unit = context.type_(result.ty) else {
         panic!("list declaration should have unit type")
     };
 
-    check_infer_type("let values: List (String) = list_new ()", &Type::Unit);
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    let result = check("let values: List (String) = list_new ()", &mut context);
+    assert_eq!(context.type_(result.ty), &Type::Unit);
 }
 
 #[test]
-fn list_new_requires_an_element_type_annotation() {
-    let (_, context) = crate::lower("let values = list_new ()");
+fn generic_call_requires_enough_type_context() {
+    let (_, context) = lower_with_stdlib("let values = list_new ()");
     assert!(context.diagnostics.iter().any(|diagnostic| {
         matches!(
             diagnostic,
-            crate::Diagnostic::Type(crate::diagnostic::TypeDiagnostic {
-                variant: crate::diagnostic::TypeDiagnosticVariant::ListElementTypeUnknown,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::CannotInferTypeArguments,
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn generic_call_infers_type_arguments_from_expected_return_type() {
+    let input = r#"
+        let make_empty = fun ['A]() -> List 'A {
+            list_new ()
+        }
+        let values: List Int = make_empty ()
+
+        let return_empty = fun ['A]() -> List 'A {
+            return list_new ()
+        }
+        let returned: List Int = return_empty ()
+
+        let identity = fun ['A](value: 'A) -> 'A {
+            value
+        }
+        let nested: List String = identity (list_new ())
+        let selected: List Int = if true { list_new () } else { list_new () }
+        let record: [ values: List Float ] = [ values = list_new () ]
+    "#;
+    let (_, context) = lower_with_stdlib(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+}
+
+#[test]
+fn polymorphic_list_push_checks_the_element_type() {
+    let (_, context) = lower_with_stdlib(
+        r#"
+            let values: List Int = list_new ()
+            list_push (values, "not an Int")
+        "#,
+    );
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::TypeMismatch { .. },
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn generic_box_alias_is_substituted_through_function_annotations() {
+    let input = r#"
+        type Box 'A = [ value: 'A ]
+
+        let set_box_value = fun (box: Box 'A, new_value: 'A) {
+            box.value = new_value
+            box
+        }
+
+        let get_box_value = fun (box: Box 'A) -> 'A {
+            box.value
+        }
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+
+    fn function_type<'a>(context: &'a Context, name: &str) -> &'a FunctionType {
+        let symbol = context
+            .database
+            .value_names
+            .iter()
+            .find_map(|(symbol, key)| (context.lookup(*key) == name).then_some(*symbol))
+            .expect("function symbol exists");
+        let ty = context.type_database.value_symbols[&symbol];
+        let Type::Function(function) = context.type_(ty) else {
+            panic!("expected function type")
+        };
+        function
+    }
+
+    fn box_element_type(context: &Context, ty: Idx<Type>) -> Idx<Type> {
+        let Type::Product(product) = context.type_(ty) else {
+            panic!("expected Box to expand to a product type")
+        };
+        product
+            .fields
+            .iter()
+            .find_map(|(key, (_, ty))| (context.lookup(*key) == "value").then_some(*ty))
+            .expect("Box has a value field")
+    }
+
+    let set = &function_type(&context, "set_box_value").signatures[0];
+    assert_eq!(set.params.len(), 2);
+    assert_eq!(
+        box_element_type(&context, set.params[0]),
+        set.params[1],
+        "the Box element and new_value must share one type parameter"
+    );
+    assert_eq!(
+        context.type_(set.params[0]),
+        context.type_(set.return_ty),
+        "set_box_value should return the same Box type it receives"
+    );
+
+    let get = &function_type(&context, "get_box_value").signatures[0];
+    assert_eq!(
+        box_element_type(&context, get.params[0]),
+        get.return_ty,
+        "get_box_value should return the Box element type"
+    );
+}
+
+#[test]
+fn explicit_function_type_parameters_are_available_to_annotations() {
+    let input = r#"
+        type Box 'A = [ value: 'A ]
+        let get_box_value = fun ['A](box: Box 'A) -> 'A {
+            box.value
+        }
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+
+    let symbol = context
+        .database
+        .value_names
+        .iter()
+        .find_map(|(symbol, key)| (context.lookup(*key) == "get_box_value").then_some(*symbol))
+        .expect("function symbol exists");
+    let ty = context.type_database.value_symbols[&symbol];
+    let Type::Function(function) = context.type_(ty) else {
+        panic!("expected function type")
+    };
+    let signature = &function.signatures[0];
+    let Type::Product(box_type) = context.type_(signature.params[0]) else {
+        panic!("expected Box to expand to a product type")
+    };
+    let element_type = box_type
+        .fields
+        .iter()
+        .find_map(|(key, (_, ty))| (context.lookup(*key) == "value").then_some(*ty))
+        .expect("Box has a value field");
+    assert_eq!(element_type, signature.return_ty);
+
+    let (_, context) = lower("let invalid = fun ['A](value: 'B) -> 'B { value }");
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::UnresolvedVarRef { .. },
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn generic_alias_application_substitutes_concrete_arguments() {
+    let input = r#"
+        type Box 'A = [ value: 'A ]
+        let boxed: Box Int = [ value = 42 ]
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+}
+
+#[test]
+fn generic_alias_supports_multiple_parameters_and_checks_arity() {
+    let input = r#"
+        type Pair ('A, 'B) = [ first: 'A, second: 'B ]
+        let pair: Pair (Int, String) = [ first = 42, second = "answer" ]
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+
+    let (_, context) = lower("type Box 'A = [ value: 'A ]\nlet invalid: Box = [ value = 1 ]");
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::ArgsMismatch {
+                    expected: 1,
+                    actual: 0,
+                },
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn generic_tagged_union_constructors_instantiate_payload_types() {
+    let input = r#"
+        type Option 'A = (none | some: 'A)
+
+        let some = Option.some 123
+        let some_int: Option Int = some
+        let none: Option Int = Option.none
+
+        match some {
+            .none -> { 0 }
+            .some value -> { value }
+        }
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+}
+
+#[test]
+fn generic_tagged_union_constructor_preserves_payload_type() {
+    let input = r#"
+        type Option 'A = (none | some: 'A)
+        let invalid: Option String = Option.some 123
+    "#;
+    let (_, context) = lower(input);
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::TypeMismatch { .. },
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn generic_function_calls_instantiate_box_and_pair_types() {
+    let input = r#"
+        type Box 'A = [ value: 'A ]
+        type Pair ('A, 'B) = [ first: 'A, second: 'B ]
+
+        let make_box = fun ['A](a: 'A) -> Box 'A {
+            [ value = a ]
+        }
+        let make_pair = fun ['A, 'B](a: 'A, b: 'B) -> Pair ('A, 'B) {
+            [ first = a, second = b ]
+        }
+
+        let int_box: Box Int = make_box 123
+        let string_box: Box String = make_box "hello"
+        let pair: Pair (Int, String) = make_pair (42, "answer")
+    "#;
+    let (_, context) = lower(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+}
+
+#[test]
+fn generic_function_call_rejects_inconsistent_type_arguments() {
+    let input = r#"
+        let choose = fun ['A](first: 'A, second: 'A) -> 'A {
+            first
+        }
+        let invalid = choose (1, "two")
+    "#;
+    let (_, context) = lower(input);
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::TypeMismatch { .. },
                 ..
             })
         )
