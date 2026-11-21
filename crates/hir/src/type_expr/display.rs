@@ -28,7 +28,9 @@ impl ContextDisplay for TypeExpr {
 
             TypeExpr::VarDef(type_var_def) => {
                 let mut s = String::new();
-                let TypeVarDefExpr { symbol, type_expr } = type_var_def;
+                let TypeVarDefExpr {
+                    symbol, type_expr, ..
+                } = type_var_def;
                 s.push_str(&symbol.display(context).to_string());
                 s.push_str(" := ");
                 s.push_str(&type_expr.display(context).to_string());

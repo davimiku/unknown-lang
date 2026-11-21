@@ -109,34 +109,6 @@ pub(crate) fn insert_core_values(
     insert_intrinsic(keys.le, Type::func(num_cmp_signatures(&t)), IE::Le);
     insert_intrinsic(keys.gt, Type::func(num_cmp_signatures(&t)), IE::Gt);
     insert_intrinsic(keys.ge, Type::func(num_cmp_signatures(&t)), IE::Ge);
-
-    // List operations are compiler-privileged builtins. Their signatures use
-    // placeholders; infer_call applies the element-type relation.
-    let unknown_list = type_database.alloc_type(Type::List(crate::ListType { of: t.unknown }));
-    insert_value(
-        database,
-        type_database,
-        scopes,
-        keys.list_new,
-        Type::func(vec![FuncSignature {
-            params: Box::new([]),
-            return_ty: unknown_list,
-        }]),
-    );
-    insert_value(
-        database,
-        type_database,
-        scopes,
-        keys.list_push,
-        Type::func(vec![((t.top, t.top), t.unit).into()]),
-    );
-    insert_value(
-        database,
-        type_database,
-        scopes,
-        keys.list_len,
-        Type::func(vec![((t.top,), t.int).into()]),
-    );
 }
 
 fn print_signatures(types: &CoreTypes) -> Vec<FuncSignature> {

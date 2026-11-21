@@ -8,10 +8,14 @@ type List 'A = intrinsic
 // type List 'A = [ len: Int, cap: Int, items: intrinsic ]
 // ```
 
-/// Returns the number of elements in a list.
-// #export
-// let list_len = intrinsic
+/// Creates an empty list. Its element type is inferred from context.
+#export
+let list_new = intrinsic
 
-/// Creates a new List
-// #export
-// let list_new = intrinsic
+/// Appends an element to a list.
+#export
+let list_push = intrinsic
+
+/// Returns the number of elements in a list.
+#export
+let list_len = intrinsic

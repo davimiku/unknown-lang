@@ -6,8 +6,20 @@ use crate::SyntaxKind;
 
 use super::{
     parse_ident, parse_int_literal, parse_module_path, parse_string_literal, BinaryOp,
-    CALL_ARG_START, PATH_RIGHT_BINDING_POWER,
+    PATH_RIGHT_BINDING_POWER,
 };
+
+const TYPE_CALL_ARG_START: [lexer::TokenKind; 9] = [
+    T::LParen,
+    T::LBracket,
+    T::Ident,
+    T::TypeParameter,
+    T::IntLiteral,
+    T::FloatLiteral,
+    T::StringLiteral,
+    T::Bang,
+    T::Tilde,
+];
 
 pub(super) fn parse_type_expr(p: &mut Parser) -> Option<CompletedMarker> {
     let m = p.start();
@@ -72,7 +84,7 @@ fn type_expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<
     // Having just finished parsing an expression, check if the next token
     // could be the start of function arguments, thereby making this just-parsed
     // expression the callee of a Call expression.
-    if p.at_set(&CALL_ARG_START) && minimum_binding_power < PATH_RIGHT_BINDING_POWER {
+    if p.at_set(&TYPE_CALL_ARG_START) && minimum_binding_power < PATH_RIGHT_BINDING_POWER {
         // Starts a new marker that "wraps" the already parsed callee, so that we
         // can have a CallExpr with callee and args
         let m = lhs.precede(p);
@@ -90,7 +102,7 @@ fn type_expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<
 /// A single type argument can omit parentheses ex. `List Int`,
 /// otherwise parentheses are used for multiple arguments ex. `Result (Int, String)`
 fn parse_type_call_arguments(p: &mut Parser) -> CompletedMarker {
-    debug_assert!(p.at_set(&CALL_ARG_START));
+    debug_assert!(p.at_set(&TYPE_CALL_ARG_START));
     let m = p.start();
 
     if !p.at(T::LParen) {
@@ -98,7 +110,7 @@ fn parse_type_call_arguments(p: &mut Parser) -> CompletedMarker {
     } else {
         p.bump();
 
-        while p.at_set(&CALL_ARG_START) {
+        while p.at_set(&TYPE_CALL_ARG_START) {
             type_expr_binding_power(p, 0);
 
             if p.at(T::Comma) {

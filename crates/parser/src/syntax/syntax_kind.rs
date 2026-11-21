@@ -186,6 +186,7 @@ pub enum SyntaxKind {
 
     // Function components
     FunBody,
+    FunTypeParams,
     FunParam,
     FunParamList,
     Arrow,

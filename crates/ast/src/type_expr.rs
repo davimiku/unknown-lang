@@ -23,6 +23,16 @@ pub enum TypeExpr {
 }
 
 impl TypeExpr {
+    /// Whether this type expression denotes a union, optionally through
+    /// parentheses.
+    pub fn is_union(&self) -> bool {
+        match self {
+            Self::Union(_) => true,
+            Self::Paren(paren) => paren.expr().is_some_and(|expr| expr.is_union()),
+            _ => false,
+        }
+    }
+
     pub fn cast(mut node: SyntaxNode) -> Option<Self> {
         // being forgiving if the caller passed the "wrapper" TypeExpr
         // eventually remove and fix the callsites, but not urgent

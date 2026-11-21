@@ -527,6 +527,10 @@ fn parse_function(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.bump();
 
+    if p.at(T::LBracket) {
+        parse_function_type_params(p);
+    }
+
     if p.at(T::Ident) {
         // single parameter function can omit parens
         let param_marker = p.start();
@@ -536,9 +540,7 @@ fn parse_function(p: &mut Parser) -> CompletedMarker {
         parse_function_param_list(p);
     }
 
-    p.expect(T::Arrow);
-
-    if !p.at(T::LBrace) {
+    if p.bump_if_at(T::Arrow) && !p.at(T::LBrace) {
         parse_type_expr(p);
     }
 
@@ -549,6 +551,26 @@ fn parse_function(p: &mut Parser) -> CompletedMarker {
     body_marker.complete(p, SyntaxKind::FunBody);
 
     m.complete(p, SyntaxKind::FunExpr)
+}
+
+/// Parses an explicit type parameter list
+///
+/// ```ignore
+/// fun ['A, 'B](a: 'A) -> 'B { ... }
+/// //  ^^^^^^^^
+/// ```
+fn parse_function_type_params(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at(T::LBracket);
+    let m = p.start();
+    p.bump();
+
+    p.expect(T::TypeParameter);
+    while p.bump_if_at(T::Comma) {
+        p.expect(T::TypeParameter);
+    }
+    p.expect(T::RBracket);
+
+    m.complete(p, SyntaxKind::FunTypeParams)
 }
 
 /// Parses a function parameter list, which is a list of identifiers

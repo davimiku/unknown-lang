@@ -7,6 +7,9 @@ use hir::{
 use itertools::Itertools;
 use la_arena::Idx;
 
+use crate::builder::{
+    ParameterizedFunctionTemplate, ParameterizedInstanceKey, PendingGenericInstance,
+};
 use crate::syntax::{
     BasicBlock, BinOp, BlockTarget, BranchIntTargets, BranchTarget, Callee, Constant, FieldIdx,
     FuncId, Local, Operand, OperandOrPlace, Place, ProjectionElem, Rvalue, RvalueUnionVariant,
@@ -16,70 +19,211 @@ use crate::{Builder, Function, Module};
 use util_macros::assert_matches;
 
 impl Builder {
-    pub(crate) fn construct_module(mut self, module: &hir::Module, context: &Context) -> Module {
-        let mut func_count: u32 = 0;
-        for expr in module.exprs.iter() {
-            let expr = context.expr(*expr);
+    fn expr_type_idx(&self, expr: Idx<Expr>, context: &Context) -> Idx<Type> {
+        self.expr_type_overrides
+            .get(&expr)
+            .copied()
+            .unwrap_or_else(|| context.expr_type_idx(expr))
+    }
 
-            if let Expr::TypeStatement(_) = expr {
-                continue;
-            }
+    fn expr_type<'a>(&self, expr: Idx<Expr>, context: &'a Context) -> &'a Type {
+        context.type_(self.expr_type_idx(expr, context))
+    }
 
-            // match expr {
-            //     // type definitions, others?
-            //     Expr::Statement(statement) => {
-            //         todo!()
-            //     }
-            //     // should be most things - `let main = () -> { ... }`
-            //     // constants too - `let base_url = "..."`
-            //     Expr::VarDef(var_def) => {
-            //         todo!()
-            //     }
+    fn value_type_idx(&self, symbol: ValueSymbol, context: &Context) -> Idx<Type> {
+        self.value_type_overrides
+            .get(&symbol)
+            .copied()
+            .unwrap_or_else(|| context.type_idx_of_value(&symbol))
+    }
 
-            //     Expr::TypeStatement(type_statement) => {
-            //         todo!()
-            //     }
-            // }
-            if let Expr::Statement(x) = expr {
-                dbg!(x.display(context));
-                let x = context.expr(*x);
-                dbg!(x);
-            }
-            let var_def = assert_matches!(expr, hir::Expr::VarDef);
+    fn call_type_args(&self, expr: Idx<Expr>, call: &CallExpr) -> Box<[Idx<Type>]> {
+        self.call_type_arg_overrides
+            .get(&expr)
+            .cloned()
+            .unwrap_or_else(|| call.type_args.clone())
+    }
 
-            let value = context.expr(var_def.value);
-            let func_group = assert_matches!(value, hir::Expr::Function);
+    fn call_union_variant(
+        &self,
+        call: &CallExpr,
+        context: &Context,
+    ) -> Option<(Idx<Type>, hir::VariantIdx, Key)> {
+        match self.expr_type(call.callee, context) {
+            Type::Function(function) => function.variant,
+            _ => None,
+        }
+    }
 
-            let name = func_group.name.map(|(key, ..)| context.lookup(key));
-            for (i, function_expr) in func_group.overloads.iter().enumerate() {
-                let func_id: FuncId = (self.module_id, func_count).into();
-                if let Some(entry_point) = func_group.entry_point {
-                    // assumption: entry point functions cannot be overloaded
-                    // enforced by HIR / type checking
-                    self.entry_points.insert(entry_point, func_id);
+    pub(crate) fn construct_module(
+        mut self,
+        module: &hir::Module,
+        context: &mut Context,
+    ) -> Module {
+        let function_groups = module
+            .exprs
+            .iter()
+            .filter_map(|expr_idx| match context.expr(*expr_idx) {
+                Expr::VarDef(var_def) => match context.expr(var_def.value) {
+                    Expr::Function(function) => Some((var_def.symbol, function.clone())),
+                    _ => None,
+                },
+                Expr::TypeStatement(_) => None,
+                _ => {
+                    unreachable!("MIR module items must be function definitions or type statements")
                 }
+            })
+            .collect_vec();
 
-                self.functions_map
-                    .entry(var_def.symbol)
-                    .or_default()
-                    .push(func_id);
-                let func = Function::new(func_id);
-                self.current_block = func.entry_block();
-                self.current_function = self.functions.alloc(func);
-                let name = name.map(|n| {
-                    if i == 0 {
-                        n.to_string()
+        for (symbol, function_group) in function_groups {
+            let base_name = function_group
+                .name
+                .map(|(key, _)| context.lookup(key).to_owned());
+
+            for (overload_index, function_expr) in function_group.overloads.iter().enumerate() {
+                let overload_index = overload_index as u32;
+                let name = base_name.as_ref().map(|name| {
+                    if overload_index == 0 {
+                        name.clone()
                     } else {
-                        format!("{n}${i}")
+                        format!("{name}${overload_index}")
                     }
                 });
-                self.function_names.insert(func_id, name.clone());
-                self.construct_function(function_expr, name, context);
-                func_count += 1;
+
+                if !function_expr.type_params.is_empty() {
+                    self.parameterized_functions.insert(
+                        (symbol, overload_index),
+                        ParameterizedFunctionTemplate {
+                            function: function_expr.clone(),
+                            name,
+                        },
+                    );
+                    continue;
+                }
+
+                let func_id = self.allocate_func_id();
+                if let Some(entry_point) = function_group.entry_point {
+                    self.entry_points.insert(entry_point, func_id);
+                }
+                self.functions_map.insert((symbol, overload_index), func_id);
+                self.construct_function_instance(func_id, function_expr, name, context);
             }
         }
 
+        while let Some(instance) = self.pending_parameterized_instances.pop_front() {
+            let expr_type_overrides = context.instantiate_expr_types(&instance.substitutions);
+            let call_type_arg_overrides =
+                context.instantiate_call_type_args(&instance.substitutions);
+            let value_type_overrides = context.instantiate_value_types(&instance.substitutions);
+            self.expr_type_overrides = expr_type_overrides;
+            self.call_type_arg_overrides = call_type_arg_overrides;
+            self.value_type_overrides = value_type_overrides;
+            self.construct_function_instance(
+                instance.func_id,
+                &instance.function,
+                instance.name,
+                context,
+            );
+            self.expr_type_overrides.clear();
+            self.call_type_arg_overrides.clear();
+            self.value_type_overrides.clear();
+        }
+
         self.build()
+    }
+
+    fn allocate_func_id(&mut self) -> FuncId {
+        let func_id = (self.module_id, self.next_function_index).into();
+        self.next_function_index += 1;
+        func_id
+    }
+
+    fn construct_function_instance(
+        &mut self,
+        func_id: FuncId,
+        function_expr: &hir::FunctionExpr,
+        name: Option<String>,
+        context: &Context,
+    ) {
+        let func = Function::new(func_id);
+        self.current_block = func.entry_block();
+        self.current_function = self.functions.alloc(func);
+        self.function_names.insert(func_id, name.clone());
+        self.construct_function(function_expr, name, context);
+    }
+
+    fn ensure_generic_instance(
+        &mut self,
+        symbol: ValueSymbol,
+        signature_index: u32,
+        type_args: &[Idx<Type>],
+        context: &Context,
+    ) -> FuncId {
+        let type_args = type_args.to_vec().into_boxed_slice();
+        let key = ParameterizedInstanceKey {
+            symbol,
+            signature_index,
+            type_args: type_args.clone(),
+        };
+        if let Some(func_id) = self.parameterized_instances.get(&key) {
+            return *func_id;
+        }
+
+        let template = self
+            .parameterized_functions
+            .get(&(symbol, signature_index))
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "MIR monomorphization could not find generic function template for {symbol:?} signature {signature_index}"
+                )
+            });
+        assert_eq!(
+            template.function.type_params.len(),
+            type_args.len(),
+            "HIR generic call arguments must match the function's type parameter count"
+        );
+
+        let substitutions = template
+            .function
+            .type_params
+            .iter()
+            .copied()
+            .zip(type_args.iter().copied())
+            .collect_vec()
+            .into_boxed_slice();
+        let func_id = self.allocate_func_id();
+        self.parameterized_instances.insert(key.clone(), func_id);
+
+        let instance_name = template.name.map(|name| {
+            let args = type_args
+                .iter()
+                .map(|ty| context.type_(*ty).display(context).replace(' ', "_"))
+                .join("$");
+            let candidate = format!("{name}${args}");
+            let name_is_reserved = self
+                .function_names
+                .values()
+                .any(|existing| existing.as_deref() == Some(candidate.as_str()))
+                || self
+                    .pending_parameterized_instances
+                    .iter()
+                    .any(|instance| instance.name.as_deref() == Some(candidate.as_str()));
+            if name_is_reserved {
+                let (_, func_index): (u32, u32) = func_id.into();
+                format!("{candidate}${func_index}")
+            } else {
+                candidate
+            }
+        });
+        self.pending_parameterized_instances
+            .push_back(PendingGenericInstance {
+                func_id,
+                function: template.function,
+                name: instance_name,
+                substitutions,
+            });
+        func_id
     }
 
     // construct into existing allocated Function
@@ -94,7 +238,7 @@ impl Builder {
         let func: &mut Function = self.current_function_mut();
         func.name = name;
 
-        let return_ty = context.expr_type_idx(*body);
+        let return_ty = self.expr_type_idx(*body, context);
         self.construct_local(return_ty, None, Mutability::Mut);
 
         for param in params.iter() {
@@ -111,9 +255,9 @@ impl Builder {
     }
 
     fn construct_param(&mut self, param: &FunctionParam, context: &Context) {
-        let ty_idx = context.type_idx_of_value(&param.symbol);
+        let ty_idx = self.value_type_idx(param.symbol, context);
         self.current_function_mut().params.push(ty_idx);
-        let ty = context.type_idx_of_value(&param.symbol);
+        let ty = self.value_type_idx(param.symbol, context);
         // TODO: mutability
         self.construct_local(ty, Some(param.symbol), Mutability::Not);
     }
@@ -237,7 +381,7 @@ impl Builder {
 
     fn construct_var_def(&mut self, var_def: &VarDefExpr, context: &Context) {
         // TODO: capture mutability in parser, AST, HIR, and through here
-        let ty = context.expr_type_idx(var_def.value);
+        let ty = self.expr_type_idx(var_def.value, context);
         if context.type_is_function(ty) {
             // self.functions_map.insert(k, v)
             todo!("handle local functions")
@@ -288,14 +432,15 @@ impl Builder {
 
             Expr::Call(call) => {
                 if list_builtin_name(call, context).is_some() {
-                    self.construct_list_call(call, assign_to, context);
+                    self.construct_list_call(statement_idx, call, assign_to, context);
                 } else if let Some(binop) = try_get_binop(call, context) {
                     let rvalue = self.construct_binop(&binop, context);
                     if let Some(assign_place) = assign_to {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
                         self.current_block_mut().statements.push(assign);
                     };
-                } else if let Some((variant_ty, variant_idx, key)) = call.is_union_variant(context)
+                } else if let Some((variant_ty, variant_idx, key)) =
+                    self.call_union_variant(call, context)
                 {
                     // TODO - indexing is probably wrong here, when there could be multiple "args"
                     let operand = self
@@ -303,7 +448,7 @@ impl Builder {
                         .as_operand();
 
                     let mut namespace: Option<Key> = None;
-                    let union_ty = context.type_(call.return_ty(context));
+                    let union_ty = self.expr_type(statement_idx, context);
                     if let Type::Sum(sum_type) = union_ty {
                         if let Some(symbol) = sum_type.name {
                             namespace = Some(context.type_symbol_key(symbol));
@@ -321,7 +466,7 @@ impl Builder {
                         self.current_block_mut().statements.push(assign);
                     };
                 } else {
-                    self.construct_call_terminator(call, assign_to, context);
+                    self.construct_call_terminator(statement_idx, call, assign_to, context);
                 };
             }
 
@@ -439,11 +584,12 @@ impl Builder {
 
     fn construct_call_terminator(
         &mut self,
+        call_expr_idx: Idx<Expr>,
         call: &hir::CallExpr,
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Place {
-        let ty = call.return_ty(context);
+        let ty = self.expr_type_idx(call_expr_idx, context);
         let destination = match assign_to {
             Some(assign_place) => assign_place.clone(),
             None => self
@@ -462,7 +608,8 @@ impl Builder {
         let signature_index = call
             .signature_index
             .expect("signature to have been resolved in HIR");
-        let callee = self.construct_callee(call.callee, signature_index, context);
+        let type_args = self.call_type_args(call_expr_idx, call);
+        let callee = self.construct_callee(call.callee, signature_index, &type_args, context);
         let func = match callee {
             Callee::Direct(func_id) => Operand::Constant(func_id.into()),
             // TODO: confirm if Copy is fine? It should never be Move probably
@@ -489,13 +636,19 @@ impl Builder {
 
     fn construct_call_operand(
         &mut self,
+        call_expr_idx: Idx<Expr>,
         call: &CallExpr,
         ty: Idx<Type>,
         assign_to: &Option<Place>,
         context: &Context,
     ) -> OperandOrPlace {
         let place = if list_builtin_name(call, context).is_some() {
-            return OperandOrPlace::from(self.construct_list_call(call, assign_to, context));
+            return OperandOrPlace::from(self.construct_list_call(
+                call_expr_idx,
+                call,
+                assign_to,
+                context,
+            ));
         } else if let Some(binop) = try_get_binop(call, context) {
             let assign_place = match assign_to {
                 Some(assign_place) => assign_place.clone(),
@@ -508,7 +661,7 @@ impl Builder {
             self.current_block_mut().statements.push(assign);
 
             assign_place
-        } else if let Some(variant_ty) = call.is_union_variant(context) {
+        } else if self.call_union_variant(call, context).is_some() {
             let assign_place = match assign_to {
                 Some(assign_place) => assign_place.clone(),
                 // New / temp local to hold the Rvalue
@@ -516,7 +669,7 @@ impl Builder {
             };
             todo!()
         } else {
-            self.construct_call_terminator(call, assign_to, context)
+            self.construct_call_terminator(call_expr_idx, call, assign_to, context)
         };
 
         OperandOrPlace::from(place)
@@ -526,6 +679,7 @@ impl Builder {
     /// for functions that do not exist as user-defined MIR functions.
     fn construct_list_call(
         &mut self,
+        call_expr_idx: Idx<Expr>,
         call: &CallExpr,
         assign_to: &Option<Place>,
         context: &Context,
@@ -534,7 +688,7 @@ impl Builder {
 
         match name.as_str() {
             "list_new" => {
-                let return_ty = call.return_ty(context);
+                let return_ty = self.expr_type_idx(call_expr_idx, context);
                 let destination = assign_to.clone().unwrap_or_else(|| {
                     self.construct_local(return_ty, call.symbol, Mutability::Not)
                         .into()
@@ -598,14 +752,18 @@ impl Builder {
         &mut self,
         callee: Idx<Expr>,
         signature_index: u32,
+        type_args: &[Idx<Type>],
         context: &Context,
     ) -> Callee {
         let callee_expr = context.expr(callee);
         match callee_expr {
+            Expr::VarRef(var_ref) if !type_args.is_empty() => Callee::from(
+                self.ensure_generic_instance(var_ref.symbol, signature_index, type_args, context),
+            ),
             Expr::VarRef(var_ref) => self
                 .functions_map
-                .get(&var_ref.symbol)
-                .and_then(|func_ids| func_ids.get(signature_index as usize))
+                .get(&(var_ref.symbol, signature_index))
+                .copied()
                 .map(Callee::from)
                 .unwrap_or_else(|| todo!("grab a local (indirect call)")),
 
@@ -798,7 +956,7 @@ impl Builder {
 
                 self.construct_assign(
                     Rvalue::Use(Operand::Copy(new_place)),
-                    context.type_idx_of_value(&binding.symbol),
+                    self.value_type_idx(binding.symbol, context),
                     Some(binding.symbol),
                 );
 
@@ -954,7 +1112,7 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> OperandOrPlace {
-        let ty = context.expr_type_idx(expr);
+        let ty = self.expr_type_idx(expr, context);
 
         match context.expr(expr) {
             Expr::FloatLiteral(f) => {
@@ -968,7 +1126,7 @@ impl Builder {
             }
             Expr::Unary(_) => todo!(),
             Expr::Block(_) => todo!(),
-            Expr::Call(call) => self.construct_call_operand(call, ty, assign_to, context),
+            Expr::Call(call) => self.construct_call_operand(expr, call, ty, assign_to, context),
             Expr::VarRef(var_ref) => {
                 OperandOrPlace::from(self.construct_var_ref_operand(var_ref, assign_to, context))
             }
@@ -976,7 +1134,7 @@ impl Builder {
                 OperandOrPlace::from(self.construct_path_expr(path_expr, assign_to, context))
             }
             Expr::RecordLiteral(record) => {
-                let record_ty = context.expr_type_idx(expr);
+                let record_ty = self.expr_type_idx(expr, context);
 
                 let assign_place = match assign_to {
                     Some(assign_place) => assign_place.clone(),
@@ -1078,7 +1236,7 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Operand {
-        let operand = match context.expr_type(path_expr.subject) {
+        let operand = match self.expr_type(path_expr.subject, context) {
             Type::Sum(sum_type) => todo!("TODO - determine if this is possible - may not be because you're supposed to deconstruct an instance of the sum type with 'match' because you don't know the fields without checking the discriminant first"),
             Type::UnionNamespace(union_namespace_type) => {
                 let member_key = match path_expr.member.map(|member| context.expr(member)) {
@@ -1114,7 +1272,7 @@ impl Builder {
                         match subject_op_or_place {
                             OperandOrPlace::Place(place) => place,
                             OperandOrPlace::Operand(operand) => {
-                                let subject_ty = context.expr_type_idx(path_expr.subject);
+                                let subject_ty = self.expr_type_idx(path_expr.subject, context);
                                 let temp_local = self.construct_local(subject_ty, None, Mutability::Not);
                                 let temp_place: Place = temp_local.into();
                                 let assign = Statement::assign(temp_place.clone(), operand);
@@ -1130,7 +1288,7 @@ impl Builder {
                 // The first "segment" projection is represented by `path_expr.member` (and then further
                 // segments are nested inside `Expr::Path`).
                 let mut current_expr: &hir::PathExpr = path_expr;
-                let mut current_ty = context.expr_type(current_expr.subject);
+                let mut current_ty = self.expr_type(current_expr.subject, context);
 
                 loop {
                     let Some(member_idx) = current_expr.member else {
@@ -1251,7 +1409,7 @@ fn list_builtin_name(call: &CallExpr, context: &Context) -> Option<String> {
         return None;
     };
     let name = context.value_symbol_str(var_ref.symbol);
-    if matches!(name, "list_new" | "list_push") {
+    if matches!(name, "list_new" | "list_push" | "list_len") {
         Some(name.to_owned())
     } else if context.builtin_id(var_ref.symbol) == Some(hir::BuiltinId::ListLen) {
         Some("list_len".to_owned())

@@ -72,6 +72,8 @@ pub struct CoreKeys {
     pub list_push: Key,
     /// `list_len`
     pub list_len: Key,
+    /// Internal name used for compiler-provided list-operation type parameters.
+    pub list_element_type_parameter: Key,
     /// `args`
     pub args: Key,
     /// `main`
@@ -137,6 +139,7 @@ impl CoreKeys {
             list_new: interner.intern("list_new"),
             list_push: interner.intern("list_push"),
             list_len: interner.intern("list_len"),
+            list_element_type_parameter: interner.intern("__ListElement"),
         }
     }
 }
