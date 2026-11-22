@@ -73,7 +73,9 @@ pub(crate) const ALLOC_OBJECT: &str = "__alloc_object";
 pub(crate) const PRINT_STRING: &str = "__print_string";
 pub(crate) const ENTER_FRAME: &str = "__hopper_enter_frame";
 pub(crate) const LEAVE_FRAME: &str = "__hopper_leave_frame";
-pub(crate) const LIST_PUSH: &str = "__list_push";
+pub(crate) const ARRAY_NEW: &str = "__array_new";
+pub(crate) const ARRAY_RESERVE: &str = "__array_reserve";
+pub(crate) const ARRAY_WRITE_NEXT: &str = "__array_write_next";
 
 /// Only `MayCollect` entries may invoke the collector.
 /// Its entry address can only come from a runtime shim that captures the Hopper caller.
@@ -104,7 +106,7 @@ pub(crate) struct NativeBuiltin {
 ///
 /// This may change in the future, we don't yet have a way for users to
 /// register custom native entry points and it's not prioritized at the moment
-pub(crate) fn native_builtins() -> [NativeBuiltin; 9] {
+pub(crate) fn native_builtins() -> [NativeBuiltin; 11] {
     [
         NativeBuiltin {
             name: ENTER_FRAME,
@@ -155,10 +157,22 @@ pub(crate) fn native_builtins() -> [NativeBuiltin; 9] {
             entry: NativeEntry::NoGc(print_bool as *const u8),
         },
         NativeBuiltin {
-            name: LIST_PUSH,
-            params: &[I64, I64, I64, I64],
+            name: ARRAY_NEW,
+            params: &[I64, I64, I64],
             returns: &[I64],
-            entry: NativeEntry::MayCollect(runtime::ffi::list_push_entry()),
+            entry: NativeEntry::MayCollect(runtime::ffi::array_new_entry()),
+        },
+        NativeBuiltin {
+            name: ARRAY_RESERVE,
+            params: &[I64, I64, I64, I64],
+            returns: &[],
+            entry: NativeEntry::MayCollect(runtime::ffi::array_reserve_entry()),
+        },
+        NativeBuiltin {
+            name: ARRAY_WRITE_NEXT,
+            params: &[I64, I64, I64, I64],
+            returns: &[],
+            entry: NativeEntry::NoGc(runtime::ffi::array_write_next_entry()),
         },
     ]
 }
@@ -212,7 +226,10 @@ mod tests {
                 collecting.push(builtin.name);
             }
         }
-        assert_eq!(collecting, [ALLOC_STRING, ALLOC_OBJECT, LIST_PUSH]);
+        assert_eq!(
+            collecting,
+            [ALLOC_STRING, ALLOC_OBJECT, ARRAY_NEW, ARRAY_RESERVE]
+        );
 
         let string_allocator = native_builtins()
             .into_iter()
@@ -236,15 +253,37 @@ mod tests {
             runtime::ffi::alloc_object_entry().as_ptr()
         );
 
-        let list_push = native_builtins()
+        let array_new = native_builtins()
             .into_iter()
-            .find(|builtin| builtin.name == LIST_PUSH)
+            .find(|builtin| builtin.name == ARRAY_NEW)
             .unwrap();
-        assert_eq!(list_push.params, &[I64, I64, I64, I64]);
-        assert_eq!(list_push.returns, &[I64]);
+        assert_eq!(array_new.params, &[I64, I64, I64]);
+        assert_eq!(array_new.returns, &[I64]);
         assert_eq!(
-            list_push.entry.address(),
-            runtime::ffi::list_push_entry().as_ptr()
+            array_new.entry.address(),
+            runtime::ffi::array_new_entry().as_ptr()
+        );
+
+        let array_reserve = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == ARRAY_RESERVE)
+            .unwrap();
+        assert_eq!(array_reserve.params, &[I64, I64, I64, I64]);
+        assert!(array_reserve.returns.is_empty());
+        assert_eq!(
+            array_reserve.entry.address(),
+            runtime::ffi::array_reserve_entry().as_ptr()
+        );
+
+        let array_write_next = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == ARRAY_WRITE_NEXT)
+            .unwrap();
+        assert_eq!(array_write_next.params, &[I64, I64, I64, I64]);
+        assert!(array_write_next.returns.is_empty());
+        assert_eq!(
+            array_write_next.entry.address(),
+            runtime::ffi::array_write_next_entry()
         );
     }
 }

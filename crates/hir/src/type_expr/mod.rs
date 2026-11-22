@@ -48,6 +48,9 @@ pub enum TypeExpr {
     /// Record type (product type)
     Record(RecordTypeExpr),
 
+    /// Function type annotation, including generic type parameters
+    Function(FunctionTypeExpr),
+
     /// Expression evaluating to the unit type, such as `()`
     Unit,
 
@@ -57,6 +60,13 @@ pub enum TypeExpr {
     // Function(FunctionExpr),
     // // TODO: should If be a special case of Match?
     // If(IfExpr),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionTypeExpr {
+    pub params: Box<[Idx<TypeExpr>]>,
+    pub return_ty: Idx<TypeExpr>,
+    pub type_params: Box<[TypeSymbol]>,
 }
 
 impl TypeExpr {

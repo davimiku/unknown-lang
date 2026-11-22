@@ -1,8 +1,9 @@
 //! Entry point of constructing the MIR (Control Flow Graph) from the root HIR node.
 
 use hir::{
-    CallExpr, Context, ContextDisplay, Expr, FuncSignature, FunctionParam, IfExpr, Key, LoopExpr,
-    MatchExpr, Mutability, Pattern, ReAssignment, Type, ValueSymbol, VarDefExpr,
+    BuiltinId, CallExpr, Context, ContextDisplay, Expr, FuncSignature, FunctionParam, IfExpr, Key,
+    LoopExpr, MatchExpr, Mutability, Pattern, ReAssignment, SourceKind, Type, ValueSymbol,
+    VarDefExpr,
 };
 use itertools::Itertools;
 use la_arena::Idx;
@@ -55,30 +56,62 @@ impl Builder {
         }
     }
 
-    pub(crate) fn construct_module(
+    pub(crate) fn construct_module(self, module: &hir::Module, context: &mut Context) -> Module {
+        self.construct_modules(std::slice::from_ref(module), module, context)
+    }
+
+    pub(crate) fn construct_modules(
         mut self,
-        module: &hir::Module,
+        modules: &[hir::Module],
+        primary_module: &hir::Module,
         context: &mut Context,
     ) -> Module {
-        let function_groups = module
-            .exprs
-            .iter()
-            .filter_map(|expr_idx| match context.expr(*expr_idx) {
-                Expr::VarDef(var_def) => match context.expr(var_def.value) {
-                    Expr::Function(function) => Some((var_def.symbol, function.clone())),
-                    _ => None,
-                },
-                Expr::TypeStatement(_) => None,
-                _ => {
-                    unreachable!("MIR module items must be function definitions or type statements")
+        let mut function_groups = Vec::new();
+        for module in modules {
+            for expr_idx in module.exprs.iter() {
+                match context.expr(*expr_idx) {
+                    Expr::VarDef(var_def) => {
+                        if let Expr::Function(function) = context.expr(var_def.value) {
+                            if module.source_kind == SourceKind::StandardLibrary
+                                && function
+                                    .overloads
+                                    .iter()
+                                    .all(|overload| overload.type_params.is_empty())
+                            {
+                                continue;
+                            }
+                            function_groups.push((module.id, var_def.symbol, function.clone()));
+                        }
+                    }
+                    Expr::TypeStatement(_) => {}
+                    Expr::Empty | Expr::Statement(_)
+                        if module.source_kind == SourceKind::StandardLibrary => {}
+                    Expr::Empty | Expr::Statement(_) => {
+                        unreachable!(
+                            "MIR module items must be function definitions or type statements"
+                        )
+                    }
+                    _ if module.source_kind == SourceKind::StandardLibrary => {}
+                    _ => {
+                        unreachable!(
+                            "MIR module items must be function definitions or type statements"
+                        )
+                    }
                 }
-            })
-            .collect_vec();
+            }
+        }
 
-        for (symbol, function_group) in function_groups {
+        for (module_id, symbol, function_group) in function_groups {
             let base_name = function_group
                 .name
-                .map(|(key, _)| context.lookup(key).to_owned());
+                .map(|(key, _)| context.lookup(key).to_owned())
+                .map(|name| {
+                    if module_id == primary_module.id {
+                        name
+                    } else {
+                        format!("stdlib_{}${name}", module_id.as_u32())
+                    }
+                });
 
             for (overload_index, function_expr) in function_group.overloads.iter().enumerate() {
                 let overload_index = overload_index as u32;
@@ -431,8 +464,8 @@ impl Builder {
             }
 
             Expr::Call(call) => {
-                if list_builtin_name(call, context).is_some() {
-                    self.construct_list_call(statement_idx, call, assign_to, context);
+                if array_builtin_id(call, context).is_some() {
+                    self.construct_array_call(statement_idx, call, assign_to, context);
                 } else if let Some(binop) = try_get_binop(call, context) {
                     let rvalue = self.construct_binop(&binop, context);
                     if let Some(assign_place) = assign_to {
@@ -642,8 +675,8 @@ impl Builder {
         assign_to: &Option<Place>,
         context: &Context,
     ) -> OperandOrPlace {
-        let place = if list_builtin_name(call, context).is_some() {
-            return OperandOrPlace::from(self.construct_list_call(
+        let place = if array_builtin_id(call, context).is_some() {
+            return OperandOrPlace::from(self.construct_array_call(
                 call_expr_idx,
                 call,
                 assign_to,
@@ -675,76 +708,98 @@ impl Builder {
         OperandOrPlace::from(place)
     }
 
-    /// Lower compiler-provided List operations without inventing function IDs
+    /// Lower compiler-provided Array operations without inventing function IDs
     /// for functions that do not exist as user-defined MIR functions.
-    fn construct_list_call(
+    fn construct_array_call(
         &mut self,
         call_expr_idx: Idx<Expr>,
         call: &CallExpr,
         assign_to: &Option<Place>,
         context: &Context,
     ) -> Place {
-        let name = list_builtin_name(call, context).expect("List builtin name");
+        let builtin = array_builtin_id(call, context).expect("Array builtin id");
 
-        match name.as_str() {
-            "list_new" => {
+        match builtin {
+            BuiltinId::ArrayNew => {
                 let return_ty = self.expr_type_idx(call_expr_idx, context);
                 let destination = assign_to.clone().unwrap_or_else(|| {
                     self.construct_local(return_ty, call.symbol, Mutability::Not)
                         .into()
                 });
-                self.current_block_mut()
-                    .statements
-                    .push(Statement::assign(destination.clone(), Rvalue::ListNew));
-                self.def_local(destination.local);
-                destination
-            }
-            "list_len" => {
-                let return_ty = context.core_types().int;
-                let destination = assign_to.clone().unwrap_or_else(|| {
-                    self.construct_local(return_ty, call.symbol, Mutability::Not)
-                        .into()
-                });
-                let list = Operand::from_op_or_place(
+                let capacity = Operand::from_op_or_place(
                     self.construct_operand(call.args[0], &None, context),
                     context,
                 );
                 self.current_block_mut().statements.push(Statement::assign(
                     destination.clone(),
-                    Rvalue::ListLen(list),
+                    Rvalue::ArrayNew(capacity),
                 ));
                 self.def_local(destination.local);
                 destination
             }
-            "list_push" => {
-                let destination = match context.expr(call.args[0]) {
-                    Expr::VarRef(var_ref) => self.find_symbol(var_ref.symbol, context).into(),
-                    _ => panic!("ListPush currently requires a List variable"),
-                };
-                let list = Operand::from_op_or_place(
+            BuiltinId::ArrayLen | BuiltinId::ArrayCapacity => {
+                let return_ty = context.core_types().int;
+                let destination = assign_to.clone().unwrap_or_else(|| {
+                    self.construct_local(return_ty, call.symbol, Mutability::Not)
+                        .into()
+                });
+                let array = Operand::from_op_or_place(
                     self.construct_operand(call.args[0], &None, context),
                     context,
                 );
-                let value = Operand::from_op_or_place(
+                self.current_block_mut().statements.push(Statement::assign(
+                    destination.clone(),
+                    if builtin == BuiltinId::ArrayLen {
+                        Rvalue::ArrayLen(array)
+                    } else {
+                        Rvalue::ArrayCapacity(array)
+                    },
+                ));
+                self.def_local(destination.local);
+                destination
+            }
+            BuiltinId::ArrayReserve => {
+                let array = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                let capacity = Operand::from_op_or_place(
                     self.construct_operand(call.args[1], &None, context),
                     context,
                 );
                 self.current_block_mut()
                     .statements
-                    .push(Statement::ListPush {
-                        list,
-                        value,
-                        destination,
-                    });
-
-                // List push returns Unit. There is no runtime value to assign,
-                // but returning a place keeps operand construction uniform.
+                    .push(Statement::ArrayReserve { array, capacity });
                 assign_to.clone().unwrap_or_else(|| {
                     self.construct_local(context.core_types().unit, call.symbol, Mutability::Not)
                         .into()
                 })
             }
-            _ => unreachable!(),
+            BuiltinId::ArrayWriteNext => {
+                let array = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                let index = Operand::from_op_or_place(
+                    self.construct_operand(call.args[1], &None, context),
+                    context,
+                );
+                let value = Operand::from_op_or_place(
+                    self.construct_operand(call.args[2], &None, context),
+                    context,
+                );
+                self.current_block_mut()
+                    .statements
+                    .push(Statement::ArrayWriteNext {
+                        array,
+                        index,
+                        value,
+                    });
+                assign_to.clone().unwrap_or_else(|| {
+                    self.construct_local(context.core_types().unit, call.symbol, Mutability::Not)
+                        .into()
+                })
+            }
         }
     }
 
@@ -1403,19 +1458,11 @@ impl Builder {
     }
 }
 
-// temporary until List functions (the symbols, at least) are moved to real function definitions
-fn list_builtin_name(call: &CallExpr, context: &Context) -> Option<String> {
+fn array_builtin_id(call: &CallExpr, context: &Context) -> Option<BuiltinId> {
     let Expr::VarRef(var_ref) = context.expr(call.callee) else {
         return None;
     };
-    let name = context.value_symbol_str(var_ref.symbol);
-    if matches!(name, "list_new" | "list_push" | "list_len") {
-        Some(name.to_owned())
-    } else if context.builtin_id(var_ref.symbol) == Some(hir::BuiltinId::ListLen) {
-        Some("list_len".to_owned())
-    } else {
-        None
-    }
+    context.builtin_id(var_ref.symbol)
 }
 
 fn try_get_binop(call: &hir::CallExpr, context: &Context) -> Option<BinOp> {

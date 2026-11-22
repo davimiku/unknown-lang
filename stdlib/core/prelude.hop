@@ -1,16 +1,16 @@
 // This prelude is a special module, the symbols defined here are
 // automatically injected into all modules for symbol resolution
 
-#export type Int = @core/math/int/Int
+#export type Int = @core/num/int/Int
+#export module Int = @core/num/int
 
-#export type Float = @core/math/float/Float
+#export type Float = @core/num/float/Float
+#export module Float = @core/num/float
 
 #export type String = @core/text/string/String
 
 #export type List = @core/collections/list/List
-#export let list_new = @core/collections/list/list_new
-#export let list_push = @core/collections/list/list_push
-#export let list_len = @core/collections/list/list_len
+#export module List = @core/collections/list
 
 // Bool re-exports
 #export type Bool = @core/types/bool/Bool

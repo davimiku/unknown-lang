@@ -14,14 +14,12 @@ use hir::ContextDisplay;
 use crate::display::write_module;
 use crate::Module;
 
-use crate::construct_module;
-
 /// Lowers the provided input to MIR
 ///
 /// Uses "normal mode" which represents a module
 fn check_module(input: &str, expected: &str) {
     let mut context = hir::Context::new(hir::Interner::default());
-    context
+    let mut modules = context
         .load_stdlib()
         .expect("standard library to be available during MIR tests");
     let hir_module = context.load_module(input, hir::SourceKind::User);
@@ -33,7 +31,10 @@ fn check_module(input: &str, expected: &str) {
         }
         assert_eq!(context.diagnostics, vec![]);
     }
-    let (module, context) = construct_module(&hir_module, &mut context);
+    modules.push(hir_module);
+    let primary_module_index = modules.len() - 1;
+    let (module, context) =
+        crate::construct_modules(&modules, &modules[primary_module_index], &mut context);
 
     check(module, context, expected)
 }
@@ -45,13 +46,37 @@ fn check(module: Module, context: &hir::Context, expected: &str) {
 
     let actual = String::from_utf8(w).expect("bytes to be valid UTF-8");
 
-    let actual = actual.trim();
-    let expected = expected.trim();
+    let actual = normalize_type_module_ids(actual.trim());
+    let expected = normalize_type_module_ids(expected.trim());
     if actual != expected {
         eprintln!("expected:\n{expected}");
         eprintln!("actual:\n{actual}");
         eprintln!("diff:");
-        text_diff::print_diff(expected, actual, "");
+        text_diff::print_diff(&expected, &actual, "");
         panic!("Expected did not match actual, see printed diff.");
     }
+}
+
+/// Module ids depend on the standard-library module inventory. The MIR tests
+/// assert lowering behavior, not the allocation order of those modules.
+fn normalize_type_module_ids(input: &str) -> String {
+    let characters: Vec<char> = input.chars().collect();
+    let mut output = String::with_capacity(input.len());
+    let mut index = 0;
+    while index < characters.len() {
+        if characters[index] == '~' {
+            let mut end = index + 1;
+            while end < characters.len() && characters[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > index + 1 && end < characters.len() && characters[end] == '.' {
+                output.push_str("~module.");
+                index = end + 1;
+                continue;
+            }
+        }
+        output.push(characters[index]);
+        index += 1;
+    }
+    output
 }

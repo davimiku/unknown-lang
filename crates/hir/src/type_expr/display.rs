@@ -1,6 +1,7 @@
+use itertools::Itertools;
 use la_arena::Idx;
 
-use crate::type_expr::{RecordTypeExpr, UnionTypeExpr};
+use crate::type_expr::{FunctionTypeExpr, RecordTypeExpr, UnionTypeExpr};
 use crate::{Context, ContextDisplay, COMPILER_BRAND};
 
 use super::{TypeExpr, TypeRefExpr, TypeSymbol, TypeVarDefExpr};
@@ -26,18 +27,10 @@ impl ContextDisplay for TypeExpr {
             TypeExpr::VarRef(type_ref) => type_ref.display(context),
             TypeExpr::UnresolvedVarRef { .. } => todo!(),
 
-            TypeExpr::VarDef(type_var_def) => {
-                let mut s = String::new();
-                let TypeVarDefExpr {
-                    symbol, type_expr, ..
-                } = type_var_def;
-                s.push_str(&symbol.display(context).to_string());
-                s.push_str(" := ");
-                s.push_str(&type_expr.display(context).to_string());
-                s
-            }
+            TypeExpr::VarDef(type_var_def) => type_var_def.display(context),
             TypeExpr::Union(union_type_expr) => union_type_expr.display(context),
             TypeExpr::Record(record_type_expr) => record_type_expr.display(context),
+            TypeExpr::Function(function_type_expr) => function_type_expr.display(context),
             TypeExpr::Call(_) => todo!(),
             TypeExpr::Binary(_) => todo!(),
             TypeExpr::Unary(_) => todo!(),
@@ -59,6 +52,19 @@ impl ContextDisplay for TypeSymbol {
 impl ContextDisplay for TypeRefExpr {
     fn display(&self, context: &Context) -> String {
         self.symbol.display(context)
+    }
+}
+
+impl ContextDisplay for TypeVarDefExpr {
+    fn display(&self, context: &Context) -> String {
+        let mut s = String::new();
+        let TypeVarDefExpr {
+            symbol, type_expr, ..
+        } = self;
+        s.push_str(&symbol.display(context).to_string());
+        s.push_str(" := ");
+        s.push_str(&type_expr.display(context).to_string());
+        s
     }
 }
 
@@ -91,5 +97,17 @@ impl ContextDisplay for RecordTypeExpr {
         }
         s.push_str(" ]");
         s
+    }
+}
+
+impl ContextDisplay for FunctionTypeExpr {
+    fn display(&self, context: &Context) -> String {
+        let params = self
+            .params
+            .iter()
+            .map(|param| param.display(context).to_string())
+            .collect_vec()
+            .join(", ");
+        format!("({params}) -> {}", self.return_ty.display(context))
     }
 }

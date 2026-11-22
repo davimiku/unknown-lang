@@ -30,13 +30,24 @@ global_asm!(
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 global_asm!(
-    ".globl _hopper_list_push_entry",
-    "_hopper_list_push_entry:",
+    ".globl _hopper_array_new_entry",
+    "_hopper_array_new_entry:",
+    "mov x3, sp",
+    "mov x4, x30",
+    "mov x5, x29",
+    "b {impl_fn}",
+    impl_fn = sym super::array_new_impl,
+);
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+global_asm!(
+    ".globl _hopper_array_reserve_entry",
+    "_hopper_array_reserve_entry:",
     "mov x4, sp",
     "mov x5, x30",
     "mov x6, x29",
     "b {impl_fn}",
-    impl_fn = sym super::list_push_impl,
+    impl_fn = sym super::array_reserve_impl,
 );
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -52,13 +63,24 @@ global_asm!(
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 global_asm!(
-    ".globl _hopper_list_push_entry",
-    "_hopper_list_push_entry:",
+    ".globl _hopper_array_new_entry",
+    "_hopper_array_new_entry:",
+    "lea rcx, [rsp + 8]",
+    "mov r8, [rsp]",
+    "mov r9, rbp",
+    "jmp {impl_fn}",
+    impl_fn = sym super::array_new_impl,
+);
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+global_asm!(
+    ".globl _hopper_array_reserve_entry",
+    "_hopper_array_reserve_entry:",
     "lea r8, [rsp + 8]",
     "mov r9, [rsp]",
     "mov [rsp + 8], rbp",
     "jmp {impl_fn}",
-    impl_fn = sym super::list_push_impl,
+    impl_fn = sym super::array_reserve_impl,
 );
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
@@ -74,13 +96,24 @@ global_asm!(
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 global_asm!(
-    ".globl hopper_list_push_entry",
-    "hopper_list_push_entry:",
+    ".globl hopper_array_new_entry",
+    "hopper_array_new_entry:",
+    "mov x3, sp",
+    "mov x4, x30",
+    "mov x5, x29",
+    "b {impl_fn}",
+    impl_fn = sym super::array_new_impl,
+);
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+global_asm!(
+    ".globl hopper_array_reserve_entry",
+    "hopper_array_reserve_entry:",
     "mov x4, sp",
     "mov x5, x30",
     "mov x6, x29",
     "b {impl_fn}",
-    impl_fn = sym super::list_push_impl,
+    impl_fn = sym super::array_reserve_impl,
 );
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
@@ -96,13 +129,24 @@ global_asm!(
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 global_asm!(
-    ".globl hopper_list_push_entry",
-    "hopper_list_push_entry:",
+    ".globl hopper_array_new_entry",
+    "hopper_array_new_entry:",
+    "lea rcx, [rsp + 8]",
+    "mov r8, [rsp]",
+    "mov r9, rbp",
+    "jmp {impl_fn}",
+    impl_fn = sym super::array_new_impl,
+);
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+global_asm!(
+    ".globl hopper_array_reserve_entry",
+    "hopper_array_reserve_entry:",
     "lea r8, [rsp + 8]",
     "mov r9, [rsp]",
     "mov [rsp + 8], rbp",
     "jmp {impl_fn}",
-    impl_fn = sym super::list_push_impl,
+    impl_fn = sym super::array_reserve_impl,
 );
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
@@ -166,15 +210,22 @@ pub(super) fn object_address() -> *const u8 {
 }
 
 unsafe extern "C" {
-    #[link_name = "hopper_list_push_entry"]
-    fn list_push_entry_symbol(
-        list: *mut u8,
-        value: *const u8,
+    #[link_name = "hopper_array_new_entry"]
+    fn array_new_entry_symbol(element_size: i64, capacity: i64, descriptor: *const u8) -> *mut u8;
+
+    #[link_name = "hopper_array_reserve_entry"]
+    fn array_reserve_entry_symbol(
+        array: *mut u8,
+        capacity: i64,
         element_size: i64,
         descriptor: *const u8,
-    ) -> *mut u8;
+    );
 }
 
-pub(super) fn list_push_address() -> *const u8 {
-    list_push_entry_symbol as *const u8
+pub(super) fn array_new_address() -> *const u8 {
+    array_new_entry_symbol as *const u8
+}
+
+pub(super) fn array_reserve_address() -> *const u8 {
+    array_reserve_entry_symbol as *const u8
 }

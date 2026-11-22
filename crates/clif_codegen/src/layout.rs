@@ -131,7 +131,8 @@ pub(crate) fn unsupported_gc_aggregate(context: &Context, ty: Idx<HType>) -> boo
                 }
             }
             // Future arrays and closures cannot be assumed pointer-free.
-            HType::Function(_) | HType::List(_) => None,
+            HType::Function(_) => None,
+            HType::Array(_) => Some(1),
             _ => Some(0),
         };
         visiting.remove(&ty);
@@ -203,7 +204,7 @@ impl FunctionTranslator<'_> {
             HType::UnionNamespace(_) => todo!("something like a product type, maybe"),
             HType::Product(product_type) => self.compute_product_type_layout(product_type),
             HType::Function(_function_type) => todo!(),
-            HType::List(_) => self.layouts[self.layouts.ptr].clone(),
+            HType::Array(_) => self.layouts[self.layouts.ptr].clone(),
             HType::Unit => {
                 panic!();
             }

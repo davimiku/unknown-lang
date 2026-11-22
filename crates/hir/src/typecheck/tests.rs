@@ -86,9 +86,9 @@ fn infer_unit() {
 #[test]
 fn infer_nominal_list_and_builtin_operations() {
     let input = "{
-        let values: List Int = list_new ()
-        list_push (values, 42)
-        list_len values
+        let values: List Int = List.new ()
+        List.push (values, 42)
+        List.len values
     }";
 
     let mut context = Context::new(Interner::default());
@@ -101,7 +101,7 @@ fn infer_nominal_list_and_builtin_operations() {
 fn infer_list_type_application() {
     let mut context = Context::new(Interner::default());
     context.load_stdlib().unwrap();
-    let result = check("let values: List String = list_new ()", &mut context);
+    let result = check("let values: List String = List.new ()", &mut context);
 
     let Type::Unit = context.type_(result.ty) else {
         panic!("list declaration should have unit type")
@@ -109,13 +109,13 @@ fn infer_list_type_application() {
 
     let mut context = Context::new(Interner::default());
     context.load_stdlib().unwrap();
-    let result = check("let values: List (String) = list_new ()", &mut context);
+    let result = check("let values: List (String) = List.new ()", &mut context);
     assert_eq!(context.type_(result.ty), &Type::Unit);
 }
 
 #[test]
 fn generic_call_requires_enough_type_context() {
-    let (_, context) = lower_with_stdlib("let values = list_new ()");
+    let (_, context) = lower_with_stdlib("let values = List.new ()");
     assert!(context.diagnostics.iter().any(|diagnostic| {
         matches!(
             diagnostic,
@@ -131,21 +131,21 @@ fn generic_call_requires_enough_type_context() {
 fn generic_call_infers_type_arguments_from_expected_return_type() {
     let input = r#"
         let make_empty = fun ['A]() -> List 'A {
-            list_new ()
+            List.new ()
         }
         let values: List Int = make_empty ()
 
         let return_empty = fun ['A]() -> List 'A {
-            return list_new ()
+            return List.new ()
         }
         let returned: List Int = return_empty ()
 
         let identity = fun ['A](value: 'A) -> 'A {
             value
         }
-        let nested: List String = identity (list_new ())
-        let selected: List Int = if true { list_new () } else { list_new () }
-        let record: [ values: List Float ] = [ values = list_new () ]
+        let nested: List String = identity (List.new ())
+        let selected: List Int = if true { List.new () } else { List.new () }
+        let record: [ values: List Float ] = [ values = List.new () ]
     "#;
     let (_, context) = lower_with_stdlib(input);
     assert!(
@@ -156,11 +156,33 @@ fn generic_call_infers_type_arguments_from_expected_return_type() {
 }
 
 #[test]
+fn intrinsic_builtin_signature_is_checked_against_hopper_annotation() {
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    context.load_module(
+        "type Array = @core/collections/array/Array\n\
+         #builtin(\"Array.len\")\n\
+         let len: (Array 'A) -> String = intrinsic",
+        crate::SourceKind::StandardLibrary,
+    );
+
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Type(TypeDiagnostic {
+                variant: TypeDiagnosticVariant::TypeMismatch { .. },
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
 fn polymorphic_list_push_checks_the_element_type() {
     let (_, context) = lower_with_stdlib(
         r#"
-            let values: List Int = list_new ()
-            list_push (values, "not an Int")
+            let values: List Int = List.new ()
+            List.push (values, "not an Int")
         "#,
     );
     assert!(context.diagnostics.iter().any(|diagnostic| {

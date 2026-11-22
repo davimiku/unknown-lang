@@ -1,9 +1,7 @@
 use lasso::{Rodeo, Spur};
 
-use crate::{
-    intrinsics::{FLOAT, INT, LIST, STRING},
-    ContextDisplay,
-};
+use crate::intrinsics::{FLOAT, INT, STRING};
+use crate::ContextDisplay;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key(Spur);
@@ -64,16 +62,8 @@ pub struct CoreKeys {
 
     /// `print`
     pub print: Key,
-    /// `List`
-    pub list: Key,
-    /// `list_new`
-    pub list_new: Key,
-    /// `list_push`
-    pub list_push: Key,
-    /// `list_len`
-    pub list_len: Key,
-    /// Internal name used for compiler-provided list-operation type parameters.
-    pub list_element_type_parameter: Key,
+    /// Internal name used for compiler-provided array-operation type parameters.
+    pub array_element_type_parameter: Key,
     /// `args`
     pub args: Key,
     /// `main`
@@ -135,11 +125,7 @@ impl CoreKeys {
             gt: interner.intern(">"),
             ge: interner.intern(">="),
 
-            list: interner.intern(LIST),
-            list_new: interner.intern("list_new"),
-            list_push: interner.intern("list_push"),
-            list_len: interner.intern("list_len"),
-            list_element_type_parameter: interner.intern("__ListElement"),
+            array_element_type_parameter: interner.intern("__ArrayElement"),
         }
     }
 }

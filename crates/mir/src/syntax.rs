@@ -223,11 +223,17 @@ pub enum Statement {
     // Intrinsic(Box<NonDivergingIntrinsic>),
     Intrinsic(Box<()>),
 
-    /// Appends `value` to a compiler-provided `List 'A`.
-    ListPush {
-        list: Operand,
+    /// Ensures the backing buffer for an `Array 'A` can hold capacity
+    ArrayReserve {
+        array: Operand,
+        capacity: Operand,
+    },
+
+    /// Writes the next element into an `Array 'A` and returns its length
+    ArrayWriteNext {
+        array: Operand,
+        index: Operand,
         value: Operand,
-        destination: Place,
     },
     // / This statement exists to preserve a trace of a scrutinee matched against a wildcard binding.
     // / This is especially useful for `let _ = PLACE;` bindings that desugar to a single
@@ -553,11 +559,14 @@ pub enum Rvalue {
     /// Yields the operand unchanged
     Use(Operand),
 
-    /// Creates an empty compiler-provided `List 'A`.
-    ListNew,
+    /// Creates an `Array 'A` handle with the requested initial capacity.
+    ArrayNew(Operand),
 
-    /// Reads the length of a compiler-provided `List 'A`.
-    ListLen(Operand),
+    /// Reads the length of a compiler-provided `Array 'A`.
+    ArrayLen(Operand),
+
+    /// Reads the capacity of a compiler-provided `Array 'A`.
+    ArrayCapacity(Operand),
 
     ///
     UnionVariant(RvalueUnionVariant),

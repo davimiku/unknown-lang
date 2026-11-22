@@ -85,12 +85,36 @@ impl LoweringDiagnostic {
             range,
         }
     }
+
+    pub fn builtin_attribute_not_allowed(range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::BuiltinAttributeNotAllowed,
+            range,
+        }
+    }
+
+    pub fn builtin_attribute_required(range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::BuiltinAttributeRequired,
+            range,
+        }
+    }
+
+    pub fn unknown_builtin(name: String, range: TextRange) -> Self {
+        Self {
+            variant: LoweringDiagnosticVariant::UnknownBuiltin { name },
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum LoweringDiagnosticVariant {
     BreakOutsideLoop,
     UnresolvedImport { path: String },
+    BuiltinAttributeNotAllowed,
+    BuiltinAttributeRequired,
+    UnknownBuiltin { name: String },
     // ReturnOutsideFunction
 }
 

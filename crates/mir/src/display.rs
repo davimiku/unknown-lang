@@ -232,9 +232,21 @@ impl MirWrite for Statement {
             Statement::StorageLive(..) => todo!(),
             Statement::StorageDead(..) => todo!(),
             Statement::Intrinsic(..) => todo!(),
-            Statement::ListPush { list, value, .. } => {
-                write!(buf, "list_push ")?;
-                list.write(buf, module, context, indent)?;
+            Statement::ArrayReserve { array, capacity } => {
+                write!(buf, "array_reserve ")?;
+                array.write(buf, module, context, indent)?;
+                write!(buf, ", ")?;
+                capacity.write(buf, module, context, indent)
+            }
+            Statement::ArrayWriteNext {
+                array,
+                index,
+                value,
+            } => {
+                write!(buf, "array_write_next ")?;
+                array.write(buf, module, context, indent)?;
+                write!(buf, ", ")?;
+                index.write(buf, module, context, indent)?;
                 write!(buf, ", ")?;
                 value.write(buf, module, context, indent)
             }
@@ -390,9 +402,16 @@ impl MirWrite for Rvalue {
     ) -> io::Result<()> {
         match self {
             Rvalue::Use(op) => op.write(buf, module, context, indent),
-            Rvalue::ListNew => write!(buf, "list_new ()"),
-            Rvalue::ListLen(op) => {
-                write!(buf, "list_len ")?;
+            Rvalue::ArrayNew(capacity) => {
+                write!(buf, "array_new ")?;
+                capacity.write(buf, module, context, indent)
+            }
+            Rvalue::ArrayLen(op) => {
+                write!(buf, "array_len ")?;
+                op.write(buf, module, context, indent)
+            }
+            Rvalue::ArrayCapacity(op) => {
+                write!(buf, "array_capacity ")?;
                 op.write(buf, module, context, indent)
             }
             Rvalue::BinaryOp(binop, ops) => {

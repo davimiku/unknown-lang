@@ -28,11 +28,12 @@ pub use lowering_context::{Context, COMPILER_BRAND};
 pub use module_tree::{ModuleExports, ModuleId, ModuleNode};
 pub use type_expr::TypeSymbol;
 pub use typecheck::{
-    CoreTypes, FuncSignature, FunctionType, ListType, ProductType, SumType, Type, VariantIdx,
+    ArrayType, CoreTypes, FuncSignature, FunctionType, ProductType, SumType, Type, VariantIdx,
     VecVariantIdx,
 };
 
 use database::Database;
+use diagnostic::LoweringDiagnostic;
 
 pub use interner::{Interner, Key};
 use la_arena::Idx;
@@ -117,6 +118,9 @@ impl Context {
 
         let ast = parse(input);
         self.module_tree.set_source_kind(module_id, source_kind);
+        if source_kind == SourceKind::User {
+            reject_userland_builtin_attributes(self, &ast);
+        }
 
         let exprs: Vec<Idx<Expr>> = ast
             .exprs()
@@ -263,9 +267,18 @@ fn is_prelude(path: &Path) -> bool {
     path.file_name().is_some_and(|name| name == "prelude.hop")
 }
 
+fn reject_userland_builtin_attributes(context: &mut Context, ast: &Root) {
+    for range in ast.builtin_attribute_ranges() {
+        context
+            .diagnostics
+            .push(LoweringDiagnostic::builtin_attribute_not_allowed(range).into());
+    }
+}
+
 /// In "function mode", the only top-level expression is a function expression
 pub fn lower_function(input: &str) -> (Idx<Expr>, Context) {
     let (ast, mut context) = parse_with_context(input);
+    reject_userland_builtin_attributes(&mut context, &ast);
 
     let ast_function = ast
         .exprs()
@@ -286,6 +299,7 @@ pub fn lower_function(input: &str) -> (Idx<Expr>, Context) {
 /// "main" function
 pub fn lower_script(input: &str) -> (Idx<Expr>, Context) {
     let (ast, mut context) = parse_with_context(input);
+    reject_userland_builtin_attributes(&mut context, &ast);
 
     let exprs: Vec<Idx<Expr>> = ast
         .exprs()

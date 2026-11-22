@@ -3,7 +3,8 @@ use std::fmt::{self, Display};
 use parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use text_size::TextRange;
 
-use crate::{attributes::has_export_attribute, TypeExpr};
+use crate::attributes::{attribute, has_export_attribute, string_argument, BUILTIN_ATTRIBUTE};
+use crate::TypeExpr;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -559,6 +560,14 @@ impl LetBinding {
     /// Whether this binding is preceded by the `#export` attribute
     pub fn is_exported(&self) -> bool {
         has_export_attribute(&self.0)
+    }
+
+    pub fn has_builtin_attribute(&self) -> bool {
+        attribute(&self.0, BUILTIN_ATTRIBUTE).is_some()
+    }
+
+    pub fn builtin_attribute_value(&self) -> Option<String> {
+        string_argument(&self.0, BUILTIN_ATTRIBUTE)
     }
 
     pub fn mutability(&self) -> Mutability {
