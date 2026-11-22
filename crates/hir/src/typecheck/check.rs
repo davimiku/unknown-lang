@@ -69,7 +69,7 @@ pub(crate) fn is_subtype(a: Idx<Type>, b: Idx<Type>, context: &Context) -> bool 
         (Type::StringLiteral(_), Type::String) => true,
         (Type::StringLiteral(a), Type::StringLiteral(b)) => a == b,
 
-        (Type::List(a), Type::List(b)) => is_subtype(a.of, b.of, context),
+        (Type::Array(a), Type::Array(b)) => is_subtype(a.of, b.of, context),
 
         (Type::Function(a), Type::Function(b)) => is_function_subtype(a, b, context),
 
@@ -109,6 +109,9 @@ fn is_function_subtype(a: &FunctionType, b: &FunctionType, context: &Context) ->
 }
 
 fn is_signature_subtype(a: &FuncSignature, b: &FuncSignature, context: &Context) -> bool {
+    if a.params.len() != b.params.len() || a.type_params.len() != b.type_params.len() {
+        return false;
+    }
     let params_check = a
         .params
         .iter()

@@ -15,17 +15,17 @@ use super::check::is_subtype;
 use super::types::FuncSignature;
 use super::widen::widen_to_scalar;
 use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult};
-use crate::builtins::signature;
+use crate::builtins::{signature, ARRAY_ELEMENT_TYPE_PARAMETER};
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
     LoopExpr, MatchExpr, PathExpr, ReAssignment, RecordLiteralExpr, UnaryExpr, UnaryOp, VarDefExpr,
     VarRefExpr,
 };
 use crate::interner::Key;
-use crate::intrinsics::{FLOAT, INT, LIST, STRING};
+use crate::intrinsics::{ARRAY, FLOAT, INT, STRING};
 use crate::type_expr::{CallExpr as TypeCallExpr, TypeExpr, TypeRefExpr, TypeVarDefExpr};
 use crate::typecheck::types::UnionNamespaceType;
-use crate::{CallExpr, Context, FunctionType, ListType, Module, Pattern, TypeSymbol};
+use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern, TypeSymbol, ValueSymbol};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -79,33 +79,34 @@ pub(crate) fn infer_expr(expr_idx: Idx<Expr>, context: &mut Context) -> TypeResu
                 .get(&symbol)
                 .copied()
                 .expect("intrinsic expression to have a builtin id");
-            let list_element_ty = context
+            let array_element_ty = context
                 .type_database
                 .type_symbols
-                .get(&crate::builtins::LIST_ELEMENT_TYPE_PARAMETER)
+                .get(&ARRAY_ELEMENT_TYPE_PARAMETER)
                 .copied()
                 .unwrap_or_else(|| {
-                    let ty = context.type_database.alloc_type(Type::TypeParameter(
-                        crate::builtins::LIST_ELEMENT_TYPE_PARAMETER,
-                    ));
+                    let ty = context
+                        .type_database
+                        .alloc_type(Type::TypeParameter(ARRAY_ELEMENT_TYPE_PARAMETER));
                     context
                         .type_database
-                        .insert_type_symbol(crate::builtins::LIST_ELEMENT_TYPE_PARAMETER, ty);
-                    let key = context.interner.core_keys().list_element_type_parameter;
+                        .insert_type_symbol(ARRAY_ELEMENT_TYPE_PARAMETER, ty);
+                    let key = context.interner.core_keys().array_element_type_parameter;
                     context
                         .database
                         .type_names
-                        .insert(crate::builtins::LIST_ELEMENT_TYPE_PARAMETER, key);
+                        .insert(ARRAY_ELEMENT_TYPE_PARAMETER, key);
                     ty
                 });
-            let list_ty = context.type_database.alloc_type(Type::List(ListType {
-                of: list_element_ty,
+            let array_ty = context.type_database.alloc_type(Type::Array(ArrayType {
+                of: array_element_ty,
             }));
             result.ty = context.type_database.alloc_type(signature(
                 builtin,
                 context.core_types(),
-                list_element_ty,
-                list_ty,
+                ARRAY_ELEMENT_TYPE_PARAMETER,
+                array_element_ty,
+                array_ty,
             ));
         }
 
@@ -210,6 +211,7 @@ pub(crate) fn infer_expr_expected(
     let expr = context.expr(expr_idx).clone();
     let result = match expr {
         Expr::Call(call) => infer_call(expr_idx, &call, Some(expected), context),
+        Expr::Intrinsic(symbol) => infer_intrinsic_expected(expr_idx, symbol, expected, context),
         Expr::ReturnStatement(value) => {
             let mut result = infer_expr_expected(value, expected, context);
             result.ty = context.core_types().bottom;
@@ -246,6 +248,50 @@ pub(crate) fn infer_expr_expected(
     };
     context.type_database.set_expr_type(expr_idx, result.ty);
     result
+}
+
+fn infer_intrinsic_expected(
+    expr_idx: Idx<Expr>,
+    symbol: ValueSymbol,
+    expected: Idx<Type>,
+    context: &mut Context,
+) -> TypeResult {
+    let Some(builtin) = context.builtin_id(symbol) else {
+        return infer_expr(expr_idx, context);
+    };
+    let type_parameter = match context.type_(expected) {
+        Type::Function(function) => function.signatures[0]
+            .type_params
+            .first()
+            .copied()
+            .unwrap_or(ARRAY_ELEMENT_TYPE_PARAMETER),
+        _ => ARRAY_ELEMENT_TYPE_PARAMETER,
+    };
+    let array_element_ty = context
+        .type_database
+        .type_symbols
+        .get(&type_parameter)
+        .copied()
+        .unwrap_or_else(|| {
+            let ty = context
+                .type_database
+                .alloc_type(Type::TypeParameter(type_parameter));
+            context.type_database.insert_type_symbol(type_parameter, ty);
+            ty
+        });
+    let array_ty = context.type_database.alloc_type(Type::Array(ArrayType {
+        of: array_element_ty,
+    }));
+    context
+        .type_database
+        .alloc_type(signature(
+            builtin,
+            context.core_types(),
+            type_parameter,
+            array_element_ty,
+            array_ty,
+        ))
+        .into()
 }
 
 /// Infers a type, and if it is a literal type, then widen to the
@@ -323,7 +369,7 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 INT => context.core_types().int,
                 FLOAT => context.core_types().float,
                 STRING => context.core_types().string,
-                LIST => context.type_database.alloc_type(Type::List(ListType {
+                ARRAY => context.type_database.alloc_type(Type::Array(ArrayType {
                     of: context.core_types().unknown,
                 })),
                 _ => context.core_types().top,
@@ -403,6 +449,39 @@ fn infer_type_expr(idx: Idx<TypeExpr>, context: &mut Context) -> TypeResult {
                 context,
             ));
 
+            result
+        }
+        TE::Function(function) => {
+            let mut result = TypeResult::new(&context.type_database);
+            for param in function.type_params.iter() {
+                if !context.type_database.type_symbols.contains_key(param) {
+                    let ty = context
+                        .type_database
+                        .alloc_type(Type::TypeParameter(*param));
+                    context.type_database.insert_type_symbol(*param, ty);
+                }
+            }
+
+            let params = function
+                .params
+                .iter()
+                .map(|param| {
+                    let inferred = infer_type_expr(*param, context);
+                    let ty = inferred.ty;
+                    result.chain(inferred);
+                    ty
+                })
+                .collect_vec();
+            let return_type = infer_type_expr(function.return_ty, context);
+            let return_ty = return_type.ty;
+            result.chain(return_type);
+            result.ty = context
+                .type_database
+                .alloc_type(Type::func(vec![FuncSignature {
+                    params: params.into_boxed_slice(),
+                    return_ty,
+                    type_params: function.type_params.clone(),
+                }]));
             result
         }
         TE::Binary(_) => todo!(),
@@ -944,7 +1023,7 @@ fn contains_unresolved_type_parameters(
                 .any(|param| contains_unresolved_type_parameters(*param, type_params, context))
                 || contains_unresolved_type_parameters(signature.return_ty, type_params, context)
         }),
-        Type::List(list) => contains_unresolved_type_parameters(list.of, type_params, context),
+        Type::Array(array) => contains_unresolved_type_parameters(array.of, type_params, context),
         _ => false,
     }
 }
@@ -1011,7 +1090,7 @@ fn constrain_generic_type(
                     },
                 )
         }
-        (Type::List(pattern), Type::List(actual)) => {
+        (Type::Array(pattern), Type::Array(actual)) => {
             constrain_generic_type(pattern.of, actual.of, type_params, substitutions, context)
         }
         _ => is_subtype(actual, pattern, context),
@@ -1198,13 +1277,13 @@ fn infer_index_int_expr(index_expr: &IndexIntExpr, context: &mut Context) -> Typ
 
 fn infer_type_call(idx: Idx<TypeExpr>, call: &TypeCallExpr, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
-    if call.path == LIST && call.args.len() == 1 {
+    if call.path == ARRAY && call.args.len() == 1 {
         let element = infer_type_expr(call.args[0], context);
         result.chain(element);
         if result.is_ok() {
             result.ty = context
                 .type_database
-                .alloc_type(Type::List(ListType { of: result.ty }));
+                .alloc_type(Type::Array(ArrayType { of: result.ty }));
         }
     } else if let Some(symbol) = call.symbol {
         if let Some(alias) = context.type_database.type_aliases.get(&symbol).cloned() {
@@ -1312,13 +1391,13 @@ pub(crate) fn substitute_type(
             }
             context.type_database.alloc_type(Type::Function(function))
         }
-        Type::List(mut list) => {
-            let substituted = substitute_type(list.of, substitutions, context);
-            if substituted == list.of {
+        Type::Array(mut array) => {
+            let substituted = substitute_type(array.of, substitutions, context);
+            if substituted == array.of {
                 return ty_idx;
             }
-            list.of = substituted;
-            context.type_database.alloc_type(Type::List(list))
+            array.of = substituted;
+            context.type_database.alloc_type(Type::Array(array))
         }
         _ => ty_idx,
     }

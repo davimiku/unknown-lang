@@ -77,6 +77,41 @@ fn int_let_mut_binding_with_type_annotation() {
 }
 
 #[test]
+fn let_binding_exposes_function_type_annotation() {
+    let parsed = parse_expr("let len: (List 'A) -> Int = intrinsic");
+    let binding = assert_matches!(parsed, Expr::LetBinding);
+    let function = assert_matches!(assert_some!(binding.type_annotation()), TypeExpr::Function);
+    assert_eq!(function.param_list().len(), 1);
+    assert_eq!(function.type_params(), vec!["'A".to_owned()]);
+    assert!(matches!(
+        assert_some!(function.return_type()),
+        TypeExpr::Ident(_)
+    ));
+}
+
+#[test]
+fn let_binding_exposes_builtin_attribute_argument() {
+    let parse =
+        parser::parse("#export\n#builtin(\"Array.new\")\nlet new: (Int) -> Array 'A = intrinsic");
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let root = crate::Root::cast(parse.syntax()).expect("a root node");
+    let binding = root
+        .exprs()
+        .find_map(|expr| match expr {
+            Expr::LetBinding(binding) => Some(binding),
+            _ => None,
+        })
+        .expect("a let binding");
+
+    assert!(binding.is_exported());
+    assert!(binding.has_builtin_attribute());
+    assert_eq!(
+        binding.builtin_attribute_value().as_deref(),
+        Some("Array.new")
+    );
+}
+
+#[test]
 fn let_binding_can_import_a_value() {
     let parsed = parse_expr("let sqrt = @core/math/sqrt");
     let binding = assert_matches!(parsed, Expr::LetBinding);

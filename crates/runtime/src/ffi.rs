@@ -3,9 +3,9 @@ use std::cell::{Cell, RefCell};
 use std::slice;
 
 use crate::frame_walk::StackRootSet;
-use crate::memory_recycling::{GcHeader, TypeDescriptor};
+use crate::memory_recycling::{GcHeader, GcRef, RootSet, RootVisitor, TypeDescriptor};
 use crate::string::HopperString;
-use crate::{execution, list, runtime};
+use crate::{array, execution, runtime};
 
 pub type RawGcRef = *mut GcHeader;
 
@@ -89,8 +89,16 @@ pub fn alloc_object_entry() -> GcEntryAddress {
     GcEntryAddress(alloc_entry::object_address())
 }
 
-pub fn list_push_entry() -> GcEntryAddress {
-    GcEntryAddress(alloc_entry::list_push_address())
+pub fn array_new_entry() -> GcEntryAddress {
+    GcEntryAddress(alloc_entry::array_new_address())
+}
+
+pub fn array_reserve_entry() -> GcEntryAddress {
+    GcEntryAddress(alloc_entry::array_reserve_address())
+}
+
+pub fn array_write_next_entry() -> *const u8 {
+    array_write_next_impl as *const u8
 }
 
 /// Captured from the Hopper call site, before entering any Rust stack frames
@@ -380,27 +388,100 @@ pub(super) extern "C" fn alloc_object_impl(
         .as_ptr()
 }
 
-pub(super) extern "C" fn list_push_impl(
-    list: RawGcRef,
-    value: *const u8,
+pub(super) extern "C" fn array_new_impl(
     element_size: i64,
+    capacity: i64,
     descriptor: *const TypeDescriptor,
     caller_sp: usize,
     return_address: usize,
     caller_fp: usize,
 ) -> RawGcRef {
     let element_size = usize::try_from(element_size).unwrap_or_else(|_| {
-        eprintln!("Hopper List allocation: invalid element size");
+        eprintln!("Array allocation: invalid element size");
         std::process::abort();
     });
-    if list.is_null() || value.is_null() || descriptor.is_null() || element_size == 0 {
-        eprintln!("Hopper List push: invalid arguments");
+    let capacity = usize::try_from(capacity).unwrap_or_else(|_| {
+        eprintln!("Array allocation: invalid capacity");
+        std::process::abort();
+    });
+    if descriptor.is_null() || element_size == 0 {
+        eprintln!("Array allocation: invalid arguments");
         std::process::abort();
     }
 
     let runtime = runtime();
     let mut runtime = runtime.lock().unwrap_or_else(|_| {
-        eprintln!("Hopper List push: runtime lock poisoned");
+        eprintln!("Array allocation: runtime lock poisoned");
+        std::process::abort();
+    });
+    let mut roots = StackRootSet::new(
+        AllocationCallSite {
+            caller_sp,
+            return_address,
+            caller_fp,
+        },
+        &runtime.stackmap_registry,
+    );
+    let descriptor = unsafe { &*descriptor };
+    let owner = runtime
+        .alloc_object(
+            std::mem::size_of::<array::HopperArray>(),
+            &array::ARRAY_OWNER_DESCRIPTOR,
+            &mut roots,
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("Array owner allocation failed: {error:?}");
+            std::process::abort();
+        });
+    let mut owner_root = owner.as_ptr();
+    let buffer_size = array_buffer_size(capacity, element_size);
+    let mut roots = StackAndLocalRoots {
+        stack: &mut roots,
+        local: &mut owner_root,
+    };
+    let buffer = runtime
+        .alloc_object(buffer_size, descriptor, &mut roots)
+        .unwrap_or_else(|error| {
+            eprintln!("Array buffer allocation failed: {error:?}");
+            std::process::abort();
+        });
+    unsafe {
+        // Use the rooted local rather than the original allocation result so
+        // this remains correct if the collector ever becomes moving.
+        let owner = owner_root.cast::<array::HopperArray>();
+        let buffer = buffer.as_ptr().cast::<array::HopperArrayBuffer>();
+        (*buffer).length = 0;
+        (*buffer).capacity = capacity;
+        (*owner).buffer = buffer.cast::<GcHeader>();
+    }
+    owner_root
+}
+
+pub(super) extern "C" fn array_reserve_impl(
+    array_ref: RawGcRef,
+    requested_capacity: i64,
+    element_size: i64,
+    descriptor: *const TypeDescriptor,
+    caller_sp: usize,
+    return_address: usize,
+    caller_fp: usize,
+) {
+    let requested_capacity = usize::try_from(requested_capacity).unwrap_or_else(|_| {
+        eprintln!("Array reserve: invalid capacity");
+        std::process::abort();
+    });
+    let element_size = usize::try_from(element_size).unwrap_or_else(|_| {
+        eprintln!("Array reserve: invalid element size");
+        std::process::abort();
+    });
+    if array_ref.is_null() || descriptor.is_null() || element_size == 0 {
+        eprintln!("Array reserve: invalid arguments");
+        std::process::abort();
+    }
+
+    let runtime_mutex = runtime();
+    let mut runtime = runtime_mutex.lock().unwrap_or_else(|_| {
+        eprintln!("Array reserve: runtime lock poisoned");
         std::process::abort();
     });
     let mut roots = StackRootSet::new(
@@ -431,49 +512,101 @@ pub(super) extern "C" fn list_push_impl(
             });
         }
     }
-
-    // Keep only raw field snapshots across allocation. `alloc_object` may run
-    // collection and mutate the heap, so a Rust reference into the heap must
-    // not remain live across that call.
-    let list_ptr = list.cast::<list::HopperList>();
-    let (length, capacity, elements) = unsafe {
-        (
-            (*list_ptr).length,
-            (*list_ptr).capacity,
-            (*list_ptr).elements.as_mut_ptr(),
-        )
-    };
-    if length < capacity {
-        unsafe {
-            std::ptr::copy_nonoverlapping(value, elements.add(length * element_size), element_size);
-            (*list_ptr).length = length + 1;
+    let owner = array_ref.cast::<array::HopperArray>();
+    let (old_buffer, length, capacity) = unsafe {
+        let buffer = (*owner).buffer.cast::<array::HopperArrayBuffer>();
+        if buffer.is_null() {
+            eprintln!("Array reserve: uninitialized Array handle");
+            std::process::abort();
         }
-        return list;
+        ((*owner).buffer, (*buffer).length, (*buffer).capacity)
+    };
+    if requested_capacity <= capacity {
+        return;
     }
 
-    let new_capacity = capacity.saturating_mul(2).max(1);
-    let size = list::LIST_ELEMENTS_OFFSET
-        .checked_add(new_capacity.saturating_mul(element_size))
-        .unwrap_or_else(|| {
-            eprintln!("Hopper List push: allocation size overflow");
-            std::process::abort();
-        });
+    let size = array_buffer_size(requested_capacity, element_size);
     let descriptor = unsafe { &*descriptor };
-    let new_list = runtime
+    let new_buffer = runtime
         .alloc_object(size, descriptor, &mut roots)
         .unwrap_or_else(|error| {
-            eprintln!("Hopper List push allocation failed: {error:?}");
+            eprintln!("Array reserve allocation failed: {error:?}");
             std::process::abort();
         });
-    let new_ptr = new_list.as_ptr().cast::<list::HopperList>();
-    let new_elements = unsafe { (*new_ptr).elements.as_mut_ptr() };
     unsafe {
-        std::ptr::copy_nonoverlapping(elements, new_elements, length * element_size);
-        std::ptr::copy_nonoverlapping(value, new_elements.add(length * element_size), element_size);
-        (*new_ptr).length = length + 1;
-        (*new_ptr).capacity = new_capacity;
+        let old_buffer = old_buffer.cast::<array::HopperArrayBuffer>();
+        let new_buffer_ptr = new_buffer.as_ptr().cast::<array::HopperArrayBuffer>();
+        (*new_buffer_ptr).length = length;
+        (*new_buffer_ptr).capacity = requested_capacity;
+        std::ptr::copy_nonoverlapping(
+            (*old_buffer).elements.as_ptr(),
+            (*new_buffer_ptr).elements.as_mut_ptr(),
+            length * element_size,
+        );
+        (*owner).buffer = new_buffer.as_ptr();
     }
-    new_list.as_ptr()
+}
+
+pub(super) extern "C" fn array_write_next_impl(
+    array_ref: RawGcRef,
+    index: i64,
+    value: *const u8,
+    element_size: i64,
+) {
+    let index = usize::try_from(index).unwrap_or_else(|_| {
+        eprintln!("Array write: invalid index");
+        std::process::abort();
+    });
+    let element_size = usize::try_from(element_size).unwrap_or_else(|_| {
+        eprintln!("Array write: invalid element size");
+        std::process::abort();
+    });
+    if array_ref.is_null() || value.is_null() || element_size == 0 {
+        eprintln!("Array write: invalid arguments");
+        std::process::abort();
+    }
+
+    let owner = array_ref.cast::<array::HopperArray>();
+    unsafe {
+        let buffer = (*owner).buffer.cast::<array::HopperArrayBuffer>();
+        if buffer.is_null() || index != (*buffer).length || index >= (*buffer).capacity {
+            eprintln!("Array write: append index out of bounds");
+            std::process::abort();
+        }
+        std::ptr::copy_nonoverlapping(
+            value,
+            (*buffer).elements.as_mut_ptr().add(index * element_size),
+            element_size,
+        );
+        // The collector scans elements only through length, so publish length
+        // after the new element's bytes (including any GC references) exist.
+        (*buffer).length = index + 1;
+    }
+}
+
+fn array_buffer_size(capacity: usize, element_size: usize) -> usize {
+    array::ARRAY_BUFFER_ELEMENTS_OFFSET
+        .checked_add(capacity.checked_mul(element_size).unwrap_or_else(|| {
+            eprintln!("Array allocation size overflow");
+            std::process::abort();
+        }))
+        .filter(|size| *size <= u32::MAX as usize)
+        .unwrap_or_else(|| {
+            eprintln!("Array allocation size overflow");
+            std::process::abort();
+        })
+}
+
+struct StackAndLocalRoots<'a> {
+    stack: &'a mut dyn RootSet,
+    local: &'a mut RawGcRef,
+}
+
+impl RootSet for StackAndLocalRoots<'_> {
+    fn visit_roots(&mut self, visitor: &mut dyn RootVisitor) {
+        self.stack.visit_roots(visitor);
+        visitor.visit_gc_ref((self.local as *mut RawGcRef).cast::<GcRef>());
+    }
 }
 
 pub extern "C" fn print_string(gc_ref: RawGcRef) {

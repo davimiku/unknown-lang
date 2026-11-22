@@ -11,6 +11,7 @@ pub use crate::native_roots::NativeRoot;
 pub use crate::stackmaps::{Safepoint, StackMapRegistry};
 use memory_recycling::{EmptyRootSet, RootSet, RootVisitor};
 
+pub mod array;
 mod errors;
 mod execution;
 pub mod ffi;
@@ -18,7 +19,6 @@ mod frame_walk;
 mod memory_recycling;
 mod native_roots;
 mod stackmaps;
-pub mod list;
 mod string;
 
 static RUNTIME: OnceLock<Mutex<Runtime>> = OnceLock::new();

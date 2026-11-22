@@ -43,7 +43,7 @@ use crate::{builder::Builder, optimize::optimize};
 
 pub fn construct(input: &str) -> (Module, Context) {
     let mut context = hir::Context::new(hir::Interner::default());
-    context
+    let mut modules = context
         .load_stdlib()
         .expect("standard library to be available during MIR construction");
     let hir_module = context.load_module(input, hir::SourceKind::User);
@@ -53,9 +53,12 @@ pub fn construct(input: &str) -> (Module, Context) {
         }
         assert_eq!(context.diagnostics, vec![]);
     }
-    let builder = Builder::new(hir_module.id.as_u32(), &context);
+    modules.push(hir_module);
+    let primary_module_index = modules.len() - 1;
+    let primary_module = &modules[primary_module_index];
+    let builder = Builder::new(primary_module.id.as_u32(), &context);
 
-    let mut module = builder.construct_module(&hir_module, &mut context);
+    let mut module = builder.construct_modules(&modules, primary_module, &mut context);
 
     optimize(&mut module);
     (module, context)
@@ -69,6 +72,18 @@ pub fn construct_module<'hir>(
     let builder = Builder::new(hir_module.id.as_u32(), context);
 
     let module = builder.construct_module(hir_module, context);
+
+    (module, context)
+}
+
+pub fn construct_modules<'hir>(
+    modules: &[hir::Module],
+    primary_module: &'hir hir::Module,
+    context: &'hir mut Context,
+) -> (Module, &'hir Context) {
+    assert_eq!(context.diagnostics, vec![]);
+    let builder = Builder::new(primary_module.id.as_u32(), context);
+    let module = builder.construct_modules(modules, primary_module, context);
 
     (module, context)
 }

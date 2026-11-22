@@ -294,11 +294,12 @@ pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
     m.complete(p, SyntaxKind::Ident)
 }
 
-// WIP: only simple attribute like `#export` is supported, later want to support
-// like `@serialize foo=bar` or something like that (maybe resembling a Call actually)
 pub(crate) fn parse_attribute(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
     p.expect(T::Attribute);
+    if p.at(T::LParen) {
+        parse_paren_expr(p);
+    }
     m.complete(p, SyntaxKind::Attribute)
 }
 

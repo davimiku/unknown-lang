@@ -1,21 +1,53 @@
-/// A dynamically growable list of items. The list is homogenous, all items are of type 'A
-#export
-type List 'A = intrinsic
+/// Opaque GC-managed storage for contiguous elements
+type Array 'A = intrinsic
 
-// maybe eventually like this so that more List operations can be in stdlib instead of native
-//
-// ```
-// type List 'A = [ len: Int, cap: Int, items: intrinsic ]
-// ```
+#builtin("Array.new")
+let array_new_raw: (Int) -> Array 'A = intrinsic
+
+#builtin("Array.len")
+let array_len_raw: (Array 'A) -> Int = intrinsic
+
+#builtin("Array.capacity")
+let array_capacity_raw: (Array 'A) -> Int = intrinsic
+
+#builtin("Array.reserve")
+let array_reserve_raw: (Array 'A, Int) -> () = intrinsic
+
+#builtin("Array.write_next")
+let array_write_next_raw: (Array 'A, Int, 'A) -> () = intrinsic
+
+#export type List 'A = [ storage: Array 'A ]
+
+/// Creates an empty list with at least the requested capacity.
+#export
+let with_capacity = fun ['A](capacity: Int) -> List 'A {
+    let storage: Array 'A = array_new_raw capacity
+    [ storage = storage ]
+}
 
 /// Creates an empty list. Its element type is inferred from context.
 #export
-let list_new = intrinsic
+let new = fun ['A]() -> List 'A {
+    with_capacity 1
+}
 
 /// Appends an element to a list.
 #export
-let list_push = intrinsic
+let push = fun ['A](list: List 'A, value: 'A) -> () {
+    let storage = list.storage
+    let length = array_len_raw storage
+    let capacity = array_capacity_raw storage
+
+    if length == capacity {
+        let next_capacity = if capacity == 0 { 1 } else { capacity * 2 }
+        array_reserve_raw (storage, next_capacity)
+    }
+
+    array_write_next_raw (storage, length, value)
+}
 
 /// Returns the number of elements in a list.
 #export
-let list_len = intrinsic
+let len = fun ['A](list: List 'A) -> Int {
+    array_len_raw list.storage
+}

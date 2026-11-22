@@ -1,0 +1,3 @@
+/// 64-bit IEEE-754 double-width precision floating point
+#export
+type Float = intrinsic

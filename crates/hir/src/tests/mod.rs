@@ -101,16 +101,70 @@ fn standard_library_prelude_loads_with_definition_ranges() {
 }
 
 #[test]
-fn standard_library_list_len_is_a_builtin_declaration() {
+fn standard_library_list_module_exposes_generic_builtins() {
     let mut context = Context::new(Interner::default());
     context.load_stdlib().unwrap();
     let _module = context.load_module(
-        "let list_len = @core/collections/list/list_len
-        let values: List Int = list_new ()
-        let length = list_len values",
+        "let values: List Int = List.new ()
+        let reserved: List Int = List.with_capacity 8
+        let alias = values
+        List.push (values, 1)
+        List.push (alias, 2)
+        let length = List.len alias",
         SourceKind::User,
     );
 
+    assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
+}
+
+#[test]
+fn builtin_attribute_is_rejected_in_user_modules() {
+    use crate::diagnostic::{LoweringDiagnostic, LoweringDiagnosticVariant};
+
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+    context.load_module(
+        r##"type Array 'A = intrinsic
+        #builtin("Array.new")
+        let new: (Int) -> Array Int = intrinsic"##,
+        SourceKind::User,
+    );
+
+    assert!(context.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::Lowering(LoweringDiagnostic {
+                variant: LoweringDiagnosticVariant::BuiltinAttributeNotAllowed,
+                ..
+            })
+        )
+    }));
+}
+
+#[test]
+fn list_public_operations_are_hopper_functions() {
+    use crate::Type;
+
+    let mut context = Context::new(Interner::default());
+    context.load_stdlib().unwrap();
+
+    let list_path = ["core", "collections", "list"].map(|segment| context.interner.intern(segment));
+    let list_module = context
+        .resolve_module_path(ModuleId::BOOTSTRAP, &list_path)
+        .unwrap();
+    for name in ["new", "push", "len"] {
+        let key = context.interner.intern(name);
+        let symbol = context.exported_value(list_module, key).unwrap();
+        assert_eq!(
+            context.builtin_id(symbol),
+            None,
+            "List.{name} is user-level"
+        );
+        assert!(
+            matches!(context.type_of_value(&symbol), Type::Function(_)),
+            "List.{name} should have a Hopper function type"
+        );
+    }
     assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
 }
 
@@ -120,9 +174,9 @@ fn value_and_type_imports_resolve_exported_symbols() {
     context.load_stdlib().unwrap();
     let _module = context.load_module(
         r#"
-        let length = @core/collections/list/list_len
-        type MyInt = @core/math/int/Int
-        let values: List MyInt = list_new ()
+        let length = @core/collections/list/len
+        type MyInt = @core/num/int/Int
+        let values: List MyInt = List.new ()
         length values
         "#,
         SourceKind::User,
@@ -137,17 +191,17 @@ fn module_alias_resolves_exported_members() {
     context.load_stdlib().unwrap();
     let _module = context.load_module(
         r#"
-        #export module List = @core/collections/list
-        let values: List Int = list_new ()
-        List.list_len values
+        let values: List Int = List.new ()
+        List.len values
         "#,
         SourceKind::User,
     );
 
     assert!(context.diagnostics.is_empty(), "{:#?}", context.diagnostics);
     let module_alias = context.interner.intern("List");
+    let prelude = context.stdlib_prelude.expect("prelude module to exist");
     assert!(context
-        .module(_module.id)
+        .module(prelude)
         .unwrap()
         .exports
         .modules
@@ -164,7 +218,7 @@ fn stdlib_files_load_under_core_directory_modules() {
         .resolve_module_path(ModuleId::BOOTSTRAP, &path)
         .expect("list module to be loaded under core::collections");
 
-    let exported_len = context.interner.intern("list_len");
+    let exported_len = context.interner.intern("len");
     assert!(context.exported_value(list_module, exported_len).is_some());
 
     let prelude_path = ["core", "prelude"].map(|segment| context.interner.intern(segment));

@@ -9,7 +9,7 @@ use crate::{FuncSignature, Interner, IntrinsicExpr, Key, Type};
 pub const INT: &'static str = "Int";
 pub const FLOAT: &'static str = "Float";
 pub const STRING: &'static str = "String";
-pub const LIST: &'static str = "List";
+pub const ARRAY: &'static str = "Array";
 fn insert_value(
     database: &mut Database,
     type_database: &mut TypeDatabase,

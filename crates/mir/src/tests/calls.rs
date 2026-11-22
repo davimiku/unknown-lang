@@ -135,7 +135,7 @@ fn generic_function_calls_create_concrete_mir_instances() {
                 .variants
                 .iter()
                 .any(|(_, variant)| contains_type_parameter(*variant, context)),
-            Type::List(list) => contains_type_parameter(list.of, context),
+            Type::Array(array) => contains_type_parameter(array.of, context),
             Type::Function(function) => function.signatures.iter().any(|signature| {
                 signature
                     .params
@@ -166,28 +166,24 @@ fn generic_function_calls_create_concrete_mir_instances() {
 }
 
 #[test]
-fn list_builtins_lower_to_list_mir_operations() {
-    let input = "
+fn list_public_functions_delegate_to_array_mir() {
+    let input = r#"
     let main = fun () -> {
-        let values: List Int = list_new ()
-        list_push (values, 42)
-        list_len values
+        let values: List Int = List.new ()
+        List.push (values, 42)
+        List.len values
     }
-    ";
+    "#;
+    let (module, context) = crate::construct(input);
+    let mut output = Vec::new();
+    let mut indent = 0;
+    crate::display::write_module(&module, &mut output, &context, &mut indent)
+        .expect("MIR should display");
+    let output = String::from_utf8(output).expect("MIR display should be UTF-8");
 
-    let expected = "
-fun main:
-    params: {none}
-    mut _0: Int
-    _1: List Int
-    _2: ()
-
-    BB0():
-        _1 := list_new ()
-        list_push copy _1, const 42
-        _0 := list_len copy _1
-        Return _0 ->
-";
-
-    check_module(input, expected);
+    assert!(output.contains("array_new "), "{output}");
+    assert!(output.contains("array_capacity "), "{output}");
+    assert!(output.contains("array_reserve "), "{output}");
+    assert!(output.contains("array_write_next "), "{output}");
+    assert!(output.contains("array_len "), "{output}");
 }

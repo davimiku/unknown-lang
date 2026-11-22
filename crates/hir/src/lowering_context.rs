@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+use ast::expr::Intrinsic;
 use ast::Mutability;
 use itertools::Itertools;
 use la_arena::Idx;
@@ -70,6 +71,7 @@ pub struct Context {
     // TODO: would this need to capture a pattern for `let (a, b) = ...` and
     // other such things?
     current_let_binding_symbol: Option<(Key, ValueSymbol)>,
+    current_let_binding_builtin: Option<String>,
 }
 
 impl Context {
@@ -99,6 +101,7 @@ impl Context {
             diagnostics: Default::default(),
             breaks_stack: Default::default(),
             current_let_binding_symbol: None,
+            current_let_binding_builtin: None,
         }
     }
 }
@@ -486,6 +489,7 @@ impl Context {
 impl Context {
     pub(crate) fn lower_expr_statement(&mut self, ast: Option<ast::Expr>) -> Idx<Expr> {
         self.current_let_binding_symbol = None;
+        self.current_let_binding_builtin = None;
         let inner = self.lower_expr(ast.clone());
 
         match self.expr(inner) {
@@ -514,16 +518,7 @@ impl Context {
                 E::If(ast) => self.lower_if_expr(ast),
                 E::ImportBinding(ast) => self.lower_module_import(ast),
                 E::IntLiteral(ast) => self.lower_int_literal(ast),
-                E::Intrinsic(_) => {
-                    let (_, symbol) = self
-                        .current_let_binding_symbol
-                        .expect("intrinsic declarations must be let-bound");
-                    let key = self.database.value_names[&symbol];
-                    let builtin =
-                        BuiltinId::from_str(self.lookup(key)).expect("unknown intrinsic builtin");
-                    self.database.value_builtins.insert(symbol, builtin);
-                    Expr::Intrinsic(symbol)
-                }
+                E::Intrinsic(ast) => self.lower_intrinsic(ast),
                 E::LetBinding(ast) => self.lower_let_binding(ast),
                 E::Loop(ast) => self.lower_loop(ast),
                 E::Match(ast) => self.lower_match_expr(ast),
@@ -603,6 +598,7 @@ impl Context {
                 .export_value(self.current_module_id, key, symbol);
         }
         self.current_let_binding_symbol = Some((key, symbol));
+        self.current_let_binding_builtin = ast.builtin_attribute_value();
 
         let mutability = ast.mutability();
         self.database.mutabilities.insert(symbol, mutability);
@@ -614,6 +610,31 @@ impl Context {
             .map(|type_expr| self.lower_type_expr(type_expr.into(), None));
 
         Expr::variable_def(symbol, value, type_annotation)
+    }
+
+    fn lower_intrinsic(&mut self, ast: ast::Intrinsic) -> Expr {
+        let range = ast.range();
+        let Some((_, symbol)) = self.current_let_binding_symbol else {
+            self.diagnostics
+                .push(LoweringDiagnostic::builtin_attribute_required(range).into());
+            return Expr::Empty;
+        };
+        let Some(ref builtin_name) = self.current_let_binding_builtin else {
+            self.diagnostics
+                .push(LoweringDiagnostic::builtin_attribute_required(range).into());
+            return Expr::Empty;
+        };
+        let builtin = match BuiltinId::from_str(&builtin_name) {
+            Ok(builtin) => builtin,
+            Err(_) => {
+                self.diagnostics.push(
+                    LoweringDiagnostic::unknown_builtin(builtin_name.to_owned(), range).into(),
+                );
+                return Expr::Empty;
+            }
+        };
+        self.database.value_builtins.insert(symbol, builtin);
+        Expr::Intrinsic(symbol)
     }
 
     fn lower_module_import(&mut self, ast: ast::ImportBinding) -> Expr {
@@ -958,7 +979,7 @@ impl Context {
         }
 
         let alias = self.interner.intern(&segments[0]);
-        let mut module = self.current_scopes().find_module(alias)?;
+        let mut module = self.find_module_alias(alias)?;
 
         for (index, segment) in segments.iter().enumerate().skip(1) {
             let key = self.interner.intern(segment);
@@ -1251,7 +1272,26 @@ impl Context {
                     TypeExpr::Intrinsic(name.expect("intrinsic type declarations must have a name"))
                 }
                 TE::IntLiteral(ast) => self.lower_type_int_literal(ast),
-                TE::Function(_) => todo!(),
+                TE::Function(function) => {
+                    self.push_scope();
+                    let type_params = function
+                        .type_params()
+                        .into_iter()
+                        .map(|param| self.lower_type_name(param).1)
+                        .collect_vec();
+                    let params = function
+                        .param_list()
+                        .into_iter()
+                        .map(|param| self.lower_type_expr(Some(param), None))
+                        .collect_vec();
+                    let return_ty = self.lower_type_expr(function.return_type(), None);
+                    self.pop_scope();
+                    TypeExpr::Function(crate::type_expr::FunctionTypeExpr {
+                        params: params.into(),
+                        return_ty,
+                        type_params: type_params.into(),
+                    })
+                }
                 TE::ModulePath(path) => {
                     let name = path.symbol();
                     match self.resolve_imported_type(&path.module_path(), name.clone()) {

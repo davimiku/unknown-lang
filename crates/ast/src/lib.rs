@@ -6,14 +6,14 @@ mod type_expr;
 mod tests;
 
 pub use expr::{
-    Binary, Block, Expr, Function, Ident, ImportBinding, LetBinding, ModulePathExpr, Mutability,
-    PathExpr, Pattern, ReAssignment, TypeBinding, Unary,
+    Binary, Block, Expr, Function, Ident, ImportBinding, Intrinsic, LetBinding, ModulePathExpr,
+    Mutability, PathExpr, Pattern, ReAssignment, TypeBinding, Unary,
 };
 pub use expr::{BreakStatement, ForInLoop, If, Loop, ReturnStatement};
 pub use expr::{FloatLiteral, IntLiteral, RecordLiteral, StringLiteral};
 use parser::{Parse, SyntaxKind, SyntaxNode};
 use text_size::TextRange;
-pub use type_expr::{PathExpr as TypePathExpr, Record, TypeExpr, Union};
+pub use type_expr::{Function as TypeFunction, PathExpr as TypePathExpr, Record, TypeExpr, Union};
 
 impl From<Parse> for Root {
     fn from(parse_tree: Parse) -> Self {
@@ -49,5 +49,9 @@ impl Root {
 
     pub fn range(&self) -> TextRange {
         self.0.text_range()
+    }
+
+    pub fn builtin_attribute_ranges(&self) -> Vec<TextRange> {
+        attributes::attribute_ranges(&self.0, attributes::BUILTIN_ATTRIBUTE)
     }
 }

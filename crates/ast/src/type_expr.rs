@@ -49,6 +49,7 @@ impl TypeExpr {
             SyntaxKind::Ident => Self::Ident(Ident(node)),
             SyntaxKind::InfixExpr => Self::cast_infix(node),
             SyntaxKind::IntLiteralExpr => Self::IntLiteral(IntLiteral(node)),
+            SyntaxKind::FunExpr => Self::Function(Function(node)),
             // SyntaxKind::NegationExpr => Self::Unary(Unary(node)),
             // SyntaxKind::NotExpr => Self::Unary(Unary(node)),
             SyntaxKind::PathExpr => Self::Path(PathExpr(node)),
@@ -111,15 +112,51 @@ pub struct Function(SyntaxNode);
 
 impl Function {
     pub fn param_list(&self) -> Vec<TypeExpr> {
-        self.0.children().filter_map(TypeExpr::cast).collect()
+        let mut params = Vec::new();
+        for element in self.0.children_with_tokens() {
+            if element.kind() == SyntaxKind::Arrow {
+                break;
+            }
+            let Some(node) = element.into_node() else {
+                continue;
+            };
+            if node.kind() == SyntaxKind::ParenExpr {
+                params.extend(node.children().filter_map(TypeExpr::cast));
+            } else if let Some(param) = TypeExpr::cast(node) {
+                params.push(param);
+            }
+        }
+        params
     }
 
     pub fn return_type(&self) -> Option<TypeExpr> {
         self.0
-            .children()
-            .skip_while(|child| child.kind() != SyntaxKind::Arrow)
-            .skip(1) // consume the arrow
+            .children_with_tokens()
+            .skip_while(|element| element.kind() != SyntaxKind::Arrow)
+            .skip(1)
+            .filter_map(SyntaxElement::into_node)
             .find_map(TypeExpr::cast)
+    }
+
+    pub fn type_params(&self) -> Vec<String> {
+        fn collect(node: &SyntaxNode, params: &mut Vec<String>) {
+            for element in node.children_with_tokens() {
+                match element {
+                    SyntaxElement::Node(child) => collect(&child, params),
+                    SyntaxElement::Token(token) if token.text().starts_with('\'') => {
+                        let name = token.text().to_owned();
+                        if !params.contains(&name) {
+                            params.push(name);
+                        }
+                    }
+                    SyntaxElement::Token(_) => {}
+                }
+            }
+        }
+
+        let mut params = Vec::new();
+        collect(&self.0, &mut params);
+        params
     }
 
     pub fn range(&self) -> TextRange {

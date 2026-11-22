@@ -139,10 +139,10 @@ fn bool_return_identity() {
 fn list_push_and_len() {
     let code = r#"
 let main = fun () -> Int {
-    let values: List Int = list_new ()
-    list_push (values, 10)
-    list_push (values, 20)
-    list_len values
+    let values: List Int = List.new ()
+    List.push (values, 10)
+    List.push (values, 20)
+    List.len values
 }
 "#;
     let code_ptr = compile_main(code);
@@ -151,16 +151,33 @@ let main = fun () -> Int {
 }
 
 #[test]
+fn list_aliases_observe_pushes_across_growth() {
+    let code = r#"
+let main = fun () -> Int {
+    let values: List Int = List.new ()
+    let alias = values
+    List.push (values, 10)
+    List.push (alias, 20)
+    List.push (values, 30)
+    List.len values
+}
+"#;
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    assert_eq!(code_fn(()), 3);
+}
+
+#[test]
 fn list_push_inlines_record_elements() {
     let code = r#"
 let main = fun () -> Int {
-    let points: List [ x: Int, y: Int ] = list_new ()
+    let points: List [ x: Int, y: Int ] = List.new ()
     let first = [ x = 1, y = 2 ]
     let second = [ x = 3, y = 4 ]
     let third = [ x = 5, y = 6 ]
-    list_push (points, first)
-    list_push (points, second)
-    list_push (points, third)
+    List.push (points, first)
+    List.push (points, second)
+    List.push (points, third)
     42
 }
 "#;

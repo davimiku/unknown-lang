@@ -41,9 +41,8 @@ pub enum Type {
     /// A type variable introduced by a generic type or function annotation
     TypeParameter(TypeSymbol),
 
-    // Other compiler builtins, that may later be implemented in userspace
-    /// Dynamic array backed list, nominally typed, homogeneous, i.e. `List 'a`
-    List(ListType),
+    /// Compiler builtin handle to a homogeneous mutable (but not growable) array, i.e. `Array 'A`
+    Array(ArrayType),
     // TODO: consider arena allocating larger variants
     // and could consider making this Copy - but would need a custom impl of PartialEq?
 }
@@ -212,7 +211,7 @@ impl ContextDisplay for Type {
             Type::Product(product_type) => product_type.display(context),
 
             Type::Function(func) => func.display(context),
-            Type::List(list) => list.display(context),
+            Type::Array(array) => array.display(context),
             Type::TypeParameter(symbol) => context
                 .lookup(context.database.type_names[symbol])
                 .to_owned(),
@@ -489,12 +488,12 @@ impl ContextDisplay for FuncSignature {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ListType {
+pub struct ArrayType {
     pub of: Idx<Type>,
 }
 
-impl ContextDisplay for ListType {
+impl ContextDisplay for ArrayType {
     fn display(&self, context: &Context) -> String {
-        format!("List {}", self.of.display(context))
+        format!("Array {}", self.of.display(context))
     }
 }

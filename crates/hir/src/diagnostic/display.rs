@@ -21,6 +21,15 @@ impl ContextDisplay for LoweringDiagnostic {
             super::LoweringDiagnosticVariant::UnresolvedImport { path } => {
                 format!("Unable to resolve import ‘{path}’")
             }
+            super::LoweringDiagnosticVariant::BuiltinAttributeNotAllowed => {
+                "The #builtin attribute is only allowed in compiler-provided source".to_owned()
+            }
+            super::LoweringDiagnosticVariant::BuiltinAttributeRequired => {
+                "An intrinsic declaration requires a #builtin(\"...\") attribute".to_owned()
+            }
+            super::LoweringDiagnosticVariant::UnknownBuiltin { name } => {
+                format!("Unknown compiler builtin ‘{name}’")
+            }
         }
     }
 }
