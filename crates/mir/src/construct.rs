@@ -472,32 +472,8 @@ impl Builder {
                         let assign = Statement::assign(assign_place.clone(), rvalue);
                         self.current_block_mut().statements.push(assign);
                     };
-                } else if let Some((variant_ty, variant_idx, key)) =
-                    self.call_union_variant(call, context)
-                {
-                    // TODO - indexing is probably wrong here, when there could be multiple "args"
-                    let operand = self
-                        .construct_operand(call.args[0], &None, context)
-                        .as_operand();
-
-                    let mut namespace: Option<Key> = None;
-                    let union_ty = self.expr_type(statement_idx, context);
-                    if let Type::Sum(sum_type) = union_ty {
-                        if let Some(symbol) = sum_type.name {
-                            namespace = Some(context.type_symbol_key(symbol));
-                        }
-                    }
-                    let rvalue = Rvalue::UnionVariant(RvalueUnionVariant {
-                        idx: variant_idx,
-                        key,
-                        operand,
-                        namespace,
-                    });
-
-                    if let Some(assign_place) = assign_to {
-                        let assign = Statement::assign(assign_place.clone(), rvalue);
-                        self.current_block_mut().statements.push(assign);
-                    };
+                } else if self.call_union_variant(call, context).is_some() {
+                    self.construct_union_variant_call(statement_idx, call, assign_to, context);
                 } else {
                     self.construct_call_terminator(statement_idx, call, assign_to, context);
                 };
@@ -625,9 +601,7 @@ impl Builder {
         let ty = self.expr_type_idx(call_expr_idx, context);
         let destination = match assign_to {
             Some(assign_place) => assign_place.clone(),
-            None => self
-                .construct_local(ty, call.symbol, Mutability::Not)
-                .into(),
+            None => self.construct_local(ty, None, Mutability::Not).into(),
         };
 
         let args = call
@@ -644,7 +618,10 @@ impl Builder {
         let type_args = self.call_type_args(call_expr_idx, call);
         let callee = self.construct_callee(call.callee, signature_index, &type_args, context);
         let func = match callee {
-            Callee::Direct(func_id) => Operand::Constant(func_id.into()),
+            Callee::Direct(func_id) => Operand::Constant(Constant::Func {
+                func_id,
+                type_idx: self.expr_type_idx(call.callee, context),
+            }),
             // TODO: confirm if Copy is fine? It should never be Move probably
             // unless its a closure that captures a Move type?
             Callee::Indirect(local) => Operand::Copy(local.into()),
@@ -695,17 +672,61 @@ impl Builder {
 
             assign_place
         } else if self.call_union_variant(call, context).is_some() {
-            let assign_place = match assign_to {
-                Some(assign_place) => assign_place.clone(),
-                // New / temp local to hold the Rvalue
-                None => self.construct_local(ty, None, Mutability::Not).into(),
-            };
-            todo!()
+            return OperandOrPlace::from(self.construct_union_variant_call(
+                call_expr_idx,
+                call,
+                assign_to,
+                context,
+            ));
         } else {
             self.construct_call_terminator(call_expr_idx, call, assign_to, context)
         };
 
         OperandOrPlace::from(place)
+    }
+
+    fn construct_union_variant_call(
+        &mut self,
+        call_expr_idx: Idx<Expr>,
+        call: &CallExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Place {
+        let destination = assign_to.clone().unwrap_or_else(|| {
+            self.construct_local(
+                self.expr_type_idx(call_expr_idx, context),
+                None,
+                Mutability::Not,
+            )
+            .into()
+        });
+        let (_, variant_idx, key) = self
+            .call_union_variant(call, context)
+            .expect("union variant call was checked before lowering");
+        assert_eq!(
+            call.args.len(),
+            1,
+            "union variant constructors take one payload argument"
+        );
+        let operand = self
+            .construct_operand(call.args[0], &None, context)
+            .as_operand();
+
+        let namespace = match self.expr_type(call_expr_idx, context) {
+            Type::Sum(sum_type) => sum_type.name.map(|symbol| context.type_symbol_key(symbol)),
+            _ => None,
+        };
+        let rvalue = Rvalue::UnionVariant(RvalueUnionVariant {
+            idx: variant_idx,
+            key,
+            operand,
+            namespace,
+        });
+        self.current_block_mut()
+            .statements
+            .push(Statement::assign(destination.clone(), rvalue));
+        self.def_local(destination.local);
+        destination
     }
 
     /// Lower compiler-provided Array operations without inventing function IDs
@@ -820,7 +841,12 @@ impl Builder {
                 .get(&(var_ref.symbol, signature_index))
                 .copied()
                 .map(Callee::from)
-                .unwrap_or_else(|| todo!("grab a local (indirect call)")),
+                .unwrap_or_else(|| {
+                    let local = self
+                        .try_find_symbol(var_ref.symbol)
+                        .unwrap_or_else(|| todo!("resolve indirect function value"));
+                    Callee::Indirect(local)
+                }),
 
             Expr::UnionVariant(variant) => {
                 todo!("should never be hit?")
@@ -952,7 +978,11 @@ impl Builder {
                 &mut exhaustive_fallback,
                 context,
             );
-            self.construct_block(arm.expr, None, assign_to, context);
+            if matches!(context.expr(arm.expr), Expr::Block(_)) {
+                self.construct_block(arm.expr, None, assign_to, context);
+            } else {
+                self.construct_statement(arm.expr, assign_to, context);
+            }
             self.scopes.pop();
         }
 
@@ -1268,6 +1298,22 @@ impl Builder {
                         )
                     });
                     Operand::Constant(Constant::Int(index_of.into_raw() as i64))
+                }
+                Type::Function(function_type) if function_type.signatures.len() == 1 => {
+                    let function_id = self
+                        .functions_map
+                        .get(&(var_ref.symbol, 0))
+                        .copied()
+                        .unwrap_or_else(|| {
+                            todo!(
+                                "function value for `{}` is not a concrete function",
+                                context.value_symbol_str(var_ref.symbol)
+                            )
+                        });
+                    Operand::Constant(Constant::Func {
+                        func_id: function_id,
+                        type_idx: self.value_type_idx(var_ref.symbol, context),
+                    })
                 }
                 ty => todo!(
                     "Internal Compiler Error (MIR): Expected Type::Sum, found {}",

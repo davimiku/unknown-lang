@@ -41,8 +41,7 @@ pub struct JIT {
 
     pub(crate) pending_stack_maps: HashMap<FuncId, PendingFunctionStackMap>,
     pub(crate) managed_descriptors: ManagedDescriptorCache,
-    // Map between MIR functions and CLIF functions
-    // pub(crate) func_id_map: HashMap<mir::FuncId, FuncId>,
+    pub(crate) entry_point_wrappers: HashMap<mir::FuncId, FuncId>,
 }
 
 impl Default for JIT {
@@ -59,6 +58,7 @@ impl Default for JIT {
             builtins: Default::default(),
             pending_stack_maps: Default::default(),
             managed_descriptors: ManagedDescriptorCache::default(),
+            entry_point_wrappers: Default::default(),
         }
     }
 }
@@ -149,6 +149,67 @@ impl JIT {
         if !errors.is_empty() {
             return Err(errors.into());
         }
+
+        // Inject a null environment to entry point functions so there is
+        // a stable ABI across functions that all have a hidden environment
+        for func_id in module.entry_points.values().copied() {
+            self.compile_entry_point_wrapper(func_id, func_map, module, hir_context)?;
+        }
+        Ok(())
+    }
+
+    fn compile_entry_point_wrapper(
+        &mut self,
+        mir_func_id: mir::FuncId,
+        func_map: &HashMap<mir::FuncId, FuncId>,
+        mir_module: &mir::Module,
+        hir_context: &hir::Context,
+    ) -> ModuleResult<()> {
+        let function = mir_module
+            .functions
+            .iter()
+            .map(|(_, function)| function)
+            .find(|function| function.id == mir_func_id)
+            .expect("entry point function exists");
+        let internal_signature = FunctionTranslator::signature_for_function(
+            function,
+            &mut self.module,
+            hir_context,
+            &mut self.managed_descriptors,
+        );
+        let mut wrapper_signature = internal_signature;
+        wrapper_signature.params.remove(0);
+
+        let (module_id, function_index) = mir_func_id.into();
+        let wrapper_name = format!("__hopper_entry_{module_id}_{function_index}");
+        let wrapper_id =
+            self.module
+                .declare_function(&wrapper_name, Linkage::Export, &wrapper_signature)?;
+        let internal_id = func_map[&mir_func_id];
+        let mut context = self.module.make_context();
+        context.func.signature = wrapper_signature;
+
+        {
+            let mut builder = FunctionBuilder::new(&mut context.func, &mut self.builder_ctx);
+            let entry = builder.create_block();
+            builder.append_block_params_for_function_params(entry);
+            builder.switch_to_block(entry);
+            builder.seal_block(entry);
+
+            let environment = builder.ins().iconst(I64, 0);
+            let mut args = vec![environment];
+            args.extend_from_slice(builder.block_params(entry));
+            let callee = self.module.declare_func_in_func(internal_id, builder.func);
+            let call = builder.ins().call(callee, &args);
+            let returns = builder.inst_results(call).to_vec();
+            builder.ins().return_(&returns);
+            builder.seal_all_blocks();
+            builder.finalize();
+        }
+
+        self.module.define_function(wrapper_id, &mut context)?;
+        self.module.clear_context(&mut context);
+        self.entry_point_wrappers.insert(mir_func_id, wrapper_id);
         Ok(())
     }
 

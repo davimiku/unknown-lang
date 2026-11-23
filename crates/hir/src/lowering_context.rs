@@ -1277,7 +1277,17 @@ impl Context {
                     let type_params = function
                         .type_params()
                         .into_iter()
-                        .map(|param| self.lower_type_name(param).1)
+                        .filter_map(|param| {
+                            let key = self.interner.intern(&param);
+                            if self.find_type(key).is_some() {
+                                // A type variable already in scope is a
+                                // reference to that variable, not a binder
+                                // owned by this nested function type.
+                                None
+                            } else {
+                                Some(self.lower_type_name(param).1)
+                            }
+                        })
                         .collect_vec();
                     let params = function
                         .param_list()

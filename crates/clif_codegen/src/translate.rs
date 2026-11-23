@@ -22,7 +22,7 @@ use cranelift::prelude::Block as ClifBlock;
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Module};
-use hir::{Key, Type as HType, VariantIdx};
+use hir::{FuncSignature, Key, Type as HType, VariantIdx};
 use itertools::Itertools as _;
 use la_arena::Entry;
 use la_arena::{ArenaMap, Idx};
@@ -133,6 +133,16 @@ impl<'a> FunctionTranslator<'a> {
             FunctionTranslator::new(builder, module, func, &func_map, hir_context, descriptors);
         translator.translate_signature_abi_params();
         translator.builder.func.signature.clone()
+    }
+
+    pub(crate) fn signature_for_hir_function(&mut self, signature: &FuncSignature) -> Signature {
+        let mut result = Signature::new(self.builder.func.signature.call_conv);
+        result.params.push(AbiParam::new(I64)); // closure environment
+        for ty in &signature.params {
+            self.append_type_abi_params(&mut result, *ty, false);
+        }
+        self.append_type_abi_params(&mut result, signature.return_ty, true);
+        result
     }
 
     pub(crate) fn new(
@@ -336,7 +346,8 @@ impl FunctionTranslator<'_> {
 
         // def_var the values for parameter locals: _1, _2, _3, ..., _n
         let param_locals = self.func.param_locals();
-        let mut i = 0;
+        // ABI parameter zero is the hidden closure environment.
+        let mut i = 1;
         for (local_idx, _) in param_locals {
             match self.places[local_idx] {
                 CPlace::Var { variable, .. } => {
@@ -483,6 +494,9 @@ impl FunctionTranslator<'_> {
 
                 self.next_var_idx += 1;
                 let var_second = self.builder.declare_var(second.into());
+                if matches!(second, Scalar::GcRef) {
+                    self.builder.declare_var_needs_stack_map(var_second);
+                }
 
                 let place = CPlace::VarPair {
                     local,
@@ -518,68 +532,56 @@ impl FunctionTranslator<'_> {
         let (module_id, symbol_id) = self.func.id.into();
         self.builder.func.name = UserFuncName::user(module_id, symbol_id);
 
+        let mut signature = self.builder.func.signature.clone();
+        // The environment is currently null for every function, but reserving
+        // the parameter now gives ordinary functions and closures one ABI.
+        signature.params.push(AbiParam::new(I64));
         for ty_idx in &self.func.params {
-            let layout_idx = self.layout_for_type(*ty_idx);
-            let layout = &self.layouts[layout_idx];
-            if uses_heap_aggregate(layout) {
-                self.builder.func.signature.params.push(AbiParam::new(I64));
-                continue;
-            }
-            match layout.backend_repr.clone() {
-                BackendRepr::None => {}
-                BackendRepr::Scalar(scalar) => {
-                    let abi_param = self.translate_scalar_to_abi_param(scalar);
-                    self.builder.func.signature.params.push(abi_param);
-                }
-                BackendRepr::ScalarPair(first, second) => {
-                    let first_abi_param = self.translate_scalar_to_abi_param(first);
-                    self.builder.func.signature.params.push(first_abi_param);
-
-                    let second_abi_param = self.translate_scalar_to_abi_param(second);
-                    self.builder.func.signature.params.push(second_abi_param);
-                }
-                BackendRepr::StackSlot => {
-                    // Stack-allocated parameters are passed by pointer
-                    // The caller passes a pointer to the data
-                    // We use a regular i64 parameter instead of ArgumentPurpose::StructArgument
-                    // to avoid ABI complications (StructArgument not supported on arm64)
-                    let abi_param = AbiParam::new(I64);
-                    self.builder.func.signature.params.push(abi_param);
-                }
-            }
+            self.append_type_abi_params(&mut signature, *ty_idx, false);
         }
 
-        {
-            // return type
-            let return_ty = self.func.return_ty();
+        self.append_type_abi_params(&mut signature, self.func.return_ty(), true);
+        self.builder.func.signature = signature;
+    }
 
-            let layout_idx = self.layout_for_type(return_ty);
-            let layout = &self.layouts[layout_idx];
-            if uses_heap_aggregate(layout) {
-                self.builder.func.signature.returns.push(AbiParam::new(I64));
+    fn append_type_abi_params(
+        &mut self,
+        signature: &mut Signature,
+        ty: Idx<hir::Type>,
+        is_return: bool,
+    ) {
+        let layout_idx = self.layout_for_type(ty);
+        let layout = &self.layouts[layout_idx];
+        if uses_heap_aggregate(layout) {
+            if is_return {
+                signature.returns.push(AbiParam::new(I64));
             } else {
-                match layout.backend_repr.clone() {
-                    BackendRepr::None => {}
-                    BackendRepr::Scalar(scalar) => {
-                        let abi_param = self.translate_scalar_to_abi_param(scalar);
-                        self.builder.func.signature.returns.push(abi_param);
-                    }
-                    BackendRepr::ScalarPair(first, second) => {
-                        let first_abi_param = self.translate_scalar_to_abi_param(first);
-                        self.builder.func.signature.returns.push(first_abi_param);
-
-                        let second_abi_param = self.translate_scalar_to_abi_param(second);
-                        self.builder.func.signature.returns.push(second_abi_param);
-                    }
-                    BackendRepr::StackSlot => {
-                        // Stack-allocated returns: caller provides a pointer where we write
-                        // the return value. We use a regular i64 parameter instead of
-                        // ArgumentPurpose::StructReturn to avoid ABI complications with
-                        // different calling conventions.
-                        let abi_param = AbiParam::new(I64);
-                        self.builder.func.signature.params.push(abi_param);
-                    }
+                signature.params.push(AbiParam::new(I64));
+            }
+            return;
+        }
+        match layout.backend_repr.clone() {
+            BackendRepr::None => {}
+            BackendRepr::Scalar(scalar) => {
+                let param = self.translate_scalar_to_abi_param(scalar);
+                if is_return {
+                    signature.returns.push(param);
+                } else {
+                    signature.params.push(param);
                 }
+            }
+            BackendRepr::ScalarPair(first, second) => {
+                let first = self.translate_scalar_to_abi_param(first);
+                let second = self.translate_scalar_to_abi_param(second);
+                if is_return {
+                    signature.returns.extend([first, second]);
+                } else {
+                    signature.params.extend([first, second]);
+                }
+            }
+            BackendRepr::StackSlot => {
+                // Stack-allocated arguments and returns use a trailing pointer.
+                signature.params.push(AbiParam::new(I64));
             }
         }
     }
@@ -1094,23 +1096,34 @@ impl FunctionTranslator<'_> {
         }
 
         let returns = match func {
-            Operand::Constant(constant) => match constant {
-                Constant::Func(func_id) => {
-                    let func_id = self.func_map[func_id];
-                    let func_ref = self.module.declare_func_in_func(func_id, self.builder.func);
-                    self.builder.ins().call(func_ref, &args)
-                }
-
-                _ => unreachable!(),
-            },
-            Operand::Copy(place) => todo!("func_addr and indirect call"),
-            Operand::Move(place) => todo!("closures that capture resources might become Move?"),
+            Operand::Constant(Constant::Func { func_id, .. }) => {
+                let func_id = self.func_map[func_id];
+                let func_ref = self.module.declare_func_in_func(func_id, self.builder.func);
+                let environment = self.builder.ins().iconst(I64, 0);
+                args.insert(0, environment);
+                self.builder.ins().call(func_ref, &args)
+            }
+            Operand::Copy(_) | Operand::Move(_) => {
+                let callee = self.translate_operand(func);
+                let (code, environment) = match callee {
+                    CValue::ValPair { first, second, .. } => (first, second),
+                    other => unreachable!("callable must have pair representation, got {other:?}"),
+                };
+                let callee_ty = self.op_type(func);
+                let function_type = assert_matches!(self.context.type_(callee_ty), HType::Function);
+                let signature = function_type.signatures[0].clone();
+                let signature = self.signature_for_hir_function(&signature);
+                let signature = self.builder.import_signature(signature);
+                args.insert(0, environment);
+                self.builder.ins().call_indirect(signature, code, &args)
+            }
+            Operand::Constant(_) => unreachable!("only function constants can be callees"),
         };
         self.mark_explicit_roots_at_call(returns);
         if self.union_roots.get(destination.local).is_some() {
             self.sync_union_root(destination.local);
         }
-        let returns = self.builder.inst_results(returns);
+        let returns = self.builder.inst_results(returns).to_vec();
         match returns.len() {
             0 => {}
             1 => {
@@ -1129,7 +1142,15 @@ impl FunctionTranslator<'_> {
                     self.builder.def_var(*variable, return_value);
                 }
             }
-            2 => {}
+            2 => {
+                let cplace = &self.places[destination.local];
+                if let CPlace::VarPair { first, second, .. } = cplace {
+                    self.builder.def_var(*first, returns[0]);
+                    self.builder.def_var(*second, returns[1]);
+                } else {
+                    unreachable!("two-value return requires a pair destination");
+                }
+            }
             _ => unreachable!("3+ returns?"),
         }
 
@@ -1607,43 +1628,31 @@ impl FunctionTranslator<'_> {
                     if let Some(ptr) = ptr {
                         // Get the type of the place after projections
                         let layout_idx = self.layout_for_type(self.place_type_idx(place));
-                        let layout = &self.layouts[layout_idx];
+                        let backend_repr = self.layouts[layout_idx].backend_repr.clone();
 
                         // If the result is a scalar, load it from memory
-                        match &layout.backend_repr {
+                        match backend_repr {
                             BackendRepr::Scalar(scalar) => {
-                                let val = match (ptr, scalar) {
-                                    (Pointer::Stack { slot, offset }, Scalar::Int) => {
-                                        self.builder.ins().stack_load(I64, slot, offset)
-                                    }
-                                    (Pointer::Stack { slot, offset }, Scalar::Float) => {
-                                        self.builder.ins().stack_load(F64, slot, offset)
-                                    }
-                                    (Pointer::Stack { slot, offset }, Scalar::Pointer(_)) => {
-                                        self.builder.ins().stack_load(I64, slot, offset)
-                                    }
-                                    (Pointer::Heap { addr, offset }, Scalar::GcRef) => self
-                                        .builder
-                                        .ins()
-                                        .load(I64, MemFlagsData::new(), addr, offset),
-                                    (Pointer::Stack { slot, offset }, Scalar::GcRef) => {
-                                        self.builder.ins().stack_load(I64, slot, offset)
-                                    }
-                                    (Pointer::Heap { addr, offset }, Scalar::Int) => self
-                                        .builder
-                                        .ins()
-                                        .load(I64, MemFlagsData::new(), addr, offset),
-                                    (Pointer::Heap { addr, offset }, Scalar::Float) => self
-                                        .builder
-                                        .ins()
-                                        .load(F64, MemFlagsData::new(), addr, offset),
-                                    (Pointer::Heap { addr, offset }, Scalar::Pointer(_)) => self
-                                        .builder
-                                        .ins()
-                                        .load(I64, MemFlagsData::new(), addr, offset),
-                                };
+                                let val = self.load_scalar_from_pointer(ptr, scalar);
                                 return CValue::Val {
                                     val,
+                                    layout: layout_idx,
+                                };
+                            }
+                            BackendRepr::ScalarPair(first, second) => {
+                                let second_ptr = match ptr {
+                                    Pointer::Stack { slot, offset } => Pointer::Stack {
+                                        slot,
+                                        offset: Offset32::new(i32::from(offset) + WORD_SIZE as i32),
+                                    },
+                                    Pointer::Heap { addr, offset } => Pointer::Heap {
+                                        addr,
+                                        offset: Offset32::new(i32::from(offset) + WORD_SIZE as i32),
+                                    },
+                                };
+                                return CValue::ValPair {
+                                    first: self.load_scalar_from_pointer(ptr, first),
+                                    second: self.load_scalar_from_pointer(second_ptr, second),
                                     layout: layout_idx,
                                 };
                             }
@@ -1712,9 +1721,36 @@ impl FunctionTranslator<'_> {
                     layout: self.layout_for_type(self.context.core_types().float),
                 },
                 Constant::String(key) => self.translate_string_constant(*key),
-                Constant::Func(..) => unreachable!("TODO"),
+                Constant::Func { func_id, type_idx } => {
+                    let function_id = self.func_map[func_id];
+                    let function_ref = self
+                        .module
+                        .declare_func_in_func(function_id, self.builder.func);
+                    let code = self.builder.ins().func_addr(I64, function_ref);
+                    let environment = self.builder.ins().iconst(I64, 0);
+                    CValue::ValPair {
+                        first: code,
+                        second: environment,
+                        layout: self.layout_for_type(*type_idx),
+                    }
+                }
             },
             Operand::Move(_) => todo!(),
+        }
+    }
+
+    fn load_scalar_from_pointer(&mut self, pointer: Pointer, scalar: Scalar) -> Value {
+        let ty = match scalar {
+            Scalar::Float => F64,
+            Scalar::Int | Scalar::GcRef | Scalar::Pointer(_) => I64,
+        };
+        match pointer {
+            Pointer::Stack { slot, offset } => self.builder.ins().stack_load(ty, slot, offset),
+            Pointer::Heap { addr, offset } => {
+                self.builder
+                    .ins()
+                    .load(ty, MemFlagsData::new(), addr, offset)
+            }
         }
     }
 
@@ -2629,7 +2665,7 @@ impl FunctionTranslator<'_> {
             Constant::Int(_) => self.context.core_types().int,
             Constant::Float(_) => self.context.core_types().float,
             Constant::String(_) => self.context.core_types().string,
-            Constant::Func(..) => unreachable!("TODO"),
+            Constant::Func { type_idx, .. } => *type_idx,
         }
     }
 

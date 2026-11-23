@@ -478,7 +478,7 @@ impl MirWrite for Operand {
                 place.write(buf, module, context, indent)
             }
             Operand::Constant(constant) => {
-                if !matches!(constant, Constant::Func(_)) {
+                if !matches!(constant, Constant::Func { .. }) {
                     write!(buf, "const ")?;
                 }
                 constant.write(buf, module, context, indent)
@@ -502,7 +502,7 @@ impl MirWrite for Constant {
                 write!(buf, "{}", ryu_buf.format(*f))
             }
             Constant::String(key) => write!(buf, "\"{}\"", context.lookup(*key)),
-            Constant::Func(func_id) => {
+            Constant::Func { func_id, .. } => {
                 let name = module.function_names[func_id]
                     .clone()
                     .unwrap_or_else(|| func_id.to_string());

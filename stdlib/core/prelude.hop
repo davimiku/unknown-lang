@@ -17,6 +17,7 @@
 #export let false = Bool.false
 #export let true = Bool.true
 
-// TODO - other type exports
-// #export type Option 'A = @core/types/option/Option
+#export type Option 'A = @core/types/option/Option
+#export module Option = @core/types/option
+
 // #export type Result ('A, 'Err) = @core/types/result/Result
