@@ -70,7 +70,11 @@ pub fn compile_module(input: &str) -> Result<EntryPoints, CompileErrors> {
             .iter()
             .map(|(key, mir_func_id)| {
                 let name = context.lookup(*key).to_string();
-                let func_id = func_map[mir_func_id];
+                let func_id = jit
+                    .entry_point_wrappers
+                    .get(mir_func_id)
+                    .copied()
+                    .unwrap_or(func_map[mir_func_id]);
                 let func_ptr = jit.module.get_finalized_function(func_id);
                 (name, func_ptr)
             })

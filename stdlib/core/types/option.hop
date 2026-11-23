@@ -1,3 +1,11 @@
 /// A value that may or may not exist
-// TODO - not implemented yet
-// type Option 'A = none | some: 'A
+#export
+type Option 'A = none | some: 'A
+
+#export
+let map = fun ['A](opt: Option 'A, mapper: ('A) -> 'A) -> Option 'A {
+    match opt {
+        .none -> { Option.none }
+        .some value -> { Option.some (mapper value) }
+    }
+}

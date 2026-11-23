@@ -130,8 +130,8 @@ pub(crate) fn unsupported_gc_aggregate(context: &Context, ty: Idx<HType>) -> boo
                     None
                 }
             }
-            // Future arrays and closures cannot be assumed pointer-free.
-            HType::Function(_) => None,
+            // The word/pointer for the environment of a callable is a nullable GC reference
+            HType::Function(_) => Some(1),
             HType::Array(_) => Some(1),
             _ => Some(0),
         };
@@ -203,7 +203,19 @@ impl FunctionTranslator<'_> {
             HType::Sum(sum_type) => self.compute_sum_type_layout(sum_type),
             HType::UnionNamespace(_) => todo!("something like a product type, maybe"),
             HType::Product(product_type) => self.compute_product_type_layout(product_type),
-            HType::Function(_function_type) => todo!(),
+            HType::Function(_) => Layout {
+                fields: FieldsShape::from_field_offsets(
+                    vec![Size::ZERO, Size::ONE_WORD].into_boxed_slice(),
+                ),
+                variants: VariantsShape::Single {
+                    index: VariantIdx::default(),
+                },
+                backend_repr: BackendRepr::ScalarPair(Scalar::Int, Scalar::GcRef),
+                size: Size::TWO_WORDS,
+                gc_ref_offsets: vec![Size::ONE_WORD.bytes() as u32],
+                gc_variant_roots: vec![],
+                gc_union_fields: vec![],
+            },
             HType::Array(_) => self.layouts[self.layouts.ptr].clone(),
             HType::Unit => {
                 panic!();

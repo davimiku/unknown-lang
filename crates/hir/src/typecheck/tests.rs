@@ -419,6 +419,27 @@ fn generic_function_calls_instantiate_box_and_pair_types() {
 }
 
 #[test]
+fn generic_function_infers_type_parameter_from_function_argument() {
+    let input = r#"
+        type Box 'A = [ value: 'A ]
+
+        let box_map = fun ['A](mapper: ('A) -> 'A, box: Box 'A) -> Box 'A {
+            [ value = mapper box.value ]
+        }
+
+        let double_mapper = fun (value: Int) -> Int { value * 2 }
+        let int_box: Box Int = [ value = 21 ]
+        let result: Box Int = box_map (double_mapper, int_box)
+    "#;
+    let (_, context) = lower_with_stdlib(input);
+    assert!(
+        context.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics
+    );
+}
+
+#[test]
 fn generic_function_call_rejects_inconsistent_type_arguments() {
     let input = r#"
         let choose = fun ['A](first: 'A, second: 'A) -> 'A {

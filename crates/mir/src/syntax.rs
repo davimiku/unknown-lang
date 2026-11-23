@@ -844,7 +844,10 @@ pub enum Constant {
     /// A function expression
     ///
     /// ex. `fun (i: Int) -> { i + 2 }`
-    Func(FuncId),
+    Func {
+        func_id: FuncId,
+        type_idx: Idx<Type>,
+    },
 }
 
 impl From<bool> for Constant {
@@ -868,12 +871,6 @@ impl From<f64> for Constant {
 impl From<Key> for Constant {
     fn from(key: Key) -> Self {
         Self::String(key)
-    }
-}
-
-impl From<FuncId> for Constant {
-    fn from(id: FuncId) -> Self {
-        Self::Func(id)
     }
 }
 

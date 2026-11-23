@@ -51,7 +51,9 @@ impl ContextDisplay for TypeDiagnosticVariant {
             V::BinaryMismatch { op, lhs, rhs } => {
                 binary_mismatch_message(*op, &lhs.display(context), &rhs.display(context))
             }
-            V::CalleeNotFunction { actual } => todo!(),
+            V::CalleeNotFunction { actual } => {
+                callee_not_function_message(&actual.display(context))
+            }
             V::CannotConvertIntoString { actual } => todo!(),
             V::Empty { expr } => todo!(),
             V::Immutable { expr } => immutable_message(&expr.display(context)),

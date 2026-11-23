@@ -1093,6 +1093,53 @@ fn constrain_generic_type(
         (Type::Array(pattern), Type::Array(actual)) => {
             constrain_generic_type(pattern.of, actual.of, type_params, substitutions, context)
         }
+        (Type::Function(pattern), Type::Function(actual)) => {
+            if pattern.signatures.len() != actual.signatures.len() {
+                return false;
+            }
+
+            // Treat corresponding function signatures as type constraints
+            let original_substitutions = substitutions.clone();
+            for (pattern_signature, actual_signature) in
+                pattern.signatures.iter().zip(actual.signatures.iter())
+            {
+                if pattern_signature.params.len() != actual_signature.params.len()
+                    || pattern_signature.type_params.len() != actual_signature.type_params.len()
+                {
+                    *substitutions = original_substitutions;
+                    return false;
+                }
+
+                for (pattern_param, actual_param) in pattern_signature
+                    .params
+                    .iter()
+                    .zip(actual_signature.params.iter())
+                {
+                    if !constrain_generic_type(
+                        *pattern_param,
+                        *actual_param,
+                        type_params,
+                        substitutions,
+                        context,
+                    ) {
+                        *substitutions = original_substitutions;
+                        return false;
+                    }
+                }
+
+                if !constrain_generic_type(
+                    pattern_signature.return_ty,
+                    actual_signature.return_ty,
+                    type_params,
+                    substitutions,
+                    context,
+                ) {
+                    *substitutions = original_substitutions;
+                    return false;
+                }
+            }
+            true
+        }
         _ => is_subtype(actual, pattern, context),
     }
 }
