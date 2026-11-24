@@ -1,4 +1,9 @@
-use crate::builtins::{XBool, XFloat, XInt, FALSE, TRUE};
+use runtime::ffi::{
+    bool::{HopperBool, FALSE, TRUE},
+    float::HopperFloat,
+    int::HopperFloat,
+};
+
 use crate::tests::{compile_main, to_fn};
 
 #[test]
@@ -7,7 +12,7 @@ fn is_even() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((16,)), TRUE);
     assert_eq!(code_fn((15,)), FALSE);
@@ -24,7 +29,7 @@ fn int_equality() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((16, 16)), TRUE);
     assert_eq!(code_fn((16, -16)), FALSE);
@@ -36,7 +41,7 @@ fn int_not_equality() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((16, 16)), FALSE);
     assert_eq!(code_fn((16, -16)), TRUE);
@@ -48,7 +53,7 @@ fn int_less_than() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((17, 16)), FALSE);
     assert_eq!(code_fn((16, 16)), FALSE);
@@ -61,7 +66,7 @@ fn int_less_than_or_equal() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((17, 16)), FALSE);
     assert_eq!(code_fn((16, 16)), TRUE);
@@ -74,7 +79,7 @@ fn int_greater_than() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((17, 16)), TRUE);
     assert_eq!(code_fn((16, 16)), FALSE);
@@ -87,7 +92,7 @@ fn int_greater_than_imm() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((17,)), TRUE);
     assert_eq!(code_fn((16,)), FALSE);
@@ -100,7 +105,7 @@ fn int_greater_than_or_equal() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt, XInt), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((17, 16)), TRUE);
     assert_eq!(code_fn((16, 16)), TRUE);
@@ -112,7 +117,7 @@ fn float_less_than() {
     let code = "let main = fun (a: Float, b: Float) -> { a < b }";
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(XFloat, XFloat), XBool>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperBool>(code_ptr) };
 
     assert_eq!(code_fn((1.0, 2.0)), TRUE);
     assert_eq!(code_fn((2.0, 2.0)), FALSE);

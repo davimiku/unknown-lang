@@ -16,6 +16,10 @@ pub enum BuiltinId {
     ArrayReserve,
     #[strum(serialize = "Array.write_next")]
     ArrayWriteNext,
+    #[strum(serialize = "String.byte_len")]
+    StringByteLen,
+    #[strum(serialize = "String.concat")]
+    StringConcat,
 
     #[strum(serialize = "Int.add")]
     IntAdd,
@@ -81,9 +85,13 @@ impl BuiltinId {
             B::IntLe | B::FloatLe => I::Le,
             B::IntGt | B::FloatGt => I::Gt,
             B::IntGe | B::FloatGe => I::Ge,
-            B::ArrayNew | B::ArrayLen | B::ArrayCapacity | B::ArrayReserve | B::ArrayWriteNext => {
-                return None
-            }
+            B::ArrayNew
+            | B::ArrayLen
+            | B::ArrayCapacity
+            | B::ArrayReserve
+            | B::ArrayWriteNext
+            | B::StringByteLen => return None,
+            B::StringConcat => I::Concat,
         })
     }
 }
@@ -96,6 +104,8 @@ pub fn signature(
     array_ty: Idx<Type>,
 ) -> Type {
     match id {
+        BuiltinId::StringByteLen => numeric_unary(types.string, types.int),
+        BuiltinId::StringConcat => numeric_binary(types.string, types.string, types.string),
         BuiltinId::ArrayNew => Type::func(vec![FuncSignature {
             params: Box::new([types.int]),
             return_ty: array_ty,
@@ -147,6 +157,14 @@ fn numeric_binary(lhs: Idx<Type>, rhs: Idx<Type>, result: Idx<Type>) -> Type {
     }])
 }
 
+fn numeric_unary(param: Idx<Type>, result: Idx<Type>) -> Type {
+    Type::func(vec![FuncSignature {
+        params: Box::new([param]),
+        return_ty: result,
+        type_params: Box::new([]),
+    }])
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -171,6 +189,18 @@ mod tests {
         );
         assert_eq!(BuiltinId::from_str("Int.add"), Ok(BuiltinId::IntAdd));
         assert_eq!(BuiltinId::from_str("Float.lt"), Ok(BuiltinId::FloatLt));
+        assert_eq!(
+            BuiltinId::from_str("String.byte_len"),
+            Ok(BuiltinId::StringByteLen)
+        );
+        assert_eq!(
+            BuiltinId::from_str("String.concat"),
+            Ok(BuiltinId::StringConcat)
+        );
+        assert_eq!(
+            BuiltinId::StringConcat.operator(),
+            Some(crate::IntrinsicExpr::Concat)
+        );
         assert!(BuiltinId::from_str("List.new").is_err());
     }
 }

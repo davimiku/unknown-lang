@@ -1,4 +1,5 @@
-use crate::builtins::{XInt, XTag};
+use runtime::ffi::int::HopperFloat;
+
 use crate::tests::{compile_main, to_fn, to_fn_one_param_sret, to_fn_zero_param_sret};
 
 #[test]
@@ -10,7 +11,7 @@ let main = fun (c: Color) -> { c }";
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn((0,)), 0);
     assert_eq!(code_fn((1,)), 1);
@@ -26,7 +27,7 @@ let main = fun () -> { Color.green }";
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn(()), 1);
 }
@@ -40,7 +41,7 @@ let main = fun () -> { Color.red }";
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn(()), 0);
 }
@@ -54,7 +55,7 @@ let main = fun () -> { Color.blue }";
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn(()), 2);
 }
@@ -68,7 +69,7 @@ let main = fun () -> { DaysOfWeek.saturday }";
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn(()), 5);
 }
@@ -109,7 +110,7 @@ let main = fun (i: Int) -> { CoolInt.int_c 32 }
     let code_ptr = compile_main(code);
 
     // Function signature: fn(i64, *mut Union2Words) -> ()
-    let code_fn = unsafe { to_fn_one_param_sret::<XTag, Union2Words>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(100_000, &mut result);
@@ -128,7 +129,7 @@ let main = fun (i: Int) -> { CoolInt.int_c i }
 ";
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { to_fn_one_param_sret::<XTag, Union2Words>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<i64, Union2Words>(code_ptr) };
 
     let mut result = Union2Words { tag: 0, payload: 0 };
     code_fn(16, &mut result);
@@ -627,7 +628,7 @@ let main = fun (u: OuterUnion) -> Int {
 }";
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(*const Union3Words,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Union3Words,), HopperFloat>(code_ptr) };
 
     // tag=a, other fields arbitrary
     let case_a = Union3Words {

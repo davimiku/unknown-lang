@@ -46,6 +46,7 @@ fn check(module: Module, context: &hir::Context, expected: &str) {
 
     let actual = String::from_utf8(w).expect("bytes to be valid UTF-8");
 
+    let actual = omit_stdlib_functions(&actual);
     let actual = normalize_type_module_ids(actual.trim());
     let expected = normalize_type_module_ids(expected.trim());
     if actual != expected {
@@ -55,6 +56,32 @@ fn check(module: Module, context: &hir::Context, expected: &str) {
         text_diff::print_diff(&expected, &actual, "");
         panic!("Expected did not match actual, see printed diff.");
     }
+}
+
+/// MIR snapshots focus on lowering of the supplied module. Standard-library
+/// implementations are covered by their own integration tests and should not
+/// force every snapshot to change when a core API gains a regular helper.
+fn omit_stdlib_functions(input: &str) -> String {
+    let mut functions = Vec::new();
+    let mut current = String::new();
+
+    for line in input.lines() {
+        if line.starts_with("fun ") && !current.is_empty() {
+            functions.push(std::mem::take(&mut current));
+        }
+        current.push_str(line);
+        current.push('\n');
+    }
+    if !current.is_empty() {
+        functions.push(current);
+    }
+
+    functions
+        .into_iter()
+        .filter(|function| !function.starts_with("fun stdlib_"))
+        .map(|function| function.trim().to_owned())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// Module ids depend on the standard-library module inventory. The MIR tests

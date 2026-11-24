@@ -1,3 +1,39 @@
 /// UTF-8 encoded arbitrary length text
 #export
 type String = intrinsic
+
+/// Returns the UTF-8 byte count of the string.
+#builtin("String.byte_len")
+let byte_len_raw: (String) -> Int = intrinsic
+
+/// Returns the concatenation of two strings.
+#builtin("String.concat")
+let concat_raw: (String, String) -> String = intrinsic
+
+#export
+let byte_len = fun (value: String) -> Int {
+    byte_len_raw value
+}
+
+#export
+/// Returns whether a string contains no bytes.
+let is_empty = fun (value: String) -> Bool {
+    let length = byte_len_raw value
+    length == 0
+}
+
+#export
+/// Concatenates two strings
+///
+/// Alias of `++`
+let concat = fun (left: String, right: String) -> String {
+    concat_raw (left, right)
+}
+
+#export
+/// Concatenates two strings
+///
+/// Alias of `concat`
+let `++` = fun (left: String, right: String) -> String {
+    concat_raw (left, right)
+}

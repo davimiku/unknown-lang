@@ -9,4 +9,7 @@ pub enum AllocError {
 
     /// Requested bytes are not word aligned
     Misalignment,
+
+    /// String storage must contain valid UTF-8.
+    InvalidUtf8,
 }

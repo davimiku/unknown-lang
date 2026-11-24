@@ -71,14 +71,19 @@ let main = fun () -> {
         jit.compile_module(&module, &mut func_map, &context)
             .expect("test program to compile");
 
-        let functions_with_roots = jit
-            .pending_stack_maps
+        let main = module
+            .entry_points
             .values()
-            .filter(|func| func.safepoints.iter().any(|sp| !sp.root_offsets.is_empty()))
-            .collect_vec();
-
-        assert_eq!(functions_with_roots.len(), 1);
-        let function = functions_with_roots[0];
+            .next()
+            .expect("test module to have a main entry point");
+        let function = jit
+            .pending_stack_maps
+            .get(&func_map[main])
+            .expect("main to have a pending stack map");
+        assert!(function
+            .safepoints
+            .iter()
+            .any(|safepoint| !safepoint.root_offsets.is_empty()));
         assert!(function.frame_to_fp_offset > 0);
         assert!(function.safepoints.iter().any(|sp| {
             !sp.root_offsets.is_empty()
