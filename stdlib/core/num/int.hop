@@ -2,6 +2,75 @@
 #export
 type Int = intrinsic
 
+// Primitive arithmetic is implemented by compiler intrinsics. Keeping the
+// operator functions here makes them discoverable through UFCS and provides
+// a library-level place to add checked/overflowing variants later.
+#builtin("Int.add")
+let add_int_builtin: (Int, Int) -> Int = intrinsic
+
+#builtin("Int.sub")
+let sub_int_builtin: (Int, Int) -> Int = intrinsic
+
+#builtin("Int.mul")
+let mul_int_builtin: (Int, Int) -> Int = intrinsic
+
+#builtin("Int.div")
+let div_int_builtin: (Int, Int) -> Float = intrinsic
+
+#builtin("Int.rem")
+let rem_int_builtin: (Int, Int) -> Int = intrinsic
+
+#builtin("Int.eq")
+let eq_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#builtin("Int.ne")
+let ne_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#builtin("Int.lt")
+let lt_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#builtin("Int.le")
+let le_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#builtin("Int.gt")
+let gt_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#builtin("Int.ge")
+let ge_int_builtin: (Int, Int) -> Bool = intrinsic
+
+#export
+let `+` = fun (a: Int, b: Int) -> Int { add_int_builtin (a, b) }
+
+#export
+let `-` = fun (a: Int, b: Int) -> Int { sub_int_builtin (a, b) }
+
+#export
+let `*` = fun (a: Int, b: Int) -> Int { mul_int_builtin (a, b) }
+
+#export
+let `/` = fun (a: Int, b: Int) -> Float { div_int_builtin (a, b) }
+
+#export
+let `%` = fun (a: Int, b: Int) -> Int { rem_int_builtin (a, b) }
+
+#export
+let `==` = fun (a: Int, b: Int) -> Bool { eq_int_builtin (a, b) }
+
+#export
+let `!=` = fun (a: Int, b: Int) -> Bool { ne_int_builtin (a, b) }
+
+#export
+let `<` = fun (a: Int, b: Int) -> Bool { lt_int_builtin (a, b) }
+
+#export
+let `<=` = fun (a: Int, b: Int) -> Bool { le_int_builtin (a, b) }
+
+#export
+let `>` = fun (a: Int, b: Int) -> Bool { gt_int_builtin (a, b) }
+
+#export
+let `>=` = fun (a: Int, b: Int) -> Bool { ge_int_builtin (a, b) }
+
 /// The maximum possible value of an Int
 #export
 let MAX_VALUE = 9_223_372_036_854_775_807

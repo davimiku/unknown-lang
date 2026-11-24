@@ -78,7 +78,19 @@ impl Builder {
                                     .iter()
                                     .all(|overload| overload.type_params.is_empty())
                             {
-                                continue;
+                                let is_exported =
+                                    context.module(module.id).is_some_and(|module_node| {
+                                        module_node
+                                            .exports
+                                            .values
+                                            .values()
+                                            .any(|exported| *exported == var_def.symbol)
+                                    });
+                                let is_intrinsic_operator =
+                                    context.lookup_operator(var_def.symbol).is_some();
+                                if !is_exported || is_intrinsic_operator {
+                                    continue;
+                                }
                             }
                             function_groups.push((module.id, var_def.symbol, function.clone()));
                         }
@@ -821,6 +833,7 @@ impl Builder {
                         .into()
                 })
             }
+            _ => unreachable!("non-array builtin passed to array call lowering"),
         }
     }
 
@@ -1508,7 +1521,16 @@ fn array_builtin_id(call: &CallExpr, context: &Context) -> Option<BuiltinId> {
     let Expr::VarRef(var_ref) = context.expr(call.callee) else {
         return None;
     };
-    context.builtin_id(var_ref.symbol)
+    context.builtin_id(var_ref.symbol).filter(|builtin| {
+        matches!(
+            builtin,
+            BuiltinId::ArrayNew
+                | BuiltinId::ArrayLen
+                | BuiltinId::ArrayCapacity
+                | BuiltinId::ArrayReserve
+                | BuiltinId::ArrayWriteNext
+        )
+    })
 }
 
 fn try_get_binop(call: &hir::CallExpr, context: &Context) -> Option<BinOp> {

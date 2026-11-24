@@ -140,15 +140,17 @@ impl Expr {
         })
     }
 
-    pub(crate) fn call(
+    pub(crate) fn call_with_ufcs(
         callee: Idx<Expr>,
         args: Box<[Idx<Expr>]>,
         symbol: Option<ValueSymbol>,
+        ufcs: Option<UfcsCall>,
     ) -> Self {
         Self::Call(CallExpr {
             callee,
             args,
             symbol,
+            ufcs,
             signature_index: None, // gets set later in type checking
             type_args: Box::new([]),
         })
@@ -228,6 +230,10 @@ impl ValueSymbol {
     pub fn in_core_module(&self) -> bool {
         self.module_id == CORE_MODULE_ID.as_u32()
     }
+
+    pub fn module_id(self) -> u32 {
+        self.module_id
+    }
 }
 
 impl From<ValueSymbol> for (u32, u32) {
@@ -278,10 +284,21 @@ pub struct CallExpr {
     /// Symbol being called, if any. This would be None for anonymous function calls
     pub symbol: Option<ValueSymbol>,
 
+    /// Syntactic UFCS intent retained until the receiver type is known.
+    pub ufcs: Option<UfcsCall>,
+
     pub signature_index: Option<u32>,
 
     /// Concrete type arguments selected for a parameterized function call (ordered)
     pub type_args: Box<[Idx<Type>]>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct UfcsCall {
+    /// Receiver expression, which becomes the first argument if UFCS resolves.
+    pub receiver: Idx<Expr>,
+    /// Name of the field/function being selected.
+    pub member: Key,
 }
 
 impl CallExpr {

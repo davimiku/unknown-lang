@@ -18,14 +18,16 @@ use super::{check_expr, Type, TypeDiagnostic, TypeDiagnosticVariant, TypeResult}
 use crate::builtins::{signature, ARRAY_ELEMENT_TYPE_PARAMETER};
 use crate::expr::{
     BlockExpr, Expr, FunctionExpr, FunctionExprGroup, FunctionParam, IfExpr, IndexIntExpr,
-    LoopExpr, MatchExpr, PathExpr, ReAssignment, RecordLiteralExpr, UnaryExpr, UnaryOp, VarDefExpr,
-    VarRefExpr,
+    LoopExpr, MatchExpr, PathExpr, ReAssignment, RecordLiteralExpr, UfcsCall, UnaryExpr, UnaryOp,
+    VarDefExpr, VarRefExpr,
 };
 use crate::interner::Key;
 use crate::intrinsics::{ARRAY, FLOAT, INT, STRING};
 use crate::type_expr::{CallExpr as TypeCallExpr, TypeExpr, TypeRefExpr, TypeVarDefExpr};
 use crate::typecheck::types::UnionNamespaceType;
-use crate::{ArrayType, CallExpr, Context, FunctionType, Module, Pattern, TypeSymbol, ValueSymbol};
+use crate::{
+    ArrayType, CallExpr, Context, FunctionType, Module, ModuleId, Pattern, TypeSymbol, ValueSymbol,
+};
 
 pub(crate) fn infer_module(module: &Module, context: &mut Context) -> TypeResult {
     let mut result = TypeResult::new(&context.type_database);
@@ -633,10 +635,87 @@ fn infer_var_def(var_def: &VarDefExpr, context: &mut Context) -> TypeResult {
                 .insert(*symbol, result.ty);
         }
     }
+    if result.is_ok() {
+        if let Some(operator) = intrinsic_operator_wrapper(*symbol, *value, context) {
+            context.database.operators.insert(*symbol, operator);
+        }
+    }
     // The full definition expression still returns Unit no matter what
     result.ty = context.core_types().unit;
 
     result
+}
+
+/// Recognize standard-library operator shims whose complete body delegates
+/// their parameters to a registered intrinsic. Calls to these shims can then
+/// use the same MIR intrinsic path as the builtin itself.
+fn intrinsic_operator_wrapper(
+    symbol: ValueSymbol,
+    function_expr: Idx<Expr>,
+    context: &Context,
+) -> Option<crate::IntrinsicExpr> {
+    let Expr::Function(group) = context.expr(function_expr) else {
+        return None;
+    };
+    if group.overloads.len() != 1 {
+        return None;
+    }
+    let overload = &group.overloads[0];
+    if !overload.type_params.is_empty() {
+        return None;
+    }
+
+    let Expr::Block(BlockExpr::NonEmpty { exprs }) = context.expr(overload.body) else {
+        return None;
+    };
+    let [statement] = exprs.as_slice() else {
+        return None;
+    };
+    let Expr::Statement(call_idx) = context.expr(*statement) else {
+        return None;
+    };
+    let Expr::Call(call) = context.expr(*call_idx) else {
+        return None;
+    };
+    if call.ufcs.is_some() || call.args.len() != overload.params.len() {
+        return None;
+    }
+
+    let builtin_symbol = call.symbol?;
+    let intrinsic = context.lookup_operator(builtin_symbol)?;
+    if context.builtin_id(builtin_symbol)?.operator() != Some(intrinsic) {
+        return None;
+    }
+
+    let expected_name = match intrinsic {
+        crate::IntrinsicExpr::Add => "+",
+        crate::IntrinsicExpr::Sub => "-",
+        crate::IntrinsicExpr::Mul => "*",
+        crate::IntrinsicExpr::Div => "/",
+        crate::IntrinsicExpr::Rem => "%",
+        crate::IntrinsicExpr::Eq => "==",
+        crate::IntrinsicExpr::Ne => "!=",
+        crate::IntrinsicExpr::Lt => "<",
+        crate::IntrinsicExpr::Le => "<=",
+        crate::IntrinsicExpr::Gt => ">",
+        crate::IntrinsicExpr::Ge => ">=",
+        crate::IntrinsicExpr::Concat => return None,
+    };
+    if context.value_symbol_str(symbol) != expected_name {
+        return None;
+    }
+
+    let forwards_parameters = call
+        .args
+        .iter()
+        .zip(overload.params.iter())
+        .all(|(arg, param)| {
+            matches!(
+                context.expr(*arg),
+                Expr::VarRef(var_ref) if var_ref.symbol == param.symbol
+            )
+        });
+    forwards_parameters.then_some(intrinsic)
 }
 
 fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> TypeResult {
@@ -653,6 +732,13 @@ fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> T
         context.type_database.insert_type_symbol(*param, ty);
     }
     let inferred = infer_type_expr(*type_expr, context);
+    let intrinsic_scalar_owner = matches!(
+        context.database.type_expr(*type_expr).0,
+        TypeExpr::Intrinsic(_)
+    ) && matches!(
+        context.type_(inferred.ty),
+        Type::Int | Type::Float | Type::String
+    );
     context
         .type_database
         .type_symbols
@@ -660,6 +746,9 @@ fn infer_type_var_def(type_var_def: &TypeVarDefExpr, context: &mut Context) -> T
     context
         .type_database
         .insert_type_alias(*symbol, params.clone(), inferred.ty);
+    if intrinsic_scalar_owner {
+        context.type_database.set_type_owner(inferred.ty, *symbol);
+    }
 
     // TODO for the "type statement" itself, unit or never?
     let mut result = TypeResult::new(&context.type_database);
@@ -719,6 +808,155 @@ fn infer_block(block: &BlockExpr, context: &mut Context) -> TypeResult {
 }
 
 fn infer_call(
+    expr_idx: Idx<Expr>,
+    expr: &CallExpr,
+    expected: Option<Idx<Type>>,
+    context: &mut Context,
+) -> TypeResult {
+    let Some(ufcs) = expr.ufcs.as_ref() else {
+        return infer_regular_call(expr_idx, expr, expected, context);
+    };
+
+    let receiver_result = infer_expr(ufcs.receiver, context);
+    if receiver_result.is_err() {
+        return receiver_result;
+    }
+    let receiver_ty = receiver_result.ty;
+
+    // If a record has a field with the same name, it takes precedence over
+    // a UFCS eligible function
+    if ufcs_field_exists(receiver_ty, ufcs.member, context) {
+        return infer_regular_call(expr_idx, expr, expected, context);
+    }
+
+    if let Some(symbol) = find_ufcs_function(receiver_ty, ufcs.member, context) {
+        let resolved = rewrite_ufcs_call(expr_idx, expr, ufcs, symbol, context);
+        let method_result = infer_regular_call(expr_idx, &resolved, expected, context);
+        if method_result.is_ok()
+            || !supports_core_operator(receiver_ty, context)
+            || !is_operator_signature_mismatch(&method_result)
+        {
+            return method_result;
+        }
+
+        // Preserve the existing mixed Int/Float overloads as an intrinsic
+        // fallback when the primitive type module only has a homogeneous
+        // operator implementation.
+        if let Some(intrinsic) = core_operator_symbol(ufcs.member, context) {
+            let resolved = rewrite_ufcs_call(expr_idx, expr, ufcs, intrinsic, context);
+            let intrinsic_result = infer_regular_call(expr_idx, &resolved, expected, context);
+            if intrinsic_result.is_ok() {
+                return intrinsic_result;
+            }
+        }
+        return method_result;
+    }
+
+    // Primitive operators remain compiler intrinsics. This is intentionally
+    // limited to registered core operators, not ordinary core functions.
+    if supports_core_operator(receiver_ty, context) {
+        if let Some(symbol) = core_operator_symbol(ufcs.member, context) {
+            let resolved = rewrite_ufcs_call(expr_idx, expr, ufcs, symbol, context);
+            return infer_regular_call(expr_idx, &resolved, expected, context);
+        }
+    }
+
+    let mut result = receiver_result;
+    result.push_diag(TypeDiagnostic::ufcs_function_not_found(
+        ufcs.member,
+        receiver_ty,
+        context.database.range_of_expr(expr_idx),
+    ));
+    result.ty = context.core_types().error;
+    result
+}
+
+fn ufcs_field_exists(receiver_ty: Idx<Type>, member: Key, context: &Context) -> bool {
+    match context.type_(receiver_ty) {
+        Type::Product(product) => product.fields.contains_key(&member),
+        Type::UnionNamespace(_) => true,
+        _ => false,
+    }
+}
+
+fn find_ufcs_function(
+    receiver_ty: Idx<Type>,
+    member: Key,
+    context: &Context,
+) -> Option<ValueSymbol> {
+    let receiver_ty = match context.type_(receiver_ty) {
+        Type::IntLiteral(_) => context.core_types().int,
+        Type::FloatLiteral(_) => context.core_types().float,
+        Type::StringLiteral(_) => context.core_types().string,
+        _ => receiver_ty,
+    };
+    let owner = match context.type_(receiver_ty) {
+        Type::Product(product) => product.name,
+        Type::Sum(sum) => sum.name,
+        _ => context.type_database.type_owners.get(&receiver_ty).copied(),
+    }?;
+    let module = ModuleId::from(owner.module_id());
+    let symbol = context.exported_value(module, member)?;
+
+    // Re-exports are not UFCS candidates, only the definitions in
+    // the same module as the type
+    (symbol.module_id() == module.as_u32()).then_some(symbol)
+}
+
+fn supports_core_operator(receiver_ty: Idx<Type>, context: &Context) -> bool {
+    receiver_ty == context.core_types().int
+        || receiver_ty == context.core_types().float
+        || receiver_ty == context.core_types().string
+        || is_subtype(receiver_ty, context.core_types().bool, context)
+        || matches!(
+            context.type_(receiver_ty),
+            Type::IntLiteral(_) | Type::FloatLiteral(_) | Type::StringLiteral(_)
+        )
+}
+
+fn core_operator_symbol(member: Key, context: &Context) -> Option<ValueSymbol> {
+    context
+        .core_value(member)
+        .filter(|symbol| context.lookup_operator(*symbol).is_some())
+}
+
+fn is_operator_signature_mismatch(result: &TypeResult) -> bool {
+    !result.diagnostics.is_empty()
+        && result.diagnostics.iter().all(|diagnostic| {
+            matches!(
+                diagnostic.variant,
+                TypeDiagnosticVariant::TypeMismatch { .. }
+                    | TypeDiagnosticVariant::NoMatchingSignature { .. }
+                    | TypeDiagnosticVariant::ArgsMismatch { .. }
+            )
+        })
+}
+
+fn rewrite_ufcs_call(
+    expr_idx: Idx<Expr>,
+    call: &CallExpr,
+    ufcs: &UfcsCall,
+    symbol: ValueSymbol,
+    context: &mut Context,
+) -> CallExpr {
+    let callee = context
+        .database
+        .alloc_expr(Expr::VarRef(VarRefExpr { symbol }), None);
+    let mut args = Vec::with_capacity(call.args.len() + 1);
+    args.push(ufcs.receiver);
+    args.extend(call.args.iter().copied());
+
+    let mut resolved = call.clone();
+    resolved.callee = callee;
+    resolved.args = args.into_boxed_slice();
+    resolved.symbol = Some(symbol);
+    resolved.ufcs = None;
+    resolved.signature_index = None;
+    *context.database.expr_mut(expr_idx) = Expr::Call(resolved.clone());
+    resolved
+}
+
+fn infer_regular_call(
     expr_idx: Idx<Expr>,
     expr: &CallExpr,
     expected: Option<Idx<Type>>,

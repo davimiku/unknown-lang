@@ -20,10 +20,11 @@ use self::types::parse_type_expr;
 // (is the scrutinee `a` or is the scrutinee `a` called with empty block as arg)
 // Blocks can be a function arg but need to be surrounded by parentheses.
 // Leaving this comment here until language syntax is documented better
-const CALL_ARG_START: [lexer::TokenKind; 8] = [
+const CALL_ARG_START: [lexer::TokenKind; 9] = [
     T::LParen,
     T::LBracket,
     T::Ident,
+    T::EscapedIdent,
     T::IntLiteral,
     T::FloatLiteral,
     T::StringLiteral,
@@ -32,9 +33,10 @@ const CALL_ARG_START: [lexer::TokenKind; 8] = [
 ];
 
 /// Tokens that may be used at the start of a pattern
-const PATTERN_START: [lexer::TokenKind; 6] = [
+const PATTERN_START: [lexer::TokenKind; 7] = [
     T::Dot,
     T::Ident,
+    T::EscapedIdent,
     T::IntLiteral,
     T::FloatLiteral,
     T::StringLiteral,
@@ -106,6 +108,14 @@ fn expr_binding_power(p: &mut Parser, minimum_binding_power: u8) -> Option<Compl
         // Consume the operator token
         p.bump();
 
+        // Allow an operator token as a path member, e.g. `point.+ other`.
+        if op == BinaryOp::Path && p.at_set(&OPERATOR_NAME_TOKENS) {
+            let m = lhs.precede(p);
+            parse_operator_ident(p);
+            lhs = m.complete(p, SyntaxKind::PathExpr);
+            continue;
+        }
+
         // Starts a new marker that "wraps" the already parsed LHS, so that we can have
         // an expression surrounding the LHS and RHS
         let m = lhs.precede(p);
@@ -155,7 +165,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         T::FloatLiteral => parse_float_literal(p),
         T::StringLiteral => parse_string_literal(p),
         T::Intrinsic => parse_intrinsic_expr(p),
-        T::Ident => parse_path_ident(p),
+        T::Ident | T::EscapedIdent => parse_path_ident(p),
         T::Attribute => parse_attribute(p),
         T::ModuleName => parse_module_path(p),
 
@@ -223,7 +233,7 @@ fn parse_string_literal(p: &mut Parser) -> CompletedMarker {
 // Helps wrap a lone Ident into a Path to make AST easier
 // TODO: is this hacky?
 fn parse_path_ident(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::Ident);
+    p.debug_assert_at_set(&[T::Ident, T::EscapedIdent]);
 
     let cm = parse_ident(p);
 
@@ -261,7 +271,7 @@ pub(crate) fn parse_pattern(p: &mut Parser) -> CompletedMarker {
                 parse_pattern(p);
             }
         }
-        Some(T::Ident) => {
+        Some(T::Ident | T::EscapedIdent) => {
             kind = SyntaxKind::IdentPattern;
             parse_ident(p);
         }
@@ -290,9 +300,35 @@ pub(crate) fn parse_pattern(p: &mut Parser) -> CompletedMarker {
 
 pub(crate) fn parse_ident(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
-    p.expect(T::Ident);
+    p.expect_one_of([T::Ident, T::EscapedIdent]);
     m.complete(p, SyntaxKind::Ident)
 }
+
+fn parse_operator_ident(p: &mut Parser) -> CompletedMarker {
+    p.debug_assert_at_set(&OPERATOR_NAME_TOKENS);
+    let m = p.start();
+    p.bump();
+    m.complete(p, SyntaxKind::Ident)
+}
+
+const OPERATOR_NAME_TOKENS: [T; 16] = [
+    T::Plus,
+    T::PlusPlus,
+    T::Dash,
+    T::Star,
+    T::Slash,
+    T::Caret,
+    T::Percent,
+    T::Bar,
+    T::Bang,
+    T::Tilde,
+    T::LAngle,
+    T::LAngleEquals,
+    T::RAngle,
+    T::RAngleEquals,
+    T::EqualsEquals,
+    T::BangEquals,
+];
 
 pub(crate) fn parse_attribute(p: &mut Parser) -> CompletedMarker {
     let m = p.start();
@@ -532,7 +568,7 @@ fn parse_function(p: &mut Parser) -> CompletedMarker {
         parse_function_type_params(p);
     }
 
-    if p.at(T::Ident) {
+    if p.at_set(&[T::Ident, T::EscapedIdent]) {
         // single parameter function can omit parens
         let param_marker = p.start();
         parse_function_param(p);
@@ -616,7 +652,7 @@ fn parse_function_param_list(p: &mut Parser) -> CompletedMarker {
 ///  ^^^^^
 /// ```
 fn parse_function_param(p: &mut Parser) -> CompletedMarker {
-    p.debug_assert_at(T::Ident);
+    p.debug_assert_at_set(&[T::Ident, T::EscapedIdent]);
     let m = p.start();
     parse_ident(p);
 

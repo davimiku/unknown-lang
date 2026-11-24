@@ -81,6 +81,10 @@ pub struct TypeDatabase {
     /// Generic aliases retain their uninstantiated body and parameter list
     type_aliases: HashMap<TypeSymbol, TypeAlias>,
 
+    /// Defining symbols for intrinsic scalar types such as `Int` and `Float`
+    /// to track the associated TypeSymbol
+    type_owners: HashMap<Idx<Type>, TypeSymbol>,
+
     /// Core types that are builtin to all programs
     pub(crate) core: CoreTypes,
 }
@@ -124,6 +128,7 @@ impl TypeDatabase {
             value_symbols: Default::default(),
             type_symbols: Default::default(),
             type_aliases: Default::default(),
+            type_owners: Default::default(),
         }
     }
 }
@@ -230,6 +235,10 @@ impl TypeDatabase {
         body: Idx<Type>,
     ) {
         self.type_aliases.insert(key, TypeAlias { params, body });
+    }
+
+    pub(super) fn set_type_owner(&mut self, ty: Idx<Type>, owner: TypeSymbol) {
+        self.type_owners.insert(ty, owner);
     }
 
     pub(super) fn alloc_type(&mut self, ty: Type) -> Idx<Type> {

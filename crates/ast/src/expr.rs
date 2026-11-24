@@ -273,6 +273,22 @@ impl CallExpr {
     pub fn args(&self) -> Option<CallArgs> {
         self.0.children().find_map(CallArgs::cast)
     }
+
+    /// If the callee is a dotted call such as `value.method`,
+    /// return both the receiver and member name for later semantic resolution
+    pub fn ufcs_target(&self) -> Option<(Expr, Ident)> {
+        let Expr::Path(path) = self.callee()? else {
+            return None;
+        };
+        let receiver = path.subject()?;
+        let member = path.member()?;
+        let member = match member {
+            Expr::Ident(ident) => ident,
+            Expr::Path(path) if path.member().is_none() => path.subject_as_ident()?,
+            _ => return None,
+        };
+        Some((receiver, member))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -466,10 +482,15 @@ impl Ident {
     }
 
     pub fn as_string(&self) -> String {
-        self.0
+        let text = self
+            .0
             .first_token()
             .expect("parsed Ident to have a token")
             .text()
+            .to_owned();
+        text.strip_prefix('`')
+            .and_then(|text| text.strip_suffix('`'))
+            .unwrap_or(&text)
             .to_owned()
     }
 
@@ -551,6 +572,14 @@ impl LetBinding {
             .children()
             .find(|child| child.kind() == SyntaxKind::Ident)
             .and_then(|ident| ident.first_token())
+    }
+
+    /// Returns the binding name with backticks removed for escaped names.
+    pub fn name_as_string(&self) -> Option<String> {
+        self.0
+            .children()
+            .find_map(Ident::cast)
+            .map(|ident| ident.as_string())
     }
 
     pub fn name_range(&self) -> Option<text_size::TextRange> {

@@ -9,10 +9,11 @@ use super::{
     PATH_RIGHT_BINDING_POWER,
 };
 
-const TYPE_CALL_ARG_START: [lexer::TokenKind; 9] = [
+const TYPE_CALL_ARG_START: [lexer::TokenKind; 10] = [
     T::LParen,
     T::LBracket,
     T::Ident,
+    T::EscapedIdent,
     T::TypeParameter,
     T::IntLiteral,
     T::FloatLiteral,
@@ -128,7 +129,7 @@ fn parse_lhs(p: &mut Parser) -> Option<CompletedMarker> {
         parse_int_literal(p)
     } else if p.at(T::StringLiteral) {
         parse_string_literal(p)
-    } else if p.at(T::Ident) {
+    } else if p.at_set(&[T::Ident, T::EscapedIdent]) {
         parse_compound_type_item(p)
     } else if p.at(T::ModuleName) {
         parse_module_path(p)
@@ -238,7 +239,7 @@ fn parse_record_type(p: &mut Parser) -> CompletedMarker {
 
 fn parse_compound_type_item(p: &mut Parser) -> CompletedMarker {
     // FIXME: remove assertion because it's not true?
-    p.debug_assert_at(T::Ident);
+    p.debug_assert_at_set(&[T::Ident, T::EscapedIdent]);
 
     let ident_marker = parse_ident(p);
 

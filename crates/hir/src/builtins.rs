@@ -1,7 +1,7 @@
 use la_arena::Idx;
 
 use crate::typecheck::{CoreTypes, FuncSignature, Type};
-use crate::TypeSymbol;
+use crate::{IntrinsicExpr, TypeSymbol};
 use strum::EnumString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString)]
@@ -16,9 +16,77 @@ pub enum BuiltinId {
     ArrayReserve,
     #[strum(serialize = "Array.write_next")]
     ArrayWriteNext,
+
+    #[strum(serialize = "Int.add")]
+    IntAdd,
+    #[strum(serialize = "Int.sub")]
+    IntSub,
+    #[strum(serialize = "Int.mul")]
+    IntMul,
+    #[strum(serialize = "Int.div")]
+    IntDiv,
+    #[strum(serialize = "Int.rem")]
+    IntRem,
+    #[strum(serialize = "Int.eq")]
+    IntEq,
+    #[strum(serialize = "Int.ne")]
+    IntNe,
+    #[strum(serialize = "Int.lt")]
+    IntLt,
+    #[strum(serialize = "Int.le")]
+    IntLe,
+    #[strum(serialize = "Int.gt")]
+    IntGt,
+    #[strum(serialize = "Int.ge")]
+    IntGe,
+
+    #[strum(serialize = "Float.add")]
+    FloatAdd,
+    #[strum(serialize = "Float.sub")]
+    FloatSub,
+    #[strum(serialize = "Float.mul")]
+    FloatMul,
+    #[strum(serialize = "Float.div")]
+    FloatDiv,
+    #[strum(serialize = "Float.eq")]
+    FloatEq,
+    #[strum(serialize = "Float.ne")]
+    FloatNe,
+    #[strum(serialize = "Float.lt")]
+    FloatLt,
+    #[strum(serialize = "Float.le")]
+    FloatLe,
+    #[strum(serialize = "Float.gt")]
+    FloatGt,
+    #[strum(serialize = "Float.ge")]
+    FloatGe,
 }
 
 pub(crate) const ARRAY_ELEMENT_TYPE_PARAMETER: TypeSymbol = TypeSymbol::new(u32::MAX, 0);
+
+impl BuiltinId {
+    pub(crate) fn operator(self) -> Option<IntrinsicExpr> {
+        use BuiltinId as B;
+        use IntrinsicExpr as I;
+
+        Some(match self {
+            B::IntAdd | B::FloatAdd => I::Add,
+            B::IntSub | B::FloatSub => I::Sub,
+            B::IntMul | B::FloatMul => I::Mul,
+            B::IntDiv | B::FloatDiv => I::Div,
+            B::IntRem => I::Rem,
+            B::IntEq | B::FloatEq => I::Eq,
+            B::IntNe | B::FloatNe => I::Ne,
+            B::IntLt | B::FloatLt => I::Lt,
+            B::IntLe | B::FloatLe => I::Le,
+            B::IntGt | B::FloatGt => I::Gt,
+            B::IntGe | B::FloatGe => I::Ge,
+            B::ArrayNew | B::ArrayLen | B::ArrayCapacity | B::ArrayReserve | B::ArrayWriteNext => {
+                return None
+            }
+        })
+    }
+}
 
 pub fn signature(
     id: BuiltinId,
@@ -48,7 +116,35 @@ pub fn signature(
             return_ty: types.unit,
             type_params: Box::new([type_parameter]),
         }]),
+        BuiltinId::IntAdd | BuiltinId::IntSub | BuiltinId::IntMul => {
+            numeric_binary(types.int, types.int, types.int)
+        }
+        BuiltinId::IntDiv => numeric_binary(types.int, types.int, types.float),
+        BuiltinId::IntRem => numeric_binary(types.int, types.int, types.int),
+        BuiltinId::IntEq
+        | BuiltinId::IntNe
+        | BuiltinId::IntLt
+        | BuiltinId::IntLe
+        | BuiltinId::IntGt
+        | BuiltinId::IntGe => numeric_binary(types.int, types.int, types.bool),
+        BuiltinId::FloatAdd | BuiltinId::FloatSub | BuiltinId::FloatMul | BuiltinId::FloatDiv => {
+            numeric_binary(types.float, types.float, types.float)
+        }
+        BuiltinId::FloatEq
+        | BuiltinId::FloatNe
+        | BuiltinId::FloatLt
+        | BuiltinId::FloatLe
+        | BuiltinId::FloatGt
+        | BuiltinId::FloatGe => numeric_binary(types.float, types.float, types.bool),
     }
+}
+
+fn numeric_binary(lhs: Idx<Type>, rhs: Idx<Type>, result: Idx<Type>) -> Type {
+    Type::func(vec![FuncSignature {
+        params: Box::new([lhs, rhs]),
+        return_ty: result,
+        type_params: Box::new([]),
+    }])
 }
 
 #[cfg(test)]
@@ -73,6 +169,8 @@ mod tests {
             BuiltinId::from_str("Array.write_next"),
             Ok(BuiltinId::ArrayWriteNext)
         );
+        assert_eq!(BuiltinId::from_str("Int.add"), Ok(BuiltinId::IntAdd));
+        assert_eq!(BuiltinId::from_str("Float.lt"), Ok(BuiltinId::FloatLt));
         assert!(BuiltinId::from_str("List.new").is_err());
     }
 }

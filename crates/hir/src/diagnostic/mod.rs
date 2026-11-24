@@ -179,6 +179,13 @@ impl TypeDiagnostic {
             range,
         }
     }
+
+    pub fn ufcs_function_not_found(function: Key, ty: Idx<Type>, range: TextRange) -> Self {
+        Self {
+            variant: TypeDiagnosticVariant::UfcsFunctionNotFound { function, ty },
+            range,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -246,6 +253,11 @@ pub enum TypeDiagnosticVariant {
         field: Key,
 
         /// Product type that did not contain the requested field
+        ty: Idx<Type>,
+    },
+    /// No exported function with this name is defined alongside the receiver's type.
+    UfcsFunctionNotFound {
+        function: Key,
         ty: Idx<Type>,
     },
     UnresolvedVarRef {

@@ -73,6 +73,13 @@ impl ContextDisplay for TypeDiagnosticVariant {
                 let ty = ty.display(context);
                 format!("Field ‘{field_name}’ does not exist in type ‘{ty}’")
             }
+            V::UfcsFunctionNotFound { function, ty } => {
+                let function = context.lookup(*function);
+                let ty = ty.display(context);
+                format!(
+                    "No exported function ‘{function}’ is defined in the module that defines type ‘{ty}’"
+                )
+            }
             V::UnresolvedVarRef { key } => {
                 let name = context.lookup(*key);
                 format!("Unable to resolve variable ‘{name}’")

@@ -1,3 +1,5 @@
+// type Bool = @core/types/bool/Bool
+
 /// A value that may or may not exist
 #export
 type Option 'A = none | some: 'A
@@ -9,3 +11,19 @@ let map = fun ['A](opt: Option 'A, mapper: ('A) -> 'A) -> Option 'A {
         .some value -> { Option.some (mapper value) }
     }
 }
+
+// #export
+//let is_some = fun ['A](opt: Option 'A) -> Bool {
+//    match opt {
+//        .none -> Bool.false,
+//        .some value -> Bool.true,
+//    }
+//}
+
+//#export
+//let is_none = fun ['A](opt: Option 'A) -> Bool {
+//    match opt {
+//        .none -> Bool.true,
+//        .some value -> Bool.false,
+//    }
+//}

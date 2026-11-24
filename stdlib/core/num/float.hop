@@ -1,3 +1,63 @@
 /// 64-bit IEEE-754 double-width precision floating point
 #export
 type Float = intrinsic
+
+#builtin("Float.add")
+let add_float_builtin: (Float, Float) -> Float = intrinsic
+
+#builtin("Float.sub")
+let sub_float_builtin: (Float, Float) -> Float = intrinsic
+
+#builtin("Float.mul")
+let mul_float_builtin: (Float, Float) -> Float = intrinsic
+
+#builtin("Float.div")
+let div_float_builtin: (Float, Float) -> Float = intrinsic
+
+#builtin("Float.eq")
+let eq_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#builtin("Float.ne")
+let ne_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#builtin("Float.lt")
+let lt_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#builtin("Float.le")
+let le_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#builtin("Float.gt")
+let gt_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#builtin("Float.ge")
+let ge_float_builtin: (Float, Float) -> Bool = intrinsic
+
+#export
+let `+` = fun (a: Float, b: Float) -> Float { add_float_builtin (a, b) }
+
+#export
+let `-` = fun (a: Float, b: Float) -> Float { sub_float_builtin (a, b) }
+
+#export
+let `*` = fun (a: Float, b: Float) -> Float { mul_float_builtin (a, b) }
+
+#export
+let `/` = fun (a: Float, b: Float) -> Float { div_float_builtin (a, b) }
+
+#export
+let `==` = fun (a: Float, b: Float) -> Bool { eq_float_builtin (a, b) }
+
+#export
+let `!=` = fun (a: Float, b: Float) -> Bool { ne_float_builtin (a, b) }
+
+#export
+let `<` = fun (a: Float, b: Float) -> Bool { lt_float_builtin (a, b) }
+
+#export
+let `<=` = fun (a: Float, b: Float) -> Bool { le_float_builtin (a, b) }
+
+#export
+let `>` = fun (a: Float, b: Float) -> Bool { gt_float_builtin (a, b) }
+
+#export
+let `>=` = fun (a: Float, b: Float) -> Bool { ge_float_builtin (a, b) }

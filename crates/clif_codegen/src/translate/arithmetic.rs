@@ -25,26 +25,6 @@ impl FunctionTranslator<'_> {
                     layout: self.layouts.float,
                 }
             }
-            (HType::Float, HType::Int) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
-                let val = self.builder.ins().fadd(lhs_val, rhs_val);
-                CValue::Val {
-                    val,
-                    layout: self.layouts.float,
-                }
-            }
-            (HType::Int, HType::Float) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
-                let val = self.builder.ins().fadd(lhs_val, rhs_val);
-                CValue::Val {
-                    val,
-                    layout: self.layouts.float,
-                }
-            }
             (HType::Int, HType::Int) => self.iadd(lhs, rhs),
 
             _ => unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for addition",),
@@ -59,24 +39,6 @@ impl FunctionTranslator<'_> {
             (HType::Float, HType::Float) => {
                 let lhs_val = assert_val!(self.translate_operand(lhs));
                 let rhs_val = assert_val!(self.translate_operand(rhs));
-
-                let val = self.builder.ins().fsub(lhs_val, rhs_val);
-                let layout = self.layouts.float;
-                CValue::Val { val, layout }
-            }
-            (HType::Float, HType::Int) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
-
-                let val = self.builder.ins().fsub(lhs_val, rhs_val);
-                let layout = self.layouts.float;
-                CValue::Val { val, layout }
-            }
-            (HType::Int, HType::Float) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
 
                 let val = self.builder.ins().fsub(lhs_val, rhs_val);
                 let layout = self.layouts.float;
@@ -100,22 +62,6 @@ impl FunctionTranslator<'_> {
                 let layout = self.layouts.float;
                 CValue::Val { val, layout }
             }
-            (HType::Float, HType::Int) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
-                let val = self.builder.ins().fmul(lhs_val, rhs_val);
-                let layout = self.layouts.float;
-                CValue::Val { val, layout }
-            }
-            (HType::Int, HType::Float) => {
-                let lhs_val = assert_val!(self.translate_operand(lhs));
-                let rhs_val = assert_val!(self.translate_operand(rhs));
-                let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
-                let val = self.builder.ins().fmul(lhs_val, rhs_val);
-                let layout = self.layouts.float;
-                CValue::Val { val, layout }
-            }
             (HType::Int, HType::Int) => self.imul(lhs, rhs),
 
             _ => unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for addition",),
@@ -130,14 +76,6 @@ impl FunctionTranslator<'_> {
         // these Type should never be IntLiteral or FloatLiteral, since op_type normalizes those to Int/Float
         let val = match (self.context.type_(lhs_ty), self.context.type_(rhs_ty)) {
             (HType::Float, HType::Float) => self.builder.ins().fdiv(lhs_val, rhs_val),
-            (HType::Float, HType::Int) => {
-                let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
-                self.builder.ins().fdiv(lhs_val, rhs_val)
-            }
-            (HType::Int, HType::Float) => {
-                let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
-                self.builder.ins().fdiv(lhs_val, rhs_val)
-            }
             (HType::Int, HType::Int) => {
                 let lhs_val = self.builder.ins().fcvt_from_sint(F64, lhs_val);
                 let rhs_val = self.builder.ins().fcvt_from_sint(F64, rhs_val);
