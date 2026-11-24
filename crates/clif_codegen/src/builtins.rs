@@ -1,68 +1,14 @@
-use std::fmt;
 use std::io::Write;
 
 use cranelift::prelude::types::{F64, I64};
 use cranelift::prelude::Type;
+use runtime::ffi::bool::HopperBool;
+use runtime::ffi::float::HopperFloat;
+use runtime::ffi::int::HopperFloat;
 
 // TODO: newtype all of these and impl fmt::display?
 // TODO: once there is a name for the language, change these names
 // 'X' is a placeholder
-
-/// Language `Int` is a Rust `i64`
-pub(crate) type XInt = i64;
-
-/// Language `Float` is a Rust `f64`
-pub(crate) type XFloat = f64;
-
-/// Useful alias for internal tests and other usage, the tag of
-/// a tagged union is a Rust `i64`
-pub(crate) type XTag = i64;
-
-/// Language `Bool` is a unit union type which is represented as a Rust `i64`
-///
-/// repr(transparent) is mandatory for FFI through "extern "C"" functions
-/// once repr(crabi) is stabilized, we would use that and implement that repr
-/// in the codegen here too
-/// https://github.com/rust-lang/rust/pull/105586
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct XBool(i64);
-
-impl Default for XBool {
-    fn default() -> Self {
-        FALSE
-    }
-}
-
-/// Use this constant for "true" when doing any FFI from Rust
-pub const TRUE: XBool = XBool(1);
-/// Use this constant for "false" when going any FFI from Rust
-pub const FALSE: XBool = XBool(0);
-
-impl From<bool> for XBool {
-    fn from(value: bool) -> Self {
-        Self(value as i64)
-    }
-}
-
-impl From<XBool> for bool {
-    fn from(value: XBool) -> Self {
-        value.0 != 0
-    }
-}
-
-impl From<&XBool> for bool {
-    fn from(value: &XBool) -> Self {
-        (*value).into()
-    }
-}
-
-impl fmt::Display for XBool {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let b: bool = self.into();
-        write!(f, "{b}")
-    }
-}
 
 pub(crate) const PRINT_INT: &str = "__print_int";
 pub(crate) const PRINT_FLOAT: &str = "__print_float";
@@ -76,6 +22,9 @@ pub(crate) const LEAVE_FRAME: &str = "__hopper_leave_frame";
 pub(crate) const ARRAY_NEW: &str = "__array_new";
 pub(crate) const ARRAY_RESERVE: &str = "__array_reserve";
 pub(crate) const ARRAY_WRITE_NEXT: &str = "__array_write_next";
+pub(crate) const STRING_BYTE_LEN: &str = "__string_byte_len";
+pub(crate) const STRING_CONCAT: &str = "__string_concat";
+pub(crate) const STRING_EQ: &str = "__string_eq";
 
 /// Only `MayCollect` entries may invoke the collector.
 /// Its entry address can only come from a runtime shim that captures the Hopper caller.
@@ -106,7 +55,7 @@ pub(crate) struct NativeBuiltin {
 ///
 /// This may change in the future, we don't yet have a way for users to
 /// register custom native entry points and it's not prioritized at the moment
-pub(crate) fn native_builtins() -> [NativeBuiltin; 11] {
+pub(crate) fn native_builtins() -> [NativeBuiltin; 14] {
     [
         NativeBuiltin {
             name: ENTER_FRAME,
@@ -174,11 +123,29 @@ pub(crate) fn native_builtins() -> [NativeBuiltin; 11] {
             returns: &[],
             entry: NativeEntry::NoGc(runtime::ffi::array_write_next_entry()),
         },
+        NativeBuiltin {
+            name: STRING_BYTE_LEN,
+            params: &[I64],
+            returns: &[I64],
+            entry: NativeEntry::NoGc(runtime::ffi::string_byte_len as *const u8),
+        },
+        NativeBuiltin {
+            name: STRING_CONCAT,
+            params: &[I64, I64],
+            returns: &[I64],
+            entry: NativeEntry::MayCollect(runtime::ffi::string_concat_entry()),
+        },
+        NativeBuiltin {
+            name: STRING_EQ,
+            params: &[I64, I64],
+            returns: &[I64],
+            entry: NativeEntry::NoGc(runtime::ffi::string_eq as *const u8),
+        },
     ]
 }
 
 /// Prints an integer to stdout with a newline
-pub(crate) extern "C" fn print_int(i: XInt) {
+pub(crate) extern "C" fn print_int(i: HopperFloat) {
     let s = i.to_string();
     let buf = s.as_bytes();
     let stdout = &mut std::io::stdout().lock();
@@ -188,7 +155,7 @@ pub(crate) extern "C" fn print_int(i: XInt) {
 }
 
 /// Prints a float to stdout with a newline
-pub(crate) extern "C" fn print_float(f: XFloat) {
+pub(crate) extern "C" fn print_float(f: HopperFloat) {
     let mut buffer = ryu::Buffer::new();
     let s = buffer.format(f);
 
@@ -199,7 +166,7 @@ pub(crate) extern "C" fn print_float(f: XFloat) {
 }
 
 /// Prints a bool to stdout with a newline
-pub(crate) extern "C" fn print_bool(b: XBool) {
+pub(crate) extern "C" fn print_bool(b: HopperBool) {
     let b: bool = b.into();
     let mut s = b.to_string();
     s.push('\n');
@@ -228,7 +195,13 @@ mod tests {
         }
         assert_eq!(
             collecting,
-            [ALLOC_STRING, ALLOC_OBJECT, ARRAY_NEW, ARRAY_RESERVE]
+            [
+                ALLOC_STRING,
+                ALLOC_OBJECT,
+                ARRAY_NEW,
+                ARRAY_RESERVE,
+                STRING_CONCAT
+            ]
         );
 
         let string_allocator = native_builtins()
@@ -284,6 +257,40 @@ mod tests {
         assert_eq!(
             array_write_next.entry.address(),
             runtime::ffi::array_write_next_entry()
+        );
+
+        let string_byte_len = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == STRING_BYTE_LEN)
+            .unwrap();
+        assert_eq!(string_byte_len.params, &[I64]);
+        assert_eq!(string_byte_len.returns, &[I64]);
+        assert_eq!(
+            string_byte_len.entry.address(),
+            runtime::ffi::string_byte_len as *const u8
+        );
+
+        let string_concat = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == STRING_CONCAT)
+            .unwrap();
+        assert_eq!(string_concat.params, &[I64, I64]);
+        assert_eq!(string_concat.returns, &[I64]);
+        assert!(matches!(string_concat.entry, NativeEntry::MayCollect(_)));
+        assert_eq!(
+            string_concat.entry.address(),
+            runtime::ffi::string_concat_entry().as_ptr()
+        );
+
+        let string_eq = native_builtins()
+            .into_iter()
+            .find(|builtin| builtin.name == STRING_EQ)
+            .unwrap();
+        assert_eq!(string_eq.params, &[I64, I64]);
+        assert_eq!(string_eq.returns, &[I64]);
+        assert_eq!(
+            string_eq.entry.address(),
+            runtime::ffi::string_eq as *const u8
         );
     }
 }

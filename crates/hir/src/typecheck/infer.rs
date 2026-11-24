@@ -699,7 +699,7 @@ fn intrinsic_operator_wrapper(
         crate::IntrinsicExpr::Le => "<=",
         crate::IntrinsicExpr::Gt => ">",
         crate::IntrinsicExpr::Ge => ">=",
-        crate::IntrinsicExpr::Concat => return None,
+        crate::IntrinsicExpr::Concat => "++",
     };
     if context.value_symbol_str(symbol) != expected_name {
         return None;

@@ -414,6 +414,10 @@ impl MirWrite for Rvalue {
                 write!(buf, "array_capacity ")?;
                 op.write(buf, module, context, indent)
             }
+            Rvalue::StringByteLen(op) => {
+                write!(buf, "string_byte_len ")?;
+                op.write(buf, module, context, indent)
+            }
             Rvalue::BinaryOp(binop, ops) => {
                 let (lhs, rhs) = ops.deref();
                 write!(buf, "{binop}(")?;

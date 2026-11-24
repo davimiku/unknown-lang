@@ -89,28 +89,6 @@ fn run(path: EntryPath) -> io::Result<Vec<()>> {
     // })
 }
 
-#[cfg(test)]
-#[test]
-#[ignore = "not a real unit test"]
-fn test_main() -> io::Result<()> {
-    println!("{:?}", env::current_dir());
-    // when "Run Test", the cwd is crates/cli (the level of the Cargo.toml of this crate)
-    // when "Debug", the cwd is the root level of this workspace
-    let path = String::from("test.prog");
-    let diagnostics = run(path)?;
-
-    for d in diagnostics {
-        eprintln!("{d:?}");
-    }
-
-    // let diagnostics_json = serde_json::to_string(&diagnostics)?;
-
-    // let mut stdout = io::stdout().lock();
-    // stdout.write_all(diagnostics_json.as_bytes())?;
-
-    Ok(())
-}
-
 fn absolute_path(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 

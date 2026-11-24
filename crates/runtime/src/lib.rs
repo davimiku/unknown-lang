@@ -92,10 +92,12 @@ impl Runtime {
         bytes: &[u8],
         stack_roots: &mut dyn RootSet,
     ) -> Result<GcRef, AllocError> {
-        let len = bytes.len();
+        std::str::from_utf8(bytes).map_err(|_| AllocError::InvalidUtf8)?;
+        let byte_len = bytes.len();
+        let len = i64::try_from(byte_len).map_err(|_| AllocError::OutOfMemory)?;
         let mut copied = Vec::new();
         copied
-            .try_reserve_exact(len)
+            .try_reserve_exact(byte_len)
             .map_err(|_| AllocError::OutOfMemory)?;
         copied.extend_from_slice(bytes);
         let boxed = copied.into_boxed_slice();
@@ -237,7 +239,9 @@ mod tests {
     fn generic_runtime_allocation_uses_global_collection_policy() {
         DESTROY_COUNT.store(0, Ordering::SeqCst);
         let mut runtime = Runtime::default();
-        runtime.heap.set_collection_threshold_for_test(size_of::<GcHeader>());
+        runtime
+            .heap
+            .set_collection_threshold_for_test(size_of::<GcHeader>());
 
         let first = runtime
             .alloc_object(

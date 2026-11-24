@@ -8,6 +8,7 @@
 #export module Float = @core/num/float
 
 #export type String = @core/text/string/String
+#export module String = @core/text/string
 
 #export type List = @core/collections/list/List
 #export module List = @core/collections/list

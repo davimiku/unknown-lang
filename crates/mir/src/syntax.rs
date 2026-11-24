@@ -568,6 +568,9 @@ pub enum Rvalue {
     /// Reads the capacity of a compiler-provided `Array 'A`.
     ArrayCapacity(Operand),
 
+    /// Reads a String's UTF-8 byte length.
+    StringByteLen(Operand),
+
     ///
     UnionVariant(RvalueUnionVariant),
 

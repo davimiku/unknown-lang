@@ -1,4 +1,8 @@
-use crate::builtins::{XBool, XInt, FALSE, TRUE};
+use runtime::ffi::{
+    bool::{HopperBool, FALSE, TRUE},
+    int::HopperFloat,
+};
+
 use crate::tests::{compile_main, to_fn};
 
 #[test]
@@ -15,7 +19,7 @@ let main = fun (condition: Color) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
     assert_eq!(code_fn((1,)), 16); // .green
     assert_eq!(code_fn((2,)), 24); // .blue
@@ -34,7 +38,7 @@ let main = fun (condition: Color) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
     assert_eq!(code_fn((1,)), 16); // .green
     assert_eq!(code_fn((2,)), 16); // .blue
@@ -54,7 +58,7 @@ let main = fun (condition: Color) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(main) };
     assert_eq!(code_fn((0,)), 8); // .red
     assert_eq!(code_fn((1,)), 16); // .green
     assert_eq!(code_fn((2,)), 16); // .blue
@@ -74,7 +78,7 @@ let main = fun (condition: Color) -> Color {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(main) };
     assert_eq!(code_fn((0,)), 0); // .red
     assert_eq!(code_fn((1,)), 0); // .green
     assert_eq!(code_fn((2,)), 2); // .blue
@@ -93,7 +97,7 @@ fn basic_if_else() {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XBool,), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperBool,), HopperFloat>(main) };
     assert_eq!(code_fn((TRUE,)), 16);
     assert_eq!(code_fn((FALSE,)), 8);
 }
@@ -110,7 +114,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperBool, HopperFloat), HopperFloat>(main) };
     assert_eq!(code_fn((TRUE, 16)), 16);
     assert_eq!(code_fn((FALSE, 16)), 16);
 }
@@ -127,7 +131,7 @@ let main = fun (condition: Bool, i: Int) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperBool, HopperFloat), HopperFloat>(main) };
     assert_eq!(code_fn((TRUE, 16)), 16);
     assert_eq!(code_fn((FALSE, 16)), 16);
 }
@@ -146,7 +150,7 @@ let main = fun (condition: Bool, b: Int) -> Int {
 
     let main = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XBool, XInt), XInt>(main) };
+    let code_fn = unsafe { to_fn::<(HopperBool, HopperFloat), HopperFloat>(main) };
     assert_eq!(code_fn((TRUE, 2)), 18);
     assert_eq!(code_fn((FALSE, 2)), 10);
 }

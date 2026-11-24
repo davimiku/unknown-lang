@@ -1,4 +1,5 @@
-use crate::builtins::XInt;
+use runtime::ffi::int::HopperFloat;
+
 use crate::tests::{compile_main, to_fn};
 
 #[test]
@@ -15,7 +16,7 @@ let main = fun () -> {
 
     let code_ptr = compile_main(input);
 
-    let code_fn = unsafe { to_fn::<(), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn(()), 6);
 }
@@ -34,7 +35,7 @@ let main = fun (i: Int) -> {
 
     let code_ptr = compile_main(input);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn((16,)), 17);
     assert_eq!(code_fn((8,)), 9);
@@ -58,7 +59,7 @@ let main = fun (n: Int) -> Int {
 
     let code_ptr = compile_main(input);
 
-    let code_fn = unsafe { to_fn::<(XInt,), XInt>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn((0,)), 0);
     assert_eq!(code_fn((1,)), 1);

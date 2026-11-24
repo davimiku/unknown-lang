@@ -10,7 +10,10 @@ use crate::{array, execution, runtime};
 pub type RawGcRef = *mut GcHeader;
 
 mod alloc_entry;
+pub mod bool;
+pub mod float;
 mod frame_entry;
+pub mod int;
 
 /// JIT function check coming in, capturing the parent frame's return PC
 pub fn enter_frame_entry() -> *const u8 {
@@ -75,9 +78,114 @@ impl GcEntryAddress {
     }
 }
 
-/// The two-argument string allocator's root-capturing JIT entry point.
+/// Entry point for String allocation that captures the root
 pub fn alloc_string_entry() -> GcEntryAddress {
     GcEntryAddress(alloc_entry::address())
+}
+
+/// Entry point for String concatenation that captures the root
+pub fn string_concat_entry() -> GcEntryAddress {
+    GcEntryAddress(alloc_entry::string_concat_address())
+}
+
+/// Returns a String's UTF-8 byte length. This operation does not allocate.
+pub extern "C" fn string_byte_len(gc_ref: RawGcRef) -> i64 {
+    if gc_ref.is_null() {
+        eprintln!("Hopper String byte length: null String reference");
+        std::process::abort();
+    }
+    // SAFETY: Hopper String values are non-null references to runtime-owned
+    // HopperString objects.
+    unsafe { (*gc_ref.cast::<HopperString>()).len }
+}
+
+unsafe fn string_bytes<'a>(string: &'a HopperString) -> &'a [u8] {
+    let len = usize::try_from(string.len).unwrap_or_else(|_| {
+        eprintln!("Hopper String: invalid negative byte length");
+        std::process::abort();
+    });
+    if string.bytes.is_null() {
+        eprintln!("Hopper String: null byte buffer");
+        std::process::abort();
+    }
+    // SAFETY: all String allocations own a non-null byte slice of this length.
+    unsafe { std::slice::from_raw_parts(string.bytes, len) }
+}
+
+/// Compares Strings by their UTF-8 bytes. This operation does not allocate.
+pub extern "C" fn string_eq(left: RawGcRef, right: RawGcRef) -> i64 {
+    if left.is_null() || right.is_null() {
+        eprintln!("Hopper String equality: null String reference");
+        std::process::abort();
+    }
+    // SAFETY: Hopper String values are non-null references to runtime-owned
+    // HopperString objects.
+    unsafe {
+        let left = &*left.cast::<HopperString>();
+        let right = &*right.cast::<HopperString>();
+        (left.len == right.len && string_bytes(left) == string_bytes(right)) as i64
+    }
+}
+
+// Called only by the assembly shim, which captures the Hopper caller before
+// entering Rust so any collection sees the caller's roots.
+pub(super) extern "C" fn string_concat_impl(
+    left: RawGcRef,
+    right: RawGcRef,
+    caller_sp: usize,
+    return_address: usize,
+    caller_fp: usize,
+) -> RawGcRef {
+    if left.is_null() || right.is_null() {
+        eprintln!("Hopper String concatenation: null String reference");
+        std::process::abort();
+    }
+
+    let runtime_mutex = runtime();
+    let mut runtime = runtime_mutex.lock().unwrap_or_else(|_| {
+        eprintln!("Hopper String concatenation: runtime lock poisoned");
+        std::process::abort();
+    });
+    let mut roots = StackRootSet::new(
+        AllocationCallSite {
+            caller_sp,
+            return_address,
+            caller_fp,
+        },
+        &runtime.stackmap_registry,
+    );
+
+    // Copy the bytes before allocating the resulting GC object: allocation
+    // may collect, but both input handles remain rooted in the Hopper frame.
+    let joined = unsafe {
+        let left_string = &*left.cast::<HopperString>();
+        let right_string = &*right.cast::<HopperString>();
+        let left_bytes = string_bytes(left_string);
+        let right_bytes = string_bytes(right_string);
+        let capacity = left_bytes
+            .len()
+            .checked_add(right_bytes.len())
+            .unwrap_or_else(|| {
+                eprintln!("Hopper String concatenation: length overflow");
+                std::process::abort();
+            });
+        let mut joined = Vec::new();
+        joined.try_reserve_exact(capacity).unwrap_or_else(|_| {
+            eprintln!("Hopper String concatenation: out of memory");
+            std::process::abort();
+        });
+        joined.extend_from_slice(left_bytes);
+        joined.extend_from_slice(right_bytes);
+        joined
+    };
+
+    runtime
+        .alloc_string(&joined, &mut roots)
+        .unwrap_or_else(|error| {
+            eprintln!("Hopper String concatenation failed: {error:?}");
+            std::process::abort();
+        })
+        .as_ptr()
 }
 
 /// A descriptor-aware managed-object allocator entry point.
@@ -613,7 +721,7 @@ pub extern "C" fn print_string(gc_ref: RawGcRef) {
     let str_ref = gc_ref.cast::<HopperString>();
 
     let s: &str = unsafe {
-        let len = (*str_ref).len;
+        let len = usize::try_from((*str_ref).len).expect("valid Hopper String length");
         let src = (*str_ref).bytes;
         let bytes = slice::from_raw_parts(src, len);
         str::from_utf8_unchecked(bytes)

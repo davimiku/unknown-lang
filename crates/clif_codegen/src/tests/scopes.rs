@@ -1,4 +1,5 @@
-use crate::builtins::XFloat;
+use runtime::ffi::float::HopperFloat;
+
 use crate::tests::{compile_main, to_fn};
 
 #[test]
@@ -17,7 +18,7 @@ let main = fun (a: Float) -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XFloat,), ()>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), ()>(code_ptr) };
 
     assert_eq!(code_fn((16.0,)), ());
 }
@@ -40,7 +41,7 @@ let main = fun (a: Float) -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(XFloat,), XFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn((16.0,)), 70.0);
 }

@@ -478,6 +478,8 @@ impl Builder {
             Expr::Call(call) => {
                 if array_builtin_id(call, context).is_some() {
                     self.construct_array_call(statement_idx, call, assign_to, context);
+                } else if string_builtin_id(call, context).is_some() {
+                    self.construct_string_builtin_call(statement_idx, call, assign_to, context);
                 } else if let Some(binop) = try_get_binop(call, context) {
                     let rvalue = self.construct_binop(&binop, context);
                     if let Some(assign_place) = assign_to {
@@ -671,6 +673,13 @@ impl Builder {
                 assign_to,
                 context,
             ));
+        } else if string_builtin_id(call, context).is_some() {
+            return OperandOrPlace::from(self.construct_string_builtin_call(
+                call_expr_idx,
+                call,
+                assign_to,
+                context,
+            ));
         } else if let Some(binop) = try_get_binop(call, context) {
             let assign_place = match assign_to {
                 Some(assign_place) => assign_place.clone(),
@@ -835,6 +844,52 @@ impl Builder {
             }
             _ => unreachable!("non-array builtin passed to array call lowering"),
         }
+    }
+
+    fn construct_string_builtin_call(
+        &mut self,
+        call_expr_idx: Idx<Expr>,
+        call: &CallExpr,
+        assign_to: &Option<Place>,
+        context: &Context,
+    ) -> Place {
+        let builtin = string_builtin_id(call, context).expect("String builtin id");
+        let destination = assign_to.clone().unwrap_or_else(|| {
+            self.construct_local(
+                self.expr_type_idx(call_expr_idx, context),
+                call.symbol,
+                Mutability::Not,
+            )
+            .into()
+        });
+
+        let rvalue = match builtin {
+            BuiltinId::StringByteLen => {
+                let string = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                Rvalue::StringByteLen(string)
+            }
+            BuiltinId::StringConcat => {
+                let left = Operand::from_op_or_place(
+                    self.construct_operand(call.args[0], &None, context),
+                    context,
+                );
+                let right = Operand::from_op_or_place(
+                    self.construct_operand(call.args[1], &None, context),
+                    context,
+                );
+                Rvalue::BinaryOp(crate::syntax::BinOpKind::Concat, Box::new((left, right)))
+            }
+            _ => unreachable!("non-String builtin passed to String call lowering"),
+        };
+
+        self.current_block_mut()
+            .statements
+            .push(Statement::assign(destination.clone(), rvalue));
+        self.def_local(destination.local);
+        destination
     }
 
     fn construct_callee(
@@ -1529,6 +1584,18 @@ fn array_builtin_id(call: &CallExpr, context: &Context) -> Option<BuiltinId> {
                 | BuiltinId::ArrayCapacity
                 | BuiltinId::ArrayReserve
                 | BuiltinId::ArrayWriteNext
+        )
+    })
+}
+
+fn string_builtin_id(call: &CallExpr, context: &Context) -> Option<BuiltinId> {
+    let Expr::VarRef(var_ref) = context.expr(call.callee) else {
+        return None;
+    };
+    context.builtin_id(var_ref.symbol).filter(|builtin| {
+        matches!(
+            builtin,
+            BuiltinId::StringByteLen | BuiltinId::StringConcat
         )
     })
 }

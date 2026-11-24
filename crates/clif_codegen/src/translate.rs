@@ -38,6 +38,7 @@ use crate::builtins;
 use crate::ext::function_builder::FunctionBuilderExt;
 use crate::ext::jit_module::JITModuleExt;
 use crate::layout::{BackendRepr, FieldsShape, GcUnionField, Layout, Layouts, Scalar};
+use crate::macros::assert_val;
 use crate::place::Pointer;
 use crate::place::{to_vec_values, CPlace, CValue};
 
@@ -1275,6 +1276,7 @@ impl FunctionTranslator<'_> {
             Rvalue::ArrayNew(capacity) => self.translate_array_new(place, capacity),
             Rvalue::ArrayLen(op) => self.translate_array_length(op),
             Rvalue::ArrayCapacity(op) => self.translate_array_capacity(op),
+            Rvalue::StringByteLen(op) => self.translate_string_byte_len(op),
             Rvalue::BinaryOp(binop, ops) => self.translate_binary_op(binop, ops.deref()),
             Rvalue::UnaryOp(_unop, _op) => todo!(),
             Rvalue::Aggregate(aggregate) => self.translate_aggregate(place, aggregate),
@@ -1449,7 +1451,7 @@ impl FunctionTranslator<'_> {
             BinOpKind::Mul => self.emit_mul(lhs, rhs),
             BinOpKind::Div => self.emit_div(lhs, rhs),
             BinOpKind::Rem => self.emit_rem(lhs, rhs),
-            BinOpKind::Concat => todo!(),
+            BinOpKind::Concat => self.emit_string_concat(lhs, rhs),
             BinOpKind::Eq => self.emit_comparison(lhs, rhs, Cmp::Equal),
             BinOpKind::Ne => self.emit_comparison(lhs, rhs, Cmp::NotEqual),
             BinOpKind::Lt => self.emit_comparison(lhs, rhs, Cmp::LessThan),
@@ -1468,19 +1470,53 @@ impl FunctionTranslator<'_> {
         let rhs_val = self.translate_operand(rhs);
         let rhs_val = rhs_val.as_val().expect("to be a single value");
 
-        let val = if self.context.type_(lhs_ty).is_float() {
+        let lhs_type = self.context.type_(lhs_ty);
+        let val = if lhs_type.is_float() {
             let value = self
                 .builder
                 .ins()
                 .fcmp(comparison.as_float_cc(), lhs_val, rhs_val);
             self.builder.ins().sextend(I64, value)
-        } else if self.context.type_(lhs_ty).is_int() {
+        } else if lhs_type.is_int() {
             self.emit_int_comparison(lhs_val, rhs_val, comparison.as_int_cc())
+        } else if matches!(lhs_type, HType::String | HType::StringLiteral(_)) {
+            if !matches!(comparison, Cmp::Equal | Cmp::NotEqual) {
+                unreachable!("String only supports equality comparisons");
+            }
+            let call = self.call_native_builtin(builtins::STRING_EQ, &[lhs_val, rhs_val]);
+            let equal = self.builder.inst_results(call)[0];
+            match comparison {
+                Cmp::Equal => equal,
+                Cmp::NotEqual => {
+                    let not_equal = self.builder.ins().icmp_imm(IntCC::Equal, equal, 0);
+                    self.builder.ins().sextend(I64, not_equal)
+                }
+                _ => unreachable!("String only supports equality comparisons"),
+            }
         } else {
             unreachable!("unexpected types {lhs_ty:?} and {rhs_ty:?} for comparison")
         };
         let layout = self.layout_for_type(self.context.core_types().bool);
         CValue::Val { val, layout }
+    }
+
+    fn translate_string_byte_len(&mut self, op: &Operand) -> CValue {
+        let string = assert_val!(self.translate_operand(op));
+        let call = self.call_native_builtin(builtins::STRING_BYTE_LEN, &[string]);
+        CValue::Val {
+            val: self.builder.inst_results(call)[0],
+            layout: self.layouts.int,
+        }
+    }
+
+    fn emit_string_concat(&mut self, lhs: &Operand, rhs: &Operand) -> CValue {
+        let lhs = assert_val!(self.translate_operand(lhs));
+        let rhs = assert_val!(self.translate_operand(rhs));
+        let call = self.call_native_builtin(builtins::STRING_CONCAT, &[lhs, rhs]);
+        CValue::Val {
+            val: self.builder.inst_results(call)[0],
+            layout: self.layouts.ptr,
+        }
     }
 
     fn emit_int_comparison(&mut self, lhs_val: Value, rhs_val: Value, comparison: IntCC) -> Value {
