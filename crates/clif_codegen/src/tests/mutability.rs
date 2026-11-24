@@ -1,4 +1,4 @@
-use runtime::ffi::int::HopperFloat;
+use runtime::ffi::int::HopperInt;
 
 use crate::tests::to_fn;
 
@@ -15,7 +15,7 @@ let main = fun () -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn(()), 2);
 }
@@ -31,7 +31,7 @@ let main = fun (a: Int) -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((8,)), 16);
 }

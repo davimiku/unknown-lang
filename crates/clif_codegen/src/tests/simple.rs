@@ -1,6 +1,6 @@
 use runtime::ffi::{
     bool::{HopperBool, FALSE, TRUE},
-    int::HopperFloat,
+    int::HopperInt,
 };
 
 use crate::tests::{compile_main, to_fn};
@@ -23,7 +23,7 @@ fn constant_16() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn(()), 16);
 }
@@ -34,7 +34,7 @@ fn constant_16_by_addition() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn(()), 16);
 }
@@ -45,7 +45,7 @@ fn one_param_constant_16() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn(()), 16);
 }
@@ -56,7 +56,7 @@ fn identity_int() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((16,)), 16);
 }
@@ -71,7 +71,7 @@ let main = fun (i: Int) -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((16,)), 16);
 }
@@ -86,7 +86,7 @@ let main = fun (i: Int) -> {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((6,)), 16);
     assert_eq!(code_fn((-4,)), 6);
@@ -150,7 +150,7 @@ let main = fun () -> Int {
 }
 "#;
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
     assert_eq!(code_fn(()), 2);
 }
 
@@ -167,7 +167,7 @@ let main = fun () -> Int {
 }
 "#;
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
     assert_eq!(code_fn(()), 3);
 }
 
@@ -186,6 +186,6 @@ let main = fun () -> Int {
 }
 "#;
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(), HopperInt>(code_ptr) };
     assert_eq!(code_fn(()), 42);
 }

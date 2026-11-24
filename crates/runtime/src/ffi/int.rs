@@ -2,4 +2,4 @@
 //! and the equivalent Rust type
 
 /// Language `Int` is a Rust `i64`
-pub type HopperFloat = i64;
+pub type HopperInt = i64;

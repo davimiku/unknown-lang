@@ -22,9 +22,9 @@ fn main() -> io::Result<()> {
         eprintln!("panic occurred: {panic_info}");
     }));
 
-    let test_programs = fs::read_dir("test_programs")?;
+    let e2e_programs = fs::read_dir("e2e_programs")?;
     // TODO: newtype this
-    let results: Vec<(String, HashMap<TestType, (usize, usize)>)> = test_programs
+    let results: Vec<(String, HashMap<TestType, (usize, usize)>)> = e2e_programs
         .par_bridge()
         .map(|dir_entry| {
             let mut results: HashMap<TestType, (usize, usize)> = HashMap::new();

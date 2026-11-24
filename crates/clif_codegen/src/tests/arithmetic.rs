@@ -1,4 +1,4 @@
-use runtime::ffi::{float::HopperFloat, int::HopperFloat};
+use runtime::ffi::{float::HopperFloat, int::HopperInt};
 
 use super::to_fn;
 use crate::tests::compile_main;
@@ -9,7 +9,7 @@ fn int_add_param_and_constant() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((10,)), 16);
     assert_eq!(code_fn((-22,)), -16);
@@ -21,7 +21,7 @@ fn int_sub_param_and_constant() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((26,)), 16);
     assert_eq!(code_fn((-16,)), -26);
@@ -33,7 +33,7 @@ fn int_mul_param_and_constant() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt,), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((2,)), 16);
     assert_eq!(code_fn((-2,)), -16);
@@ -45,7 +45,7 @@ fn int_add_params() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((10, 6)), 16);
     assert_eq!(code_fn((-10, -16)), -26);
@@ -57,7 +57,7 @@ fn int_sub_params() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((26, 10)), 16);
     assert_eq!(code_fn((-10, -16)), 6);
@@ -69,7 +69,7 @@ fn int_mul_params() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((4, -4)), -16);
     assert_eq!(code_fn((-16, -4)), 64);
@@ -81,7 +81,7 @@ fn int_division_returns_float() {
     let code = "let main = fun (a: Int, b: Int) -> { a / b }";
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperFloat>(code_ptr) };
 
     assert_eq!(code_fn((7, 2)), 3.5);
     assert_eq!(code_fn((8, 4)), 2.0);
@@ -93,7 +93,7 @@ fn remainder_params() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((16, 4)), 0);
     assert_eq!(code_fn((16, 5)), 1);
@@ -114,7 +114,7 @@ fn much_int_arithmetic() {
 
     let code_ptr = compile_main(code);
 
-    let code_fn = unsafe { to_fn::<(HopperFloat, HopperFloat), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(HopperInt, HopperInt), HopperInt>(code_ptr) };
 
     assert_eq!(code_fn((3, 10)), 16);
 }

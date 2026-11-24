@@ -4,8 +4,8 @@ use exitcode::ExitCode;
 
 // TODO: run tests in parallel
 fn main() -> Result<(), io::Error> {
-    let test_programs = fs::read_dir("test_programs")?;
-    for item in test_programs {
+    let e2e_programs = fs::read_dir("e2e_programs")?;
+    for item in e2e_programs {
         let item = item?;
         for ok_entry in fs::read_dir(item.path().join("ok"))? {
             let ok_entry = ok_entry?;

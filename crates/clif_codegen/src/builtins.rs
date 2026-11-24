@@ -4,7 +4,6 @@ use cranelift::prelude::types::{F64, I64};
 use cranelift::prelude::Type;
 use runtime::ffi::bool::HopperBool;
 use runtime::ffi::float::HopperFloat;
-use runtime::ffi::int::HopperFloat;
 
 // TODO: newtype all of these and impl fmt::display?
 // TODO: once there is a name for the language, change these names

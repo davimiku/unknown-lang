@@ -1,7 +1,7 @@
 use runtime::ffi::{
     bool::{HopperBool, TRUE},
     float::HopperFloat,
-    int::HopperFloat,
+    int::HopperInt,
 };
 
 use crate::tests::{
@@ -50,7 +50,7 @@ let main = fun (p: Point) -> { p.y }";
     }
 
     let code_ptr = compile_main(input);
-    let code_fn = unsafe { to_fn::<(*const Point,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Point,), HopperInt>(code_ptr) };
 
     let input = Point { x: 123, y: 456 };
     let output = code_fn((&input,));
@@ -119,7 +119,7 @@ let main = fun (a: Int, b: Int) -> { [ x = a, y = b ] }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn_two_param_sret::<HopperFloat, HopperFloat, Point>(code_ptr) };
+    let code_fn = unsafe { to_fn_two_param_sret::<HopperInt, HopperInt, Point>(code_ptr) };
 
     let mut output = Point::default();
     code_fn(7, 13, &mut output);
@@ -171,7 +171,7 @@ let main = fun (p: Point) -> { p.x + p.y }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(*const Point,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Point,), HopperInt>(code_ptr) };
 
     let input = Point { x: 100, y: 50 };
     let output = code_fn((&input,));
@@ -227,7 +227,7 @@ let main = fun (n: Int) -> { [ x = n * 2, y = n + 10 ] }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn_one_param_sret::<HopperFloat, Point>(code_ptr) };
+    let code_fn = unsafe { to_fn_one_param_sret::<HopperInt, Point>(code_ptr) };
 
     let mut output = Point::default();
     code_fn(5, &mut output);
@@ -250,7 +250,7 @@ let main = fun (b: Box) -> { b.width * b.height }";
     }
 
     let code_ptr = compile_main(code);
-    let code_fn = unsafe { to_fn::<(*const Box,), HopperFloat>(code_ptr) };
+    let code_fn = unsafe { to_fn::<(*const Box,), HopperInt>(code_ptr) };
 
     let input = Box {
         width: 7,
@@ -327,7 +327,7 @@ let main = fun (b: Bool, n: Int, f: Float) -> { [ flag = b, count = n, ratio = f
 
     let code_ptr = compile_main(code);
     let code_fn =
-        unsafe { to_fn_three_param_sret::<HopperBool, HopperFloat, HopperFloat, Mixed>(code_ptr) };
+        unsafe { to_fn_three_param_sret::<HopperBool, HopperInt, HopperFloat, Mixed>(code_ptr) };
 
     let mut output = Mixed::default();
     code_fn(TRUE, 99, 2.718, &mut output);
