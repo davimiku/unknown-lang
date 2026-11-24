@@ -1469,9 +1469,11 @@ impl FunctionTranslator<'_> {
         let rhs_val = rhs_val.as_val().expect("to be a single value");
 
         let val = if self.context.type_(lhs_ty).is_float() {
-            self.builder
+            let value = self
+                .builder
                 .ins()
-                .fcmp(comparison.as_float_cc(), lhs_val, rhs_val)
+                .fcmp(comparison.as_float_cc(), lhs_val, rhs_val);
+            self.builder.ins().sextend(I64, value)
         } else if self.context.type_(lhs_ty).is_int() {
             self.emit_int_comparison(lhs_val, rhs_val, comparison.as_int_cc())
         } else {

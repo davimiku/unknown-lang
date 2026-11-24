@@ -56,3 +56,35 @@ fn call_path_no_args() {
     let member = assert_matches!(assert_some!(member.subject()), Expr::Ident);
     assert_eq!(member.as_string(), "my_func");
 }
+
+#[test]
+fn ufcs_target_exposes_receiver_and_member() {
+    let parsed = parse_expr("point.distance_from other");
+    let call = assert_matches!(parsed, Expr::Call);
+
+    let (receiver, member) = call.ufcs_target().unwrap();
+    let receiver = assert_matches!(receiver, Expr::Ident);
+
+    assert_eq!(receiver.as_string(), "point");
+    assert_eq!(member.as_string(), "distance_from");
+}
+
+#[test]
+fn ufcs_target_exposes_operator_member() {
+    let parsed = parse_expr("point.+ other");
+    let call = assert_matches!(parsed, Expr::Call);
+
+    let (receiver, member) = call.ufcs_target().unwrap();
+    let receiver = assert_matches!(receiver, Expr::Ident);
+
+    assert_eq!(receiver.as_string(), "point");
+    assert_eq!(member.as_string(), "+");
+}
+
+#[test]
+fn escaped_binding_name_is_unquoted_in_ast() {
+    let parsed = parse_expr("let `+` = 1");
+    let binding = assert_matches!(parsed, Expr::LetBinding);
+
+    assert_eq!(binding.name_as_string().as_deref(), Some("+"));
+}

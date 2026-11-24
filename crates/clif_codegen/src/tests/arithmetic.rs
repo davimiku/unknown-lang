@@ -76,6 +76,17 @@ fn int_mul_params() {
 }
 
 #[test]
+fn int_division_returns_float() {
+    let code = "let main = fun (a: Int, b: Int) -> { a / b }";
+
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<(XInt, XInt), XFloat>(code_ptr) };
+
+    assert_eq!(code_fn((7, 2)), 3.5);
+    assert_eq!(code_fn((8, 4)), 2.0);
+}
+
+#[test]
 fn remainder_params() {
     let code = "let main = fun (a: Int, b: Int) -> { a % b }";
 
@@ -109,10 +120,7 @@ fn much_int_arithmetic() {
 
 #[test]
 fn float_add_param_and_constant() {
-    let codes = [
-        "let main = fun (i: Float) -> { i + 6.0 }",
-        "let main = fun (i: Float) -> { i + 6 }",
-    ];
+    let codes = ["let main = fun (i: Float) -> { i + 6.0 }"];
 
     for code in codes {
         let code_ptr = compile_main(code);
@@ -126,10 +134,7 @@ fn float_add_param_and_constant() {
 
 #[test]
 fn float_sub_param_and_constant() {
-    let codes = [
-        "let main = fun (i: Float) -> { i - 10.0 }",
-        "let main = fun (i: Float) -> { i - 10 }",
-    ];
+    let codes = ["let main = fun (i: Float) -> { i - 10.0 }"];
 
     for code in codes {
         let code_ptr = compile_main(code);
@@ -143,10 +148,7 @@ fn float_sub_param_and_constant() {
 
 #[test]
 fn float_mul_param_and_constant() {
-    let codes = [
-        "let main = fun (i: Float) -> { i * 8.0 }",
-        "let main = fun (i: Float) -> { i * 8 }",
-    ];
+    let codes = ["let main = fun (i: Float) -> { i * 8.0 }"];
 
     for code in codes {
         let code_ptr = compile_main(code);
@@ -168,30 +170,6 @@ fn float_add_params() {
 
     assert_eq!(code_fn((10.0, 6.0)), 16.0);
     assert_eq!(code_fn((-10.0, -16.0)), -26.0);
-}
-
-#[test]
-fn float_int_add_params() {
-    let code = "let main = fun (a: Float, b: Int) -> { a + b }";
-
-    let code_ptr = compile_main(code);
-
-    let code_fn = unsafe { to_fn::<(XFloat, XInt), XFloat>(code_ptr) };
-
-    assert_eq!(code_fn((10.0, 6)), 16.0);
-    assert_eq!(code_fn((-10.0, -16)), -26.0);
-}
-
-#[test]
-fn int_float_add_params() {
-    let code = "let main = fun (a: Int, b: Float) -> { a + b }";
-
-    let code_ptr = compile_main(code);
-
-    let code_fn = unsafe { to_fn::<(XInt, XFloat), XFloat>(code_ptr) };
-
-    assert_eq!(code_fn((10, 6.0)), 16.0);
-    assert_eq!(code_fn((-10, -16.0)), -26.0);
 }
 
 #[test]
@@ -221,7 +199,7 @@ fn float_mul_params() {
 
 #[test]
 fn much_float_arithmetic() {
-    let code = "let main = fun (a: Float, b: Float) -> { a + 2 * b - 7 }";
+    let code = "let main = fun (a: Float, b: Float) -> { a + 2.0 * b - 7.0 }";
 
     let code_ptr = compile_main(code);
 

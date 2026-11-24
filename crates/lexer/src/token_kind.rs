@@ -10,6 +10,11 @@ pub enum TokenKind {
     #[regex("[A-Za-z][A-Za-z0-9_]*")]
     Ident,
 
+    /// Backtick-delimited names, including names made up of operator symbols
+    // TODO - limit this to a smaller subset of allowed characters
+    #[regex(r"`[^`\n]+`")]
+    EscapedIdent,
+
     /// Identifiers may not start with underscores,
     /// but we still tokenize it for better error messages
     #[regex("_[A-Za-z0-9_]*", priority = 3)]
@@ -281,6 +286,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
             Self::Ident => "identifier",
+            Self::EscapedIdent => "escaped identifier",
             Self::TypeParameter => "type parameter",
             Self::InvalidLeadingUnderscore => "_invalid_identifier",
             Self::Attribute => "attribute",

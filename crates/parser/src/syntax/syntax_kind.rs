@@ -232,6 +232,7 @@ impl From<TokenKind> for SyntaxKind {
 
             // Literals
             TokenKind::Ident => Self::Ident,
+            TokenKind::EscapedIdent => Self::Ident,
             TokenKind::TypeParameter => Self::Ident, // FIXME: use new variant?
             TokenKind::Attribute => Self::Attribute,
             TokenKind::ModuleName => Self::ModuleName,

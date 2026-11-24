@@ -172,6 +172,10 @@ impl TypeSymbol {
             symbol_id,
         }
     }
+
+    pub const fn module_id(self) -> u32 {
+        self.module_id
+    }
 }
 
 /// Reference to a variable that lives in the "type" universe

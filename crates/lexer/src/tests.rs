@@ -62,6 +62,12 @@ fn lex_snake_case_identifier() {
 }
 
 #[test]
+fn lex_escaped_identifier() {
+    check("`+`", TokenKind::EscapedIdent);
+    check("`some name`", TokenKind::EscapedIdent);
+}
+
+#[test]
 fn lex_invalid_identifier_start_with_underscore() {
     check("_abc", TokenKind::InvalidLeadingUnderscore);
 }

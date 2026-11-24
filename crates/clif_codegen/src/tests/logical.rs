@@ -1,4 +1,4 @@
-use crate::builtins::{XBool, XInt, FALSE, TRUE};
+use crate::builtins::{XBool, XFloat, XInt, FALSE, TRUE};
 use crate::tests::{compile_main, to_fn};
 
 #[test]
@@ -105,4 +105,16 @@ fn int_greater_than_or_equal() {
     assert_eq!(code_fn((17, 16)), TRUE);
     assert_eq!(code_fn((16, 16)), TRUE);
     assert_eq!(code_fn((15, 16)), FALSE);
+}
+
+#[test]
+fn float_less_than() {
+    let code = "let main = fun (a: Float, b: Float) -> { a < b }";
+
+    let code_ptr = compile_main(code);
+    let code_fn = unsafe { to_fn::<(XFloat, XFloat), XBool>(code_ptr) };
+
+    assert_eq!(code_fn((1.0, 2.0)), TRUE);
+    assert_eq!(code_fn((2.0, 2.0)), FALSE);
+    assert_eq!(code_fn((3.0, 2.0)), FALSE);
 }

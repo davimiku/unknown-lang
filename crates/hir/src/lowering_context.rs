@@ -2,20 +2,17 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
-use ast::expr::Intrinsic;
 use ast::Mutability;
 use itertools::Itertools;
 use la_arena::Idx;
 use parser::SyntaxKind;
 use text_size::TextRange;
-use util_macros::assert_matches;
 
 use crate::diagnostic::{Diagnostic, LoweringDiagnostic};
 use crate::expr::{
     FunctionExpr, FunctionExprGroup, FunctionParam, IdentPatternBinding, IfExpr, IntrinsicExpr,
     LoopExpr, MatchArm, MatchExpr, PathExpr, PathSegmentExpr, Pattern, PatternMeta, ReAssignment,
-    RecordLiteralExpr, UnaryExpr, UnionNamespace, UnionUnitVariant, UnionVariant, VarRefExpr,
-    VariantPattern,
+    RecordLiteralExpr, UfcsCall, UnaryExpr, UnionNamespace, VarRefExpr, VariantPattern,
 };
 use crate::interner::{Interner, Key};
 use crate::intrinsics::insert_core_values;
@@ -25,7 +22,7 @@ use crate::type_expr::{
     CallExpr, RecordTypeExpr, TypeExpr, TypeRefExpr, TypeSymbol, UnionTypeExpr,
 };
 use crate::typecheck::{
-    check_expr, infer_expr, infer_module, substitute_type, CoreTypes, TypeDatabase, TypeResult,
+    check_expr, infer_expr, infer_module, substitute_type, CoreTypes, TypeDatabase,
 };
 use crate::{
     BlockExpr, BuiltinId, ContextDisplay, Database, Expr, Module, SourceKind, Type, UnaryOp,
@@ -158,8 +155,6 @@ impl Context {
     }
 
     /// Gets an interned key by its string
-    //
-    // TODO: keep this public? or offer more specific getters only
     pub fn lookup(&self, key: Key) -> &str {
         self.interner.lookup(key)
     }
@@ -325,6 +320,10 @@ impl Context {
 
     pub fn lookup_operator(&self, symbol: ValueSymbol) -> Option<IntrinsicExpr> {
         self.database.lookup_operator(symbol)
+    }
+
+    pub(crate) fn core_value(&self, name: Key) -> Option<ValueSymbol> {
+        self.core_scopes().find_value(name)
     }
 
     pub fn core_types(&self) -> &CoreTypes {
@@ -562,8 +561,8 @@ impl Context {
 
     fn lower_let_binding(&mut self, ast: ast::LetBinding) -> Expr {
         if let Some(ast::Expr::ModulePath(path)) = ast.value() {
-            let name = ast.name().expect("let binding to have a name");
-            let local_key = self.interner.intern(name.text());
+            let name = ast.name_as_string().expect("let binding to have a name");
+            let local_key = self.interner.intern(&name);
             let module_path = path.module_path();
             let symbol = self.resolve_imported_value(&module_path, path.symbol());
             let Some(symbol) = symbol else {
@@ -588,7 +587,7 @@ impl Context {
 
         // TODO: desugar patterns into separate definitions
         // or not until MIR?
-        let name = ast.name().unwrap().text().to_string();
+        let name = ast.name_as_string().expect("let binding to have a name");
         let (key, symbol) = self.lower_value_name(name);
         if let Some(range) = ast.name_range() {
             self.database.value_definition_ranges.insert(symbol, range);
@@ -634,6 +633,9 @@ impl Context {
             }
         };
         self.database.value_builtins.insert(symbol, builtin);
+        if let Some(operator) = builtin.operator() {
+            self.database.operators.insert(symbol, operator);
+        }
         Expr::Intrinsic(symbol)
     }
 
@@ -750,11 +752,25 @@ impl Context {
             SyntaxKind::RAngleEquals => ">=",
             _ => unreachable!(),
         };
-        let callee = self.lower_name_ref(op);
-        let symbol = assert_matches!(&callee, Expr::VarRef).symbol;
-        let callee = self.alloc_expr(callee, Some(ast::Expr::Binary(ast)));
+        let member = self.interner.intern(op);
+        let member_expr = self.alloc_expr(Expr::PathSegment(PathSegmentExpr { key: member }), None);
+        let callee = self.alloc_expr(
+            Expr::Path(PathExpr {
+                subject: lhs,
+                member: Some(member_expr),
+            }),
+            Some(ast::Expr::Binary(ast.clone())),
+        );
 
-        Expr::call(callee, Box::new([lhs, rhs]), Some(symbol))
+        Expr::call_with_ufcs(
+            callee,
+            Box::new([rhs]),
+            None,
+            Some(UfcsCall {
+                receiver: lhs,
+                member,
+            }),
+        )
     }
 
     fn lower_unary(&mut self, ast: ast::Unary) -> Expr {
@@ -940,13 +956,16 @@ impl Context {
     }
 
     fn lower_call(&mut self, ast: ast::expr::CallExpr) -> Expr {
+        let ufcs_member = ast
+            .ufcs_target()
+            .map(|(_, member)| self.interner.intern(&member.as_string()));
         let callee = ast.callee().unwrap();
         let symbol = match &callee {
             ast::Expr::Ident(ident) => {
                 let key = self.interner.intern(&ident.as_string());
                 self.find_value(key)
             }
-            ast::Expr::Path(path) => path
+            ast::Expr::Path(path) if path.member().is_none() => path
                 .subject_as_ident()
                 .map(|ident| self.interner.intern(&ident.as_string()))
                 .and_then(|key| self.find_value(key)),
@@ -954,6 +973,10 @@ impl Context {
             _ => None,
         };
         let callee = self.lower_expr(Some(callee));
+        let symbol = symbol.or_else(|| match self.expr(callee) {
+            Expr::VarRef(var_ref) => Some(var_ref.symbol),
+            _ => None,
+        });
 
         // TODO: confirm new definition of ast::CallExpr always has args
         let call_args = ast.args().unwrap();
@@ -962,7 +985,15 @@ impl Context {
             .map(|expr| self.lower_expr(Some(expr)))
             .collect();
 
-        Expr::call(callee, args, symbol)
+        let ufcs = match (ufcs_member, self.expr(callee)) {
+            (Some(member), Expr::Path(path)) => Some(UfcsCall {
+                receiver: path.subject,
+                member,
+            }),
+            _ => None,
+        };
+
+        Expr::call_with_ufcs(callee, args, symbol, ufcs)
     }
 
     fn lower_path(&mut self, path: ast::PathExpr) -> Expr {

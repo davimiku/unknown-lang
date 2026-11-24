@@ -99,3 +99,62 @@ Call@0..10
     RParen@9..10 ")""#]],
     )
 }
+
+#[test]
+fn parse_ufcs_call() {
+    check_expr(
+        "point.distance_from other",
+        expect![[r#"
+Call@0..25
+  PathExpr@0..20
+    Ident@0..5
+      Ident@0..5 "point"
+    Dot@5..6 "."
+    PathExpr@6..20
+      Ident@6..20
+        Ident@6..19 "distance_from"
+        Emptyspace@19..20 " "
+  CallArgs@20..25
+    PathExpr@20..25
+      Ident@20..25
+        Ident@20..25 "other""#]],
+    );
+}
+
+#[test]
+fn parse_ufcs_operator_call() {
+    check_expr(
+        "point.+ other",
+        expect![[r#"
+Call@0..13
+  PathExpr@0..8
+    Ident@0..5
+      Ident@0..5 "point"
+    Dot@5..6 "."
+    Ident@6..8
+      Plus@6..7 "+"
+      Emptyspace@7..8 " "
+  CallArgs@8..13
+    PathExpr@8..13
+      Ident@8..13
+        Ident@8..13 "other""#]],
+    );
+}
+
+#[test]
+fn parse_escaped_operator_binding() {
+    check_expr(
+        "let `+` = 1",
+        expect![[r#"
+LetBinding@0..11
+  LetKw@0..3 "let"
+  Emptyspace@3..4 " "
+  Ident@4..8
+    Ident@4..7 "`+`"
+    Emptyspace@7..8 " "
+  Equals@8..9 "="
+  Emptyspace@9..10 " "
+  IntLiteralExpr@10..11
+    IntLiteral@10..11 "1""#]],
+    );
+}

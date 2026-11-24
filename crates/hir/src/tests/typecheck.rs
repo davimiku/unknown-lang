@@ -42,6 +42,4 @@ fn float_addition() {
     let expected_return_type = Type::Float;
 
     check("1.0 + 2.0", &expected_return_type);
-    check("1 + 2.0", &expected_return_type);
-    check("1.0 + 2", &expected_return_type);
 }

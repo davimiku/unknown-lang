@@ -126,8 +126,6 @@ fn print_signatures(types: &CoreTypes) -> Vec<FuncSignature> {
 fn add_signatures(types: &CoreTypes) -> Vec<FuncSignature> {
     vec![
         ((types.int, types.int), types.int).into(),
-        ((types.int, types.float), types.float).into(),
-        ((types.float, types.int), types.float).into(),
         ((types.float, types.float), types.float).into(),
     ]
 }
@@ -143,8 +141,6 @@ fn mul_signatures(types: &CoreTypes) -> Vec<FuncSignature> {
 fn div_signatures(types: &CoreTypes) -> Vec<FuncSignature> {
     vec![
         ((types.int, types.int), types.float).into(),
-        ((types.int, types.float), types.float).into(),
-        ((types.float, types.int), types.float).into(),
         ((types.float, types.float), types.float).into(),
     ]
 }
